@@ -383,15 +383,16 @@
 
   /** One poll tick: ask the server for the view every few ticks, and keep the toast timer going. */
   function authorityTick() {
-    // A resume that could not reach the server is tried again when its pause is up.
+    // A resume that could not reach the server is tried again when its pause
+    // is up; until it has succeeded there is no seat to poll for. The toast
+    // timer below keeps going either way.
     if (authorityResumeWait > 0) {
       authorityResumeWait = authorityResumeWait - 1
       if (authorityResumeWait === 0 && !authorityBusy) resumeOnlineTable()
-      return
+    } else if (authorityResumeError === "") {
+      authorityPollTicks = authorityPollTicks + 1
     }
-    if (authorityResumeError !== "") return
-    authorityPollTicks = authorityPollTicks + 1
-    if (!authorityBusy && !authorityActing && authorityPollTicks >= 3) {
+    if (authorityResumeWait === 0 && authorityResumeError === "" && !authorityBusy && !authorityActing && authorityPollTicks >= 3) {
       authorityPollTicks = 0
       authorityBusy = true
       let url = authorityTrimmedUrl()
