@@ -1,0 +1,163 @@
+[
+  {
+    "id": "ai-chat",
+    "file": "AIChat.softn",
+    "name": "AI Chat",
+    "description": "A chat with a small language model that downloads once and runs entirely in your browser; nothing you type leaves the machine",
+    "primary": "#10b981"
+  },
+  {
+    "id": "device-kit",
+    "file": "DeviceKit.softn",
+    "name": "Device Kit",
+    "description": "A tour of what a sandboxed app may ask for: fetch a URL, read and make QR codes, take a photo, open a file — each behind the permission that gates it",
+    "primary": "#3b82f6"
+  },
+  {
+    "id": "glamour-studio",
+    "file": "GlamourStudio.softn",
+    "name": "Glamour Studio",
+    "description": "A salon's front desk: appointments, clients, staff and services in a local-first database that syncs between devices",
+    "primary": "#d4a574"
+  },
+  {
+    "id": "gpu-demo",
+    "file": "GPUDemo.softn",
+    "name": "GPU Compute",
+    "description": "Vector maths on your graphics card: two compute shaders run through the runtime's WebGPU bridge, with the numbers shown as they come back",
+    "primary": "#10b981"
+  },
+  {
+    "id": "maze-escape-3d",
+    "file": "MazeEscape3D.softn",
+    "name": "Maze Escape 3D",
+    "description": "A first-person maze carved fresh every game: find the golden ring, with a minimap that fills in as you explore and a best time that sticks",
+    "primary": "#4ade80"
+  },
+  {
+    "id": "notes",
+    "file": "Notes.softn",
+    "name": "Notes",
+    "description": "A shared notes board kept in the app's own storage on this site: add, search and delete, and everyone who opens it here sees the same notes",
+    "primary": "#6366f1"
+  },
+  {
+    "id": "pocket",
+    "file": "Pocket.softn",
+    "name": "Pocket",
+    "description": "An 8-bit handheld emulator — CPU, PPU, APU and mappers all in .logic, drawn by PixelCanvas and heard through AudioStream",
+    "primary": "#9bbc0f"
+  },
+  {
+    "id": "soft-dos",
+    "file": "SoftDOS.softn",
+    "name": "SoftDOS",
+    "description": "An x86 PC emulator written in .logic: a 16/32-bit CPU with the full 386 integer instruction set, VGA mode 13h and 80x25 text, a BIOS and DOS kernel, and a command line that runs real 8086 programs.",
+    "primary": "#48d080"
+  },
+  {
+    "id": "showcase",
+    "file": "Showcase.softn",
+    "name": "Component Showcase",
+    "description": "Every chart, animation and interactive component the runtime ships, on three pages, in light and dark",
+    "primary": "#6366f1"
+  },
+  {
+    "id": "snake-game",
+    "file": "SnakeGame.softn",
+    "name": "Snake",
+    "description": "The classic: eat, grow, don't hit the walls — with a shared top ten kept on the site",
+    "primary": "#4ade80"
+  },
+  {
+    "id": "texas-holdem",
+    "file": "TexasHoldem.softn",
+    "name": "Texas Hold'em",
+    "description": "Texas Hold'em Poker for friends who trust each other: every player's client holds the whole table, hole cards included, over peer-to-peer sync",
+    "primary": "#c8aa6e"
+  },
+  {
+    "id": "the-office",
+    "file": "TheOffice.softn",
+    "name": "TheOffice",
+    "description": "Local AI sim game where 6 Office-inspired characters chat autonomously using Qwen3.5-0.8B",
+    "primary": "#58a6ff"
+  },
+  {
+    "id": "three-demo",
+    "file": "ThreeDemo.softn",
+    "name": "3D Scene",
+    "description": "Seven shapes drifting over a floor: drag to look around, click a shape to select it, add more and recolour them",
+    "primary": "#f59e0b"
+  },
+  {
+    "id": "warble-wire",
+    "file": "WarbleWire.softn",
+    "name": "WarbleWire",
+    "description": "Send a message as synthetic birdsong and decode it back — the QXW acoustic transport",
+    "primary": "#c7ee53"
+  },
+  {
+    "id": "promptly-unemployed",
+    "file": "PromptlyUnemployed.softn",
+    "name": "Promptly Unemployed",
+    "description": "First-person 3D narrative tragicomedy, part one: laid off by an avatar, home by dinner, a business by midnight. Fully voiced, and one file.",
+    "primary": "#f59e0b"
+  },
+  {
+    "id": "blockscape",
+    "file": "Blockscape.softn",
+    "name": "Blockscape",
+    "description": "A first-person voxel sandbox: an island of blocks to mine, build on and save, with gravity, swimming, flight and a day-night cycle",
+    "primary": "#5cae4a"
+  },
+  {
+    "id": "dead-hours",
+    "file": "DeadHours.softn",
+    "name": "Dead Hours",
+    "description": "A first-person zombie shooter: hold a fenced yard at night against waves of the dead with a pistol and a shotgun",
+    "primary": "#ff5a3c"
+  },
+  {
+    "id": "twenty48",
+    "file": "Twenty48.softn",
+    "name": "2048",
+    "description": "The sliding-tile classic: merge equal tiles to reach 2048 and beyond, with undo and a best score",
+    "primary": "#edc22e"
+  },
+  {
+    "id": "blockfall",
+    "file": "Blockfall.softn",
+    "name": "Blockfall",
+    "description": "Falling blocks in a 10×20 well: seven pieces, wall kicks, a ghost piece, hold, a preview, and levels that speed up",
+    "primary": "#22d3ee"
+  },
+  {
+    "id": "train-yard",
+    "file": "TrainYard.softn",
+    "name": "Model Train Yard",
+    "description": "An animated HO-scale model train yard diorama on a wooden table with running trains, turntable, busy harbor, town, day-night cycle, and tactile physical controls",
+    "primary": "#3b82f6"
+  },
+  {
+    "id": "predator-prey",
+    "file": "PredatorPrey.softn",
+    "name": "Predator-Prey Simulator",
+    "description": "An interactive 3D ecosystem diorama: watch foxes hunt rabbits, rabbits graze on grass, and population dynamics balance in real time",
+    "primary": "#10b981"
+  },
+  {
+    "id": "house-builder",
+    "file": "HouseBuilder.softn",
+    "name": "House Builder",
+    "description": "Draw a house from above and see it in 3D: walls, doors, windows, room floors, a roof, furniture and garden, then walk through it in first person",
+    "primary": "#f59e0b"
+  },
+  {
+    "id": "sim-lives",
+    "file": "SimLives.softn",
+    "name": "Sim Lives",
+    "description": "Build a house, design avatars and move a household in: steer them to eat, sleep, wash, play and chat, or switch on free will and watch their day",
+    "primary": "#22c55e"
+  }
+]

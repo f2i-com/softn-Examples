@@ -1,0 +1,43 @@
+# A tag of the form vX.Y.Z packs every example and publishes the archives as a
+# GitHub Release, with their checksums and the catalogue record that softn.com
+# pins. The tag must equal "v" + package.json's version, so a release can never
+# carry a number the repository does not report.
+#
+#   git tag v1.0.1 && git push origin v1.0.1
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: node scripts/build-release.cjs --expect-tag "$GITHUB_REF_NAME"
+      - name: Publish the bundles
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="SoftN Examples $GITHUB_REF_NAME"
+          # A tag pushed again (after a fix) refreshes the release rather than failing on it.
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/*.softn dist/SHA256SUMS.txt dist/catalogue.json --clobber
+            # Deleting and re-pushing a tag turns its release into a draft; publish it again.
+            gh release edit "$GITHUB_REF_NAME" --draft=false --title "$title" --notes-file dist/RELEASE_NOTES.md
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              dist/*.softn dist/SHA256SUMS.txt dist/catalogue.json \
+              --title "$title" \
+              --notes-file dist/RELEASE_NOTES.md
+          fi

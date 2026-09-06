@@ -1,0 +1,619 @@
+  let currentPage = "dashboard"
+  let selectedItem = null
+  let sidebarCollapsed = false
+  let showAddModal = false
+  let showAddClientModal = false
+  let showAddStaffModal = false
+  let showAddServiceModal = false
+  let showEditClientModal = false
+  let editingClient = null
+  let showEditStaffModal = false
+  let editingStaff = null
+  let showEditServiceModal = false
+  let editingService = null
+  let showEditAppointmentModal = false
+  let editingAppointment = null
+  let showDataModal = false
+  let exportedData = ""
+  let darkMode = (function() { try { var v = localStorage.getItem("softn-theme-preference"); if (v === "light") return false; if (v === "dark") return true; } catch(e) {} return true; })()
+  let confirmClearData = false
+  let importData = ""
+  let showSyncModal = false
+  let syncRoom = ""
+  let syncConnected = false
+  let syncConnecting = false
+  let syncPeers = 0
+
+  // Field lists for the appointment forms, rebuilt each time a form opens so
+  // that a client or stylist added a moment ago is in the list.
+  let appointmentFormFields = []
+  let appointmentEditFields = []
+
+  // Line icons for the places the built-in Icon set has no name for. Drawn
+  // with currentColor so the wrapper's colour decides the stroke.
+  let iconOpen = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+  let iconCalendar = iconOpen + '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>'
+  let iconUsers = iconOpen + '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'
+  let iconScissors = iconOpen + '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>'
+  let iconList = iconOpen + '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>'
+  let iconSun = iconOpen + '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>'
+  let iconMoon = iconOpen + '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'
+
+  // App icon as inline SVG data URL (cached to avoid Image component resetting on re-render)
+  let appIconUrl = "data:image/svg+xml," + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='bg-grad' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' stop-color='#b08d60'/><stop offset='100%' stop-color='#9a7a52'/></linearGradient><mask id='g-mask'><rect width='100' height='100' fill='black'/><circle cx='50' cy='50' r='34' fill='white'/><circle cx='50' cy='50' r='20' fill='black'/><path d='M 50 50 L 75 -10 L 110 -10 L 110 44 L 40 44 Z' fill='black'/><rect x='46' y='44' width='40' height='14' fill='white'/><circle cx='50' cy='50' r='68' stroke='black' stroke-width='68' fill='none'/></mask></defs><rect width='100' height='100' rx='22' fill='url(#bg-grad)'/><rect width='100' height='100' fill='white' mask='url(#g-mask)'/></svg>")
+
+  // Theme colors — warm luxury palette
+  function getBgColor() {
+    return darkMode ? "#0c0a09" : "#faf9f7"
+  }
+
+  function getSidebarBg() {
+    return darkMode ? "#211f1d" : "#ffffff"
+  }
+
+  function getCardBg() {
+    return darkMode ? "#1c1917" : "#ffffff"
+  }
+
+  function getRaisedBg() {
+    return darkMode ? "#292524" : "#f5f5f4"
+  }
+
+  function getBorderColor() {
+    return darkMode ? "rgba(214, 191, 167, 0.10)" : "rgba(28, 25, 23, 0.08)"
+  }
+
+  function getSubtleBorder() {
+    return darkMode ? "rgba(214, 191, 167, 0.06)" : "rgba(28, 25, 23, 0.05)"
+  }
+
+  function getTextColor() {
+    return darkMode ? "#faf9f7" : "#1c1917"
+  }
+
+  function getMutedColor() {
+    return darkMode ? "#a8a29e" : "#78716c"
+  }
+
+  function getHeadingColor() {
+    return darkMode ? "#faf9f7" : "#1c1917"
+  }
+
+  function getAccentColor() {
+    return darkMode ? "#d4a574" : "#b08d60"
+  }
+
+  function getAccentHover() {
+    return darkMode ? "#c2956a" : "#9a7a52"
+  }
+
+  function getAccentMuted() {
+    return darkMode ? "rgba(212, 165, 116, 0.15)" : "rgba(176, 141, 96, 0.12)"
+  }
+
+  // Get greeting based on time of day
+  function getGreeting() {
+    let hour = new Date().getHours()
+    if (hour < 12) return "Good morning"
+    if (hour < 17) return "Good afternoon"
+    return "Good evening"
+  }
+
+  // Activity logging helper
+  function logActivity(title, description, status, actor) {
+    db.create("activity", {
+      title: title,
+      description: description,
+      time: new Date().toISOString(),
+      status: status || "info",
+      actor: actor || "Front desk"
+    })
+  }
+
+  // Appointment forms pick from the people and services that exist rather
+  // than asking for names to be typed. A collection with nothing in it yet
+  // falls back to a text box so the first booking can still be made.
+  function pickField(name, label, records, key, placeholder) {
+    let options = []
+    for (let i = 0; i < records.length; i = i + 1) {
+      let value = records[i].data ? records[i].data[key] : records[i][key]
+      if (value) { options.push({ value: value, label: value }) }
+    }
+    if (options.length === 0) {
+      return { name: name, type: "text", label: label, required: true, placeholder: placeholder }
+    }
+    return { name: name, type: "select", label: label, required: true, options: options }
+  }
+
+  function buildAppointmentFields() {
+    let fields = [
+      pickField("client", "Client", db.query("clients"), "name", "Client's full name"),
+      pickField("stylist", "Stylist", db.query("staff"), "name", "Stylist's full name"),
+      pickField("service", "Service", db.query("services"), "name", "Service name"),
+      {
+        name: "time",
+        type: "text",
+        label: "Time",
+        required: true,
+        placeholder: "HH:MM, e.g. 14:30",
+        pattern: "^([01]?[0-9]|2[0-3]):[0-5][0-9]$",
+        helpText: "24-hour clock"
+      }
+    ]
+    // SmartForm seeds a new form from each field's defaultValue; the modal's
+    // defaults prop is not something it reads.
+    fields.push({
+      name: "status",
+      type: "select",
+      label: "Status",
+      defaultValue: "scheduled",
+      options: [
+        { value: "scheduled", label: "Scheduled" },
+        { value: "in-progress", label: "In progress" },
+        { value: "completed", label: "Completed" }
+      ]
+    })
+    fields.push({ name: "price", type: "number", label: "Price ($)", min: 0, defaultValue: 0, placeholder: "0" })
+    return fields
+  }
+
+  // Theme toggle
+  function toggleTheme() {
+    darkMode = !darkMode
+    try { localStorage.setItem("softn-theme-preference", darkMode ? "dark" : "light") } catch(e) {}
+  }
+
+  // Navigation
+  function navigate(page) {
+    currentPage = page
+    selectedItem = null
+  }
+
+  function toggleSidebar() {
+    sidebarCollapsed = !sidebarCollapsed
+  }
+
+  function selectItem(item) {
+    selectedItem = item
+  }
+
+  function clearSelection() {
+    selectedItem = null
+  }
+
+  // Navigate to page AND select item (for dashboard clicks)
+  function viewAppointment(item) {
+    selectedItem = item
+    currentPage = "appointments"
+  }
+
+  function viewStaff(item) {
+    selectedItem = item
+    currentPage = "staff"
+  }
+
+  function viewClient(item) {
+    selectedItem = item
+    currentPage = "clients"
+  }
+
+  function viewService(item) {
+    selectedItem = item
+    currentPage = "services"
+  }
+
+  // CRUD handlers using XDB
+  function addClient(data) {
+    db.create("clients", {
+      name: data.name,
+      email: data.email,
+      phone: data.phone,
+      visits: 0,
+      totalSpent: 0,
+      vip: false
+    })
+    logActivity("New client added", data.name + " was added as a client", "success")
+    showAddClientModal = false
+  }
+
+  function editClient(row) {
+    editingClient = row
+    showEditClientModal = true
+  }
+
+  function saveEditClient(data) {
+    if (editingClient) {
+      db.update(editingClient.id, {
+        name: data.name || editingClient.data.name,
+        email: data.email || editingClient.data.email,
+        phone: data.phone || editingClient.data.phone
+      })
+      logActivity("Client updated", data.name + " was updated", "info")
+    }
+    showEditClientModal = false
+    editingClient = null
+  }
+
+  function closeEditClientModal() {
+    showEditClientModal = false
+    editingClient = null
+  }
+
+  function deleteClient(row) {
+    db.delete(row.id)
+    logActivity("Client removed", row.data.name + " was removed", "warning")
+  }
+
+  function addStaff(data) {
+    db.create("staff", {
+      name: data.name,
+      role: data.role,
+      email: data.email,
+      status: "online",
+      rating: 0,
+      appointments: 0
+    })
+    logActivity("New staff added", data.name + " joined as " + data.role, "success")
+    showAddStaffModal = false
+  }
+
+  function editStaff(row) {
+    editingStaff = row
+    showEditStaffModal = true
+  }
+
+  function saveEditStaff(data) {
+    if (editingStaff) {
+      db.update(editingStaff.id, {
+        name: data.name || editingStaff.data.name,
+        role: data.role || editingStaff.data.role,
+        email: data.email || editingStaff.data.email
+      })
+      logActivity("Staff updated", data.name + " was updated", "info")
+    }
+    showEditStaffModal = false
+    editingStaff = null
+  }
+
+  function closeEditStaffModal() {
+    showEditStaffModal = false
+    editingStaff = null
+  }
+
+  function deleteStaff(row) {
+    db.delete(row.id)
+    logActivity("Staff removed", row.data.name + " was removed", "warning")
+  }
+
+  function addService(data) {
+    db.create("services", {
+      name: data.name,
+      category: data.category,
+      price: data.price || 0,
+      duration: data.duration || 30
+    })
+    logActivity("New service added", data.name + " (" + data.category + ")", "success")
+    showAddServiceModal = false
+  }
+
+  function editService(row) {
+    editingService = row
+    showEditServiceModal = true
+  }
+
+  function saveEditService(data) {
+    if (editingService) {
+      db.update(editingService.id, {
+        name: data.name || editingService.data.name,
+        category: data.category || editingService.data.category,
+        price: data.price || editingService.data.price,
+        duration: data.duration || editingService.data.duration
+      })
+      logActivity("Service updated", data.name + " was updated", "info")
+    }
+    showEditServiceModal = false
+    editingService = null
+  }
+
+  function closeEditServiceModal() {
+    showEditServiceModal = false
+    editingService = null
+  }
+
+  function deleteService(row) {
+    db.delete(row.id)
+    logActivity("Service removed", row.data.name + " was removed", "warning")
+  }
+
+  function addAppointment(data) {
+    db.create("appointments", {
+      client: data.client,
+      stylist: data.stylist,
+      service: data.service,
+      time: data.time,
+      status: "scheduled",
+      price: data.price || 0
+    })
+    logActivity("Appointment booked", data.client + " - " + data.service + " at " + data.time, "success")
+    showAddModal = false
+  }
+
+  function editAppointment(row) {
+    editingAppointment = row
+    appointmentEditFields = buildAppointmentFields()
+    showEditAppointmentModal = true
+  }
+
+  function saveEditAppointment(data) {
+    if (editingAppointment) {
+      db.update(editingAppointment.id, {
+        client: data.client || editingAppointment.data.client,
+        stylist: data.stylist || editingAppointment.data.stylist,
+        service: data.service || editingAppointment.data.service,
+        time: data.time || editingAppointment.data.time,
+        status: data.status || editingAppointment.data.status,
+        price: data.price || editingAppointment.data.price
+      })
+      logActivity("Appointment updated", data.client + " appointment was updated", "info")
+    }
+    showEditAppointmentModal = false
+    editingAppointment = null
+  }
+
+  function closeEditAppointmentModal() {
+    showEditAppointmentModal = false
+    editingAppointment = null
+  }
+
+  function deleteAppointment(row) {
+    db.delete(row.id)
+    logActivity("Appointment cancelled", row.data.client + " - " + row.data.service, "warning")
+  }
+
+  // SmartForm onSaved callbacks (called when SmartForm creates records directly)
+  function onAppointmentSaved() {
+    logActivity("Appointment booked", "New appointment created", "success")
+    showAddModal = false
+  }
+
+  function onClientSaved() {
+    logActivity("New client added", "Client registered", "success")
+    showAddClientModal = false
+  }
+
+  function onStaffSaved() {
+    logActivity("New staff added", "Staff member added", "success")
+    showAddStaffModal = false
+  }
+
+  function onServiceSaved() {
+    logActivity("New service added", "Service created", "success")
+    showAddServiceModal = false
+  }
+
+  function openAddModal() {
+    appointmentFormFields = buildAppointmentFields()
+    showAddModal = true
+  }
+
+  function closeAddModal() {
+    showAddModal = false
+  }
+
+  function openAddClientModal() {
+    showAddClientModal = true
+  }
+
+  function closeAddClientModal() {
+    showAddClientModal = false
+  }
+
+  function openAddStaffModal() {
+    showAddStaffModal = true
+  }
+
+  function closeAddStaffModal() {
+    showAddStaffModal = false
+  }
+
+  function openAddServiceModal() {
+    showAddServiceModal = true
+  }
+
+  function closeAddServiceModal() {
+    showAddServiceModal = false
+  }
+
+  function viewAllAppointments() {
+    navigate("appointments")
+  }
+
+  function viewAllClients() {
+    navigate("clients")
+  }
+
+  function viewAllStaff() {
+    navigate("staff")
+  }
+
+  function viewAllServices() {
+    navigate("services")
+  }
+
+  // Data Management Modal
+  function openDataModal() {
+    showDataModal = true
+  }
+
+  function closeDataModal() {
+    showDataModal = false
+    exportedData = ""
+    importData = ""
+    confirmClearData = false
+  }
+
+  // XDB Data Export/Import
+  function exportAllData() {
+    let data = {
+      clients: db.query("clients"),
+      staff: db.query("staff"),
+      services: db.query("services"),
+      appointments: db.query("appointments"),
+      activity: db.query("activity")
+    }
+    exportedData = JSON.stringify(data, null, 2)
+  }
+
+  function copyToClipboard() {
+    if (exportedData) {
+      navigator.clipboard.writeText(exportedData)
+    }
+  }
+
+  function setImportData(value) {
+    importData = value
+  }
+
+  function importAllData() {
+    if (!importData) return
+
+    try {
+      let parsed = JSON.parse(importData)
+      let count = 0
+
+      if (parsed.clients) {
+        parsed.clients.forEach(function(r) {
+          db.create("clients", r.data || r)
+          count = count + 1
+        })
+      }
+      if (parsed.staff) {
+        parsed.staff.forEach(function(r) {
+          db.create("staff", r.data || r)
+          count = count + 1
+        })
+      }
+      if (parsed.services) {
+        parsed.services.forEach(function(r) {
+          db.create("services", r.data || r)
+          count = count + 1
+        })
+      }
+      if (parsed.appointments) {
+        parsed.appointments.forEach(function(r) {
+          db.create("appointments", r.data || r)
+          count = count + 1
+        })
+      }
+      if (parsed.activity) {
+        parsed.activity.forEach(function(r) {
+          db.create("activity", r.data || r)
+          count = count + 1
+        })
+      }
+
+      logActivity("Data imported", count + " records imported", "success")
+      importData = ""
+    } catch (e) {
+      logActivity("Import failed", "Invalid JSON data", "error")
+    }
+  }
+
+  function clearAllData() {
+    if (!confirmClearData) {
+      confirmClearData = true
+      return
+    }
+
+    let clients = db.query("clients")
+    let staff = db.query("staff")
+    let services = db.query("services")
+    let appointments = db.query("appointments")
+    let activity = db.query("activity")
+
+    clients.forEach(function(r) { db.delete(r.id) })
+    staff.forEach(function(r) { db.delete(r.id) })
+    services.forEach(function(r) { db.delete(r.id) })
+    appointments.forEach(function(r) { db.delete(r.id) })
+    activity.forEach(function(r) { db.delete(r.id) })
+
+    confirmClearData = false
+    closeDataModal()
+  }
+
+  function cancelClearData() {
+    confirmClearData = false
+  }
+
+  // Auto-init: resume sync from localStorage if previously connected
+  function _init() {
+    let savedRoom = db.getSavedSyncRoom()
+    if (savedRoom) {
+      syncRoom = savedRoom
+      syncConnecting = true
+      db.startSync(savedRoom)
+    }
+  }
+
+  // P2P Sync functions
+  function openSyncModal() {
+    showSyncModal = true
+    refreshSyncStatus()
+  }
+
+  function closeSyncModal() {
+    showSyncModal = false
+  }
+
+  function setSyncRoom(value) {
+    if (value && value.target) {
+      syncRoom = value.target.value
+    } else {
+      syncRoom = value
+    }
+  }
+
+  function copySyncRoom() {
+    if (syncRoom) {
+      navigator.clipboard.writeText(syncRoom)
+    }
+  }
+
+  function generateRoomCode() {
+    let chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+    let code = "glamour-"
+    let i = 0
+    while (i < 6) {
+      code = code + chars.charAt(Math.floor(Math.random() * chars.length))
+      i = i + 1
+    }
+    syncRoom = code
+  }
+
+  function joinSync() {
+    if (!syncRoom) return
+    syncConnecting = true
+    syncConnected = false
+    db.startSync(syncRoom)
+  }
+
+  function leaveSync() {
+    db.stopSync(syncRoom)
+    syncConnected = false
+    syncConnecting = false
+    syncPeers = 0
+  }
+
+  function refreshSyncStatus() {
+    let status = db.getSyncStatus(syncRoom)
+    if (status) {
+      syncConnected = status.connected
+      syncPeers = status.peers
+      if (status.connected) {
+        syncConnecting = false
+      }
+    } else if (syncConnecting) {
+      // No status returned — sync likely failed to initialize
+      syncConnecting = false
+    }
+  }

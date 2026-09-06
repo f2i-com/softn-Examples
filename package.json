@@ -1,0 +1,27 @@
+{
+  "name": "softn-examples",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The SoftN example applications: every demo in the softn.com directory as source, with the scripts that pack, test and release them.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/f2i-com/softn-Examples.git"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "scripts": {
+    "bundle": "node scripts/build-bundle.cjs",
+    "build": "node scripts/build-release.cjs",
+    "test": "npm run test:logic && npm run test:validators && npm run test:promptly && npm run test:bundles",
+    "test:logic": "node scripts/test-texasholdem-gameplay.cjs && node scripts/test-texasholdem-authority.cjs && node scripts/test-texasholdem-authority-client.cjs && node scripts/test-texasholdem-authority-http.cjs && node scripts/test-warblewire-protocol.cjs",
+    "test:validators": "node scripts/test-bundle-validator.cjs && node scripts/test-promptly-audio-validator.cjs",
+    "test:promptly": "node bundles/PromptlyUnemployed/check-geometry.cjs && node bundles/PromptlyUnemployed/check-spawns.cjs && node bundles/PromptlyUnemployed/check-audio.cjs",
+    "test:bundles": "node scripts/test-all-bundles.cjs",
+    "validate": "node scripts/test-all-bundles.cjs"
+  },
+  "devDependencies": {
+    "fflate": "^0.8.3"
+  }
+}
