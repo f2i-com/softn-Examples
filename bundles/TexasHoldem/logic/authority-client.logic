@@ -198,7 +198,11 @@
 
   function authorityDetail(result, body) {
     if (body && body.error && body.error.message) return body.error.message
-    if (result && result.error) return "" + result.error
+    if (result && result.error) {
+      // The browser's own words for "nothing answered" are for developers.
+      let detail = "" + result.error
+      return /Failed to fetch|NetworkError|Load failed|network/i.test(detail) ? "no answer from " + authorityUrl : detail
+    }
     if (result && result.status) return "the server answered " + result.status
     return "no answer from " + authorityUrl
   }
