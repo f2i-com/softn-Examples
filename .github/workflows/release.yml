@@ -3,6 +3,12 @@
 # pins. The tag must equal "v" + package.json's version, so a release can never
 # carry a number the repository does not report.
 #
+# A published release is immutable. softn.com pins one by URL and digest, and
+# a platform build from any later date must be able to fetch exactly the bytes
+# it verified: a re-run of this workflow on an existing tag may confirm the
+# archives it already carries, and refuses to replace them with different
+# ones. New bytes are a new version:
+#
 #   git tag v1.0.1 && git push origin v1.0.1
 name: Release
 
@@ -10,15 +16,19 @@ on:
   push:
     tags: ['v*']
 
+# Nothing here may write to the repository except the step that publishes,
+# which gets exactly that, in its own job.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -29,11 +39,23 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           title="SoftN Examples $GITHUB_REF_NAME"
-          # A tag pushed again (after a fix) refreshes the release rather than failing on it.
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/*.softn dist/SHA256SUMS.txt dist/catalogue.json --clobber
-            # Deleting and re-pushing a tag turns its release into a draft; publish it again.
+            if gh release download "$GITHUB_REF_NAME" --pattern SHA256SUMS.txt --output published-SHA256SUMS.txt 2>/dev/null; then
+              if cmp -s published-SHA256SUMS.txt dist/SHA256SUMS.txt; then
+                echo "$GITHUB_REF_NAME is already published with these exact archives; nothing to replace."
+                # A tag deleted and pushed again leaves its release a draft; the bytes are the same, so it is published again.
+                gh release edit "$GITHUB_REF_NAME" --draft=false --title "$title" --notes-file dist/RELEASE_NOTES.md
+                exit 0
+              fi
+              echo "Refusing to publish: $GITHUB_REF_NAME already carries different archives, and a published release is immutable." >&2
+              diff published-SHA256SUMS.txt dist/SHA256SUMS.txt >&2 || true
+              echo "Bump package.json and tag a new version instead." >&2
+              exit 1
+            fi
+            # The release exists without checksums: a draft a moved tag left before anything was uploaded. Fill it.
+            gh release upload "$GITHUB_REF_NAME" dist/*.softn dist/SHA256SUMS.txt dist/catalogue.json
             gh release edit "$GITHUB_REF_NAME" --draft=false --title "$title" --notes-file dist/RELEASE_NOTES.md
           else
             gh release create "$GITHUB_REF_NAME" \

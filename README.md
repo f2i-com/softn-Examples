@@ -76,6 +76,8 @@ Node 20.19 or newer. A build is byte-for-byte reproducible from the sources: ent
 
 The `Release` workflow runs the tests, refuses a tag that does not match `package.json`, and publishes every archive with `SHA256SUMS.txt` and `catalogue.json` as a GitHub Release. The `Build` workflow does the same checks on every push and keeps the archives as a workflow artifact.
 
+A published release is immutable: softn.com pins one by URL and digest, and a platform build from any later date has to be able to fetch exactly the bytes it verified. A re-run of the workflow on an existing tag confirms the archives it already carries and refuses to replace them with different ones, and a ruleset on the repository keeps `v*` tags from being deleted or moved. New bytes are a new version.
+
 softn.com then pins the new release from its own checkout:
 
 ```sh

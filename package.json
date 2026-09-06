@@ -1,6 +1,6 @@
 {
   "name": "softn-examples",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "The SoftN example applications: every demo in the softn.com directory as source, with the scripts that pack, test and release them.",
   "license": "Apache-2.0",

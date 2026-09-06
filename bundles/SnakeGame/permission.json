@@ -1,6 +1,9 @@
 {
   "app": { "id": "com.softn.snakegame", "name": "SnakeGame", "version": "1.0.0" },
   "permissions": {
-    "storage": { "enabled": true }
+    "storage": {
+      "enabled": true,
+      "collections": { "scores": "append-only" }
+    }
   }
 }

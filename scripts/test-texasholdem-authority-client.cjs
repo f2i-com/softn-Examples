@@ -134,7 +134,7 @@ function fetchTo(authority, log) {
   };
 }
 
-function loadClient(name, authority, storage, log) {
+function loadClient(name, authority, storage, log, fetchImpl) {
   const files = ['main.logic', 'cards.logic', 'engine.logic', 'game.logic', 'actions.logic', 'bot.logic', 'ui-helpers.logic', 'authority-client.logic'];
   let source = '';
   for (const f of files) source += '\n' + read('logic/' + f).replace(/^\s*import\s+['"][^'"]+['"]\s*;?\s*$/gm, '') + '\n';
@@ -155,7 +155,7 @@ function loadClient(name, authority, storage, log) {
       },
     },
     window: { innerWidth: 1200, innerHeight: 800, addEventListener() {}, removeEventListener() {}, preloadSoundFromAsset: () => ({ ok: true }), playSoundFromAsset: () => ({ ok: true }) },
-    softn: { net: { fetch: fetchTo(authority, log) } },
+    softn: { net: { fetch: fetchImpl || fetchTo(authority, log) } },
   };
   context.globalThis = context;
   const ctx = vm.createContext(context);
@@ -288,6 +288,53 @@ function main() {
   assert.equal(get(ann2, 'mySeat'), 0);
   assert.deepEqual(get(ann2, 'myHoleCards'), get(ann, 'myHoleCards'));
   console.log('PASS: a reload resumes the seat');
+
+  // A server that cannot be reached at reload is a bad moment, not a lost
+  // seat: the ticket is kept, the page says so, and the resume is tried again.
+  {
+    const real = fetchTo(authority, log);
+    let outages = 2;
+    const flaky = (url, options, callback) => {
+      if (outages > 0 && url.endsWith('/api/rooms/view')) {
+        outages -= 1;
+        callback({ ok: false, status: 0, error: 'offline' });
+        return;
+      }
+      real(url, options, callback);
+    };
+    const ann3 = loadClient('Ann', authority, annStorage, log, flaky);
+    assert.equal(get(ann3, 'authorityMode'), true, 'an outage does not give the seat up');
+    assert.notEqual(annStorage['poker-authority'], '', 'the ticket is kept');
+    assert.match(get(ann3, 'authorityResumeError'), /Could not reach the table/);
+    assert.equal(get(ann3, 'mySeat'), -1, 'and nothing is pretended');
+    tick(ann3, 40);
+    assert.equal(outages, 0, 'the resume was tried again');
+    assert.equal(get(ann3, 'authorityResumeError'), '', 'and succeeded once the server answered');
+    assert.equal(get(ann3, 'mySeat'), 0);
+    assert.deepEqual(get(ann3, 'myHoleCards'), get(ann, 'myHoleCards'));
+    console.log('PASS: a temporary failure at reload keeps the ticket and resumes later');
+  }
+
+  // Only the server's own word that the seat is gone clears the ticket.
+  {
+    const gone = (url, options, callback) =>
+      callback({ ok: false, status: 404, body: JSON.stringify({ ok: false, error: { code: 'NO_ROOM', message: 'No table has that code.' } }) });
+    const copy = { ...annStorage };
+    const ann4 = loadClient('Ann', authority, copy, log, gone);
+    assert.equal(get(ann4, 'authorityMode'), false);
+    assert.equal(get(ann4, 'currentPage'), 'lobby');
+    assert.equal(copy['poker-authority'], '');
+    console.log("PASS: the server saying the table is gone is what clears the ticket");
+  }
+
+  // An older view never paints over a newer one.
+  {
+    const before = get(ann, 'authorityRevision');
+    ann.applyAuthorityView({ revision: before - 1, public: { phase: 'nonsense', handNumber: -1 } });
+    assert.equal(get(ann, 'authorityRevision'), before, 'a stale revision is ignored');
+    assert.notEqual(get(ann, 'handNumber'), -1);
+    console.log('PASS: revisions only go forward');
+  }
 
   // Leaving revokes the seat and returns to the lobby.
   bob.leaveLobby();

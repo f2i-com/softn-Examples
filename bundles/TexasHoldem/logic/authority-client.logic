@@ -43,9 +43,15 @@
   }
 
   function authorityRemember() {
-    localStorage.setItem("poker-authority", JSON.stringify({ url: authorityUrl, code: authorityCode, ticket: authorityTicket }))
-    // The server's address outlives the seat: the next table is usually at the same one.
-    localStorage.setItem("poker-authority-url", authorityUrl)
+    try {
+      localStorage.setItem("poker-authority", JSON.stringify({ url: authorityUrl, code: authorityCode, ticket: authorityTicket }))
+      // The server's address outlives the seat: the next table is usually at the same one.
+      localStorage.setItem("poker-authority-url", authorityUrl)
+    } catch (e) {
+      // The seat is held on the server either way; only a reload would lose it.
+      toastMessage = "The browser could not remember this seat, so a reload will not return to it"
+      toastType = "warning"
+    }
   }
 
   function authorityForget() {
@@ -124,21 +130,83 @@
     })
   }
 
-  /** Back at a table this browser was sitting at: the ticket is still good until the table closes or we leave. */
+  /**
+   * Back at a table this browser was sitting at: the ticket is still good
+   * until the table closes or we leave, and only the server can say it is
+   * not. A table that has closed, a code it does not have, a ticket it does
+   * not know: those answers give the ticket up. No answer, a 5xx, a body
+   * that is not JSON: those are a bad moment, not a lost seat. The ticket
+   * is kept, the table page says so, and the resume is tried again after a
+   * pause that grows, or at once from the button. It used to treat every
+   * failure alike and clear the ticket, so a server that was restarting at
+   * the moment of a reload cost the player their seat.
+   */
+  let authorityResumeTries = 0
+  let authorityResumeWait = 0
+  let authorityResumeError = ""
+
   function resumeOnlineTable() {
     let url = authorityTrimmedUrl()
+    let code = authorityCode
+    let ticket = authorityTicket
     authorityBusy = true
-    softn.net.fetch(url + "/api/rooms/view", { method: "POST", headers: authorityHeaders(), body: { code: authorityCode, ticket: authorityTicket } }, function (result) {
+    authorityResumeWait = 0
+    softn.net.fetch(url + "/api/rooms/view", { method: "POST", headers: authorityHeaders(), body: { code: code, ticket: ticket } }, function (result) {
       authorityBusy = false
+      // A late answer after the player left, or moved to another table, is nobody's.
+      if (!authorityMode || authorityCode !== code || authorityTicket !== ticket) return
       let body = authorityParse(result)
-      if (!result || !result.ok || !body || !body.ok || !body.you || body.closed) {
+      if (body && body.ok) {
+        if (body.closed) {
+          exitAuthorityTable()
+          toastMessage = "The table closed"
+          toastType = "info"
+          return
+        }
+        if (!body.you) {
+          exitAuthorityTable()
+          toastMessage = "That online table is no longer yours to return to"
+          toastType = "info"
+          return
+        }
+        authorityResumeTries = 0
+        authorityResumeError = ""
+        enterAuthorityTable(body, ticket)
+        return
+      }
+      if (authoritySaysGone(result, body)) {
         exitAuthorityTable()
         toastMessage = "That online table is no longer yours to return to"
         toastType = "info"
         return
       }
-      enterAuthorityTable(body, authorityTicket)
+      authorityResumeTries = authorityResumeTries + 1
+      authorityResumeWait = Math.min(30, Math.pow(2, authorityResumeTries))
+      authorityResumeError = "Could not reach the table (" + authorityDetail(result, body) + "). Your seat is kept; trying again shortly."
+      syncConnected = false
+      syncConnecting = true
     })
+  }
+
+  /** The server's own word that the seat is gone: a code it has no table for, a table that closed, a ticket it does not know. */
+  function authoritySaysGone(result, body) {
+    let code = body && body.error && body.error.code ? body.error.code : ""
+    if (code === "NO_ROOM" || code === "ROOM_CLOSED" || code === "NOT_MEMBER" || code === "NOT_A_PLAYER") return true
+    let status = result && result.status ? result.status : 0
+    return body !== null && (status === 403 || status === 404 || status === 410)
+  }
+
+  function authorityDetail(result, body) {
+    if (body && body.error && body.error.message) return body.error.message
+    if (result && result.error) return "" + result.error
+    if (result && result.status) return "the server answered " + result.status
+    return "no answer from " + authorityUrl
+  }
+
+  /** The button on the table page while a resume is waiting to be tried again. */
+  function retryResume() {
+    if (!authorityMode || authorityBusy) return
+    resumeOnlineTable()
   }
 
   function enterAuthorityTable(view, ticket) {
@@ -188,6 +256,9 @@
     authorityRevision = 0
     authorityBusy = false
     authorityActing = false
+    authorityResumeTries = 0
+    authorityResumeWait = 0
+    authorityResumeError = ""
     authorityForget()
     showLeaveModal = false
     showResultsModal = false
@@ -226,6 +297,10 @@
    */
   function applyAuthorityView(view) {
     if (!view || !view.public) return
+    // Revisions only go forward. A poll's answer that arrives after an
+    // action's, or after a later poll's, describes a table that no longer
+    // exists, and must not be painted over the one that does.
+    if (typeof view.revision === "number" && view.revision < authorityRevision) return
     let pub = view.public
     authorityRevision = view.revision
     let wasShowdown = gamePhase === TableStateClass.phaseShowdown()
@@ -308,6 +383,13 @@
 
   /** One poll tick: ask the server for the view every few ticks, and keep the toast timer going. */
   function authorityTick() {
+    // A resume that could not reach the server is tried again when its pause is up.
+    if (authorityResumeWait > 0) {
+      authorityResumeWait = authorityResumeWait - 1
+      if (authorityResumeWait === 0 && !authorityBusy) resumeOnlineTable()
+      return
+    }
+    if (authorityResumeError !== "") return
     authorityPollTicks = authorityPollTicks + 1
     if (!authorityBusy && !authorityActing && authorityPollTicks >= 3) {
       authorityPollTicks = 0

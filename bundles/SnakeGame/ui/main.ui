@@ -66,6 +66,7 @@
         <Text style={{ fontSize: "12px", letterSpacing: "0.16em", color: "#ffffff", fontWeight: 700 }}>TOP TEN</Text>
         <Text style={{ fontSize: "11px", color: "#8b8ba8" }}>Shared by everyone on this site</Text>
       </Stack>
+      <Text style={{ display: "block", fontSize: "11px", color: "#8b8ba8", marginTop: "6px" }}>Scores are as each player's own game reports them; nothing checks them.</Text>
       <Stack direction=horizontal gap=sm align=center style={{ marginTop: "10px" }}>
         <Text style={{ fontSize: "11px", color: "#8b8ba8", whiteSpace: "nowrap" }}>Play as</Text>
         <Input value={playerName} @change={setPlayerName} placeholder="Anonymous" maxLength={24} style={{ fontFamily: "inherit", fontSize: "13px", flex: 1 }} />

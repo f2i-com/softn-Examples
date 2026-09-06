@@ -21,7 +21,25 @@ let PS_CLONE = null;
 let PS_WARNINGS = [];
 let PS_FRAME = 1, PS_PRESENTED = 0;
 let PS_DIRTY = null;
-let PS_COMPOSITE_BUDGET = 350000;      // layer-pixels per compositing slice (about 70 ms per frame on the shipping engine)
+let PS_COMPOSITE_BUDGET = 350000;      // layer-pixels per compositing slice; the starting guess, adapted to the measured rate by psAdaptBudget
+let PS_BUDGET_MIN = 60000, PS_BUDGET_MAX = 4000000;
+let PS_SLICE_TARGET_MS = 12;           // what one slice may take, leaving the rest of a frame for input and presentation
+
+// Fit the slice to the machine rather than the machine to the slice. A fixed
+// pixel budget was a guess about one engine on one computer: the same 350,000
+// layer-pixels are a few milliseconds on a fast desktop and most of a frame on
+// a phone. Every slice is timed, and the budget moves towards the size that
+// takes PS_SLICE_TARGET_MS here, smoothed so one slow frame does not halve it.
+function psAdaptBudget(startedMs, work) {
+  if (work <= 0) return;
+  let elapsed = Date.now() - startedMs;
+  let target = elapsed < 1 ? PS_COMPOSITE_BUDGET * 1.5 : (work / elapsed) * PS_SLICE_TARGET_MS;
+  PS_COMPOSITE_BUDGET = Math.max(PS_BUDGET_MIN, Math.min(PS_BUDGET_MAX, Math.floor(PS_COMPOSITE_BUDGET * 0.7 + target * 0.3)));
+}
+// Rows per step for a stepper over the whole canvas, read from the live budget each step.
+function psBudgetRows(layers) {
+  return function () { return Math.max(1, Math.floor(PS_COMPOSITE_BUDGET / Math.max(1, PS_W * Math.max(1, layers)))); };
+}
 let PS_OVL_IDX = null, PS_OVL_COLOR = null, PS_OVL_SAVED = null, PS_OVL_COUNT = 0, PS_OVL_APPLIED = false, PS_OVL_CAP = 400000;
 let PS_OVL_SEL = null, PS_OVL_GESTURE = null, PS_OVL_CLONE = null;   // { idx: Int32Array, color: Uint8Array, count }
 let PS_LISTENER = null;               // main.logic hook: psOnDocument(kind)
@@ -255,8 +273,11 @@ function psFlushDirty() {
   let width = d.x1 - d.x0;
   let rows = Math.max(1, Math.floor(PS_COMPOSITE_BUDGET / Math.max(1, width * layers)));
   let y1 = Math.min(d.y1, d.y0 + rows);
+  let work = (y1 - d.y0) * width * layers;
+  let started = Date.now();
   psOverlayUnapply();
   psCompositeRect(d.x0, d.y0, d.x1, y1);
+  psAdaptBudget(started, work);
   if (y1 >= d.y1) PS_DIRTY = null; else d.y0 = y1;
   psOverlayApply();
   PS_FRAME++;
@@ -278,9 +299,11 @@ function psCleanCompositeJob(done, fail) {
   psEnqueue("Rendering", function () {
     if (!stepper) {
       let layers = Math.max(1, psVisibleLayerCount());
-      stepper = psRowStepper(PS_H, Math.max(1, Math.floor(PS_COMPOSITE_BUDGET / Math.max(1, PS_W * layers))), function (y0, y1) {
+      stepper = psRowStepper(PS_H, psBudgetRows(layers), function (y0, y1) {
+        let started = Date.now();
         psOverlayUnapply();
         psCompositeRect(0, y0, PS_W, y1);
+        psAdaptBudget(started, (y1 - y0) * PS_W * layers);
       });
     }
     let r = stepper();
@@ -467,7 +490,7 @@ function psLayerActionJob(action, done) {
     psBegin("Merge down");
     let out = new Uint8Array(PS_W * PS_H * 4);
     let stack = [below, l];
-    psEnqueue("Merging layers", psRowStepper(PS_H, Math.max(1, Math.floor(PS_COMPOSITE_BUDGET / (PS_W * 2))), function (y0, y1) { psCompositeLayersInto(stack, out, y0, y1); }),
+    psEnqueue("Merging layers", psRowStepper(PS_H, psBudgetRows(2), function (y0, y1) { let started = Date.now(); psCompositeLayersInto(stack, out, y0, y1); psAdaptBudget(started, (y1 - y0) * PS_W * 2); }),
       function () { let merged = psLayerFactory(below.name, out); PS_LAYERS.splice(index - 1, 2, merged); PS_ACTIVE = merged.id; PS_MASKMODE = false; psInvalidateAll(); psCommit(); if (done) done(); },
       function (e) { psRollback(); psReportError(e); });
     return;
@@ -476,7 +499,7 @@ function psLayerActionJob(action, done) {
   psBegin("Flatten");
   let out = new Uint8Array(PS_W * PS_H * 4);
   let stack = PS_LAYERS.slice();
-  psEnqueue("Flattening", psRowStepper(PS_H, Math.max(1, Math.floor(PS_COMPOSITE_BUDGET / (PS_W * Math.max(1, stack.length)))), function (y0, y1) { psCompositeLayersInto(stack, out, y0, y1); }),
+  psEnqueue("Flattening", psRowStepper(PS_H, psBudgetRows(stack.length), function (y0, y1) { let started = Date.now(); psCompositeLayersInto(stack, out, y0, y1); psAdaptBudget(started, (y1 - y0) * PS_W * Math.max(1, stack.length)); }),
     function () { PS_LAYERS = [psLayerFactory("Flattened image", out)]; PS_ACTIVE = PS_LAYERS[0].id; PS_MASKMODE = false; psInvalidateAll(); psCommit(); if (done) done(); },
     function (e) { psRollback(); psReportError(e); });
 }

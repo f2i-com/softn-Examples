@@ -56,6 +56,8 @@ let menuOpen = false
 
 function toggleMenu() {
   menuOpen = !menuOpen
+  // The drawer is where saves are looked at; what is pending goes out first.
+  if (menuOpen) { flushBattery() }
 }
 
 function closeMenu() {
@@ -172,6 +174,9 @@ function romPayload(result) {
 // Split from the callback so the load path is testable without a file picker.
 function acceptRom(base64) {
   eraseArmed = false
+  // The cartridge coming out takes its save with it, not into the next one.
+  flushBattery()
+  batteryStatus = ""
   if (!gbMachine_loadRomBase64(base64)) {
     // gbMachine_loadRomBase64 sets gbError itself when it can say why —
     // a truncated file, a header that is not a cartridge. Only fill in a
@@ -184,6 +189,8 @@ function acceptRom(base64) {
 
   // Before the first frame runs: the cart has to see its own SRAM at boot, or
   // the game decides the file is corrupt and offers a new one.
+  romKey = computeCartKey()
+  migrateLegacySaves()
   restoreBattery()
 
   gbMachine_setRunning(true)
@@ -476,12 +483,17 @@ function togglePause() {
   if (!gbRomLoaded) { return }
   // A tap latched on the last frame before a pause would otherwise stay down
   // until the machine runs again.
-  if (gbRunning) { padClear() }
+  if (gbRunning) {
+    padClear()
+    // Nothing polls the battery while the machine stands still.
+    flushBattery()
+  }
   gbMachine_setRunning(!gbRunning)
 }
 
 function resetMachine() {
   if (!gbRomLoaded) { return }
+  flushBattery()
   gbMachine_reset()
   padClear()
   gbMachine_setRunning(true)
@@ -518,6 +530,8 @@ let slot1 = "Empty"
 let slot2 = "Empty"
 let slot3 = "Empty"
 let saveStatus = ""
+// Shown in the drawer while a cartridge save could not be written; see persistBattery.
+let batteryStatus = ""
 let eraseArmed = false
 
 // Frames until the battery is written out, or 0 when nothing is pending.
@@ -530,13 +544,61 @@ let batPending = null
 // Which cartridge a save belongs to.
 //
 // Title alone is not enough — every Pokémon Red revision says "POKEMON RED" —
-// so this folds in the header's global checksum and the ROM length. Two dumps
-// of the same game agree; a different game, or a different revision, does not,
-// and nobody loads a Zelda state into Pokémon.
+// so this folds in the ROM length and a digest of every byte (FNV-1a, 32-bit,
+// taken once when the cartridge is inserted). Two dumps of the same game
+// agree; a different game, revision or patch does not, and nobody loads a
+// Zelda state into Pokémon. The key used to fold in the header's global
+// checksum instead of a digest, which a patched ROM can share with its
+// original; saves made under that key are brought across on first load, see
+// migrateLegacySaves.
+let romKey = ""
+
 function cartKey() {
+  return romKey
+}
+
+function computeCartKey() {
+  if (GB_ROM === null || GB_ROM.length < 0x150) { return "" }
+  let h = 0x811c9dc5
+  let i = 0
+  let n = GB_ROM.length
+  while (i < n) {
+    let x = (h ^ GB_ROM[i]) >>> 0
+    // x * 16777619 mod 2^32, in two halves so nothing leaves the exact range of a double.
+    h = ((x & 0xffff) * 16777619 + (((x >>> 16) * 16777619) << 16)) >>> 0
+    i = i + 1
+  }
+  return gbTitle + "-" + GB_ROM.length.toString(16) + "-" + h.toString(16)
+}
+
+// The key saves were made under before the digest: title, header checksum, length.
+function legacyCartKey() {
   if (GB_ROM === null || GB_ROM.length < 0x150) { return "" }
   let sum = (GB_ROM[0x14e] << 8) | GB_ROM[0x14f]
   return gbTitle + "-" + sum.toString(16) + "-" + GB_ROM.length.toString(16)
+}
+
+// The first load of a cartridge under the digest key brings its battery and
+// its three slots across from the old key, where they exist and the new key
+// has nothing yet. The old copies go once the new ones are written.
+function migrateLegacySaves() {
+  let legacy = legacyCartKey()
+  if (legacy === "" || romKey === "") { return }
+  let pairs = [["pocket:battery:" + legacy, batteryKey()]]
+  let n = 1
+  while (n <= 3) {
+    pairs.push(["pocket:state:" + legacy + ":" + n, stateKey(n)])
+    pairs.push(["pocket:state:" + legacy + ":" + n + ":at", stateKey(n) + ":at"])
+    n = n + 1
+  }
+  let i = 0
+  while (i < pairs.length) {
+    let old = readStore(pairs[i][0])
+    if (old !== "" && readStore(pairs[i][1]) === "") {
+      if (writeStore(pairs[i][1], old) === "") { clearStore(pairs[i][0]) }
+    }
+    i = i + 1
+  }
 }
 
 function stateKey(n) {
@@ -672,12 +734,37 @@ function pollBattery() {
   if (batPending[0] === 0) { persistBattery() }
 }
 
+// Returns true when the battery is written, or there was nothing to write.
 function persistBattery() {
-  if (!gbRomLoaded) { return }
-  if (!gbCart_hasBattery()) { return }
+  if (!gbRomLoaded) { return true }
+  if (!gbCart_hasBattery()) { return true }
   let data = gbCart_batteryToBase64()
-  if (data === "") { return }
-  writeStore(batteryKey(), data)
+  if (data === "") { return true }
+  let failed = writeStore(batteryKey(), data)
+  if (failed !== "") {
+    // The save is still in the cartridge's RAM, and the countdown is wound
+    // back up so it is tried again: a browser with no room now may have
+    // some once a tab closes. Until then the player is told, so they can
+    // make room or take a save state out, rather than finding out on the
+    // next boot. The helper's answer used to be dropped here, and a failed
+    // write looked exactly like a successful one.
+    batteryStatus = "The cartridge save could not be written. " + failed + " It will be tried again while you play."
+    batPending[0] = 600
+    return false
+  }
+  batteryStatus = ""
+  return true
+}
+
+// Write out a pending battery now: before a pause, a reset, a new cartridge or
+// the drawer opening, none of which should leave a save waiting in RAM.
+function flushBattery() {
+  if (batPending === null || batPending[0] === 0) { return true }
+  if (persistBattery()) {
+    batPending[0] = 0
+    return true
+  }
+  return false
 }
 
 function restoreBattery() {

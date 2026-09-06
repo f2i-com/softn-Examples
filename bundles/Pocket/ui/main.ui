@@ -679,6 +679,7 @@
         </Stack>
 
         <Text if={saveStatus} style={{ fontSize: "0.65rem", color: "#9bbc0f", paddingTop: "0.4rem" }}>{saveStatus}</Text>
+        <Text if={batteryStatus} style={{ fontSize: "0.65rem", color: "#e0a0a0", paddingTop: "0.4rem" }}>{batteryStatus}</Text>
       </Box>
 
       // Readouts. Two frame rates, deliberately: gbFps is what the emulator
