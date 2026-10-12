@@ -10,11 +10,17 @@
 # ones. New bytes are a new version:
 #
 #   git tag v1.0.1 && git push origin v1.0.1
+#
+# GitHub starts no workflow for a tag whose commit message carries
+# `[skip ci]`; such a tag is released by starting this workflow by hand from
+# the tag itself (`gh workflow run release.yml --ref v1.0.2`), never from a
+# branch.
 name: Release
 
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 
 # Nothing here may write to the repository except the step that publishes,
 # which gets exactly that, in its own job.
@@ -23,6 +29,8 @@ permissions:
 
 jobs:
   release:
+    # Started by hand, only from a version tag: the name is what is published.
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
