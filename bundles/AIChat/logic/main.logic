@@ -1,4 +1,4 @@
-// AI Chat — Qwen3.5-0.8B powered chat with conversation history
+// AI Chat — a chat with Qwen3-0.6B, run on this device by SoftN, with conversation history
 
 // Model state
 let modelLoaded = false
@@ -13,8 +13,6 @@ let chatMessages = []
 
 // Input state
 let inputText = ""
-let attachedImage = ""
-let attachedImageName = ""
 let generating = false
 
 // Settings. Each number keeps a text twin so a half-typed value ("0.") is
@@ -103,15 +101,11 @@ function _init() {
 function loadModel() {
   if (modelLoading || modelLoaded) return
   modelLoading = true
-  statusText = "Downloading the model (about 600 MB)... a few minutes the first time"
-  softn.ai.model.load("onnx-community/Qwen3.5-0.8B-ONNX", {
-    modelClass: "Qwen3_5ForConditionalGeneration",
-    dtype: {
-      embed_tokens: "q4",
-      vision_encoder: "q4",
-      decoder_model_merged: "q4"
-    }
-  }, function(result) {
+  statusText = "Downloading the model (about 400 MB)... a few minutes the first time"
+  // A GGUF checkpoint from Hugging Face; SoftN keeps its quantized weights as
+  // they are on the GPU. Room for 2048 tokens of conversation and reply, of
+  // which a reply may take up to half.
+  softn.ai.model.load("unsloth/Qwen3-0.6B-GGUF:Q4_K_M", { context: 2048 }, function(result) {
     if (!result || result.error || !result.modelHandle) {
       modelLoading = false
       modelLoaded = false
@@ -149,8 +143,6 @@ function newConversation() {
   }
   chatMessages = []
   inputText = ""
-  attachedImage = ""
-  attachedImageName = ""
   confirmDeleteId = ""
   // Close sidebar on mobile after creating
   if (isMobile) showSidebar = false
@@ -182,8 +174,6 @@ function selectConversation(conv) {
   activeConversationId = id
   reloadChatMessages()
   inputText = ""
-  attachedImage = ""
-  attachedImageName = ""
   // Close sidebar on mobile after selecting
   if (isMobile) showSidebar = false
 }
@@ -238,7 +228,7 @@ function isConfirmingDelete(conv) {
 // ── Message Handling ──
 
 function sendMessage() {
-  if (!inputText && !attachedImage) return
+  if (!inputText) return
   if (!modelLoaded) {
     statusText = "Download the model first"
     return
@@ -247,7 +237,6 @@ function sendMessage() {
 
   // Save input before newConversation() clears it
   let userContent = inputText
-  let userImage = attachedImage
 
   // Auto-create conversation if none active
   if (!activeConversationId) {
@@ -260,7 +249,7 @@ function sendMessage() {
     conversationId: activeConversationId,
     role: "user",
     content: userContent,
-    imageDataUrl: userImage,
+    imageDataUrl: "",
     timestamp: now
   })
 
@@ -287,24 +276,18 @@ function sendMessage() {
   reloadChatMessages()
 
   inputText = ""
-  attachedImage = ""
-  attachedImageName = ""
 
   generating = true
   statusText = "Generating..."
 
+  // The model reads text: an image kept from an older chat stays on screen
+  // and its message goes to the model as its words. The oldest turns are let
+  // go by the runtime when a conversation outgrows the model's room.
   let aiMessages = []
   let j = 0
   while (j < chatMessages.length) {
     let m = chatMessages[j]
-    if (m.data.imageDataUrl && m.data.role === "user") {
-      let parts = []
-      parts.push({ type: "image", image: m.data.imageDataUrl })
-      if (m.data.content) {
-        parts.push({ type: "text", text: m.data.content })
-      }
-      aiMessages.push({ role: "user", content: parts })
-    } else {
+    if (m.data.content) {
       aiMessages.push({ role: m.data.role, content: m.data.content })
     }
     j = j + 1
@@ -346,29 +329,13 @@ function startWithPrompt(text) {
 
 // Check if send is possible
 function canSend() {
-  return (inputText || attachedImage) && modelLoaded && !generating
+  return inputText && modelLoaded && !generating
 }
 
 // ── Input Handlers ──
 
 function updateInput(val) {
   inputText = val
-}
-
-function attachImage() {
-  softn.files.pickFile({ accept: "image/*" }, function(files) {
-    if (files && files.length > 0) {
-      attachedImageName = files[0].name || "image"
-      softn.files.readBase64(files[0].ref, function(dataUrl) {
-        attachedImage = dataUrl
-      })
-    }
-  })
-}
-
-function removeImage() {
-  attachedImage = ""
-  attachedImageName = ""
 }
 
 // ── Settings ──
@@ -399,8 +366,8 @@ function setTemperature(val) {
 function setMaxTokens(val) {
   maxTokensText = "" + val
   let n = parseInt(val)
-  if (isNaN(n) || n < 1 || n > 8192) {
-    settingsError = "Max tokens must be a whole number from 1 to 8192. Still using " + maxTokens + "."
+  if (isNaN(n) || n < 1 || n > 1024) {
+    settingsError = "Max tokens must be a whole number from 1 to 1024. Still using " + maxTokens + "."
     settingsErrorField = "maxTokens"
     return
   }

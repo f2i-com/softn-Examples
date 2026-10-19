@@ -15,7 +15,7 @@ The packed `.softn` archives are not committed. The `Release` workflow builds th
 | <img src="screenshots/DeadHours.webp" alt="Dead Hours" width="200"> | **Dead Hours**<br>`bundles/DeadHours/` | A first-person zombie shooter: hold a fenced yard at night against waves of the dead with a pistol and a shotgun |
 | <img src="screenshots/MazeEscape3D.webp" alt="Maze Escape 3D" width="200"> | **Maze Escape 3D**<br>`bundles/MazeEscape3D/` | A first-person maze carved fresh every game: find the golden ring, with a minimap that fills in as you explore and a best time that sticks |
 | <img src="screenshots/TexasHoldem.webp" alt="Texas Hold'em" width="200"> | **Texas Hold'em**<br>`bundles/TexasHoldem/` | Texas Hold'em Poker for friends who trust each other: every player's client holds the whole table, hole cards included, over peer-to-peer sync |
-| <img src="screenshots/TheOffice.webp" alt="TheOffice" width="200"> | **TheOffice**<br>`bundles/TheOffice/` | Local AI sim game where 6 Office-inspired characters chat autonomously using Qwen3.5-0.8B |
+| <img src="screenshots/TheOffice.webp" alt="TheOffice" width="200"> | **TheOffice**<br>`bundles/TheOffice/` | Local AI sim game where 6 Office-inspired characters chat autonomously using Qwen3-0.6B, run in the browser by SoftN |
 | <img src="screenshots/SimLives.webp" alt="Sim Lives" width="200"> | **Sim Lives**<br>`bundles/SimLives/` | Build a house, design avatars and move a household in: steer them to eat, sleep, wash, play and chat, or switch on free will and watch their day |
 | <img src="screenshots/SnakeGame.webp" alt="Snake" width="200"> | **Snake**<br>`bundles/SnakeGame/` | The classic: eat, grow, don't hit the walls — with a shared top ten kept on the site |
 | <img src="screenshots/Twenty48.webp" alt="2048" width="200"> | **2048**<br>`bundles/Twenty48/` | The sliding-tile classic: merge equal tiles to reach 2048 and beyond, with undo and a best score |
@@ -49,7 +49,7 @@ The packed `.softn` archives are not committed. The `Release` workflow builds th
 | <img src="screenshots/ThreeDemo.webp" alt="3D Scene" width="200"> | **3D Scene**<br>`bundles/ThreeDemo/` | Seven shapes drifting over a floor: drag to look around, click a shape to select it, add more and recolour them |
 | <img src="screenshots/GPUDemo.webp" alt="GPU Compute" width="200"> | **GPU Compute**<br>`bundles/GPUDemo/` | Vector maths on your graphics card: two compute shaders run through the runtime's WebGPU bridge, with the numbers shown as they come back |
 
-Three more bundles are built and released but not listed in the directory: **AIDemo** (an exercise of the `softn.ai.*` inference calls), **FoundationFixture** (a fixture proving bundled `.glb` resolution and `Scene3D` clip animation with `@animation` events) and **PhotoStudio** (a layered image editor with PNG, JPEG, GIF, BMP and PSD import and export; see its README).
+Two more bundles are built and released but not listed in the directory: **FoundationFixture** (a fixture proving bundled `.glb` resolution and `Scene3D` clip animation with `@animation` events) and **PhotoStudio** (a layered image editor with PNG, JPEG, GIF, BMP and PSD import and export; see its README).
 
 ## Play them
 

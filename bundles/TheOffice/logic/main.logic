@@ -160,7 +160,7 @@ let charColors = ["#f0883e", "#58a6ff", "#3fb950", "#db61a2", "#e3b341", "#a371f
 
 // Small talk, used until the language model is loaded.
 //
-// The office used to stand completely silent behind a 600 MB download: nothing
+// The office used to stand completely silent behind a model download: nothing
 // walked, nothing spoke, and the chat panel said "no conversations yet" until
 // the model landed. Now the day runs on scripted lines from the moment you
 // press Play, and loading the model upgrades the writing rather than switching
@@ -309,7 +309,7 @@ function idleStatus() {
 
 // What is putting words in their mouths, for the chat panel to own up to.
 function chatSource() {
-  if (modelLoaded) return "Qwen3.5-0.8B"
+  if (modelLoaded) return "Qwen3-0.6B"
   if (modelLoading) return "downloading the model"
   return "scripted small talk"
 }
@@ -1026,16 +1026,10 @@ function cancelApproach() {
 function loadModel() {
   if (modelLoading || modelLoaded) return
   modelLoading = true
-  statusText = "Downloading Qwen3.5-0.8B..."
+  statusText = "Downloading Qwen3-0.6B (about 400 MB)..."
 
-  softn.ai.model.load("onnx-community/Qwen3.5-0.8B-ONNX", {
-    modelClass: "Qwen3_5ForConditionalGeneration",
-    dtype: {
-      embed_tokens: "q4",
-      vision_encoder: "q4",
-      decoder_model_merged: "q4"
-    }
-  }, function(result) {
+  // A GGUF checkpoint from Hugging Face, run on this device by SoftN.
+  softn.ai.model.load("unsloth/Qwen3-0.6B-GGUF:Q4_K_M", { context: 2048 }, function(result) {
     modelLoading = false
     if (!result || result.error || !result.modelHandle) {
       modelLoaded = false
@@ -1045,7 +1039,7 @@ function loadModel() {
     }
     modelHandle = result.modelHandle
     modelLoaded = true
-    statusText = "Qwen3.5-0.8B is listening in"
+    statusText = "Qwen3-0.6B is listening in"
   })
 }
 
