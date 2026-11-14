@@ -1,0 +1,71 @@
+// The silly statistics: this shift's counters in S.fun (honks, bonks, airtime, cones, Kevin,
+// memos...) and the career's in S.career.fun. The report's awards read S.fun (fun/awards.logic);
+// the Contracts & career page shows the career ones (careerFunRows below, ui/tablet/contracts.ui).
+// funCount(key) is the way in, from the banter, stunts, props, wildlife, memos, field kit and
+// movement code. nextShift (mine/shift.logic) empties S.fun; S.career.fun is kept for good.
+// validFun() (called by validState, core/persistence.logic) wants every value in either to be a
+// finite number from 0 up: a new counter needs no change there, but it must be a number.
+
+// Creates S.fun (this shift's counters) and S.career.fun when missing, which is also how older
+// saves gain them. Needs S.career, which ensureProgress (mine/progression.logic) creates; every
+// caller runs after it.
+function ensureFun() {
+  if (!S.fun)
+    S.fun = {
+      honks: 0, // horn presses (honk, fun/banter.logic)
+      bonks: 0, // crashes into solid things (bonk)
+      air: 0, // total airtime in seconds (player/stunts.logic); nothing reads it
+      bestAir: 0, // the longest jump, in seconds
+      jumps: 0, // ute jumps of 0.35 s or more
+      cones: 0, // cones hit or kicked (world/props.logic)
+      kevin: 0, // times the player moved Kevin off the haul road (world/wildlife.logic)
+      kevinWins: 0, // times Kevin left the road on his own schedule
+      tape: 0, // duct tape applied in the field kit (player/field-kit.logic)
+      km: 0, // kilometres driven (player/movement.logic); nothing reads it
+      memos: 0, // memos answered (fun/memos.logic)
+      spills: 0 // nothing counts this
+    };
+  if (!S.career.fun) S.career.fun = { honks: 0, bonks: 0, bestAir: 0, cones: 0, kevin: 0, memos: 0 };
+}
+
+// Adds amount (default 1) to this shift's S.fun[key], and to the career counter of the same name
+// if there is one. bestAir is a maximum, not a total, so player/stunts.logic keeps both itself.
+function funCount(key, amount) {
+  ensureFun();
+  S.fun[key] = (S.fun[key] || 0) + (amount === undefined ? 1 : amount);
+  if (S.career.fun[key] !== undefined && key !== 'bestAir')
+    S.career.fun[key] += amount === undefined ? 1 : amount;
+}
+
+// The save check for S.fun and S.career.fun, called by validState. Either may be missing from an
+// older save; every value must be a number, 0 to 1e7 for a shift and 0 to 1e8 for a career.
+function validFun(s) {
+  if (s.fun !== undefined) {
+    if (!s.fun || typeof s.fun !== 'object') return false;
+    for (var k in s.fun) if (!Number.isFinite(s.fun[k]) || s.fun[k] < 0 || s.fun[k] > 1e7) return false;
+  }
+  if (s.career && s.career.fun !== undefined) {
+    var f = s.career.fun;
+    if (!f || typeof f !== 'object') return false;
+    for (var k2 in f) if (!Number.isFinite(f[k2]) || f[k2] < 0 || f[k2] > 1e8) return false;
+  }
+  return true;
+}
+
+// The unofficial records on the Contracts & career page: the career counters, kept across shifts.
+// An older save can hold only some of the counters (validFun allows that), so each one defaults to 0.
+var careerFunRows = [];
+
+// Called by refreshUI (core/ui-state.logic).
+function refreshCareerFun() {
+  ensureFun();
+  var f = S.career.fun;
+  careerFunRows = [
+    { name: 'Horn honks', value: String(f.honks || 0) },
+    { name: 'Things bonked', value: String(f.bonks || 0) },
+    { name: 'Best airtime', value: (f.bestAir || 0).toFixed(1) + ' s' },
+    { name: 'Cones displaced', value: String(f.cones || 0) },
+    { name: 'Emus relocated', value: String(f.kevin || 0) },
+    { name: 'Memos answered', value: String(f.memos || 0) }
+  ];
+}

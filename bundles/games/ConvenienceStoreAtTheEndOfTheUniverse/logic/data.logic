@@ -1,0 +1,39 @@
+// Small immutable catalogues. Identity/order deliberately matches the 0.1.0 game.
+let GAME_ID = "cosmic";
+let SAVE_KEY = "oddjobs:cosmic:v2";
+let OLD_SAVE_KEY = "oddjobs:cosmic:v1";
+let TITLE = "Convenience Store at the End of the Universe";
+let PRODUCTS = [
+ {id:0,name:"Milk",short:"MILK",art:"milk",price:8,shelf:0},
+ {id:1,name:"Banana",short:"BANANAS",art:"banana",price:7,shelf:1},
+ {id:2,name:"Coffee",short:"COFFEE",art:"coffee",price:10,shelf:2},
+ {id:3,name:"Noodles",short:"NOODLES",art:"noodles",price:12,shelf:3},
+ {id:4,name:"Bottled gravity",short:"GRAVITY",art:"gravity",price:13,shelf:4},
+ {id:5,name:"Meteor chips",short:"CHIPS",art:"chips",price:9,shelf:5}
+];
+let REGULARS = [
+ {id:0,name:"Iko",art:"iko",item:0,color:"#99c6a0",motif:"iko",idle:"Reading the small print on the milk.",description:"A homesick astronomer in a much-too-large coat."},
+ {id:1,name:"R-7",art:"r7",item:1,color:"#e7ba68",motif:"r7",idle:"Carefully measuring the curve of a banana.",description:"A maintenance robot learning unnecessary things."},
+ {id:2,name:"Mello",art:"mello",item:2,color:"#a4dadd",motif:"mello",idle:"Holding both hands near the coffee warmer.",description:"A ghost with an excellent memory for small kindnesses."},
+ {id:3,name:"The Traveller",art:"traveller",item:3,color:"#c6b0de",motif:"traveller",idle:"Checking a watch that is running the other way.",description:"A familiar stranger travelling through the week backwards."},
+ {id:4,name:"Nimbus",art:"nimbus",item:4,color:"#b4c8e8",motif:"nimbus",idle:"Trying very hard not to rain on the biscuits.",description:"A small cloud. Not, they insist, a large worry."},
+ {id:5,name:"Dave",art:"dave",item:5,color:"#e2a092",motif:"dave",idle:"Comparing two identical packets of chips.",description:"A completely normal human. He has receipts."}
+];
+let SHIFTS = [
+ {name:"Open, somehow",time:"11:47 PM",roster:[0,1,2,5],routine:"stock",routineLabel:"Unpack the delivery, then fill a shelf",event:"star",eventLabel:"A star on the doormat",sky:"Most of the stars are where you left them.",note:"The supplier has left a crate. Milk goes in the fridge. The universe can wait.",close:"Four ordinary purchases. One very unordinary night. You leave the coffee warmer on."},
+ {name:"The usual",time:"12:06 AM",roster:[1,4,3,0],routine:"coffee",routineLabel:"Brew a fresh pot of coffee",event:"radio",eventLabel:"A station between stations",sky:"The Teapot constellation has misplaced its handle.",note:"Someone has straightened the welcome mat. Nobody admits to it.",close:"The radio has a new favourite song. Your regulars have begun saying 'see you tomorrow'."},
+ {name:"Yesterday, tomorrow",time:"12:32 AM",roster:[3,2,5,4],routine:"clean",routineLabel:"Wipe the little spill by the fridge",event:"clock",eventLabel:"The clock loses a minute",sky:"The sky is turning the colour of an old bruise. A beautiful one.",note:"The delivery note is dated tomorrow. The noodles expire yesterday. Neither seems concerned.",close:"One minute refuses to end. Eventually, you tell it the shop will be here tomorrow."},
+ {name:"Cash only, mostly",time:"12:58 AM",roster:[2,0,1,3],routine:"noodles",routineLabel:"Prepare something warm",event:"name",eventLabel:"A name with nowhere to go",sky:"The petrol station across the road is gone. Its OPEN sign is still there.",note:"There are things in the till which cannot be counted. You make room anyway.",close:"The missing petrol station leaves a surprisingly polite gap. You sweep your side of the road."},
+ {name:"Last supplier",time:"01:19 AM",roster:[4,5,0,2],routine:"stock",routineLabel:"Open the final delivery and stock a shelf",event:"delivery",eventLabel:"An invoice for tomorrow",sky:"The road ends a few metres beyond the door. The delivery still arrived.",note:"LAST DELIVERY, the label says. Underneath: THANKS FOR YOUR BUSINESS, ALL OF IT.",close:"You keep the box. It is a very good box. This feels like a defensible reason."},
+ {name:"End-of-world specials",time:"01:43 AM",roster:[1,3,4,5],routine:"clean",routineLabel:"Mop up the rain that has forgotten how to fall",event:"table",eventLabel:"A table for whoever is left",sky:"Loose things have begun rising. Outside, even echoes have stopped returning.",note:"Put the kettle on. It is a surprisingly effective response to the circumstances.",close:"The chairs do not match. The cups do not match. Everyone fits."},
+ {name:"One final night",time:"02:00 AM",roster:[0,1,2,3,4,5],routine:"coffee",routineLabel:"Make one last pot of coffee",event:"light",eventLabel:"The last light",sky:"Nothing outside is measuring time anymore. In here, the fridge is humming.",note:"Nobody is in a hurry. There is enough for everyone's usual.",close:"There is no shift after this one. There might be something else."}
+];
+let CURRENCIES = {
+ credits:{name:"ordinary credits",art:"credits",action:"Count the notes",unseen:"Paper money. Touchingly optimistic.",seen:"The sum is correct. The issuing planet is less certain.",effect:"The till makes a perfectly ordinary clunk."},
+ starlight:{name:"a fragment of starlight",art:"starlight",action:"Hold it under the till lamp",unseen:"A warm little prism. Something is still shining inside.",seen:"It casts a tiny constellation onto your hand. Genuine starlight.",effect:"A little star settles above the till. The shop is warmer for it."},
+ impossible:{name:"an impossible coin",art:"impossible",action:"Turn it onto its third side",unseen:"Both faces say HEADS. The edge seems to be looking at you.",seen:"The third side says PLEASE ACCEPT. Counterfeiting this would be harder than earning it.",effect:"The receipt is a little longer on the inside. The banana is still a banana."},
+ memory:{name:"a memory in a glass bead",art:"memory",action:"Listen to the memory",unseen:"Rain on a roof. A kitchen that no longer exists.",seen:"You hear a woman laughing at a burnt slice of toast. Mello says: 'You can keep it. I have the important part.'",effect:"Rain patters against a window in which it is not raining. A memory joins the jar."},
+ seconds:{name:"twenty seconds of time",art:"seconds",action:"Compare it with the shop clock",unseen:"The little hourglass is pouring upwards.",seen:"Twenty honest seconds. They smell faintly of next Tuesday.",effect:"The sky holds its breath. The kettle finishes a little sooner."},
+ favour:{name:"a handwritten favour",art:"favour",action:"Read the small print",unseen:"I OWE YOU ONE. Underlined twice.",seen:"'One lift, one repair, or help moving a surprisingly heavy universe. — Dave'",effect:"You pin the promise by the phone. Some kinds of credit actually mean something."},
+ name:{name:"a forgotten name",art:"name",action:"Read it out loud",unseen:"A folded scrap of paper. The ink is trying not to disappear.",seen:"'Aster.' Nimbus whispers it back. The fridge light steadies when you say it.",effect:"ASTER appears on the guestbook. Something has a place in the world again."}
+};

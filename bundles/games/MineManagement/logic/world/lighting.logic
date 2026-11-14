@@ -1,0 +1,215 @@
+// Light and weather for the 3D scene: the background colour, Scene3D's sky gradient, fog, the
+// lights, the sun and clouds, and the post effects (sceneFx: bloom, vignette, grain) for the
+// quality setting. It all follows the time of day, t = S.time / S.duration, from 0 at 06:00 to 1
+// at 18:00: after noon (t > 0.5) the sky turns 'sunset', and after 16:12 (t > 0.85) it is dusk and
+// the night lighting comes on. Rain and dust (S.weather) change the sky's colours, and dust also
+// brings the fog in close.
+//
+// State: sceneBackground, sceneSky, sceneFog and sceneLights (declared in core/state.logic), plus
+// skyPhase and sceneFx below; main.ui hands them all to Scene3D. refreshLighting() runs from
+// refreshUI() every 0.25 s, from initWorld() and from cycleQuality() (core/settings.logic).
+
+// ---------- Lights, sky and fog ----------
+
+// Recomputes the background, sky, fog and lights for the time, weather and quality, then the sun
+// and clouds (only when the sky's phase has changed) and the post effects.
+function refreshLighting() {
+  if (!S) return;
+  var t = S.time / S.duration;
+  var night = t > 0.85;
+  // The v0.0.8 host's background effect overrides its sky texture on mount.
+  // Set a matching explicit colour so the day never renders as default navy.
+  sceneBackground =
+    S.weather === 'dust'
+      ? '#bda583'
+      : S.weather === 'rain'
+        ? '#869b9e'
+        : night
+          ? '#777f91'
+          : t > 0.5
+            ? '#d4bda0'
+            : '#9cbfc9';
+  sceneSky =
+    S.weather === 'rain'
+      ? 'overcast'
+      : S.weather === 'dust'
+        ? { top: '#9bafa8', bottom: '#c0a681', middle: '#c6bb9c' }
+        : t > 0.85
+          ? 'dusk'
+          : t > 0.5
+            ? 'sunset'
+            : 'day';
+  // A dust storm pulls the fog in to between 45 and 260 m; otherwise it runs from 170 to 670 m.
+  sceneFog = {
+    color: S.weather === 'dust' ? '#c0aa86' : night ? '#747e82' : '#bfc9c5',
+    near: S.weather === 'dust' ? 45 : 170,
+    far: S.weather === 'dust' ? 260 : 670
+  };
+  // The sun is a directional light that sinks from 100 m to 40 m up over the shift, and casts
+  // shadows unless quality is low.
+  sceneLights = [
+    { id: 'ambient', type: 'ambient', color: '#e9e5ce', intensity: night ? 0.35 : 0.6 },
+    {
+      id: 'sky',
+      type: 'hemisphere',
+      color: night ? '#94abc4' : '#c4dcdf',
+      groundColor: '#a89578',
+      intensity: night ? 0.7 : 1.35
+    },
+    {
+      id: 'sun',
+      type: 'directional',
+      color: t > 0.5 ? '#ffd099' : '#fff3d5',
+      intensity: night ? 0.7 : 2.0,
+      position: vec(-70, 100 - t * 60, 65),
+      castShadow: quality !== 'low',
+      shadowMapSize: quality === 'high' ? 2048 : 1024,
+      shadowCameraSize: 210,
+      shadowFar: 500,
+      shadowNear: 0.1,
+      shadowBias: -0.001
+    }
+  ];
+  // At night three floodlights light the compound, unless a lighting incident has knocked them out
+  // (incidentMods.light, mine/incidents.logic).
+  if (night && incidentMods.light) {
+    for (var i = 0; i < 3; i++)
+      sceneLights.push({
+        id: 'site-' + i,
+        type: 'point',
+        color: '#ffcd80',
+        intensity: 65,
+        position: vec(-20 + i * 50, 15, 130),
+        distance: 85,
+        decay: 1.5
+      });
+  }
+  // The head lamp, a spotlight fixed to the camera: on when the player turns it on (`lamp`, the F
+  // key) and always at night.
+  if (lamp || night)
+    sceneLights.push({
+      id: 'headlamp',
+      type: 'spot',
+      attach: 'camera',
+      position: vec(0.25, -0.15, 0),
+      color: '#fff2d2',
+      intensity: 90,
+      angle: 0.55,
+      penumbra: 0.5,
+      distance: 105,
+      decay: 1
+    });
+  refreshSky(false);
+  sceneFx = sceneEffects();
+}
+
+// ---------- Sun and clouds ----------
+
+// The sun and the clouds are static objects (in sceneStatic), rebuilt only when the sky's phase
+// changes, so they cost nothing per frame. skyPhase is the phase they were last built for.
+var skyPhase = '';
+
+// The post effects Scene3D applies (its effects prop), from sceneEffects(); null means none.
+var sceneFx = null;
+
+// The sun sits where the shadows say it is; clouds pick up the colour of the hour.
+// phase is 'day', 'sunset', 'dusk' or 'overcast'. The sun is put along the sun light's direction,
+// 4.6 times further out. It is placed only when the sky is rebuilt, though, so between phase
+// changes the light keeps sinking while the sun stays put. Seven clouds of four puffs each.
+// Neither is fogged or casts shadows. Returns flattened objects, ready for sceneStatic.
+function skyObjects(phase) {
+  var t = S ? S.time / S.duration : 0.2,
+    sx = -70 * 4.6,
+    sy = (100 - t * 60) * 4.6,
+    sz = 65 * 4.6;
+  var sunCol = phase === 'dusk' ? '#ffb070' : phase === 'sunset' ? '#ffd28a' : '#fff6dc';
+  var cloudCol =
+    phase === 'dusk'
+      ? '#e6a7a0'
+      : phase === 'sunset'
+        ? '#f6dcc0'
+        : phase === 'overcast'
+          ? '#c9ced0'
+          : '#f7f3ea';
+  var list = [
+    {
+      id: 'sun',
+      type: 'sphere',
+      position: vec(sx, sy, sz),
+      radius: 15,
+      color: sunCol,
+      emissive: sunCol,
+      emissiveIntensity: 2.2,
+      fog: false,
+      castShadow: false,
+      receiveShadow: false
+    }
+  ];
+  var spots = [
+    [180, 150, -260],
+    [-260, 170, -120],
+    [60, 140, 300],
+    [-120, 160, 260],
+    [300, 180, 40],
+    [-30, 175, -330],
+    [240, 165, 240]
+  ];
+  for (var i = 0; i < spots.length; i++) {
+    var c = spots[i],
+      puffs = [];
+    for (var k = 0; k < 4; k++)
+      puffs.push({
+        id: 'p' + k,
+        type: 'sphere',
+        position: vec((k - 1.5) * 16, Math.sin(k * 2.1) * 4, Math.cos(k * 1.7) * 7),
+        scale: { x: 1.6, y: 0.55, z: 1 },
+        radius: 12 - (k % 2) * 3,
+        color: cloudCol,
+        emissive: cloudCol,
+        emissiveIntensity: 0.35,
+        roughness: 1,
+        fog: false,
+        castShadow: false,
+        receiveShadow: false
+      });
+    list.push(group('cloud-' + i, c[0], c[1], c[2], i * 0.9, puffs));
+  }
+  return flattenScene(list);
+}
+
+// The sky's phase for now: 'overcast' in rain, otherwise by the time of day, as in
+// refreshLighting(). In dust the clouds keep the time of day's colours.
+function currentSkyPhase() {
+  if (!S) return 'day';
+  var t = S.time / S.duration;
+  return S.weather === 'rain' ? 'overcast' : t > 0.85 ? 'dusk' : t > 0.5 ? 'sunset' : 'day';
+}
+
+// Swaps the sun and clouds in sceneStatic when the phase changes (or regardless, with force). It
+// removes every static object whose id starts with 'sun' or 'cloud-', so no other static object
+// may have such an id.
+function refreshSky(force) {
+  var phase = currentSkyPhase();
+  if (!force && phase === skyPhase) return;
+  skyPhase = phase;
+  sceneStatic = sceneStatic
+    .filter(function (o) {
+      return !/^(sun|cloud-)/.test(o.id);
+    })
+    .concat(skyObjects(phase));
+}
+
+// ---------- Post effects ----------
+
+// The post effects for the quality setting: none on low; otherwise bloom (with a lower threshold
+// at night, so lamps and beacons glow), a vignette, and film grain on high only.
+function sceneEffects() {
+  if (quality === 'low') return null;
+  var t = S ? S.time / S.duration : 0.2,
+    night = t > 0.85;
+  return {
+    bloom: { strength: quality === 'high' ? 0.42 : 0.34, radius: 0.5, threshold: night ? 0.62 : 0.86 },
+    vignette: quality === 'high' ? 0.26 : 0.2,
+    grain: quality === 'high' ? 0.035 : 0
+  };
+}

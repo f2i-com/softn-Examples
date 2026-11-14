@@ -1,0 +1,192 @@
+// Crew banter: the radio's jokes, the horn and the bonk. Also flavour() and pick(), the random
+// numbers for jokes and cosmetic variety, used all over.
+// flavour() is a generator of its own, apart from rand() (core/state.logic): seeded from the clock
+// and never saved, so jokes don't shift the simulation's random sequence. Use flavour() and pick()
+// for anything cosmetic, rand() for anything that changes the simulation. npm run replay plays a
+// scripted shift (horn, memos, the tablet) twice with different clocks and fails if the two part,
+// so it catches a joke that moves rand() on those paths; it doesn't drive or kick anything.
+// Calls in: crewChat() from stepSimulation (mine/simulation.logic) when S.nextChat comes round,
+// unless a memo's mindful minute is on; honk() from the H key and the touch Horn button; bonk()
+// when a driven vehicle hits something solid (player/movement.logic); banter() and pick() from
+// all over.
+// State: lastBanterAt, lastBonkAt and flavourSeed, never saved. Every line goes out through
+// notify(); the honk and bonk counters are in S.fun (fun/stats.logic, checked by validFun).
+
+// ---------- Crew chatter ----------
+
+// Every so often someone on the radio has a thought. About half of them are about the work.
+// Runs every 38 to 78 s of shift time. Half the time (by flavour()) it's a joke from idleChatter();
+// otherwise, or if no joke fits, a line about the work from contextualCrewChat (mine/crew.logic).
+// Both choose with flavour(), so the chatter never touches the simulation's random sequence.
+function crewChat() {
+  if (flavour() < 0.5 && idleChatter()) return;
+  contextualCrewChat();
+}
+
+// ---------- State and the comedy's random numbers ----------
+
+// Shift time (S.time) of the last banter line and of the last bonk line; -100 so the first is
+// never held back. They are compared with secondsSince (core/util.logic), so a time left over from
+// an earlier shift, when S.time has started again from 0, counts as long ago.
+var lastBanterAt = -100;
+
+var lastBonkAt = -100;
+
+// flavour()'s state, seeded from the clock: 1 to 2147483646, never 0.
+var flavourSeed = (Date.now() % 2147483646) + 1;
+
+// A random number between 0 and 1 for jokes and looks: the same generator as rand() but its own
+// seed. It differs every session.
+function flavour() {
+  flavourSeed = (flavourSeed * 48271) % 2147483647;
+  return flavourSeed / 2147483647;
+}
+
+// A random element of list, by flavour().
+function pick(list) {
+  return list[Math.floor(flavour() * list.length) % list.length];
+}
+
+// ---------- The horn and the bonk ----------
+
+// The horn. Everyone has an opinion about the horn.
+// The H key or the touch Horn button. Scares Kevin within 32 m of the player, makes robots within
+// 26 m wave for 2.2 s and counts the honk. If nobody heard, the shift's 3rd, 10th, 17th... honk
+// gets a remark from someone on the crew (onAir).
+function honk() {
+  if (!S || screen !== 'play' || tablet) return;
+  sfx('horn');
+  funCount('honks');
+  var p = S.player,
+    heard = false;
+  // scareKevin ignores a Kevin who is already leaving.
+  if (S.kevin && dist2(p, S.kevin) < 32) {
+    scareKevin('horn');
+    heard = true;
+  }
+  for (var b of S.robots) {
+    var spot = robotLocation(b);
+    if (dist2(p, spot) < 26) {
+      b.waveUntil = S.time + 2.2;
+      heard = true;
+    }
+  }
+  if (!heard && S.fun.honks % 7 === 3) {
+    var remarks = onAir([
+      ['GARY', 'Unscheduled horn. I have logged it as a feeling.'],
+      ['BAZZA', 'Good honk, mate. Very confident. Bit flat at the end.'],
+      ['DOT', 'That horn is 412 hertz. The manual says 410. I am choosing peace.'],
+      ['JUNE', 'Honk received. Filed under morale.']
+    ]);
+    if (remarks.length) banter(pick(remarks), true);
+  }
+}
+
+// Hitting something solid with a vehicle.
+// Called by player/movement.logic when a driven vehicle hits at over 5 m/s (speed is that impact
+// speed). Counts it, shakes the camera, throws sparks off the front and, at most every 25 s of
+// shift time, puts a line on the radio.
+function bonk(v, speed) {
+  funCount('bonks');
+  addShake(Math.min(1, speed / 14));
+  sfx('bonk');
+  // 2.6 m ahead of the vehicle's centre (a heading points along x = sin, z = cos) and 1.2 m up.
+  burst(
+    'sparks',
+    v.x + Math.sin(v.heading) * 2.6,
+    v.y + 1.2,
+    v.z + Math.cos(v.heading) * 2.6,
+    Math.min(2, speed / 8)
+  );
+  if (secondsSince(lastBonkAt) > 25) {
+    lastBonkAt = S.time;
+    banter(
+      pick(
+        onAir([
+          [
+            'GARY',
+            'Contact with fixed infrastructure. I have started the incident form. It is already long.'
+          ],
+          ['MEL', 'The bollard did not move. I respect the bollard.'],
+          ['OSCAR', 'Was that a shortcut? It felt like a shortcut.'],
+          ['HEAD OFFICE', 'Insurance has asked us to stop driving "with enthusiasm".'],
+          ['BAZZA', "She'll be right. The ute has seen worse. The ute has caused worse."],
+          ['DOT', 'Impact measured. I will not be sharing the number.']
+        ])
+      ),
+      true
+    );
+  }
+}
+
+// ---------- Radio lines ----------
+
+// The [speaker, text] lines whose speaker is around today: Head Office, PIT, or a robot on the crew
+// (crewNamed in world/wildlife.logic). Someone not hired yet doesn't get to talk.
+function onAir(lines) {
+  return lines.filter(function (l) {
+    return l[0] === 'HEAD OFFICE' || l[0] === 'PIT' || crewNamed(l[0]);
+  });
+}
+
+// Puts a [speaker, text] line on the radio. An unforced line is dropped within 20 s of the last
+// one; every current caller forces it and keeps its own pace.
+function banter(line, force) {
+  if (!S) return;
+  if (!force && secondsSince(lastBanterAt) < 20) return;
+  lastBanterAt = S.time;
+  notify(line[0], line[1]);
+}
+
+// A robot's name in capitals for the radio, or 'CREW'.
+function crewName(id) {
+  var b = getBot(id);
+  return b ? b.name.toUpperCase() : 'CREW';
+}
+
+// Lines for the quieter moments, chosen by who is actually on the books.
+// [robot id, line]: 1 Gary, 2 Mel, 3 Oscar, 4 Dot, 5 Bazza, 6 June (the hiring order in
+// mine/purchases.logic).
+var IDLE_LINES = [
+  [1, 'I have read the sign about reading the signs. It could be clearer.'],
+  [1, 'Reminder: cones are not furniture. Except that one. That one is mine.'],
+  [1, 'I have counted the cones. There are eleven. Yesterday there were eleven. I remain watchful.'],
+  [2, 'The bucket is a very direct way of having a conversation with geology.'],
+  [2, 'I have named the big rock Trevor. Trevor is going in the next truck.'],
+  [2, 'You asked me to "move dirt". I have moved some dirt. Please be more specific.'],
+  [3, 'I found a shortcut. It is the road. I am very proud of it.'],
+  [3, 'Five stars for this ramp. Would haul again.'],
+  [3, 'Apologised to a bollard today. It did not apologise back. Growth takes time.'],
+  [4, 'This reading is suspiciously plausible. I will take another.'],
+  [4, 'I have calibrated the calibrator. It was fine. I was not.'],
+  [5, "How's the ute going, mate? And how are you going, other mate?"],
+  [5, "Gave the crusher a pat. It growled. We're close now."],
+  [6, 'Quiet radio. I have written that down. Someone should remember the quiet bits too.'],
+  [6, 'Night shift taught me: if the emu looks at you, look at the horizon.']
+];
+
+var HEAD_OFFICE_LINES = [
+  'Reminder: smiling is now a key performance indicator. Please smile at the crusher.',
+  'Per my last email, the mine should be more mine-like.',
+  'We have replaced the coffee machine with a picture of a coffee machine. Productivity is unchanged.',
+  'Great news: you are now Employee of the Month. You are also the only employee.',
+  'The board loves the robots. The board would like to know if the robots love the board.',
+  'Please stop telling the emu it is "basically staff".'
+];
+
+// A joke on the radio: from Head Office 22% of the time, otherwise an idle line from a robot on
+// the books. Returns false if no line fits, so crewChat falls back to a line about the work.
+function idleChatter() {
+  ensureFun();
+  if (flavour() < 0.22) {
+    notify('HEAD OFFICE', pick(HEAD_OFFICE_LINES));
+    return true;
+  }
+  var lines = IDLE_LINES.filter(function (l) {
+    return !!getBot(l[0]);
+  });
+  if (!lines.length) return false;
+  var l = pick(lines);
+  notify(crewName(l[0]), l[1]);
+  return true;
+}

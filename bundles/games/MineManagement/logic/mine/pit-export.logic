@@ -1,0 +1,92 @@
+// The "PIT JSON snapshot" (PIT is the operations tablet): a read-only JSON export of the fleet, the
+// haul route, production metrics, loads and radio events. It is labelled simulated game data
+// (source 'SIMULATED GAME DATA ONLY', calibrated: false) and makes no network requests: showExport
+// only puts the text in exportText, which the export screen (app/ui/screens/export.ui) shows in a
+// read-only box for the player to copy.
+// State: none saved; exportText and exportOpen are declared in core/state.logic.
+// Callers: the PIT snapshot buttons on the report screen and the Production tab (showExport), and
+// the export screen's Close button or Escape (hideExport, via keyDown in player/input.logic).
+// Coordinates: the export's x is east and its y is the game's z (south); elevation is the game's y.
+
+// Builds the snapshot object. Numbers are rounded to 0.1 (nround); headings stay in radians. loads
+// and events are the lists in memory (up to 120 loads and 90 events); after a reload they hold only
+// what the save kept (25 and 30, see saveText).
+function pitSnapshot() {
+  var f = [];
+  for (var i = 0; i < S.trucks.length; i++) {
+    var t = S.trucks[i],
+      r = botFor(t);
+    f.push({
+      id: t.id,
+      external_id: t.external_id,
+      type: t.type,
+      capacity: t.capacity,
+      // down: held by a fault; delay: held from the tablet; ready: dispatched; standby: parked.
+      status: t.fault ? 'down' : t.stopped ? 'delay' : t.active ? 'ready' : 'standby',
+      operator_name: r ? r.name : null,
+      route_id: 1,
+      phase: t.phase,
+      payload: nround(t.payload),
+      x: nround(t.x),
+      y: nround(t.z),
+      elevation: nround(t.y),
+      heading: t.heading,
+      fuel_percent: nround(t.fuel),
+      version: t.version
+    });
+  }
+  return {
+    schema: 'mine-management.pit-snapshot.v1',
+    source: 'SIMULATED GAME DATA ONLY',
+    calibrated: false,
+    seed: S.seed,
+    shift: S.shift,
+    elapsed_seconds: nround(S.time),
+    fleet: f,
+    routes: [
+      {
+        id: 1,
+        name: 'Bench 1 to crusher',
+        origin_id: 1,
+        destination_id: 2,
+        // The haul road's centre line, Bench 1 to the crusher, as [x, y, elevation] points.
+        geometry: {
+          type: 'LineString',
+          coordinates: HAUL_PATH.map(function (p) {
+            return [p[0], p[2], p[1]];
+          })
+        }
+      }
+    ],
+    // The two ends of the haul road (the first and last HAUL_PATH points).
+    locations: [
+      { id: 1, name: 'Bench 1', x: 17, y: -14, elevation: -22 },
+      { id: 2, name: 'Crusher', x: 72, y: 138, elevation: 4 }
+    ],
+    metrics: {
+      dumped_tonnes: nround(S.tonnes),
+      target_tonnes: S.target,
+      // Ore still in the trucks' trays.
+      undumped_tonnes: S.trucks.reduce(function (n, t) {
+        return n + t.payload;
+      }, 0),
+      hopper_tonnes: nround(S.plant.hopper),
+      processed_tonnes: nround(S.plant.processed),
+      pending_ore_value: nround(S.plant.value)
+    },
+    loads: S.loads,
+    events: S.events
+  };
+}
+
+// Opens the export screen with the snapshot as indented JSON, and frees the mouse so the text can
+// be selected.
+function showExport() {
+  exportText = JSON.stringify(pitSnapshot(), null, 2);
+  exportOpen = true;
+  releaseMouse();
+}
+
+function hideExport() {
+  exportOpen = false;
+}

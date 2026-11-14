@@ -1,16 +1,9 @@
 let currentPage = "api"
+
+// ── Network / API Explorer state ──
 let apiUrl = "https://jsonplaceholder.typicode.com/todos/1"
 let apiResult = ""
 let apiLoading = false
-let qrValue = "https://softn.com"
-let scannedCode = ""
-let scanning = false
-let capturedPhoto = ""
-let selectedFiles = []
-let fileContent = ""
-let fileIsImage = false
-let filePreviewUrl = ""
-
 let apiStatus = ""
 let apiOk = true
 let apiError = ""
@@ -19,6 +12,257 @@ let apiRequestBody = "{\n  \"title\": \"SoftN DeviceKit\",\n  \"body\": \"Sample
 let apiElapsedMs = 0
 let apiBytes = 0
 let apiCopied = false
+let apiCopyFeedback = ""
+
+// ── QR Tools state ──
+let qrValue = "https://softn.com"
+let scannedCode = ""
+let scanning = false
+let qrCopied = false
+let scanCopied = false
+let scanStatusNote = ""
+
+// ── Camera state ──
+let cameraActive = false
+let capturedPhoto = ""
+let capturedMeta = ""
+let cameraStatusText = "Ready — camera stays off until opened"
+
+// ── File Browser state ──
+let selectedFiles = []
+let selectedFileIndex = -1
+let selectedFileName = ""
+let fileContent = ""
+let fileIsImage = false
+let filePreviewUrl = ""
+let fileReadNote = ""
+
+// ── Capability & Telemetry state ──
+let capNet = "Permission-Gated"
+let capMedia = "Checking"
+let capClipboard = "Checking"
+let capVibrate = "Checking"
+let capStorage = "Checking"
+let capMotion = "Checking"
+let capFiles = "Permission-Gated"
+
+let telemetryActive = true
+let telemetryTicks = 0
+let telViewport = "—"
+let telPixelRatio = "1x"
+let telCores = "—"
+let telMemory = "—"
+let telOnline = "Online"
+let telLocale = "en-US"
+let telStorageProbe = "Not tested"
+let telClipboardNote = "Ready to test"
+let telVibrateNote = "Ready to test"
+
+function unwrapInput(val) {
+  if (val && typeof val === "object" && val.target !== undefined) {
+    return String(val.target.value || "")
+  }
+  return val === undefined || val === null ? "" : String(val)
+}
+
+function safeCopyText(text) {
+  if (!text) return "Empty"
+  try {
+    if (typeof navigator !== "undefined" && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      navigator.clipboard.writeText(String(text))
+      return "Copied"
+    }
+  } catch (e) {
+    return "Clipboard blocked"
+  }
+  return "Clipboard unavailable"
+}
+
+function probeCapabilities() {
+  try {
+    if (typeof softn !== "undefined" && softn.net && typeof softn.net.fetch === "function") {
+      capNet = "Available"
+    } else {
+      capNet = "Permission-Gated"
+    }
+  } catch (e) {
+    capNet = "Unsupported"
+  }
+
+  try {
+    if (typeof navigator !== "undefined" && navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function") {
+      capMedia = "Permission-Gated"
+    } else {
+      capMedia = "Unsupported"
+    }
+  } catch (e) {
+    capMedia = "Unsupported"
+  }
+
+  try {
+    if (typeof navigator !== "undefined" && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      capClipboard = "Available"
+    } else {
+      capClipboard = "Unsupported"
+    }
+  } catch (e) {
+    capClipboard = "Unsupported"
+  }
+
+  try {
+    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      capVibrate = "Available"
+    } else {
+      capVibrate = "Unsupported"
+    }
+  } catch (e) {
+    capVibrate = "Unsupported"
+  }
+
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("softn-dk-probe", "ok")
+      let v = localStorage.getItem("softn-dk-probe")
+      localStorage.removeItem("softn-dk-probe")
+      capStorage = v === "ok" ? "Available" : "Restricted"
+      telStorageProbe = v === "ok" ? "Read/write verified" : "Restricted"
+    } else {
+      capStorage = "Unsupported"
+      telStorageProbe = "Unavailable in sandbox"
+    }
+  } catch (e) {
+    capStorage = "Restricted"
+    telStorageProbe = "Blocked by browser settings"
+  }
+
+  try {
+    let hasMotion = typeof window !== "undefined" && ("DeviceOrientationEvent" in window || "DeviceMotionEvent" in window)
+    let hasGeo = typeof navigator !== "undefined" && !!navigator.geolocation
+    if (hasMotion || hasGeo) {
+      capMotion = "Permission-Gated"
+    } else {
+      capMotion = "Unsupported"
+    }
+  } catch (e) {
+    capMotion = "Unsupported"
+  }
+
+  try {
+    if (typeof softn !== "undefined" && softn.files) {
+      capFiles = "Available"
+    } else {
+      capFiles = "Permission-Gated"
+    }
+  } catch (e) {
+    capFiles = "Unsupported"
+  }
+}
+
+function capBadgeVariant(state) {
+  if (state === "Available") return "success"
+  if (state === "Permission-Gated") return "info"
+  if (state === "Restricted") return "warning"
+  return "secondary"
+}
+
+function refreshTelemetry() {
+  try {
+    if (typeof window !== "undefined" && window.innerWidth && window.innerHeight) {
+      telViewport = window.innerWidth + " × " + window.innerHeight + " px"
+      let dpr = window.devicePixelRatio || 1
+      telPixelRatio = (Math.round(dpr * 100) / 100) + "x"
+    } else {
+      telViewport = "Sandboxed viewport"
+      telPixelRatio = "1x"
+    }
+  } catch (e) {
+    telViewport = "Sandboxed viewport"
+  }
+
+  try {
+    if (typeof navigator !== "undefined") {
+      telCores = navigator.hardwareConcurrency ? (navigator.hardwareConcurrency + " threads") : "Protected"
+      telMemory = navigator.deviceMemory ? (navigator.deviceMemory + " GB class") : "Not exposed"
+      telOnline = navigator.onLine === false ? "Offline" : "Online"
+      telLocale = navigator.language || "en-US"
+    }
+  } catch (e) {}
+}
+
+function tickTelemetry() {
+  telemetryTicks = telemetryTicks + 1
+  refreshTelemetry()
+}
+
+function toggleTelemetryLive() {
+  telemetryActive = !telemetryActive
+  if (telemetryActive) {
+    refreshTelemetry()
+  }
+}
+
+function testClipboardProbe() {
+  let stamp = "DeviceKit telemetry check @ " + new Date().toISOString()
+  let res = safeCopyText(stamp)
+  if (res === "Copied") {
+    telClipboardNote = "Copied probe string (" + stamp.length + " chars)"
+    capClipboard = "Available"
+  } else {
+    telClipboardNote = res + " in this browser context"
+  }
+}
+
+function testVibrateProbe() {
+  try {
+    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      let ok = navigator.vibrate([40, 30, 40])
+      telVibrateNote = ok ? "Triggered 40ms-30ms-40ms pulse" : "Ignored by device (desktop/muted)"
+    } else {
+      telVibrateNote = "Vibration API unsupported on desktop/browser"
+      capVibrate = "Unsupported"
+    }
+  } catch (e) {
+    telVibrateNote = "Blocked until user gesture or unsupported"
+  }
+}
+
+function testStorageProbe() {
+  probeCapabilities()
+}
+
+function _init() {
+  probeCapabilities()
+  refreshTelemetry()
+}
+
+function _onHide() {
+  // Cleanly release active media streams, scanners, and background telemetry ticks
+  scanning = false
+  cameraActive = false
+  telemetryActive = false
+  cameraStatusText = "Camera paused while app was hidden"
+}
+
+function setPage(page) {
+  currentPage = page
+  if (page !== "qr") {
+    scanning = false
+  }
+  if (page !== "camera") {
+    cameraActive = false
+  }
+  if (page === "telemetry") {
+    telemetryActive = true
+    refreshTelemetry()
+  }
+}
+
+// ── Network / API Explorer ──
+
+function isAllowedApiHost(url) {
+  let u = String(url || "").trim().toLowerCase()
+  return u.indexOf("https://jsonplaceholder.typicode.com") === 0
+}
 
 function setApiMethod(method) {
   apiMethod = method === "POST" ? "POST" : "GET"
@@ -28,7 +272,12 @@ function setApiMethod(method) {
 }
 
 function updateApiBody(val) {
-  apiRequestBody = val
+  apiRequestBody = unwrapInput(val)
+}
+
+function updateApiUrl(val) {
+  apiUrl = unwrapInput(val)
+  apiError = ""
 }
 
 function formatApiBody(raw) {
@@ -36,59 +285,80 @@ function formatApiBody(raw) {
   try {
     return JSON.stringify(JSON.parse(raw), null, 2)
   } catch (e) {
-    return raw
+    return String(raw)
   }
 }
 
 function copyApiResult() {
   if (!apiResult) return
-  try {
-    if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(apiResult)
-      apiCopied = true
-    }
-  } catch (e) {}
+  let status = safeCopyText(apiResult)
+  apiCopied = status === "Copied"
+  apiCopyFeedback = status
 }
 
 function fetchApi() {
+  if (apiLoading) return
+  let targetUrl = String(apiUrl || "").trim()
+  if (!targetUrl) {
+    apiError = "Enter a request URL first."
+    return
+  }
   apiLoading = true
   apiError = ""
   apiCopied = false
+  apiCopyFeedback = ""
   let startedAt = Date.now()
   let opts = { method: apiMethod }
   if (apiMethod === "POST") {
     opts.headers = { "Content-Type": "application/json" }
     opts.body = apiRequestBody
   }
-  softn.net.fetch(apiUrl, opts, function(response) {
-    apiLoading = false
-    apiElapsedMs = Math.max(1, Date.now() - startedAt)
-    if (!response || response.error) {
-      apiResult = ""
-      apiBytes = 0
-      apiError = response && response.error ? response.error : "The request failed."
+  try {
+    if (typeof softn === "undefined" || !softn.net || typeof softn.net.fetch !== "function") {
+      apiLoading = false
+      apiError = "softn.net.fetch is unavailable in this environment. Run inside the SoftN runtime with net permission enabled."
       return
     }
-    apiOk = response.ok !== false
-    apiStatus = response.status ? String(response.status) : (apiOk ? "200" : "error")
-    let raw = response.body || ""
-    apiBytes = raw.length
-    apiResult = formatApiBody(raw)
-  })
+    softn.net.fetch(targetUrl, opts, function(response) {
+      apiLoading = false
+      apiElapsedMs = Math.max(1, Date.now() - startedAt)
+      if (!response || response.error) {
+        apiResult = ""
+        apiBytes = 0
+        apiError = response && response.error ? String(response.error) : "The request was blocked or failed."
+        return
+      }
+      apiOk = response.ok !== false
+      apiStatus = response.status ? String(response.status) : (apiOk ? "200" : "error")
+      let raw = response.body ? String(response.body) : ""
+      apiBytes = raw.length
+      apiResult = formatApiBody(raw)
+    })
+  } catch (e) {
+    apiLoading = false
+    apiError = "Request error: " + String(e && e.message ? e.message : e)
+  }
 }
 
-function setPage(page) {
-  currentPage = page
-  // The scanner is only mounted while scanning, so leaving the tab releases
-  // the camera rather than leaving it open behind another page.
-  if (page !== "qr") scanning = false
+// ── QR scanning & generation ──
+
+function updateQrValue(val) {
+  qrValue = unwrapInput(val)
+  qrCopied = false
 }
 
-// ── QR scanning ──
-// <QRReader> opens the camera the moment it mounts, so it is mounted only
-// between Start and Stop instead of on every visit to the tab.
+function copyQrValue() {
+  let target = qrValue || "https://softn.com"
+  qrCopied = safeCopyText(target) === "Copied"
+}
 
 function startScanning() {
+  scanCopied = false
+  if (capMedia === "Unsupported") {
+    scanStatusNote = "Camera API not detected — use 'Simulate Scan' below on headless/desktop setups."
+  } else {
+    scanStatusNote = ""
+  }
   scanning = true
 }
 
@@ -97,41 +367,190 @@ function stopScanning() {
 }
 
 function handleScan(data) {
-  scannedCode = data
-  // One read is the answer; drop the camera instead of keeping it on.
+  scannedCode = typeof data === "string" ? data : (data && data.text ? String(data.text) : String(data || ""))
   scanning = false
+  scanStatusNote = "Decoded on-device via QR permission"
+}
+
+function simulateQrScan() {
+  scanning = false
+  scannedCode = qrValue ? String(qrValue) : "https://softn.com"
+  scanCopied = false
+  scanStatusNote = "Simulated local QR read from generator payload"
+}
+
+function copyScannedCode() {
+  if (!scannedCode) return
+  scanCopied = safeCopyText(scannedCode) === "Copied"
+}
+
+function clearScannedCode() {
+  scannedCode = ""
+  scanCopied = false
+  scanStatusNote = ""
 }
 
 // ── Camera ──
 
+function toggleCamera() {
+  cameraActive = !cameraActive
+  if (cameraActive) {
+    cameraStatusText = capMedia === "Unsupported" ? "No camera hardware detected — use Test Frame if viewfinder is unavailable" : "Camera viewfinder active (photo mode)"
+  } else {
+    cameraStatusText = "Camera closed — stream released"
+  }
+}
+
+function closeCamera() {
+  cameraActive = false
+  cameraStatusText = "Camera closed — stream released"
+}
+
 function handleCapture(data) {
-  capturedPhoto = data.dataUrl
+  if (data && data.dataUrl) {
+    capturedPhoto = data.dataUrl
+    let kb = Math.max(1, Math.round((capturedPhoto.length * 0.75) / 1024))
+    capturedMeta = "Camera frame · ~" + kb + " KB"
+    cameraStatusText = "Photo captured locally"
+  }
+}
+
+function generateTestFrame() {
+  let stamp = new Date().toTimeString().slice(0, 8)
+  let svg = "<svg xmlns='http://www.w3.org/2000/svg' width='640' height='420' viewBox='0 0 640 420'>"
+  svg = svg + "<defs><linearGradient id='g' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' stop-color='#0f172a'/><stop offset='55%' stop-color='#1e3a8a'/><stop offset='100%' stop-color='#4f46e5'/></linearGradient></defs>"
+  svg = svg + "<rect width='640' height='420' fill='url(#g)'/>"
+  svg = svg + "<circle cx='500' cy='110' r='88' fill='rgba(96,165,250,0.18)'/>"
+  svg = svg + "<circle cx='150' cy='320' r='120' fill='rgba(129,140,248,0.14)'/>"
+  svg = svg + "<rect x='36' y='36' width='568' height='348' rx='16' fill='none' stroke='rgba(255,255,255,0.22)' stroke-width='2' stroke-dasharray='8 6'/>"
+  svg = svg + "<text x='64' y='96' fill='#93c5fd' font-family='monospace' font-size='14' font-weight='bold'>SOFTN DEVICEKIT · STUDIO CALIBRATION FRAME</text>"
+  svg = svg + "<text x='64' y='210' fill='#ffffff' font-family='sans-serif' font-size='32' font-weight='bold'>640 × 420 Test Capture</text>"
+  svg = svg + "<text x='64' y='248' fill='#cbd5e1' font-family='monospace' font-size='16'>Timestamp: " + stamp + " · Local Sandbox Only</text>"
+  svg = svg + "<rect x='64' y='292' width='64' height='18' rx='4' fill='#ef4444'/><rect x='138' y='292' width='64' height='18' rx='4' fill='#f59e0b'/><rect x='212' y='292' width='64' height='18' rx='4' fill='#10b981'/><rect x='286' y='292' width='64' height='18' rx='4' fill='#3b82f6'/>"
+  svg = svg + "</svg>"
+  capturedPhoto = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg)
+  capturedMeta = "640 × 420 calibration SVG · " + stamp
+  cameraStatusText = "Generated studio test frame (works without webcam)"
 }
 
 function clearPhoto() {
   capturedPhoto = ""
+  capturedMeta = ""
 }
 
 // ── Files ──
 
-function handleFileSelect(files) {
-  selectedFiles = files
+function isLikelyImageFile(file) {
+  if (!file) return false
+  let t = String(file.type || "").toLowerCase()
+  if (t.indexOf("image/") === 0) return true
+  let n = String(file.name || "").toLowerCase()
+  return n.indexOf(".png") > 0 || n.indexOf(".jpg") > 0 || n.indexOf(".jpeg") > 0 || n.indexOf(".gif") > 0 || n.indexOf(".webp") > 0 || n.indexOf(".svg") > 0
+}
+
+function inspectFileAt(idx) {
+  if (!selectedFiles || idx < 0 || idx >= selectedFiles.length) return
+  selectedFileIndex = idx
+  let f = selectedFiles[idx]
+  selectedFileName = f && f.name ? String(f.name) : ("File " + (idx + 1))
   fileContent = ""
-  fileIsImage = false
   filePreviewUrl = ""
-  if (files.length > 0) {
-    let type = files[0].type
-    if (type.indexOf("image/") === 0) {
-      fileIsImage = true
-      softn.files.readBase64(files[0].ref, function(dataUrl) {
-        filePreviewUrl = dataUrl
+  fileReadNote = ""
+  fileIsImage = isLikelyImageFile(f)
+
+  if (f && f.sampleContent !== undefined) {
+    fileContent = String(f.sampleContent)
+    fileReadNote = "In-memory sample document"
+    return
+  }
+
+  if (!f || !f.ref) {
+    fileReadNote = "Metadata available; select via runtime FileChooser to read contents."
+    return
+  }
+
+  try {
+    if (typeof softn === "undefined" || !softn.files) {
+      fileReadNote = "softn.files bridge unavailable in this host."
+      return
+    }
+    if (fileIsImage && typeof softn.files.readBase64 === "function") {
+      softn.files.readBase64(f.ref, function(dataUrl) {
+        filePreviewUrl = dataUrl || ""
       })
-    } else {
-      softn.files.readText(files[0].ref, function(content) {
-        fileContent = content
+    } else if (typeof softn.files.readText === "function") {
+      softn.files.readText(f.ref, function(content) {
+        fileContent = content || ""
       })
     }
+  } catch (e) {
+    fileReadNote = "Could not read file: " + String(e && e.message ? e.message : e)
   }
+}
+
+function handleFileSelect(files) {
+  if (!files || !files.length) {
+    selectedFiles = []
+    selectedFileIndex = -1
+    selectedFileName = ""
+    fileContent = ""
+    filePreviewUrl = ""
+    fileIsImage = false
+    fileReadNote = ""
+    return
+  }
+  let normalized = []
+  let i = 0
+  while (i < files.length) {
+    let raw = files[i] || {}
+    normalized.push({
+      idx: i,
+      name: raw.name || ("file-" + (i + 1)),
+      type: raw.type || "",
+      size: raw.size || 0,
+      ref: raw.ref
+    })
+    i = i + 1
+  }
+  selectedFiles = normalized
+  inspectFileAt(0)
+}
+
+function loadSampleFile() {
+  let sampleJson = JSON.stringify({
+    bundle: "com.softn.devicekit",
+    sandbox: "user_selected",
+    inspectedAt: new Date().toISOString(),
+    permissions: ["net", "qr", "camera", "files"]
+  }, null, 2)
+  let sampleTxt = "DeviceKit only sees files explicitly chosen by the user.\nClick any file in the Selected Files list to switch the preview pane."
+  selectedFiles = [
+    {
+      idx: 0,
+      name: "devicekit-manifest-sample.json",
+      type: "application/json",
+      size: sampleJson.length,
+      sampleContent: sampleJson
+    },
+    {
+      idx: 1,
+      name: "readme-notes.txt",
+      type: "text/plain",
+      size: sampleTxt.length,
+      sampleContent: sampleTxt
+    }
+  ]
+  inspectFileAt(0)
+}
+
+function clearSelectedFiles() {
+  selectedFiles = []
+  selectedFileIndex = -1
+  selectedFileName = ""
+  fileContent = ""
+  filePreviewUrl = ""
+  fileIsImage = false
+  fileReadNote = ""
 }
 
 function formatBytes(n) {
@@ -143,17 +562,7 @@ function formatBytes(n) {
   return (Math.round(size / (1024 * 1024 * 1024) * 10) / 10) + " GB"
 }
 
-function updateQrValue(val) {
-  qrValue = val
-}
-
-function updateApiUrl(val) {
-  apiUrl = val
-}
-
 // ── Icons ──
-// The built-in <Icon name> set has no camera, file, or shield, so these hand
-// <Icon svg> a stroke icon in the same 24-unit grid the built-ins use.
 
 function iconSvg(name, color) {
   let body = ""
@@ -167,6 +576,16 @@ function iconSvg(name, color) {
     body = '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>'
   } else if (name === "scan") {
     body = '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="12" x2="17" y2="12"/>'
+  } else if (name === "cpu") {
+    body = '<rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>'
+  } else if (name === "clipboard") {
+    body = '<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/>'
+  } else if (name === "vibrate") {
+    body = '<rect x="7" y="4" width="10" height="16" rx="2"/><path d="M3 8v8"/><path d="M21 8v8"/>'
+  } else if (name === "database") {
+    body = '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>'
+  } else if (name === "wifi") {
+    body = '<path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>'
   }
   return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="' + color + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + body + '</svg>'
 }

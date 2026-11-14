@@ -11,18 +11,18 @@
     <div className="os-card"><span className="os-prose">Nothing yet. The lifeboat is still listening.</span></div>
   #end
   #each (r in ruinCards) key={r.id}
-    <div className="os-card"><div className="os-between"><span className="os-cyan">{r.name}</span><span className="os-tiny os-dim">{r.progress}%</span></div><span className="os-item-desc">{r.status}</span><div className="os-row" style={{ marginTop: "8px" }}><button className="os-btn os-tab" @click={() => selectSite(r.id)}>Locate</button><button className="os-btn os-tab" @click={() => r.studied ? readArchive(r.id) : scheduleExcavation(r.id)}>{r.studied ? "Read archive" : "Excavate"}</button></div></div>
+    <div className="os-card"><div className="os-between"><span className="os-cyan">{r.name}</span><span className="os-tiny os-dim">{r.progress + "%"}</span></div><span className="os-item-desc">{r.status}</span><div className="os-row" style={{ marginTop: "8px" }}><button className="os-btn os-tab" @click={() => selectSite(r.id)}>Locate</button><button className="os-btn os-tab" @click={() => r.studied ? readArchive(r.id) : scheduleExcavation(r.id)}>{r.studied ? "Read archive" : "Excavate"}</button></div></div>
   #end
   <div className="os-rule" />
   <span className="os-label">TRADE and CONTACT</span>
   <span className="os-prose">{supplyMessage}</span>
   #each (t in tradeCards) key={t.id}
-    <div className="os-card"><div className="os-item-name">{t.name}</div><div className="os-item-cost">Give {t.cost}</div><div className="os-item-desc">Receive {t.receive}</div><div className="os-between" style={{ marginTop: "8px" }}><span className="os-tiny os-dim">{t.remaining} exchanges left</span><button className="os-btn" disabled={!t.available} @click={() => buyTrade(t.id)}>Exchange</button></div></div>
+    <div className="os-card"><div className="os-item-name">{t.name}</div><div className="os-item-cost">{"Give " + t.cost}</div><div className="os-item-desc">{"Receive " + t.receive}</div><div className="os-between" style={{ marginTop: "8px" }}><span className="os-tiny os-dim">{t.remaining + " exchanges left"}</span><button className="os-btn" disabled={!t.available} @click={() => buyTrade(t.id)}>Exchange</button></div></div>
   #end
   <div className="os-rule" />
   <span className="os-label">STANDING</span>
   #each (s in standingCards) key={s.id}
-    <div className="os-card"><div className="os-between"><span className="os-item-name">{s.name}</span><span className="os-cyan">{s.word} · {s.value}</span></div><div className="os-item-desc">{s.note}</div></div>
+    <div className="os-card"><div className="os-between"><span className="os-item-name">{s.name}</span><span className="os-cyan">{s.word + " · " + s.value}</span></div><div className="os-item-desc">{s.note}</div></div>
   #end
   #if (campCards.length > 0)
     <span className="os-label">RAIDER CAMPS</span>
@@ -44,7 +44,7 @@
     #each (p in expeditionCards) key={p.id}
       <div className="os-card os-party-card" oson={String(p.watching)}>
         <div className="os-between"><span className="os-item-name">{p.names}</span><span className="os-tiny os-dim">{p.eta}</span></div>
-        <div className="os-item-desc">{p.purpose} · {p.region}</div>
+        <div className="os-item-desc">{p.purpose + " · " + p.region}</div>
         <div className="os-item-cost">{p.phase}</div>
         <div className="os-party-track"><i style={p.progressStyle} /></div>
         <div className="os-row" style={{ marginTop: "8px", flexWrap: "wrap" }}>
@@ -73,6 +73,6 @@
   <div className="os-rule" />
   <span className="os-label">CHOOSE WHAT COMES NEXT</span>
   #each (e in endingCards) key={e.id}
-    <div className="os-card"><div className="os-item-name">{e.name}</div><div className="os-item-desc">{e.description}</div><div className="os-item-cost">{e.status}</div><button className="os-btn os-wide" disabled={!e.ready} @click={() => chooseEnding(e.id)} style={{ marginTop: "9px" }}>Choose {e.name}</button></div>
+    <div className="os-card"><div className="os-item-name">{e.name}</div><div className="os-item-desc">{e.description}</div><div className="os-item-cost">{e.status}</div><button className="os-btn os-wide" disabled={!e.ready} @click={() => chooseEnding(e.id)} style={{ marginTop: "9px" }}>{"Choose " + e.name}</button></div>
   #end
 </div>

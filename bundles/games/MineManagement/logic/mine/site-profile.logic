@@ -1,0 +1,78 @@
+// The seeded site profile: ore hardness, road wear, the fleet's starting condition and fuel, the
+// day's forecast, the fault family most likely to break, the commission and the ore grade, all
+// derived from the shift seed.
+// Every value is a hash of the seed and a key (profileUnit), so working them out never calls
+// rand(): it cannot shift the simulation's random sequence, and a seed always gives the same site.
+// State: none of its own. ensureSite (chapters.logic) stores siteProfile(S.seed) as S.site.profile,
+// and newGame (core/session.logic) calls prepareSeededSite to apply it to a new mine.
+// Before changing: validSite rejects a save whose stored profile differs from siteProfile(seed) in
+// any way, so a new formula, field or even field order invalidates every existing save.
+
+// Hashes text to a number in [0, 1): seedValue (core/util.logic), then five rounds of the same
+// multiplier and modulus that rand() uses.
+function profileHash(text) {
+  var n = seedValue(text);
+  for (var i = 0; i < 5; i++) n = (n * 48271) % 2147483647;
+  return n / 2147483647;
+}
+
+// One value in [0, 1) per seed and key; each key ('ground', 'forecast', ...) is its own stream.
+// It is shifted so the default seed RED-DUST-4817 gives exactly 0.5 for every key, which makes the
+// default mine the median site (hardness 1.00, road wear 1.00, a dry day). The double % 1 wraps a
+// negative difference back into [0, 1).
+function profileUnit(seed, key) {
+  var n = profileHash(seed + '|' + key),
+    base = profileHash('RED-DUST-4817|' + key);
+  return (((n - base + 0.5) % 1) + 1) % 1;
+}
+
+// Never change what this returns: a save's profile is checked against it.
+// hardness 0.88..1.12 lengthens excavator passes (loaderPassDuration); roadWear 0.9..1.1 slows the
+// haul road (siteRoadFactor) and wears trucks faster; condition 84..100 and fuel 88..100 are the
+// starting percentages for the trucks and the ute; forecast ('rain', 'dust' or 'dry') arrives at
+// forecastAt, 180..360 s (09:00 to 12:00); tendency is the fault family chooseIncident weights four
+// times as heavily; commission is the seed commission's kind, paying reward ($450..700); grade
+// 0.68..0.90 sets the ore's value per tonne.
+function siteProfile(seed) {
+  var u = profileUnit(seed, 'ground'),
+    f = profileUnit(seed, 'forecast'),
+    risk = profileUnit(seed, 'fault');
+  return {
+    hardness: 0.88 + u * 0.24,
+    roadWear: 0.9 + profileUnit(seed, 'road') * 0.2,
+    condition: 84 + Math.round(profileUnit(seed, 'condition') * 16),
+    fuel: 88 + Math.round(profileUnit(seed, 'fuel') * 12),
+    forecast: f < 0.33 ? 'rain' : f > 0.72 ? 'dust' : 'dry',
+    forecastAt: 180 + Math.round(profileUnit(seed, 'arrival') * 180),
+    tendency: ['hydraulics', 'electrical', 'roads', 'crew'][Math.min(3, Math.floor(risk * 4))],
+    commission: ['production', 'service', 'manual'][
+      Math.min(2, Math.floor(profileUnit(seed, 'contract') * 3))
+    ],
+    reward: 450 + Math.round(profileUnit(seed, 'reward') * 250),
+    grade: 0.68 + profileUnit(seed, 'grade') * 0.22
+  };
+}
+
+// Applies the profile to a brand-new mine (from newGame): ore grade, truck and ute condition and
+// fuel, and the journal's first entry. It runs once; later shifts do not apply the profile again.
+function prepareSeededSite() {
+  ensureSite();
+  var p = S.site.profile;
+  S.oreGrade = p.grade;
+  for (var t of S.trucks) {
+    t.health = p.condition;
+    t.fuel = p.fuel;
+  }
+  S.ute.health = p.condition;
+  S.ute.fuel = p.fuel;
+  siteJournal(
+    'A new lease',
+    'Ore hardness ' +
+      p.hardness.toFixed(2) +
+      '; ' +
+      p.forecast +
+      ' forecast; ' +
+      p.tendency +
+      ' will be the thing that breaks. Gary has already made a sign about it.'
+  );
+}

@@ -10,7 +10,7 @@ sandbox, so the bundle needs nothing beyond the built-in components
 ## Running
 
 - **softn-web** - drop `PhotoStudio.softn` onto the runtime, or open
-  `http://localhost:1420/web/?open=/demos/PhotoStudio.softn` once it is served.
+  `http://localhost:1420/?open=/demos/PhotoStudio.softn` once it is served.
 - **softn-loader** - the desktop runtime lists it with the other demo bundles.
 
 Rebuild the archive after editing the source with

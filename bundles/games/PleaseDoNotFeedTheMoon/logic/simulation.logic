@@ -1,0 +1,91 @@
+// The store responds to the original lunar values. Instability is derived, never stored as a meter.
+let CUSTOMER_NAMES=["Just Dave","Night nurse","Tide inspector","Local astronomer","Nora","Delivery driver","Very tired student","Head office"];
+function makeProps(s) {
+ let places=[{x:106,y:394,item:1},{x:161,y:395,item:3},{x:209,y:396,item:5},{x:1050,y:428,item:5},{x:1108,y:430,item:12},{x:1155,y:427,item:1},{x:799,y:629,item:18},{x:330,y:555,item:20},{x:932,y:580,item:4},{x:427,y:601,item:23}];
+ s.props=[];
+ for(let i=0;i<places.length;i++){let p=places[i];s.props.push({id:i,item:p.item,x:p.x,y:p.y,hx:p.x,hy:p.y,vx:0,vy:0,angle:0,caught:false});}
+}
+function physicsStep(s,dt) {
+ // Damped spring targets pull stock toward the moon, not merely along a cosmetic sine wave.
+ let lift=clamp((s.gravity-12)/78,0,1),chaos=instability(s)/100;
+ for(let i=0;i<s.props.length;i++){
+  let p=s.props[i];if(p.caught)continue;
+  let wave=Math.sin(s.time*1.3+i*1.7),orbit=s.fx.vortex>0 ? s.time*2+i : i*1.5;
+  let tx=p.hx+(654-p.hx)*lift*0.7+Math.cos(orbit)*lift*52;
+  let ty=p.hy-lift*(200+Math.sin(i*2)*50)+wave*lift*24;
+  if(s.fx.rave>0)ty-=Math.abs(Math.sin(s.time*3.5+i))*35;
+  if(s.fx.ground>0){tx=p.hx;ty=p.hy;}
+  p.vx+=(tx-p.x)*10*dt;p.vy+=(ty-p.y)*10*dt;
+  let drag=Math.exp(-5.5*dt);p.vx*=drag;p.vy*=drag;
+  p.x=clamp(p.x+p.vx*dt,38,1240);p.y=clamp(p.y+p.vy*dt,100,652);
+  p.angle=lift*wave*35+(s.fx.vortex>0 ? Math.sin(s.time*2+i)*45 : 0)+chaos*Math.sin(s.time*1.7+i)*2;
+ }
+}
+function spawnCustomer(s) {
+ if(s.customers.length>=2)return false;
+ let eligible=[0,1,2,3,5,12,13,20,23];
+ let order=randomChoice(s,eligible);
+ s.customers.push({id:s.nextCustomer++,name:randomChoice(s,CUSTOMER_NAMES),item:order,patience:65,age:0});
+ let lines=stageOfWorld(s)===0 ? ["Just this, thanks. Nice moon.","Do you validate parking? Not that sort of orbit.","You know your window is full of moon, right?"] : stageOfWorld(s)===1 ? ["Is my milk meant to have a high tide?","Has that plant always grown toward the window?","I can hear your fridge in my teeth."] : stageOfWorld(s)===2 ? ["My drink has left without me.","I'll take anything that is still attached to a shelf.","Your ceiling is very well stocked."] : ["I parked outside. Is there still an outside?","Is this the queue or a new orbit?","I would like to speak to the planet manager."];
+ message(s,randomChoice(s,lines));return true;
+}
+function sellToCustomer(s,id) {
+ if(s.phase!=="play")return false;
+ let at=-1;for(let i=0;i<s.customers.length;i++)if(s.customers[i].id===id)at=i;
+ if(at<0)return false;
+ let c=s.customers[at];
+ if(s.stock[c.item]<=0){message(s,c.name+" wants "+ITEMS[c.item].name+". There is emergency stock in the delivery crate.");s.selected=c.item;s.aisle=ITEMS[c.item].aisle;return false;}
+ s.stock[c.item]--;s.coins+=ITEMS[c.item].price+2;s.health=Math.min(100,s.health+4);s.served++;s.servedTotal++;s.actions++;
+ s.customers.splice(at,1);
+ message(s,c.name+": Thanks. Keep the change. Preferably on the ground.");
+ return true;
+}
+function restockItem(s) {
+ let it=itemById(s.selected);if(!it||!unlocked(s,it.id)||s.stock[it.id]>=40)return false;
+ let cost=it.aisle===2 ? 12 : 6;
+ let emergency=s.coins<cost;
+ if(!emergency)s.coins-=cost;
+ s.stock[it.id]=Math.min(40,s.stock[it.id]+(emergency?2:5));
+ message(s,emergency ? "Emergency delivery: two dented samples. On the house. Please keep the house." : "Delivery received. The driver has asked you not to rate the gravity.");
+ return true;
+}
+function groundStore(s) {
+ if(s.time-s.lastGround<12)return false;
+ s.lastGround=s.time;s.groundings++;s.gravity=Math.max(0,s.gravity-26);s.heat=clamp(s.heat+(18-s.heat)*0.7,0,100);
+ s.fx.ground=7;s.fx.electric=0;s.fx.vortex=0;
+ message(s,"You hold the breaker. The stock lands. The floor signs a temporary peace treaty.");
+ return true;
+}
+function catchStock(s,id) {
+ for(let i=0;i<s.props.length;i++){
+  let p=s.props[i];
+  if(p.id===id&&!p.caught&&s.gravity>=23){p.caught=true;s.stock[p.item]=Math.min(40,s.stock[p.item]+1);message(s,"Caught one "+ITEMS[p.item].name+" before it became a satellite.");return true;}
+ }
+ return false;
+}
+function stepSimulation(s,delta) {
+ let dt=clamp(delta,0,0.1),event={impact:null,arrival:false,chapter:false};
+ if(s.phase!=="play")return event;
+ s.time+=dt;s.night+=dt*(s.energy>0?1.12:1);s.energy=Math.max(0,s.energy-dt);
+ s.heat=clamp(s.heat+(18-s.heat)*dt*0.025,0,100);
+ s.gravity=clamp(s.gravity-s.gravity*dt*0.004,0,100);
+ s.moodTime=Math.max(0,s.moodTime-dt);s.lineTime=Math.max(0,s.lineTime-dt);
+ s.reaction.time=Math.max(0,s.reaction.time-dt);
+ let ks=Object.keys(s.fx);for(let j=0;j<ks.length;j++)s.fx[ks[j]]=Math.max(0,s.fx[ks[j]]-dt);
+ if(s.flags.truce&&s.fx.ground>0){s.gravity=Math.max(0,s.gravity-dt*2);s.heat+=(18-s.heat)*dt*0.08;}
+ event.impact=settleShot(s,dt);
+ physicsStep(s,dt);
+ for(let c=s.customers.length-1;c>=0;c--){
+  s.customers[c].age+=dt;s.customers[c].patience-=dt;
+  if(s.customers[c].patience<=0){let name=s.customers[c].name;s.customers.splice(c,1);s.health=Math.max(0,s.health-3);message(s,name+" left. The review mentions the queue, not the moon.");}
+ }
+ s.queueClock-=dt;
+ if(s.queueClock<=0){event.arrival=spawnCustomer(s);s.queueClock=14;}
+ // No forced report or loss interrupts experimentation. The time clock lights up instead.
+ s.awaitingClose=closeReady(s);
+ let stage=stageOfWorld(s);
+ if(stage>s.milestone){s.milestone=stage;event.chapter=true;message(s,stage===1 ? "The moon is getting comfortable. The shop is not." : stage===2 ? "Loose stock is lifting. You can catch it, or use the circuit breaker." : "There is more moon than window now. The drinks have developed coastlines.");}
+ if(s.flags.employee&&s.time%30<dt&&s.customers.length&&s.bond>55){sellToCustomer(s,s.customers[0].id);message(s,"The moon has quietly served a customer. It would like a break soon.");}
+ if(s.gravity<26&&s.heat>=7&&s.heat<=34)s.stabilityTime+=dt;else s.stabilityTime=0;
+ return event;
+}

@@ -8,9 +8,9 @@
   </div>
   <div className="os-catalogue">
     #each (b in buildingCards) key={b.id}
-      <button className="os-catalogue-item" oson={String(b.selected)} oslocked={String(!b.unlocked)} @click={() => chooseBuild(b.id)}>
+      <button className="os-catalogue-item" oson={String(b.selected)} oslocked={String(!b.unlocked)} osaffordable={String(b.affordable)} @click={() => chooseBuild(b.id)}>
         <img className="os-item-icon" src={asset(b.sprite)} alt="" />
-        <div><div className="os-item-name">{b.name}<span className="os-tiny os-dim"> · {b.size}</span></div><div className="os-item-cost">{b.cost}</div><div className="os-item-desc">{b.unlocked ? b.description : "Research: " + b.requirement}</div></div>
+        <div><div className="os-item-name">{b.name}<span className="os-tiny os-dim">{" · " + b.size}</span></div><div className="os-item-cost">{b.cost}</div><div className="os-item-desc">{b.unlocked ? b.description : "Research: " + b.requirement}</div></div>
       </button>
     #end
   </div>

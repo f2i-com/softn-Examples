@@ -1,0 +1,116 @@
+// Hand-authored traversal routes. Units are world pixels; platform y is its top.
+function platform(id,x,y,w,h,kind,solid) { return {id:id,x:x,y:y,w:w,h:h,kind:kind||"desk",solid:!!solid,
+    sticky:kind==="glass",baseX:x,baseY:y,dx:0,dy:0,vx:0,vy:0,compression:0,dynamic:false}; }
+function addP(w,id,x,y,width,height,kind,solid) { let p=platform(id,x,y,width,height,kind,solid); if(["stapler","mat","leaf"].indexOf(kind)>=0)p.dynamic=true;w.platforms.push(p); return p; }
+function addTarget(w,id,x,y,kind,label,extra) {
+    let t={id:id,x:x,y:y,homeX:x,homeY:y,kind:kind,label:label,active:true,vx:0,vy:0,r:13,attached:false};
+    if(extra) {let names=Object.keys(extra);for(let i=0;i<names.length;i++)t[names[i]]=extra[names[i]];}
+    w.targets.push(t); return t;
+}
+function anchor(w,id,x,y,label) { return addTarget(w,id,x,y,"anchor",label||"Cable ring"); }
+function checkpoint(w,id,x,y) { w.checkpoints.push({id:id,x:x,y:y,used:false}); }
+function paperSteps(w,x,y,n,stepW,stepH) { for(let i=0;i<n;i++) addP(w,"stack-"+x+"-"+i,x+i*stepW,y-i*stepH,stepW+35,18+i*6,"paper",false); }
+function buildLevel(index) {
+    let w={width:2720,height:800,platforms:[],targets:[],checkpoints:[],fans:[],decor:[],water:null,
+      spawn:{x:125,y:560},goal:{x:2490,y:510,label:"APPROVED"},tone:index%2?"#e9ddc3":"#dbe9dc"};
+    if(index===0) {
+        addP(w,"desk-a",0,560,910,220,"desk",true); addP(w,"desk-b",1100,560,1620,220,"desk",true);
+        paperSteps(w,260,537,3,60,18);
+        addP(w,"keyboard",420,488,275,28,"keyboard",false);
+        addP(w,"stapler",725,524,120,34,"stapler",false);
+        let drawer=addP(w,"drawer",910,438,166,25,"drawer",false);drawer.dynamic=true;drawer.amplitude=125;drawer.rate=0.8;
+        addP(w,"monitor",1110,334,234,226,"monitor",true);
+        addP(w,"glass",1360,190,24,370,"glass",true);
+        addP(w,"shelf-a",1450,275,260,20,"shelf",false);addP(w,"shelf-b",1780,165,345,22,"shelf",false);
+        anchor(w,"ring-1",1000,275);anchor(w,"ring-2",1510,120);anchor(w,"ring-3",2000,92);
+        addTarget(w,"report",1940,132,"report","QUARTERLY REPORT");
+        checkpoint(w,"clip-keyboard",650,488);checkpoint(w,"clip-monitor",1230,334);checkpoint(w,"clip-desk",2280,560);
+    }
+    if(index===1) {
+        w.width=2760;w.goal={x:2510,y:510,label:"MEETING / E"};
+        addP(w,"desk-a",0,560,720,220,"desk",true);addP(w,"desk-b",830,550,710,230,"desk",true);addP(w,"desk-c",1660,560,1100,220,"desk",true);
+        let mat1=addP(w,"mat-1",575,527,230,17,"mat",false);mat1.dynamic=true;
+        let mat2=addP(w,"mat-2",1460,512,235,17,"mat",false);mat2.dynamic=true;
+        addP(w,"phone",1060,465,180,36,"phone",false);addP(w,"keyboard",1960,524,280,26,"keyboard",false);
+        addTarget(w,"coffee",280,515,"coffee","COFFEE / E");anchor(w,"ring-1",900,295);anchor(w,"ring-2",1650,305);
+        checkpoint(w,"clip-mid",1150,465);checkpoint(w,"clip-end",2260,560);
+    }
+    if(index===2) {
+        w.width=2540;w.spawn={x:140,y:610};w.goal=null;
+        addP(w,"carpet",0,610,2540,170,"carpet",true);addP(w,"underside",450,145,1930,32,"desk",true);
+        paperSteps(w,880,563,3,65,28);addP(w,"socket-shelf",1080,515,180,22,"paper",false);
+        addP(w,"glass",1300,335,24,275,"glass",true);addP(w,"hub",1460,455,270,28,"monitor",false);
+        paperSteps(w,1750,525,4,77,65);addP(w,"router",2075,315,295,30,"monitor",false);
+        addTarget(w,"plug-1",680,574,"plug","PLUG 1",{socket:"socket-1",number:1});
+        addTarget(w,"socket-1",1160,483,"socket","SOCKET 1 / E",{number:1});
+        addTarget(w,"plug-2",1580,421,"plug","PLUG 2",{socket:"socket-2",number:2});
+        addTarget(w,"socket-2",2250,278,"socket","SOCKET 2 / E",{number:2});
+        anchor(w,"ring-1",760,320);anchor(w,"ring-2",1410,280);anchor(w,"ring-3",1940,230);
+        checkpoint(w,"clip-mid",1510,455);
+    }
+    if(index===3) {
+        w.width=2540;w.spawn={x:145,y:520};w.goal={x:2360,y:451,label:"DRY LAND / E"};
+        addP(w,"counter-a",0,520,440,260,"desk",true);addP(w,"counter-b",2060,500,480,280,"desk",true);
+        w.water={x:430,y:560,w:1630,h:240};
+        let boat=addP(w,"mug-boat",570,515,170,75,"boat",false);boat.dynamic=true;boat.minX=470;boat.maxX=1920;
+        addP(w,"lid-1",1110,490,130,18,"leaf",false);addP(w,"lid-2",1630,473,120,18,"leaf",false);
+        anchor(w,"ring-1",910,310,"Mug tow ring");anchor(w,"ring-2",1360,300);anchor(w,"ring-3",1810,315);
+        checkpoint(w,"clip-dry",2200,500);
+    }
+    if(index===4) {
+        w.width=2520;w.goal=null;
+        addP(w,"desk-a",0,560,930,220,"desk",true);addP(w,"desk-b",1100,560,1420,220,"desk",true);
+        addP(w,"stapler",360,528,125,32,"stapler",false);addP(w,"paper-a",805,370,170,20,"paper",false);
+        addP(w,"paper-b",1200,315,185,22,"paper",false);addP(w,"paper-c",1620,265,180,24,"paper",false);
+        addP(w,"paper-d",2050,340,190,22,"paper",false);
+        w.fans.push({x:545,y:555,w:400,h:440,power:1910});
+        anchor(w,"ring-1",1020,125);anchor(w,"ring-2",1530,80);anchor(w,"ring-3",2080,110);
+        addTarget(w,"memo-1",830,240,"memo","MEMO 1",{flight:true,rx:155,ry:95,rate:0.76,phase:0});
+        addTarget(w,"memo-2",1570,178,"memo","MEMO 2",{flight:true,rx:145,ry:80,rate:0.66,phase:2});
+        addTarget(w,"memo-3",2190,210,"memo","MEMO 3",{flight:true,rx:150,ry:100,rate:0.72,phase:4});
+        checkpoint(w,"clip-high",1700,265);
+    }
+    if(index===5) {
+        w.width=2470;w.goal=null;
+        addP(w,"desk",0,560,2470,220,"desk",true);addP(w,"stapler",500,519,130,38,"stapler",false);
+        addP(w,"paper-a",790,432,210,25,"paper",false);addP(w,"monitor",1070,300,295,260,"monitor",true);
+        addP(w,"glass",1410,100,24,460,"glass",true);addP(w,"shelf",1540,205,235,22,"shelf",false);
+        anchor(w,"ring-1",1110,200);anchor(w,"ring-2",1510,75);anchor(w,"ring-3",1865,50);
+        addTarget(w,"projector-cord",2050,138,"switch","PROJECTOR CORD",{holdTime:0.65});
+        checkpoint(w,"clip-high",1270,300);
+    }
+    if(index===6) {
+        w.width=2800;w.spawn={x:300,y:486};w.goal={x:2580,y:426,label:"SAFE DESK / E"};
+        addP(w,"carpet",0,620,2230,160,"carpet",true);addP(w,"safe-desk",2220,470,580,310,"desk",true);
+        let chair=addP(w,"chair",200,486,204,30,"chair",false);chair.dynamic=true;chair.maxX=2020;
+        addP(w,"escape-stack",2110,548,90,25,"paper",false);
+        anchor(w,"ring-1",1340,280);anchor(w,"ring-2",2180,250);
+        addTarget(w,"brake",1940,327,"brake","EMERGENCY BRAKE",{holdTime:0.48});
+        checkpoint(w,"clip-safe",2340,470);
+    }
+    if(index===7) {
+        w.width=2460;w.goal=null;w.spawn={x:125,y:580};
+        addP(w,"desk",0,580,2460,200,"desk",true);addP(w,"stapler",470,543,130,32,"stapler",false);
+        addP(w,"paper-a",660,520,160,24,"paper",false);addP(w,"paper-b",860,458,145,25,"paper",false);
+        addP(w,"paper-c",1060,399,160,23,"paper",false);addP(w,"glass",1280,245,24,335,"glass",true);
+        anchor(w,"ring-1",1450,205);anchor(w,"ring-2",1790,105);
+        addTarget(w,"jam",1745,401,"jam","PULL JAMMED SHEET",{active:false,holdTime:0.72});
+        checkpoint(w,"clip-boss",1120,399);
+    }
+    // Optional working lunches reward exploring; they are never needed to advance.
+    for(let i=0;i<5;i++) addTarget(w,"fly-"+i,430+i*430,390-(i%3)*65,"fly","Working lunch",{flight:true,rx:24,ry:17,rate:1.8,phase:i});
+    return w;
+}
+function findPlatform(id) { if(!G || !id) return null; let list=G.world.platforms; for(let i=0;i<list.length;i++) if(list[i].id===id) return list[i]; return null; }
+function findTarget(id) { if(!G || !id) return null; let list=G.world.targets; for(let i=0;i<list.length;i++) if(list[i].id===id) return list[i]; return null; }
+function setupStage(index) {
+    let oldScore=G?G.score:0;
+    G=createGame(clamp(index,0,JOBS.length-1));G.score=oldScore;
+    G.world=buildLevel(G.stage);G.p=makeFrog(G.world.spawn.x,G.world.spawn.y);
+    G.checkpoint={x:G.p.x,y:G.p.y,id:"start"};
+    if(G.stage===6) {G.p.grounded=true;G.p.support="chair";G.p.mode="ground";}
+    if(G.stage===7) {G.boss=createBoss();let hull=addP(G.world,"printer-hull",G.boss.x+18,G.boss.y,G.boss.w-18,G.boss.h,"hull",true);hull.dynamic=true;}
+    keys={};keyboardKeys={};touchKeys={};accumulator=0;frameClock=Date.now();
+    G.camera.x=clamp(G.p.x-340,0,G.world.width-VW);G.camera.y=clamp(G.p.y-570,0,G.world.height-VH);
+    screen="play";dirtyBackground=true;tell(JOBS[G.stage].help,8);buildBackground();publish();
+}

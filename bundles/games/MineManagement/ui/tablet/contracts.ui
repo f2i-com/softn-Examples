@@ -1,0 +1,209 @@
+<!--
+  08 Contracts & career: optional side jobs for this shift (logic/mine/progression.logic), the
+  shift's milestones, the commendations kept across shifts and the unofficial records nobody at
+  Head Office asked for (careerFunRows in logic/fun/stats.logic).
+-->
+<div if={tab === 'contracts'}>
+  <div class="mm-page-head">
+    <div>
+      <span class="mm-label">A LITTLE EXTRA ON THE SIDE</span>
+      <h2>Make this shift count.</h2>
+      <p class="mm-muted">One contract at a time. Progress starts when you accept, and nobody is cross if you miss the deadline. Clive might sigh.</p>
+    </div>
+    <span class="mm-money-large">{hud.contractEarned}</span>
+  </div>
+
+  <div class="mm-contract-grid">
+    #each (item in contractRows) key={item.id}
+      <article class="mm-contract-card">
+        <span class="mm-label">OPTIONAL ASSIGNMENT</span>
+        <h3>{item.name}</h3>
+        <p class="mm-muted">{item.detail}</p>
+        <span class="mm-contract-reward">+ {item.reward}</span>
+        <div if={item.active}>
+          <span>{item.progress}</span>
+          <div class="mm-meter"><div style={item.fill}></div></div>
+          <span class="mm-small">{item.time}</span>
+        </div>
+        <button class="mm-secondary" type="button" @click={acceptContract(item.id)} disabled={item.disabled}>{item.button}</button>
+      </article>
+    #end
+  </div>
+
+  <div class="mm-progress-grid">
+    <section class="mm-card mm-checklist">
+      <span class="mm-label">SHIFT MILESTONES</span>
+      <h3>Your first-shift fieldbook.</h3>
+      #each (item in objectiveRows)
+        <div class="mm-checklist-row"><span>{item.mark}</span><span>{item.name}</span></div>
+      #end
+      <button class="mm-primary" type="button" @click={focusObjective}>Show next step →</button>
+    </section>
+
+    <section class="mm-card mm-checklist">
+      <span class="mm-label">CAREER COMMENDATIONS</span>
+      <h3>Earned on the ground.</h3>
+      #each (item in badgeRows)
+        <div class="mm-badge-row">
+          <span class="mm-badge-star">{item.mark}</span>
+          <div>
+            <span>{item.name}</span>
+            <span class="mm-small">{item.earned ? 'Earned · kept across shifts' : item.detail}</span>
+          </div>
+        </div>
+      #end
+    </section>
+  </div>
+
+  <section class="mm-card mm-records">
+    <div class="mm-card-title"><span>The unofficial records</span><span class="mm-small">EVERY SHIFT, FOREVER</span></div>
+    <div class="mm-records-grid">
+      #each (record in careerFunRows)
+        <div><span class="mm-records-value">{record.value}</span><span class="mm-label">{record.name}</span></div>
+      #end
+    </div>
+    <p class="mm-records-note">These figures are not shared with Head Office. Gary keeps a copy anyway.</p>
+  </section>
+</div>
+
+<style>
+  .mm-contract-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .mm-contract-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 22px;
+    background: linear-gradient(145deg, #30424a, #23343c);
+    border: 1px solid #506169;
+    border-top: 3px solid #d6a655;
+    border-radius: var(--radius);
+  }
+  .mm-game .mm-contract-card h3 {
+    margin: 0;
+    font-size: 22px;
+  }
+  .mm-contract-card .mm-label {
+    font-size: 9px;
+  }
+  .mm-contract-card > .mm-muted {
+    flex: 1;
+    min-height: 64px;
+  }
+  .mm-contract-card .mm-meter {
+    margin: 10px 0;
+  }
+  .mm-contract-card button {
+    margin-top: auto;
+  }
+  .mm-contract-reward {
+    font-size: 30px;
+    font-weight: 450;
+    letter-spacing: -1px;
+    color: #f1c575;
+  }
+
+  /* ---------- Milestones and commendations ---------- */
+  .mm-progress-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  .mm-checklist {
+    padding: 24px;
+  }
+  .mm-checklist > .mm-primary {
+    margin-top: 20px;
+  }
+  .mm-badge-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 0;
+    border-bottom: 1px solid #ffffff0c;
+  }
+  .mm-badge-row .mm-small {
+    font-size: 10px;
+  }
+  .mm-badge-star {
+    font-size: 27px;
+    color: #e8bd74;
+  }
+
+  /* ---------- The unofficial records ---------- */
+  .mm-records {
+    margin-top: 20px;
+  }
+  .mm-records-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 1px;
+    background: var(--line);
+  }
+  .mm-records-grid > div {
+    padding: 16px 18px;
+    background: var(--panel);
+  }
+  .mm-records-grid .mm-label {
+    font-size: 8px;
+  }
+  .mm-records-value {
+    display: block;
+    font-size: 26px;
+    font-weight: 450;
+    letter-spacing: -1px;
+    color: #ffc58a;
+    font-variant-numeric: tabular-nums;
+  }
+  .mm-records-note {
+    padding: 12px 18px;
+    border-top: 1px solid var(--line);
+    font-size: 10px;
+    color: var(--faint);
+  }
+
+  /* Medium screens: each contract becomes a row with its reward and button on the right. */
+  @media (max-width: 900px) {
+    .mm-contract-grid {
+      grid-template-columns: 1fr;
+    }
+    .mm-contract-card {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px 20px;
+    }
+    .mm-contract-card > .mm-muted {
+      grid-column: 1;
+    }
+    .mm-contract-card > .mm-contract-reward {
+      grid-column: 2;
+      grid-row: 1 / span 2;
+    }
+    .mm-contract-card > button {
+      grid-column: 2;
+      grid-row: 3 / span 2;
+    }
+    .mm-progress-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  @media (max-width: 620px) {
+    .mm-contract-card {
+      display: flex;
+      padding: 18px;
+    }
+    .mm-game .mm-contract-card h3 {
+      font-size: 20px;
+    }
+    .mm-contract-reward {
+      font-size: 26px;
+    }
+    .mm-checklist {
+      padding: 18px;
+    }
+  }
+</style>

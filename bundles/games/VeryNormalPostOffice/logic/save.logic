@@ -1,0 +1,167 @@
+// Versioned, bounded local saves. Old v1 saves are left untouched; no network access.
+function integerBetween(v, lo, hi) { return typeof v === "number" && isFinite(v) && Math.floor(v) === v && v >= lo && v <= hi; }
+function safeTree(v, depth, budget) {
+    budget.count++;
+    if (depth > 12 || budget.count > 8000)
+        return false;
+    if (v === null || typeof v === "boolean")
+        return true;
+    if (typeof v === "number")
+        return isFinite(v) && Math.abs(v) < 9007199254740991;
+    if (typeof v === "string")
+        return v.length <= 1800;
+    if (typeof v !== "object")
+        return false;
+    let keys = Object.keys(v);
+    if (keys.length > 200)
+        return false;
+    for (let i = 0; i < keys.length; i++) {
+        if (["__proto__", "constructor", "prototype"].indexOf(keys[i]) >= 0)
+            return false;
+        if (!safeTree(v[keys[i]], depth + 1, budget))
+            return false;
+    }
+    return true;
+}
+function validParcel(p, stage) {
+    if (!p || !integerBetween(p.id, (stage + 1) * 100 + 1, (stage + 1) * 100 + SHIFT_DEFS[stage].types.length) || p.serial !== "MP-" + p.id || PARCEL_TYPES.indexOf(p.type) < 0)
+        return false;
+    if (typeof p.code !== "string" || !/^[A-Z0-9]{2}-[0-9]{3}$/.test(p.code))
+        return false;
+    let strings = ["recipient", "street", "printedDistrict", "printedPrefix"];
+    for (let i = 0; i < strings.length; i++)
+        if (typeof p[strings[i]] !== "string" || p[strings[i]].length > 100)
+            return false;
+    let bools = ["beePermit", "inspected", "scanned", "weighed", "xrayed", "measured", "clamped", "fed", "flapOpened", "breached", "coreScanned", "labelDamaged", "ateNeighbour", "arrived"];
+    for (let i = 0; i < bools.length; i++)
+        if (typeof p[bools[i]] !== "boolean")
+            return false;
+    let dimensions = ["weight", "innerWeight", "width", "length", "height"];
+    for (let i = 0; i < dimensions.length; i++)
+        if (!integerBetween(p[dimensions[i]], 1, 1000))
+            return false;
+    if (!integerBetween(p.age, 0, 100000000) || !integerBetween(p.face, 0, 2) || !integerBetween(p.position, 0, 2) || !integerBetween(p.layers, 0, 3))
+        return false;
+    if (!integerBetween(p.weightReading, 0, 1010) || !integerBetween(p.weightCalibration, -1, 10000) || !integerBetween(p.stampRevision, -1, 1))
+        return false;
+    if (["", "red", "black"].indexOf(p.stampInk) < 0 || !integerBetween(p.attempts, 0, 10000) || !integerBetween(p.returns, 0, p.attempts))
+        return false;
+    if (!p.seen || typeof p.seen !== "object" || Array.isArray(p.seen))
+        return false;
+    let seenKeys = Object.keys(p.seen);
+    let seenAllowed = ["inspect", "rotate", "scan", "weigh", "xray", "stamp", "clamp", "flap", "biscuit", "displaced", "impossible"];
+    for (let i = 0; i < seenKeys.length; i++)
+        if (seenAllowed.indexOf(seenKeys[i]) < 0 || p.seen[seenKeys[i]] !== true)
+            return false;
+    return true;
+}
+function validState(g) {
+    if (!g || g.id !== GAME_ID || g.version !== GAME_VERSION || !safeTree(g, 0, { count: 0 }))
+        return false;
+    if (!integerBetween(g.stage, 0, 7) || !integerBetween(g.revision, 0, 1) || !integerBetween(g.seed, 1, 2147483646))
+        return false;
+    if (["briefing", "work", "notice", "report", "ending", "suspended"].indexOf(g.phase) < 0)
+        return false;
+    let counters = ["tick", "score", "totalSorted", "totalMistakes", "safetyBreaches", "completed", "shiftScore", "shiftMistakes", "cleanCases", "incomingTicks", "ambientTicks"];
+    for (let i = 0; i < counters.length; i++)
+        if (!integerBetween(g[counters[i]], 0, 100000000))
+            return false;
+    if (!integerBetween(g.integrity, 0, 100) || !integerBetween(g.ambient, 0, 3) || ["red", "black"].indexOf(g.ink) < 0)
+        return false;
+    if (["inspect", "scan", "weigh", "xray", "stamp", "clamp", "flap", "biscuit"].indexOf(g.viewTool) < 0)
+        return false;
+    if (!Array.isArray(g.queue) || g.queue.length > 10 || !Array.isArray(g.incidents) || g.incidents.length > 16)
+        return false;
+    if (g.current !== null && !validParcel(g.current, g.stage))
+        return false;
+    let ids = g.current ? [g.current.id] : [];
+    for (let i = 0; i < g.queue.length; i++) {
+        if (!validParcel(g.queue[i], g.stage) || ids.indexOf(g.queue[i].id) >= 0)
+            return false;
+        ids.push(g.queue[i].id);
+    }
+    if (g.completed + g.queue.length + (g.current ? 1 : 0) !== SHIFT_DEFS[g.stage].types.length)
+        return false;
+    if ((g.phase === "report" || g.phase === "ending") && (g.current || g.queue.length))
+        return false;
+    if (g.phase === "ending" && g.stage !== 7)
+        return false;
+    if (g.phase === "notice" && (g.current || g.revision !== 0 || !SHIFT_DEFS[g.stage].revisionAt || g.completed !== SHIFT_DEFS[g.stage].revisionAt))
+        return false;
+    if (g.phase === "briefing" && (g.current || g.completed))
+        return false;
+    let m = g.machine;
+    if (!m || !integerBetween(m.bias, 0, 10) || !integerBetween(m.calibration, 0, 10000))
+        return false;
+    if (typeof m.calibrated !== "boolean" || typeof m.referenceOn !== "boolean" || typeof m.jam !== "boolean" || typeof m.separator !== "boolean")
+        return false;
+    if (m.calibrated && m.bias !== 0)
+        return false;
+    if (g.transit !== null) {
+        let t = g.transit;
+        if (!g.current || !t || ["arrive", "depart", "reject", "return"].indexOf(t.kind) < 0 || !integerBetween(t.ticks, 1, 60) || !integerBetween(t.total, t.ticks, 60))
+            return false;
+        if (["", "LOCAL", "FAR", "FREIGHT", "QUARANTINE"].indexOf(t.route) < 0 || typeof t.reason !== "string" || typeof t.clause !== "string")
+            return false;
+    }
+    if (g.toolJob !== null) {
+        let j = g.toolJob;
+        if (!g.current || g.transit || !j || ["scan", "weigh", "xray", "stamp", "clamp", "flap", "biscuit"].indexOf(j.kind) < 0 || !integerBetween(j.ticks, 1, 60) || !integerBetween(j.total, j.ticks, 60) || ["red", "black"].indexOf(j.ink) < 0)
+            return false;
+    }
+    let start = g.stageStart;
+    if (!start || !integerBetween(start.seed, 1, 2147483646))
+        return false;
+    let fields = ["score", "totalSorted", "totalMistakes", "safetyBreaches", "incidentCount"];
+    for (let i = 0; i < fields.length; i++)
+        if (!integerBetween(start[fields[i]], 0, 100000000))
+            return false;
+    for (let i = 0; i < g.incidents.length; i++) {
+        let item = g.incidents[i];
+        if (!item || typeof item.title !== "string" || typeof item.text !== "string" || typeof item.parcel !== "string" || !integerBetween(item.shift, 1, 8))
+            return false;
+    }
+    if (g.lastReceipt !== null && (!g.lastReceipt || typeof g.lastReceipt.serial !== "string" || typeof g.lastReceipt.heading !== "string" || typeof g.lastReceipt.body !== "string" || typeof g.lastReceipt.good !== "boolean" || !integerBetween(g.lastReceipt.points, 0, 1000)))
+        return false;
+    let textFields = ["message", "reportTitle", "reportBody"];
+    for (let i = 0; i < textFields.length; i++)
+        if (typeof g[textFields[i]] !== "string")
+            return false;
+    return true;
+}
+function persist() {
+    if (!S)
+        return;
+    try {
+        localStorage.setItem(SAVE_KEY, JSON.stringify({ schema: 2, state: S, settings: settings, profile: profile }));
+        saveStatus = "Saved in this device's filing cabinet";
+    }
+    catch (err) {
+        saveStatus = "Filing cabinet unavailable · session still playable";
+    }
+}
+function restore() {
+    try {
+        let raw = localStorage.getItem(SAVE_KEY);
+        if (!raw)
+            return false;
+        if (raw.length > 220000)
+            throw new Error("Oversized save");
+        let data = JSON.parse(raw);
+        if (!data || data.schema !== 2 || !validState(data.state))
+            throw new Error("Invalid save");
+        S = data.state;
+        resetTransient();
+        if (data.settings)
+            settings = { muted: data.settings.muted === true, reducedMotion: data.settings.reducedMotion === true };
+        if (data.profile)
+            profile = { best: integerBetween(data.profile.best, 0, 100000000) ? data.profile.best : 0, completed: integerBetween(data.profile.completed, 0, 1000000) ? data.profile.completed : 0 };
+        paused = S.phase === "work";
+        saveStatus = "Inspection restored · resume when ready";
+        return true;
+    }
+    catch (err) {
+        saveStatus = "Damaged or incompatible save ignored safely";
+        return false;
+    }
+}

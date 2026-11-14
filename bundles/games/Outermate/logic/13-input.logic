@@ -108,4 +108,15 @@ function zoomBy(amount){let old=zoomLevel;zoomLevel=clamp(zoomLevel+amount,.10,1
 function mapWheel(delta,x,y,left,top,w,h){if(dialog)return;let old=zoomLevel;zoomLevel=clamp(zoomLevel*(delta>0?.90:1.10),.10,1.8);let ratio=zoomLevel/old;panX=panX*ratio+(x-left-w/2)*(1-ratio);panY=panY*ratio+(y-top-h/2)*(1-ratio);followPlayer=false;viewportWidth=w;viewportHeight=h;visibleTileRange=null;refreshCamera();dirty();}
 function minimapTap(x,y,left,top,w,h){focusAt(clamp((x-left)/w*96,0,95),clamp((y-top)/h*96,0,95));}
 function onKey(e){if(!e||e.targetEditable||e.ctrlKey||e.metaKey||e.altKey||["INPUT","TEXTAREA","SELECT"].indexOf(String(e.targetTag||"").toUpperCase())>=0)return;let k=e.key;if(k==="Escape"){if(dialog)closeDialog();else if(contextMenu)closeContextMenu();else if(moreOpen){moreOpen=false;dirty();}else if(guideSheetOpen){guideSheetOpen=false;dirty();}else{mobilePanelOpen=false;dirty();}return;}if(screen!=="game"||dialog)return;if(k===" ")togglePause();if(k==="1")setSpeed(1);if(k==="2")setSpeed(2);if(k==="4")setSpeed(4);if(k==="r"||k==="R")toggleRoutine();if(k==="f"||k==="F")focusPlayer();if(k==="i"||k==="I")setPanel("inventory");if(k==="e"||k==="E")setPanel("escape");if(k==="n"||k==="N")setPanel("notebook");if(k==="m"||k==="M")overviewMap();if(k==="g"||k==="G")toggleGuideSheet();if(k==="?"||k==="h"||k==="H")openDialog("help");if(k==="+"||k==="=")zoomBy(.12);if(k==="-")zoomBy(-.12);}
-function registerInput(){if(typeof window!=="undefined"&&window.addEventListener){window.addEventListener("keydown",onKey);window.addEventListener("pagehide",function(){if(omGame)saveSlot(autoIndex,true);});window.addEventListener("blur",function(){if(omGame&&!runInBackground){paused=true;dirty();}});}try{if(typeof softn!=="undefined"&&softn.input&&softn.input.captureKeys)softn.input.captureKeys([" ","Escape","1","2","4","r","R","f","F","i","I","e","E","n","N","m","M","g","G","?","h","H","+","=","-"],function(){});}catch(e){}}
+function registerInput(){
+  if(typeof window!=="undefined"&&window.addEventListener){
+    if(window.__omCleanup){try{window.__omCleanup();}catch(e){}}
+    let onPageHide=function(){if(omGame&&!demoRun)saveSlot(autoIndex,true);};
+    let onBlur=function(){if(omGame&&!runInBackground){paused=true;dirty();}};
+    window.addEventListener("keydown",onKey);
+    window.addEventListener("pagehide",onPageHide);
+    window.addEventListener("blur",onBlur);
+    window.__omCleanup=function(){window.removeEventListener("keydown",onKey);window.removeEventListener("pagehide",onPageHide);window.removeEventListener("blur",onBlur);};
+  }
+  try{if(typeof softn!=="undefined"&&softn.input&&softn.input.captureKeys)softn.input.captureKeys([" ","Escape","1","2","4","r","R","f","F","i","I","e","E","n","N","m","M","g","G","?","h","H","+","=","-"],function(){});}catch(e){}
+}

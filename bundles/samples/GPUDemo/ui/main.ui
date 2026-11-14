@@ -1,119 +1,268 @@
-// main.ui - GPU Compute Demo
+// main.ui - GPU Compute & Interactive Field Simulation Demo
 
 <logic src="../logic/main.logic" />
 
 <style>
-.gpu-wrap { max-width: 860px; margin: 0 auto; }
+.gpu-viewport {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: radial-gradient(110% 80% at 50% 0%, #0b241c 0%, #06110e 65%);
+  box-sizing: border-box;
+}
+.gpu-wrap {
+  max-width: 1040px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 1.25rem 1.5rem 2rem;
+  box-sizing: border-box;
+}
 .gpu-card {
-  background: #0f1a14;
-  border: 1px solid #1a3a2a;
-  border-radius: 10px;
-  padding: 1.25rem;
-  margin-bottom: 1rem;
+  background: rgba(12, 26, 20, 0.88);
+  border: 1px solid #1b3d2f;
+  border-radius: 12px;
+  padding: 1.125rem;
+  box-sizing: border-box;
+  min-width: 0;
 }
 .gpu-result {
-  background: #0a1510;
-  border: 1px solid #1a3a2a;
+  background: #07120e;
+  border: 1px solid #173629;
   border-radius: 8px;
-  padding: 1rem;
-  font-family: monospace;
-  font-size: 0.875rem;
+  padding: 0.85rem;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
   color: #6ee7b7;
   white-space: pre-wrap;
-  word-break: break-all;
+  word-break: break-word;
   min-height: 2.5rem;
-  max-height: 10rem;
+  max-height: 9rem;
   overflow-y: auto;
 }
 .gpu-status {
-  background: #0a1510;
-  border: 1px solid #1a3a2a;
-  border-radius: 6px;
-  padding: 0.625rem 0.875rem;
-  font-family: monospace;
+  background: #081611;
+  border: 1px solid #1b3d2f;
+  border-radius: 8px;
+  padding: 0.6rem 0.875rem;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
   font-size: 0.75rem;
   color: #34d399;
 }
+.gpu-stage {
+  position: relative;
+  width: 100%;
+  height: 220px;
+  border-radius: 10px;
+  background: radial-gradient(circle at 50% 50%, #0c2920 0%, #050d0a 82%);
+  border: 1px solid #1b3d2f;
+  overflow: hidden;
+}
 @keyframes gpu-pulse {
-  0%, 100% { opacity: 0.5; }
+  0%, 100% { opacity: 0.55; }
   50% { opacity: 1; }
 }
 .gpu-running {
   animation: gpu-pulse 0.8s ease-in-out infinite;
 }
+
+@media (max-width: 640px) {
+  .gpu-wrap {
+    padding: 0.875rem 0.875rem 1.5rem !important;
+  }
+  .gpu-card {
+    padding: 0.875rem !important;
+  }
+  .gpu-stage {
+    height: 185px !important;
+  }
+}
 </style>
 
 <App theme="dark">
-<Box direction="column" gap="0" padding="1.5rem" className="gpu-wrap" style={{ background: "#071210", minHeight: "100vh" }}>
+  <Box className="gpu-viewport">
+    <Loop frame={true} running={simRunning} @tick={stepSimulation} />
 
-  // Header
-  <Box direction="column" gap="0.25rem" padding="0 0 1rem 0">
-    <Text variant="h5" style={{ display: "block", color: "#10b981", fontWeight: "700" }}>GPU Compute</Text>
-    <Text variant="caption" style={{ display: "block", color: "#94a3b8" }}>Run selectable WebGPU WGSL compute kernels on your graphics card across 8 to 4096 floats with dispatch timing.</Text>
+    <Box className="gpu-wrap">
+      // Header Bar
+      <Box style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", marginBottom: "0.875rem" }}>
+        <Box style={{ minWidth: 0 }}>
+          <Heading level={2} style={{ margin: 0, color: "#ecfdf5", fontSize: "1.4rem", fontWeight: 700, letterSpacing: "-0.01em" }}>GPU Compute & Field Lab</Heading>
+          <Text style={{ display: "block", color: "#94a3b8", fontSize: "0.8125rem", marginTop: "0.2rem" }}>
+            WGSL compute kernels + live particle simulation — seamlessly falls back to CPU execution when WebGPU is unavailable.
+          </Text>
+        </Box>
+        <Stack direction=horizontal gap=xs align=center style={{ flexWrap: "wrap" }}>
+          <Badge variant={backendMode === "webgpu" ? "success" : "warning"} size=sm>{backendLabel}</Badge>
+          <Badge variant="info" size=sm>{simFps + " FPS · " + simParticles.length + " pts"}</Badge>
+        </Stack>
+      </Box>
+
+      // Status Strip
+      <Box className={running ? "gpu-status gpu-running" : "gpu-status"} style={{ marginBottom: "1rem" }}>
+        <Text style={{ fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: "0.75rem", color: gpuMissing ? "#fcd34d" : "#34d399" }}>{status}</Text>
+      </Box>
+
+      // Top Grid: Interactive Simulation Stage + WGSL Vector Controls
+      <Grid columns={{ sm: 1, lg: 2 }} gap=md style={{ marginBottom: "1rem" }}>
+        // Left: Interactive Particle Field Visualizer
+        <Box className="gpu-card" style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          <Box style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
+            <Text style={{ color: "#a7f3d0", fontWeight: 600, fontSize: "0.85rem", textTransform: "uppercase", letterSpacing: "0.04em" }}>Compute Field Simulation</Text>
+            <Stack direction=horizontal gap=xs>
+              <Button variant=ghost size=xs @click={pulseSimField} style={{ border: "1px solid #1b3d2f", color: "#6ee7b7" }}>Pulse</Button>
+              <Button variant=ghost size=xs @click={toggleSimRunning} style={{ border: "1px solid #1b3d2f", color: "#a7f3d0" }}>
+                {simRunning ? "Pause" : "Resume"}
+              </Button>
+            </Stack>
+          </Box>
+
+          <Box className="gpu-stage" @click={pulseSimField}>
+            #each (p in simParticles)
+              <Box style={{
+                position: "absolute",
+                left: p.x + "%",
+                top: p.y + "%",
+                width: p.size + "px",
+                height: p.size + "px",
+                marginLeft: (-p.size / 2) + "px",
+                marginTop: (-p.size / 2) + "px",
+                borderRadius: "50%",
+                background: p.color,
+                boxShadow: "0 0 8px " + p.color,
+                pointerEvents: "none"
+              }} />
+            #end
+            <Box style={{ position: "absolute", left: "10px", bottom: "8px", padding: "2px 8px", borderRadius: "999px", background: "rgba(5, 13, 10, 0.75)", border: "1px solid rgba(52, 211, 153, 0.25)", pointerEvents: "none" }}>
+              <Text style={{ fontSize: "0.68rem", color: "#a7f3d0", fontFamily: "monospace" }}>{"Preset: " + simPreset + " · tap stage to pulse"}</Text>
+            </Box>
+          </Box>
+
+          <Box style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem", alignItems: "center" }}>
+            <Text style={{ color: "#6ee7b7", fontSize: "0.72rem", marginRight: "0.2rem" }}>Field:</Text>
+            <Button size=xs variant={simPreset === "vortex" ? "primary" : "ghost"} @click={setSimPreset("vortex")} style={{ fontSize: "0.72rem" }}>Vortex</Button>
+            <Button size=xs variant={simPreset === "wave" ? "primary" : "ghost"} @click={setSimPreset("wave")} style={{ fontSize: "0.72rem" }}>Harmonic</Button>
+            <Button size=xs variant={simPreset === "attractor" ? "primary" : "ghost"} @click={setSimPreset("attractor")} style={{ fontSize: "0.72rem" }}>Attractor</Button>
+            <Button size=xs variant={simPreset === "lattice" ? "primary" : "ghost"} @click={setSimPreset("lattice")} style={{ fontSize: "0.72rem" }}>Lattice</Button>
+          </Box>
+
+          <Box style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "0.5rem", alignItems: "center" }}>
+            <Box style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem", alignItems: "center" }}>
+              <Text style={{ color: "#6ee7b7", fontSize: "0.72rem" }}>Particles:</Text>
+              <Button size=xs variant={simTargetCount === 32 ? "primary" : "ghost"} @click={setSimCount(32)} style={{ fontSize: "0.7rem" }}>32</Button>
+              <Button size=xs variant={simTargetCount === 48 ? "primary" : "ghost"} @click={setSimCount(48)} style={{ fontSize: "0.7rem" }}>48</Button>
+              <Button size=xs variant={simTargetCount === 80 ? "primary" : "ghost"} @click={setSimCount(80)} style={{ fontSize: "0.7rem" }}>80</Button>
+            </Box>
+            <Box style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem", alignItems: "center" }}>
+              <Text style={{ color: "#6ee7b7", fontSize: "0.72rem" }}>Speed:</Text>
+              <Button size=xs variant={simSpeed === 0.5 ? "primary" : "ghost"} @click={setSimSpeed(0.5)} style={{ fontSize: "0.7rem" }}>0.5x</Button>
+              <Button size=xs variant={simSpeed === 1.0 ? "primary" : "ghost"} @click={setSimSpeed(1.0)} style={{ fontSize: "0.7rem" }}>1x</Button>
+              <Button size=xs variant={simSpeed === 1.8 ? "primary" : "ghost"} @click={setSimSpeed(1.8)} style={{ fontSize: "0.7rem" }}>1.8x</Button>
+            </Box>
+          </Box>
+        </Box>
+
+        // Right: WGSL Compute Input & Kernel Selector
+        <Box className="gpu-card" style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          <Text style={{ color: "#a7f3d0", fontWeight: 600, fontSize: "0.85rem", textTransform: "uppercase", letterSpacing: "0.04em" }}>WGSL Compute Vectors</Text>
+
+          <Box style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+            <Text style={{ color: "#6ee7b7", fontSize: "0.75rem" }}>Vector A</Text>
+            <Input
+              value={inputA}
+              @change={updateInputA}
+              placeholder="1, 2, 3, 4"
+              style={{ width: "100%", boxSizing: "border-box", background: "#07120e", color: "#e2e8f0", border: "1px solid #1b3d2f", borderRadius: "6px", padding: "0.45rem 0.65rem", fontFamily: "monospace", fontSize: "0.8rem" }}
+            />
+          </Box>
+
+          <Box style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+            <Text style={{ color: "#6ee7b7", fontSize: "0.75rem" }}>Vector B</Text>
+            <Input
+              value={inputB}
+              @change={updateInputB}
+              placeholder="10, 20, 30, 40"
+              style={{ width: "100%", boxSizing: "border-box", background: "#07120e", color: "#e2e8f0", border: "1px solid #1b3d2f", borderRadius: "6px", padding: "0.45rem 0.65rem", fontFamily: "monospace", fontSize: "0.8rem" }}
+            />
+          </Box>
+
+          <Box style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem", alignItems: "center" }}>
+            <Text style={{ color: "#6ee7b7", fontSize: "0.72rem", marginRight: "0.2rem" }}>Size:</Text>
+            <Button size=xs variant=ghost @click={loadBenchPreset(8)} style={{ border: "1px solid #1b3d2f", color: "#a7f3d0", fontSize: "0.72rem" }}>8 floats</Button>
+            <Button size=xs variant=ghost @click={loadBenchPreset(1024)} style={{ border: "1px solid #1b3d2f", color: "#a7f3d0", fontSize: "0.72rem" }}>1K bench</Button>
+            <Button size=xs variant=ghost @click={loadBenchPreset(4096)} style={{ border: "1px solid #1b3d2f", color: "#a7f3d0", fontSize: "0.72rem" }}>4K bench</Button>
+          </Box>
+
+          <Box style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem", alignItems: "center" }}>
+            <Text style={{ color: "#6ee7b7", fontSize: "0.72rem", marginRight: "0.2rem" }}>Kernel:</Text>
+            <Button size=xs variant={kernelOp === "add" ? "primary" : "ghost"} @click={setKernelOp("add")} style={{ fontSize: "0.72rem" }}>A + B</Button>
+            <Button size=xs variant={kernelOp === "mul" ? "primary" : "ghost"} @click={setKernelOp("mul")} style={{ fontSize: "0.72rem" }}>A * B</Button>
+            <Button size=xs variant={kernelOp === "saxpy" ? "primary" : "ghost"} @click={setKernelOp("saxpy")} style={{ fontSize: "0.72rem" }}>SAXPY</Button>
+            <Button size=xs variant={kernelOp === "relu" ? "primary" : "ghost"} @click={setKernelOp("relu")} style={{ fontSize: "0.72rem" }}>ReLU</Button>
+            <Button size=xs variant={kernelOp === "harmonic" ? "primary" : "ghost"} @click={setKernelOp("harmonic")} style={{ fontSize: "0.72rem" }}>SinCos</Button>
+          </Box>
+
+          <Box style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "auto", paddingTop: "0.25rem" }}>
+            <Button variant=primary size=sm @click={runAddition} style={{ background: "#10b981", color: "#052e16", fontWeight: 700 }}>
+              Run WGSL Kernel
+            </Button>
+            <Button variant=ghost size=sm @click={runInlineShader} style={{ border: "1px solid #1b3d2f", color: "#6ee7b7", fontWeight: 600 }}>
+              Double A
+            </Button>
+            <Button variant=ghost size=sm @click={cleanup} style={{ border: "1px solid #1b3d2f", color: "#94a3b8" }}>
+              Release GPU
+            </Button>
+          </Box>
+        </Box>
+      </Grid>
+
+      // Bottom Grid: Output Vector + Spectrum & Active WGSL Shader Source
+      <Grid columns={{ sm: 1, lg: 2 }} gap=md>
+        <Box className="gpu-card" style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+          <Box style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: "0.5rem" }}>
+            <Text style={{ color: "#a7f3d0", fontWeight: 600, fontSize: "0.85rem", textTransform: "uppercase", letterSpacing: "0.04em" }}>Compute Output</Text>
+            <Text if={gpuElapsedMs > 0} style={{ color: "#6ee7b7", fontFamily: "monospace", fontSize: "0.75rem" }}>{gpuElapsedMs + " ms · " + backendLabel}</Text>
+          </Box>
+
+          <Text if={vectorSummary !== ""} style={{ color: "#94a3b8", fontSize: "0.75rem", fontFamily: "monospace" }}>{vectorSummary}</Text>
+
+          // Spectrum Bars for first 16 elements
+          <Box if={spectrumBars.length > 0} style={{
+            display: "flex",
+            alignItems: "flex-end",
+            gap: "4px",
+            height: "58px",
+            padding: "8px",
+            background: "#07120e",
+            borderRadius: "8px",
+            border: "1px solid #173629"
+          }}>
+            #each (bar in spectrumBars)
+              <Box
+                title={bar.label}
+                style={{
+                  flex: 1,
+                  height: bar.heightPct + "%",
+                  background: "linear-gradient(180deg, #34d399, #059669)",
+                  borderRadius: "3px 3px 0 0",
+                  minWidth: "4px"
+                }}
+              />
+            #end
+          </Box>
+
+          <Box className="gpu-result">
+            <Text style={{ color: "#ecfdf5", fontFamily: "monospace", fontSize: "0.8rem" }}>{result || "Press 'Run WGSL Kernel' to compute output vector."}</Text>
+          </Box>
+        </Box>
+
+        <Box className="gpu-card" style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+          <Text style={{ color: "#a7f3d0", fontWeight: 600, fontSize: "0.85rem", textTransform: "uppercase", letterSpacing: "0.04em" }}>Active WGSL Shader</Text>
+          <Box className="gpu-result" style={{ maxHeight: "13.5rem", flex: 1 }}>
+            <Text style={{ color: "#93c5fd", fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: "0.75rem", lineHeight: 1.5 }}>{currentWgsl}</Text>
+          </Box>
+        </Box>
+      </Grid>
+    </Box>
   </Box>
-
-  // Status
-  <Box className={running ? "gpu-status gpu-running" : "gpu-status"} padding="0.625rem 0.875rem" style={{ marginBottom: "1rem" }}>
-    <Text variant="caption">{status}</Text>
-  </Box>
-
-  // Input card
-  <Box className="gpu-card" direction="column" gap="0.75rem">
-    <Text variant="subtitle2" style={{ color: "#a7f3d0" }}>Input Data</Text>
-    <Box direction="column" gap="0.5rem">
-      <Text variant="caption" style={{ color: "#6ee7b7" }}>Vector A:</Text>
-      <Input value={inputA || ""} onInput="inputA = $value" placeholder="1, 2, 3, 4" style={{ background: "#0a1510", color: "#e2e8f0", border: "1px solid #1a3a2a", borderRadius: "6px", padding: "0.5rem", fontFamily: "monospace", fontSize: "0.8125rem" }} />
-    </Box>
-    <Box direction="column" gap="0.5rem">
-      <Text variant="caption" style={{ color: "#6ee7b7" }}>Vector B:</Text>
-      <Input value={inputB || ""} onInput="inputB = $value" placeholder="10, 20, 30, 40" style={{ background: "#0a1510", color: "#e2e8f0", border: "1px solid #1a3a2a", borderRadius: "6px", padding: "0.5rem", fontFamily: "monospace", fontSize: "0.8125rem" }} />
-    </Box>
-    <Box direction="row" gap="0.4rem" style={{ flexWrap: "wrap", alignItems: "center" }}>
-      <Text variant="caption" style={{ color: "#6ee7b7", marginRight: "0.25rem" }}>Preset:</Text>
-      <Button @click={loadBenchPreset(8)} style={{ padding: "0.25rem 0.6rem", fontSize: "12px", background: "rgba(16,185,129,0.12)", color: "#a7f3d0", border: "1px solid #1a3a2a", borderRadius: "6px", cursor: "pointer" }}>8 floats</Button>
-      <Button @click={loadBenchPreset(1024)} style={{ padding: "0.25rem 0.6rem", fontSize: "12px", background: "rgba(16,185,129,0.12)", color: "#a7f3d0", border: "1px solid #1a3a2a", borderRadius: "6px", cursor: "pointer" }}>1K benchmark</Button>
-      <Button @click={loadBenchPreset(4096)} style={{ padding: "0.25rem 0.6rem", fontSize: "12px", background: "rgba(16,185,129,0.12)", color: "#a7f3d0", border: "1px solid #1a3a2a", borderRadius: "6px", cursor: "pointer" }}>4K benchmark</Button>
-    </Box>
-    <Box direction="row" gap="0.4rem" style={{ flexWrap: "wrap", alignItems: "center" }}>
-      <Text variant="caption" style={{ color: "#6ee7b7", marginRight: "0.25rem" }}>Kernel:</Text>
-      <Button @click={setKernelOp("add")} style={{ padding: "0.25rem 0.6rem", fontSize: "12px", background: kernelOp === "add" ? "#10b981" : "transparent", color: kernelOp === "add" ? "#fff" : "#6ee7b7", border: "1px solid #1a3a2a", borderRadius: "6px", cursor: "pointer" }}>A + B</Button>
-      <Button @click={setKernelOp("mul")} style={{ padding: "0.25rem 0.6rem", fontSize: "12px", background: kernelOp === "mul" ? "#10b981" : "transparent", color: kernelOp === "mul" ? "#fff" : "#6ee7b7", border: "1px solid #1a3a2a", borderRadius: "6px", cursor: "pointer" }}>A * B</Button>
-      <Button @click={setKernelOp("saxpy")} style={{ padding: "0.25rem 0.6rem", fontSize: "12px", background: kernelOp === "saxpy" ? "#10b981" : "transparent", color: kernelOp === "saxpy" ? "#fff" : "#6ee7b7", border: "1px solid #1a3a2a", borderRadius: "6px", cursor: "pointer" }}>2.5*A + B</Button>
-      <Button @click={setKernelOp("relu")} style={{ padding: "0.25rem 0.6rem", fontSize: "12px", background: kernelOp === "relu" ? "#10b981" : "transparent", color: kernelOp === "relu" ? "#fff" : "#6ee7b7", border: "1px solid #1a3a2a", borderRadius: "6px", cursor: "pointer" }}>ReLU(A*B-0.5)</Button>
-    </Box>
-  </Box>
-
-  // Actions
-  <Box direction="row" gap="0.5rem" style={{ flexWrap: "wrap", marginBottom: "1rem" }}>
-    <Button @click={runAddition} style={{ padding: "0.5rem 1.2rem", fontSize: "14px", background: "#10b981", color: "#fff", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: "600" }}>
-      Run WGSL Kernel
-    </Button>
-    <Button @click={runInlineShader} style={{ padding: "0.5rem 1.2rem", fontSize: "14px", background: "transparent", color: "#6ee7b7", border: "1px solid #1a3a2a", borderRadius: "8px", cursor: "pointer", fontWeight: "600" }}>
-      Double A
-    </Button>
-    <Button @click={cleanup} style={{ padding: "0.5rem 1rem", fontSize: "13px", background: "transparent", color: "#94a3b8", border: "1px solid #1a3a2a", borderRadius: "8px", cursor: "pointer" }}>
-      Release GPU
-    </Button>
-  </Box>
-
-  // Result
-  <Box className="gpu-card" direction="column" gap="0.5rem">
-    <Box direction="row" gap="0.75rem" style={{ display: "flex", width: "100%", justifyContent: "space-between", alignItems: "center" }}>
-      <Text variant="subtitle2" style={{ color: "#a7f3d0" }}>Result</Text>
-      <Text if={gpuElapsedMs > 0} variant="caption" style={{ color: "#6ee7b7", fontFamily: "monospace" }}>{gpuElapsedMs + " ms"}</Text>
-    </Box>
-    <Box className="gpu-result">
-      <Text style={{ color: gpuMissing ? "#fca5a5" : "#ffffff" }}>{result || "Press a button: the answer comes back from the GPU."}</Text>
-    </Box>
-  </Box>
-
-  // Active WGSL source preview
-  <Box className="gpu-card" direction="column" gap="0.5rem">
-    <Text variant="subtitle2" style={{ color: "#a7f3d0" }}>Active WGSL Kernel</Text>
-    <Box className="gpu-result" style={{ maxHeight: "12rem", color: "#93c5fd", fontSize: "0.78rem" }}>
-      <Text>{currentWgsl}</Text>
-    </Box>
-  </Box>
-
-</Box>
 </App>

@@ -1,0 +1,94 @@
+// Deterministic simulation helpers. Visual randomness uses a separate stream.
+function uwClamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
+function uwRound(n) { return Math.round(n); }
+function uwMoney(n) { return (n < 0 ? "-$" : "$") + uwComma(Math.round(Math.abs(n))); }
+function uwComma(n) {
+    let s = String(Math.round(n)), out = "", count = 0;
+    for (let i = s.length - 1; i >= 0; i = i - 1) {
+        out = s[i] + out;
+        count = count + 1;
+        if (count % 3 === 0 && i > 0 && s[i - 1] !== "-")
+            out = "," + out;
+    }
+    return out;
+}
+function uwDate(month) { return UW_MONTHS[month % 12] + " " + (1980 + Math.floor(month / 12)); }
+function uwRandom() { uwRng = (uwRng * 48271) % 2147483647; return uwRng / 2147483647; }
+function uwVRandom() { uwVisualRng = (uwVisualRng * 16807) % 2147483647; return uwVisualRng / 2147483647; }
+function uwHash(x, z, seed) { let k = (x * 374761 + z * 668265 + seed * 127) % 2147483647; k = (k * 48271) % 2147483647; return k / 2147483647; }
+function uwSeed(text) { let n = 7; let s = String(text); for (let i = 0; i < s.length; i = i + 1)
+    n = (n * 31 + s.charCodeAt(i)) % 2147483647; return Math.max(1, n); }
+function uwZero(n, val) { let a = []; for (let i = 0; i < n; i = i + 1)
+    a.push(val); return a; }
+function uwIndex(x, z) { if (!uwWorld || x < 0 || z < 0 || x >= uwWorld.n || z >= uwWorld.n)
+    return -1; return z * uwWorld.n + x; }
+function uwXZ(i) { return { x: i % uwWorld.n, z: Math.floor(i / uwWorld.n) }; }
+function uwNeighbours(i) {
+    let n = uwWorld.n, x = i % n, out = [];
+    if (x > 0)
+        out.push(i - 1);
+    if (x < n - 1)
+        out.push(i + 1);
+    if (i >= n)
+        out.push(i - n);
+    if (i < n * (n - 1))
+        out.push(i + n);
+    return out;
+}
+function uwWorldPosition(i) { let p = uwXZ(i); return { x: (p.x - uwWorld.n / 2 + 0.5) * UW_TILE, z: (p.z - uwWorld.n / 2 + 0.5) * UW_TILE }; }
+function uwGround(i) { let t = uwWorld.tiles[i]; return t.wet ? -0.12 : 0.12 + (t.h - 1) * 0.38; }
+function uwRoadHeight(i) { return uwWorld.tiles[i].wet ? 0.5 : uwGround(i) + 0.065; }
+function uwDeepCopy(v) { return JSON.parse(JSON.stringify(v)); }
+function uwFinite(v) { return typeof v === "number" && Number.isFinite(v); }
+function uwInt(v, a, b) { return uwFinite(v) && Math.floor(v) === v && v >= a && v <= b; }
+function uwPercent(n) { return Math.round(uwClamp(n, 0, 100)) + "%"; }
+// Binary min-heap for bounded road-distance catchments and commute forests.
+function uwHeapPush(heap, id, d) {
+    let node = { id: id, d: d };
+    heap.push(node);
+    let j = heap.length - 1;
+    while (j > 0) {
+        let p = Math.floor((j - 1) / 2);
+        if (heap[p].d <= d)
+            break;
+        heap[j] = heap[p];
+        j = p;
+    }
+    heap[j] = node;
+}
+function uwHeapPop(heap) {
+    let first = heap[0], tail = heap.pop();
+    if (heap.length === 0)
+        return first;
+    let j = 0;
+    while (true) {
+        let l = j * 2 + 1, r = l + 1;
+        if (l >= heap.length)
+            break;
+        let c = r < heap.length && heap[r].d < heap[l].d ? r : l;
+        if (heap[c].d >= tail.d)
+            break;
+        heap[j] = heap[c];
+        j = c;
+    }
+    heap[j] = tail;
+    return first;
+}
+function uwTileTuple(t) { return [t.h, t.wet ? 1 : 0, t.tree, t.road, t.zone, t.density, t.level, t.stage, t.build, t.pop, t.age, t.variant, t.wire, t.pipe, t.fire, t.neglect, t.flood]; }
+function uwTileFromTuple(a) { return { h: a[0], wet: a[1] === 1, tree: a[2], road: a[3], zone: a[4], density: a[5], level: a[6], stage: a[7], build: a[8], pop: a[9], age: a[10], variant: a[11], wire: a[12], pipe: a[13], fire: a[14], neglect: a[15], flood: a[16] }; }
+function uwBuildingCapacity(t) { if (t.zone === 1)
+    return UW_LEVEL_POP[t.level]; if (t.zone === 4)
+    return Math.round(UW_LEVEL_POP[t.level] * 0.72); return 0; }
+function uwJobCapacity(t) {
+    if (t.stage > 0 || t.fire > 0 || t.flood > 0)
+        return 0;
+    if (t.zone === 2)
+        return UW_LEVEL_JOBS[t.level];
+    if (t.zone === 3)
+        return Math.round(UW_LEVEL_JOBS[t.level] * 1.3);
+    if (t.zone === 4)
+        return Math.round(UW_LEVEL_JOBS[t.level] * 0.45);
+    if (t.build && UW_FACILITIES[t.build])
+        return t.build === "university" ? 35 : 6;
+    return 0;
+}

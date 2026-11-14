@@ -10,7 +10,7 @@
     <div className="os-resource" title="Generation / requested electrical load"><div className="os-resource-top" style={{ fontSize: "12px" }}><span className="os-resource-icon">ϟ</span>{hud.power}</div><div className="os-resource-label">Generation / load</div></div>
   </div>
   <div className="os-time-controls">
-    <div className="os-clock">Sol {hud.sol} · {hud.time} · {hud.temperature}°C</div>
+    <div className="os-clock">{"Sol " + hud.sol + " · " + hud.time + " · " + hud.temperature + "°C"}</div>
     <div className="os-row" style={{ gap: "4px" }}><button className="os-btn os-time-button" oson={String(paused)} @click={togglePause}>{paused ? "▶" : "Ⅱ"}</button><button className="os-btn os-time-button" oson={String(!paused && gameSpeed === 1)} @click={() => setSpeed(1)}>1×</button><button className="os-btn os-time-button" oson={String(!paused && gameSpeed === 2)} @click={() => setSpeed(2)}>2×</button><button className="os-btn os-time-button" oson={String(!paused && gameSpeed === 4)} @click={() => setSpeed(4)}>4×</button><button className="os-btn os-time-button" @click={openMenu}>☰</button></div>
   </div>
 </div>

@@ -1,7 +1,7 @@
 {
-  "app": { "id": "com.softn.softdos", "name": "SoftDOS", "version": "0.1.0" },
+  "app": { "id": "com.softn.softdos", "name": "SoftDOS", "version": "0.4.0" },
   "permissions": {
-    "files": { "enabled": true },
+    "files": { "enabled": true, "scopes": ["user_selected"] },
     "accel": { "enabled": true }
   }
 }

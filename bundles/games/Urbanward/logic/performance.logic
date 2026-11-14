@@ -1,0 +1,43 @@
+// Opt-in wall-clock measurements around actual .logic work in either host.
+// These are CPU/VM call durations, not GPU frame times or native profiler data.
+let performanceEnabled = false;
+let performanceRows = [];
+let performanceSummary = "Enable sampling, play the city, then return here.";
+let uwPerfSamples = {};
+let uwPerfClockAvailable = true;
+function uwPerfStart() {
+    if (!performanceEnabled) return -1;
+    try { return Date.now(); }
+    catch (e) { uwPerfClockAvailable = false; return -1; }
+}
+function uwPerfEnd(name, start) {
+    if (start < 0) return;
+    let end = uwPerfStart();
+    if (end < start) return;
+    let samples = uwPerfSamples[name];
+    if (!samples) { samples = []; uwPerfSamples[name] = samples; }
+    samples.push(end - start);
+    if (samples.length > 120) samples.shift();
+}
+function uwResetPerformance() {
+    uwPerfSamples = {}; performanceRows = []; uwPerfClockAvailable = true;
+    if (uwWorld) uwPerformanceSnapshot();
+}
+function uwTogglePerformance() {
+    performanceEnabled = !performanceEnabled; uwPerformanceSnapshot();
+}
+function uwPerformanceSnapshot() {
+    let keys = Object.keys(uwPerfSamples), rows = [];
+    for (let k = 0; k < keys.length; k++) {
+        let a = uwPerfSamples[keys[k]], sorted = a.slice(0).sort((a, b) => a - b), total = 0;
+        for (let j = 0; j < a.length; j++) total += a[j];
+        rows.push({ name: keys[k], count: a.length, last: a[a.length - 1] + " ms",
+            mean: Math.round(total / a.length * 10) / 10 + " ms",
+            p95: sorted[Math.max(0, Math.ceil(sorted.length * 0.95) - 1)] + " ms", peak: sorted[sorted.length - 1] + " ms" });
+    }
+    performanceRows = rows;
+    performanceSummary = !uwPerfClockAvailable ? "This host does not expose Date.now; timing samples are unavailable." :
+        uwWorld ? uwWorld.n + " × " + uwWorld.n + " map · " + uwComma(uwWorld.population) + " residents · " +
+        uwRendererStats.instances + " static instances / " + uwRendererStats.batches + " batches · " + objects.length +
+        " moving batches · " + (uwNet ? uwNet.roads.length : 0) + " road nodes · " + quality + " quality" : "No city loaded.";
+}

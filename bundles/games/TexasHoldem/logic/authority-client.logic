@@ -24,6 +24,9 @@
   let authorityError = ""
   let authorityPollTicks = 0
   let authorityActionSeq = 0
+  let authorityTurnDeadlineMs = 0
+  let authorityJoining = false
+  let authorityLastSoundRev = -1
 
   function authorityHeaders() {
     return { "Content-Type": "application/json" }
@@ -237,7 +240,11 @@
     syncRoom = view.code
     syncConnected = true
     syncConnecting = false
+    authorityTurnDeadlineMs = 0
+    authorityLastSoundRev = -1
+    authorityJoining = true
     applyAuthorityView(view)
+    authorityJoining = false
     authorityRemember()
     currentPage = "table"
   }
@@ -263,6 +270,9 @@
     authorityResumeTries = 0
     authorityResumeWait = 0
     authorityResumeError = ""
+    authorityTurnDeadlineMs = 0
+    authorityJoining = false
+    authorityLastSoundRev = -1
     authorityForget()
     showLeaveModal = false
     showResultsModal = false
@@ -306,6 +316,28 @@
     // exists, and must not be painted over the one that does.
     if (typeof view.revision === "number" && view.revision < authorityRevision) return
     let pub = view.public
+    let prevRev = authorityRevision
+    let prevPhase = gamePhase
+    let prevHand = handNumber
+    let prevTurnSeat = currentTurnSeat
+    let prevCurrentBet = currentBet
+    let prevPot = pot
+    let prevBoardCount = communityCards ? communityCards.length : 0
+    let prevSeatStatus = ["", "", "", "", "", ""]
+    let prevSeatActed = [false, false, false, false, false, false]
+    let prevSeatBet = [0, 0, 0, 0, 0, 0]
+    let psi = 0
+    while (psi < players.length) {
+      let pr = players[psi]
+      if (pr && pr.data && typeof pr.data.seat === "number" && pr.data.seat >= 0 && pr.data.seat < 6) {
+        let ps = pr.data.seat
+        prevSeatStatus[ps] = pr.data.status || ""
+        prevSeatActed[ps] = !!pr.data.hasActed
+        prevSeatBet[ps] = pr.data.bet || 0
+      }
+      psi = psi + 1
+    }
+
     authorityRevision = view.revision
     let wasShowdown = gamePhase === TableStateClass.phaseShowdown()
     if (pub.phase !== gamePhase || pub.handNumber !== handNumber) raiseAmount = ""
@@ -319,6 +351,7 @@
     smallBlind = pub.smallBlind
     bigBlind = pub.bigBlind
     lastFullRaise = pub.lastFullRaise
+    authorityTurnDeadlineMs = pub.turnDeadlineMs || 0
     if (pub.result) {
       resultSummary = pub.result.summary || ""
       resultWinnerName = pub.result.winnerNames || ""
@@ -368,6 +401,76 @@
     botSeats = []
     // Anyone seated may deal; the server decides whether a hand can start.
     isHost = mySeat >= 0
+
+    // Pulse pot and per-seat bet badges on online tables too.
+    if (typeof animLastSeenPot !== "undefined") {
+      if (!authorityJoining && pot > animLastSeenPot) {
+        animPotPulseTicksRemaining = 8
+      }
+      animLastSeenPot = pot
+    }
+    if (typeof animSeatBetLast !== "undefined" && typeof animSeatBetPulseTicks !== "undefined") {
+      let as = 0
+      while (as < 6) {
+        let seatNow = pub.seats[as]
+        let bNow = seatNow ? (seatNow.bet || 0) : 0
+        if (!authorityJoining && bNow > (animSeatBetLast[as] || 0)) {
+          animSeatBetPulseTicks[as] = 7
+        }
+        animSeatBetLast[as] = bNow
+        as = as + 1
+      }
+    }
+
+    // Online table audio cues (deal, community streets, and seat actions).
+    if (!authorityJoining && (view.revision !== prevRev || handNumber !== prevHand || communityCards.length !== prevBoardCount || gamePhase !== prevPhase || pot !== prevPot || currentTurnSeat !== prevTurnSeat)) {
+      if (handNumber > prevHand) {
+        if (typeof playDealSound === "function") playDealSound()
+        authorityLastSoundRev = authorityRevision
+      } else if (communityCards.length > prevBoardCount) {
+        if (typeof playStreetSound === "function") playStreetSound(communityCards.length)
+        authorityLastSoundRev = authorityRevision
+      } else if (handNumber === prevHand && handNumber > 0) {
+        let detectedCue = ""
+        let cs = 0
+        while (cs < 6) {
+          let currSeat = pub.seats[cs]
+          if (currSeat) {
+            if (prevSeatStatus[cs] === "active" && currSeat.status === "folded") {
+              detectedCue = "fold"
+            } else if (!detectedCue && prevSeatStatus[cs] !== "" && prevSeatStatus[cs] !== "allin" && currSeat.status === "allin") {
+              detectedCue = "allin"
+            }
+          }
+          cs = cs + 1
+        }
+        if (!detectedCue) {
+          if (pot > prevPot && currentBet > prevCurrentBet && gamePhase === prevPhase) {
+            detectedCue = "raise"
+          } else if (pot > prevPot) {
+            detectedCue = "call"
+          } else if (TableStateClass.isLiveHandPhase(prevPhase)) {
+            let chk = 0
+            while (chk < 6) {
+              let chkSeat = pub.seats[chk]
+              if (chkSeat && prevSeatStatus[chk] === "active" && !prevSeatActed[chk] && chkSeat.hasActed && (chkSeat.bet || 0) === prevSeatBet[chk]) {
+                detectedCue = "check"
+              }
+              chk = chk + 1
+            }
+            if (!detectedCue && gamePhase === TableStateClass.phaseShowdown() && !wasShowdown) {
+              detectedCue = "check"
+            }
+          }
+        }
+        if (detectedCue && typeof playActionSound === "function") {
+          playActionSound(detectedCue)
+          authorityLastSoundRev = authorityRevision
+        }
+      }
+    }
+    if (typeof soundLastHandNumber !== "undefined") soundLastHandNumber = handNumber
+    if (typeof soundLastCommunityCount !== "undefined") soundLastCommunityCount = communityCards.length
 
     let online = 0
     let mi = 0
@@ -474,7 +577,10 @@
       }
       if (action.type === "raise" || action.type === "allin") raiseAmount = ""
       if (action.type === "fold" || action.type === "check" || action.type === "call" || action.type === "raise" || action.type === "allin") {
-        playActionSound(action.type)
+        if (authorityLastSoundRev !== authorityRevision && typeof playActionSound === "function") {
+          playActionSound(action.type)
+          authorityLastSoundRev = authorityRevision
+        }
       }
     })
   }

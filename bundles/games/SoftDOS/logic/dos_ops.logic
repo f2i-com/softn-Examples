@@ -1069,7 +1069,7 @@ function dosOps_init() {
   DOS_OPS[0xA0] = function (is32Op, is32Addr) {
     let off = is32Addr ? dosCpu_fetchU32() : dosCpu_fetchU16();
     let segIdx = (DOS_PREFIX_SEG >= 0) ? DOS_PREFIX_SEG : 3;
-    DOS_REGS8[0] = DOS_RAM[dosMmu_linear(DOS_SEGS[segIdx], off) & 0xFFFFFF];
+    DOS_REGS8[0] = dosMmu_read8(dosMmu_linear(DOS_SEGS[segIdx], off));
     return 2;
   };
   DOS_OPS[0xA1] = function (is32Op, is32Addr) {
@@ -1082,7 +1082,7 @@ function dosOps_init() {
   DOS_OPS[0xA2] = function (is32Op, is32Addr) {
     let off = is32Addr ? dosCpu_fetchU32() : dosCpu_fetchU16();
     let segIdx = (DOS_PREFIX_SEG >= 0) ? DOS_PREFIX_SEG : 3;
-    DOS_RAM[dosMmu_linear(DOS_SEGS[segIdx], off) & 0xFFFFFF] = DOS_REGS8[0];
+    dosMmu_write8(dosMmu_linear(DOS_SEGS[segIdx], off), DOS_REGS8[0]);
     return 2;
   };
   DOS_OPS[0xA3] = function (is32Op, is32Addr) {

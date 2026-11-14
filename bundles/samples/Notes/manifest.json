@@ -1,7 +1,8 @@
 {
   "name": "Notes",
   "version": "1.1.0",
-  "description": "A persistent notes board stored in the site's shared storage, a local server backend, or browser local storage: add, tag, pin, search and delete notes",
+  "description": "A persistent master-detail notes workspace with markdown preview, tag & pin filtering, undo delete, word counts, and multi-tier storage sync",
+  "author": "SoftN",
   "main": "ui/main.ui",
   "icon": "assets/icon.svg",
   "files": {
@@ -28,6 +29,12 @@
         "public": true
       },
       {
+        "method": "POST",
+        "path": "/api/update-note",
+        "handler": "handleUpdateNote",
+        "public": true
+      },
+      {
         "method": "GET",
         "path": "/api/notes",
         "handler": "handleGetNotes",
@@ -44,8 +51,8 @@
   "config": {
     "window": {
       "title": "Notes",
-      "width": 900,
-      "height": 650
+      "width": 980,
+      "height": 680
     },
     "theme": {
       "primary": "#6366f1",

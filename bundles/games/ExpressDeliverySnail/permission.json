@@ -1,0 +1,9 @@
+{
+  "app": {
+    "id": "com.softn.oddjobs.snail",
+    "name": "Express Delivery Snail",
+    "version": "0.2.2"
+  },
+  "permissions": {},
+  "version": 1
+}

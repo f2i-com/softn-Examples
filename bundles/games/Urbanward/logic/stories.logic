@@ -1,0 +1,75 @@
+// Persistent, bounded district reporting. Conditions create petitions; actual
+// improvements close them. No fabricated residents or unmeasured rent figures.
+let petitionRows = [];
+function uwStoryConditions() {
+    let data = [];
+    for (let d = 0; d < 16; d++) data.push({ traffic: 0, roads: 0, neglected: 0, old: 0, lots: 0 });
+    for (let i = 0; i < uwWorld.tiles.length; i++) {
+        let t = uwWorld.tiles[i], d = data[uwDistrictOf(i)];
+        if (t.road) { d.traffic = Math.max(d.traffic, uwNet.traffic[i]); d.roads++; }
+        if (t.level && !t.stage) { d.lots++; if (t.neglect >= 4) d.neglected++; if (t.age >= 120 && t.level <= 2) d.old++; }
+    }
+    return data;
+}
+function uwAdvanceStories() {
+    let conditions = uwStoryConditions(), memory = uwWorld.storyMemory;
+    // Resolve existing petitions before issuing another. Rewards are once-only
+    // and require sustained improvements rather than one-frame road removal.
+    for (let k = 0; k < uwWorld.petitions.length; k++) {
+        let p = uwWorld.petitions[k], c = conditions[p.district], d = uwWorld.districtStats[p.district];
+        if (p.resolved || p.checked >= uwWorld.month) continue;
+        p.checked = uwWorld.month;
+        let good = p.kind === "traffic" ? c.roads >= p.roads && c.traffic < 100 && d.commercial >= p.commercial :
+            p.kind === "renewal" ? c.neglected === 0 && c.lots >= p.lots : uwWorld.districtFocus[p.district] === "heritage" && c.old > 0;
+        p.progress = good ? p.progress + 1 : 0;
+        if (p.progress >= 3) {
+            p.resolved = true;
+            uwWorld.funds += 600;
+            uwNews(uwWorld.districtNames[p.district] + " celebrates a council promise kept", "Three months of sustained " +
+                (p.kind === "traffic" ? "traffic relief" : p.kind === "renewal" ? "building recovery" : "heritage protection") +
+                " closes the petition. A one-time $600 regional civic grant has arrived.", "follow-up");
+        }
+    }
+    for (let d = 0; d < 16; d++) {
+        let stats = uwWorld.districtStats[d], c = conditions[d], previous = memory[d];
+        if (!previous) { memory[d] = { value: stats.value, university: stats.university, last: -24 }; continue; }
+        if (uwWorld.month - previous.last >= 24 && stats.lots >= 3) {
+            let kind = "";
+            if (c.traffic > 150 && stats.commercial >= 2) kind = "traffic";
+            else if (c.neglected >= 3) kind = "renewal";
+            else if (c.old >= 3 && uwWorld.districtFocus[d] !== "heritage") kind = "heritage";
+            let active = false;
+            for (let k = 0; k < uwWorld.petitions.length; k++) if (!uwWorld.petitions[k].resolved && uwWorld.petitions[k].district === d) active = true;
+            if (kind && !active && uwWorld.petitions.filter(p => !p.resolved).length < 4) {
+                let title = kind === "traffic" ? stats.name + " merchants petition for better streets" :
+                    kind === "renewal" ? stats.name + " residents ask council to bring the lights back" : stats.name + " buildings nominated for heritage protection";
+                let body = kind === "traffic" ? "The busiest road carries " + Math.round(c.traffic) + "% of capacity. Improve avenues or bus service: keep all roads and commercial lots, and bring every road below 100% for three months." :
+                    kind === "renewal" ? c.neglected + " buildings show prolonged neglect. Restore demand and connections without reducing the number of developed lots; keep neglect below four months for three months." :
+                    c.old + " low-rise buildings are at least ten years old. Choose Heritage focus and retain old buildings for three months. The focus limits future upgrades to level 2.";
+                uwWorld.petitions.unshift({ district: d, kind: kind, month: uwWorld.month, checked: uwWorld.month, resolved: false, progress: 0, roads: c.roads, lots: c.lots, commercial: stats.commercial });
+                if (uwWorld.petitions.length > 16) {
+                    for (let k = uwWorld.petitions.length - 1; k >= 0; k--) if (uwWorld.petitions[k].resolved) { uwWorld.petitions.splice(k, 1); break; }
+                }
+                uwNews(title, body + " Completion earns a one-time $600 civic grant. Track it in the Gazette.", "petition");
+                previous.last = uwWorld.month;
+            }
+            else if (stats.university > previous.university + 15 && stats.value >= previous.value + 3) {
+                uwNews(stats.name + " property values rise as campus access improves", "University coverage increased from " + Math.round(previous.university) + "% to " + Math.round(stats.university) +
+                    "%; average land value rose from " + previous.value + " to " + stats.value + ". Better services are changing development prospects; rents are not separately simulated.", "neighbourhood");
+                previous.last = uwWorld.month;
+            }
+        }
+        previous.value = stats.value; previous.university = stats.university;
+    }
+}
+function uwStorySnapshot() {
+    let rows = [];
+    for (let k = 0; k < uwWorld.petitions.length; k++) {
+        let p = uwWorld.petitions[k];
+        rows.push({ district: p.district, title: uwWorld.districtNames[p.district] + " · " +
+            (p.kind === "traffic" ? "Better streets" : p.kind === "renewal" ? "Restore the neighbourhood" : "Preserve local heritage"),
+            status: p.resolved ? "Promise kept · $600 grant paid" : "Open since " + uwDate(p.month) + " · " + p.progress + "/3 months sustained improvement",
+            action: p.kind === "traffic" ? "Keep roads and shops; reduce all road loads below 100%." : p.kind === "renewal" ? "Retain developed lots and restore neglected buildings." : "Set Heritage focus and retain buildings aged ten years or more." });
+    }
+    petitionRows = rows;
+}

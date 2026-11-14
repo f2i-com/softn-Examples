@@ -59,11 +59,9 @@
       "logic/main.logic"
     ],
     "assets": [
-      "assets/art/key-art.webp",
       "assets/art/logo-hud.svg",
       "assets/art/logo-mark.svg",
       "assets/art/logo-vector.svg",
-      "assets/art/prison-map.svg",
       "assets/audio/alarm.mp3",
       "assets/audio/boots.mp3",
       "assets/audio/bounce.mp3",
@@ -207,7 +205,6 @@
       "assets/audio/warning.mp3",
       "assets/audio/whistle.mp3",
       "assets/icon.svg",
-      "assets/icon-512.png",
       "assets/sprites/anchor.svg",
       "assets/sprites/battery.svg",
       "assets/sprites/bench.svg",
@@ -441,8 +438,7 @@
       "assets/sprites/tower.svg",
       "assets/sprites/truck.svg",
       "assets/sprites/washer.svg",
-      "assets/sprites/workbench.svg",
-      "assets/share.png"
+      "assets/sprites/workbench.svg"
     ]
   },
   "config": {

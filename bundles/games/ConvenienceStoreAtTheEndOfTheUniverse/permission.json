@@ -1,0 +1,13 @@
+{
+  "app": {
+    "id": "com.softn.oddjobs.cosmic",
+    "name": "Convenience Store at the End of the Universe",
+    "version": "0.2.3"
+  },
+  "permissions": {
+    "files": {
+      "enabled": true
+    }
+  },
+  "version": 1
+}

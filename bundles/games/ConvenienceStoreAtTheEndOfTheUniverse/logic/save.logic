@@ -1,0 +1,176 @@
+// Local v2 saves: validated snapshots, previous-good backup, deliberate legacy migration.
+// v1 is NEVER rewritten or removed. A host may isolate storage by bundle digest;
+// import/export is therefore provided rather than promising cross-bundle access.
+function safeTree(v,depth,budget){
+ budget.n++;if(depth>16 || budget.n>22000)return false;
+ if(v===null || typeof v==="boolean")return true;
+ if(typeof v==="number")return finite(v) && Math.abs(v)<9007199254740991;
+ if(typeof v==="string")return v.length<=6000;
+ if(!v || typeof v!=="object")return false;
+ let keys=Object.keys(v);if(keys.length>600)return false;
+ for(let i=0;i<keys.length;i++){
+  if(keys[i]==="__proto__" || keys[i]==="constructor" || keys[i]==="prototype" || !safeTree(v[keys[i]],depth+1,budget))return false;
+ }
+ return true;
+}
+function arrayOf(v,len,check){return Array.isArray(v) && (len<0 || v.length===len) && v.every(check);}
+function bool(v){return typeof v==="boolean";}
+function text(v){return typeof v==="string";}
+function count(v){return whole(v,0,1000000);}
+function smallTime(v){return finite(v) && v>=0 && v<1000000000;}
+function validState(g){
+ if(!g || g.id!==GAME_ID || g.version!==2 || !safeTree(g,0,{n:0}) || !whole(g.stage,0,6) || !has(["shift","interlude","finale","ended"],g.phase) || !smallTime(g.time) || !count(g.revision) || !whole(g.nextCustomerId,1,1000000))return false;
+ if(!arrayOf(g.characters,6,function(r){return r && count(r.bond) && count(r.visits) && count(r.treated) && bool(r.gift) && bool(r.invited) && text(r.lastChoice) && text(r.lastLine) && arrayOf(r.conversations,-1,function(n){return whole(n,0,6);}) && r.conversations.length<=7 && r.conversations.every(function(n,i,a){return a.indexOf(n)===i;});}))return false;
+ let sh=g.shift,st=g.store,co=g.cosmic;
+ if(!sh || !arrayOf(sh.roster,-1,function(w){return whole(w,0,5);}) || sh.roster.length<1 || sh.roster.length>50 || !whole(sh.served,0,sh.roster.length) || !whole(sh.spawned,sh.served,sh.roster.length) || !smallTime(sh.clock) || !finite(sh.spawnIn) || !bool(sh.routine) || !bool(sh.eventReady) || !bool(sh.eventDone) || !text(sh.eventChoice) || !arrayOf(sh.settledIds,sh.served,function(n){return whole(n,1,999999);}))return false;
+ if(!sh.settledIds.every(function(n,i,a){return a.indexOf(n)===i;}))return false;
+ if(!st || !arrayOf(st.stock,6,count) || !arrayOf(st.reserve,6,count) || !smallTime(st.coins) || !count(st.coffee) || !count(st.noodles) || !has(["","coffee","noodles"],st.job) || !smallTime(st.jobTime) || !smallTime(st.jobTotal) || !bool(st.carryingCrate) || !bool(st.mop) || !whole(st.spill,0,3) || !count(st.cleaned) || !bool(st.radio) || !bool(st.table) || !text(st.sign) || !whole(st.hand,-1,5) || !bool(st.turned) || !bool(st.scanned) || !bool(st.bagged))return false;
+ if(st.bagged && !st.scanned || st.scanned && st.hand<0 || st.hand<0 && (st.turned || st.bagged))return false;
+ if(st.job==="" && st.jobTime!==0 || st.jobTime>st.jobTotal)return false;
+ if(!Array.isArray(g.customers) || g.customers.length>10)return false;
+ let seen=[],active=0,unpaid=0;
+ for(let i=0;i<g.customers.length;i++){
+  let c=g.customers[i];
+  if(!c || !whole(c.id,1,g.nextCustomerId-1) || has(seen,c.id) || !whole(c.who,0,5) || !whole(c.item,0,5) || !has(Object.keys(CURRENCIES),c.currency) || !has(["enter","browse","queue","counter","leaving","settling","sit"],c.state) || !finite(c.x) || c.x<0 || c.x>100 || !finite(c.y) || c.y<0 || c.y>100 || !smallTime(c.age) || !smallTime(c.wait) || !bool(c.paid) || !bool(c.talked) || !bool(c.inspected) || !bool(c.rained) || !has(["","accept","gift"],c.payment))return false;
+  if(c.paid!==has(sh.settledIds,c.id))return false;
+  if(c.paid && !has(["leaving","settling","sit"],c.state))return false;
+  if(!c.paid && has(["leaving","settling","sit"],c.state))return false;
+  if(c.payment==="accept" && !c.inspected)return false;
+  if(c.state==="counter")active++;
+  if(!c.paid)unpaid++;
+  seen.push(c.id);
+ }
+ if(active>1 || sh.spawned!==sh.served+unpaid || st.hand>=0 && active!==1 || g.inspection && active!==1)return false;
+ if(!bool(g.inspection) || !text(g.paymentChoice) || !g.payments || !Object.keys(CURRENCIES).every(function(k){return count(g.payments[k]);}))return false;
+ if(!co || !finite(co.level) || co.level<0 || co.level>7 || !smallTime(co.echo) || !smallTime(co.stasis) || !smallTime(co.pulse))return false;
+ if(!g.flags || Array.isArray(g.flags) || typeof g.flags!=="object" || !Object.keys(g.flags).every(function(k){return bool(g.flags[k]);}))return false;
+ if(!arrayOf(g.gifts,-1,text) || g.gifts.length>40 || !arrayOf(g.journal,-1,function(r){return r && whole(r.night,0,6) && text(r.text) && whole(r.who,-1,5);}) || g.journal.length>70)return false;
+ if(g.dialog!==null){let d=g.dialog;if(!d || !has(["event","customer"],d.type) || !whole(d.node,0,6) || d.node!==g.stage || !whole(d.who,-1,5) || !whole(d.customerId,0,999999) || !bool(d.resolved) || !text(d.reply))return false;if(d.type==="event" && d.who!==-1 || d.type==="customer" && (d.who<0 || !g.customers.some(function(c){return c.id===d.customerId && c.who===d.who;})))return false;}
+ if(g.phase==="ended"){let e=g.ending;if(!e || !text(e.id) || !text(e.title) || !text(e.body) || !arrayOf(e.epilogues,-1,function(r){return r && whole(r.who,0,5) && text(r.text);}))return false;}else if(g.ending!==null)return false;
+ if(g.phase!=="shift" && (g.dialog!==null || g.inspection || st.hand>=0))return false;
+ if(g.legacy!==null && !validLegacy(g.legacy))return false;
+ return true;
+}
+function validLegacy(d){
+ if(!d || d.schema!==1 || d.game!==GAME_ID || !safeTree(d,0,{n:0}))return false;
+ let g=d.state;if(!g || g.id!==GAME_ID || g.version!==1 || !whole(g.stage,0,6) || !has(["play","report","failed","ending"],g.phase))return false;
+ if(!arrayOf(g.stock,6,function(n){return whole(n,0,40);}) || !arrayOf(g.friendship,6,count) || !arrayOf(g.visits,6,count) || !Array.isArray(g.customers) || g.customers.length>4)return false;
+ if(!smallTime(g.coins) || !smallTime(g.time) || !smallTime(g.night) || !count(g.favours) || !count(g.memories) || !count(g.hotCoffee) || !count(g.hotNoodles))return false;
+ return g.customers.every(function(c){return c && whole(c.who,0,5) && whole(c.item,0,5) && has(["memory","favour","credits"],c.currency) && bool(c.approved) && bool(c.talked) && bool(c.responded) && finite(c.patience);});
+}
+function checksum(textValue){let a=1,b=0;for(let i=0;i<textValue.length;i++){a=(a+textValue.charCodeAt(i))%65521;b=(b+a)%65521;}return String(b*65536+a);}
+function envelope(){let body={schema:2,game:GAME_ID,state:S,profile:profile,settings:settings};return {payload:body,checksum:checksum(JSON.stringify(body))};}
+function decodeSave(raw){
+ if(typeof raw!=="string" || raw.length>500000)throw new Error("Save is missing or too large");
+ let wrapper=JSON.parse(raw);
+ if(wrapper && wrapper.schema===1){if(!validLegacy(wrapper))throw new Error("Invalid original save");return wrapper;}
+ let d=wrapper && wrapper.payload;
+ if(!d || d.schema!==2 || d.game!==GAME_ID)throw new Error("Unrecognised or newer save version");
+ if(!safeTree(wrapper,0,{n:0}) || wrapper.checksum!==checksum(JSON.stringify(d)) || !validState(d.state))throw new Error("Damaged save or inconsistent transaction");
+ if(!d.settings || !bool(d.settings.muted) || !bool(d.settings.music) || !bool(d.settings.reducedMotion) || !bool(d.settings.captions))throw new Error("Invalid settings");
+ if(!d.profile || !count(d.profile.completed) || !arrayOf(d.profile.endings,-1,text) || !smallTime(d.profile.best) || !arrayOf(d.profile.achievements,-1,text))throw new Error("Invalid profile");
+ return d;
+}
+function migrateLegacy(d){
+ let previous=S,g=d.state;S=freshState();setupShift(g.stage);
+ S.legacy=clone(d);S.time=g.time;S.store.coins=g.coins;S.store.stock=clone(g.stock);S.store.coffee=g.hotCoffee;S.store.noodles=g.hotNoodles;
+ for(let i=0;i<6;i++){S.characters[i].visits=g.visits[i];S.characters[i].bond=g.friendship[i];if(g.friendship[i]>=9)S.characters[i].invited=true;}
+ S.payments.favour=g.favours;S.payments.memory=g.memories;
+ if(g.memories>0)addGift("memory",-1);if(g.favours>0)addGift("favour",-1);if(g.favours>=5)remember("legacyMove");
+ if(g.phase==="ending"){
+  S.phase="ended";S.ending={id:"legacy",title:g.reportTitle || "Closed, with love",body:g.report || "Your original ending is safe.",epilogues:[]};
+ }else if(g.finalChoice){S.phase="finale";}
+ else if(g.phase==="report")S.phase="interlude";
+ else{
+  let served=whole(g.served,0,40)?g.served:0;
+  S.shift.roster=[];S.shift.settledIds=[];
+  for(let i=0;i<served;i++){S.shift.roster.push(0);S.shift.settledIds.push(S.nextCustomerId++);}
+  S.shift.served=served;
+  for(let i=0;i<g.customers.length;i++){
+   let q=g.customers[i],id=S.nextCustomerId++;
+   S.shift.roster.push(q.who);
+   S.customers.push({id:id,who:q.who,item:q.item,currency:q.currency,state:i===0?"counter":"queue",x:i===0?54:74+i*5,y:66,age:0,wait:0,paid:false,talked:q.responded,inspected:q.approved,payment:q.approved?"accept":"",rained:false});
+   if(q.responded && !has(S.characters[q.who].conversations,g.stage)){S.characters[q.who].conversations.push(g.stage);S.characters[q.who].lastLine="You have already shared a conversation this shift. They remember.";}
+  }
+  S.shift.spawned=S.shift.roster.length;
+  while(S.shift.roster.length<SHIFTS[g.stage].roster.length)S.shift.roster.push(SHIFTS[g.stage].roster[S.shift.roster.length]);
+  S.shift.eventReady=served>=2;
+ }
+ journal("Your original shift, usuals, visits and relationships carried forward. The old save remains untouched.");
+ updateCosmic();let result=S;S=previous;return result;
+}
+function adoptSave(d){
+ if(d.schema===1){
+  S=migrateLegacy(d);
+  if(d.profile){profile.best=finite(d.profile.best)?Math.max(0,d.profile.best):0;profile.completed=count(d.profile.completed)?d.profile.completed:0;profile.achievements=Array.isArray(d.profile.achievements)?d.profile.achievements.filter(text):[];}
+  if(d.settings){settings.muted=d.settings.muted===true;settings.reducedMotion=d.settings.reducedMotion===true;}
+  saveStatus="Original save carried forward. The v1 copy is untouched.";
+ }else{S=clone(d.state);settings=clone(d.settings);profile=clone(d.profile);saveStatus="Your last little moment is safe.";}
+ running=false;paused=false;overlay="welcome";saveBlocked=false;
+}
+function restore(){
+ try{
+  let raw=localStorage.getItem(SAVE_KEY);
+  if(raw){
+   try{let d=decodeSave(raw);adoptSave(d);return true;}catch(primaryError){
+    // Do not downgrade a future-format save, even if a compatible older backup exists.
+    let p=null;try{p=JSON.parse(raw);}catch(e){}
+    if(p && p.payload && (p.payload.schema>2 || p.payload.state && p.payload.state.version>2)){saveBlocked=true;saveStatus="A newer save is protected. Export it before starting a new game.";return false;}
+    let backup=localStorage.getItem(SAVE_KEY+":backup");
+    if(backup){try{let d=decodeSave(backup);adoptSave(d);saveStatus="Recovered the previous good checkpoint. Export a backup in Settings.";try{localStorage.setItem(SAVE_KEY+":damaged",raw);}catch(e){}return true;}catch(e){}}
+    saveBlocked=true;saveStatus="The stored save is damaged. It has NOT been overwritten. Import a backup or explicitly start anew.";return false;
+   }
+  }
+  let old=localStorage.getItem(OLD_SAVE_KEY);
+  if(old){adoptSave(decodeSave(old));return true;}
+ }catch(e){saveBlocked=true;saveStatus="Local storage or the old save is unavailable. Nothing was overwritten; export this session to keep it.";}
+ return false;
+}
+function persist(){
+ if(!S || saveBlocked)return false;
+ try{
+  if(!validState(S)){saveStatus="Save paused: an inconsistent game state was caught. Export a diagnostic copy before continuing.";return false;}
+  let old=localStorage.getItem(SAVE_KEY),safeOld=false;
+  if(old){try{safeOld=decodeSave(old).schema===2;}catch(e){}}
+  // The backup must land before replacing the primary; a quota exception cannot destroy the previous primary.
+  if(safeOld)localStorage.setItem(SAVE_KEY+":backup",old);
+  S.revision++;let raw=JSON.stringify(envelope());localStorage.setItem(SAVE_KEY,raw);
+  saveStatus="Saved locally · night "+(S.stage+1);return true;
+ }catch(e){saveStatus="Storage could not keep this checkpoint. The prior save is intact. Export this session from Settings.";return false;}
+}
+function exportSave(){
+ let raw=JSON.stringify(envelope(),null,2);saveText=raw;
+ try{softn.files.saveFile("LastLight-night-"+(S.stage+1)+".json",raw,{mime:"application/json"},function(result){saveStatus=result && result.error?"Export refused: "+result.error:"Save file handed to your browser.";publish();});}
+ catch(e){saveStatus="File export is unavailable in this host. The save text is shown below.";}
+ publish();
+}
+function prepareImport(raw){
+ try{pendingImport=decodeSave(raw);saveStatus="Valid "+(pendingImport.schema===1?"original":"v2")+" save. Confirm replacement below. Your current save will be backed up.";}
+ catch(e){pendingImport=null;saveStatus="Import refused. Current game unchanged. "+String(e.message || e);}
+ publish();
+}
+function pickSave(){
+ try{softn.files.pickFile({accept:".json,application/json",multiple:false},function(result){
+  if(result && result.error){saveStatus="Import refused: "+result.error;publish();return;}
+  let list=Array.isArray(result)?result:(result && result.files?result.files:[]);if(!list.length)return;
+  if(list[0].size>500000){saveStatus="That file is too large for a game save.";publish();return;}
+  softn.files.readText(list[0].ref,function(raw){if(typeof raw==="string")prepareImport(raw);else{saveStatus="Could not read this save file.";publish();}});
+ });}catch(e){saveStatus="File import is unavailable in this host.";publish();}
+}
+function confirmImport(){
+ if(!pendingImport)return;
+ let d=pendingImport;pendingImport=null;
+ // Keep the current session separately, even when restoring over a damaged primary.
+ try{localStorage.setItem(SAVE_KEY+":before-import",JSON.stringify(envelope()));}catch(e){saveStatus="Could not back up the current session. Export it before replacing it.";publish();return;}
+ stopAudio();adoptSave(d);persist();publish();
+}
+function cancelImport(){pendingImport=null;publish();}
+
+function exportProtectedSave(){
+ let raw=null;try{raw=localStorage.getItem(SAVE_KEY) || localStorage.getItem(OLD_SAVE_KEY);}catch(e){}
+ if(!raw){saveStatus="No protected stored text could be read. Export this session instead.";publish();return;}
+ saveText=raw;
+ try{softn.files.saveFile("LastLight-protected-original.json",raw,{mime:"application/json"},function(result){saveStatus=result && result.error?"Protected original could not be exported: "+result.error:"Protected original handed to your browser, unchanged.";publish();});}
+ catch(e){saveStatus="File export unavailable. The original stored text is shown below, unchanged.";}
+ publish();
+}

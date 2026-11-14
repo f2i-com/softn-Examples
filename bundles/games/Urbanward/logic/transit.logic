@@ -1,0 +1,175 @@
+// Named, ordered shuttle lines. Paths and catchments are derived, never saved.
+let transitRows = [];
+let transitStops = [];
+let routeDraft = [];
+let routeDraftRows = [];
+let routeName = "Neighbourhood shuttle";
+let routeBuses = "2";
+let routeEditing = -1;
+let routeStatus = "Choose two or more stops in travel order.";
+let transitMode = "local";
+let routeHighlight = -1;
+let uwRoutes = [];
+const UW_ROUTE_COLORS = ["#e0ac68", "#78bac1", "#bd97c5", "#9ac584", "#d88879", "#91a9d7", "#d2c77b", "#bbafa1"];
+function uwRoadPath(a, b) {
+    if (a < 0 || b < 0 || uwNet.roadIds[a] !== uwNet.roadIds[b]) return [];
+    let queue = [a], head = 0, parents = uwZero(uwWorld.tiles.length, -1);
+    parents[a] = a;
+    while (head < queue.length && parents[b] < 0) {
+        let node = queue[head++], nn = uwNeighbours(node);
+        for (let k = 0; k < nn.length; k++) {
+            let next = nn[k];
+            if (parents[next] < 0 && uwRoadPassable(node, next)) {
+                parents[next] = node;
+                queue.push(next);
+            }
+        }
+    }
+    if (parents[b] < 0) return [];
+    let path = [b], next = b;
+    while (next !== a) { next = parents[next]; path.push(next); }
+    return path.reverse();
+}
+function uwComputeRoutes() {
+    uwRoutes = [];
+    for (let r = 0; r < uwWorld.busRoutes.length; r++) {
+        let line = uwWorld.busRoutes[r], path = [], stopRoads = [], reason = "", group = -1;
+        for (let k = 0; k < line.stops.length; k++) {
+            let i = line.stops[k], t = uwWorld.tiles[i], road = uwNet.access[i];
+            if (t.build !== "stop" || t.fire || t.flood || road < 0 || uwNet.power[i] < 0.35) {
+                reason = "Stop missing, disconnected or without power"; break;
+            }
+            if (group < 0) group = uwNet.roadIds[road];
+            if (uwNet.roadIds[road] !== group) { reason = "Road connection broken between stops"; break; }
+            stopRoads.push(road);
+            if (!k) path.push(road);
+            else {
+                let leg = uwRoadPath(stopRoads[k - 1], road);
+                for (let j = 1; j < leg.length; j++) path.push(leg[j]);
+            }
+        }
+        if (!reason && (!uwNet.groups[group] || !uwNet.groups[group].depot)) reason = "Needs a powered depot on this network";
+        if (!reason && path.length > 1024) reason = "Line too long; split into shorter shuttles";
+        if (!reason && path.length < 2) reason = "Stops need different road access points";
+        if (!line.enabled) reason = "Paused by council";
+        let travel = 0;
+        for (let k = 0; k < path.length; k++) travel += 1 + Math.min(2, uwNet.traffic[path[k]] / 100);
+        let headway = Math.max(1, (travel * 0.8 + line.stops.length * 0.6) * 2 / line.buses);
+        let journey = [], cycle = 0;
+        if (!reason) {
+            let shuttle = path.slice(0);
+            for (let k = path.length - 2; k > 0; k--) shuttle.push(path[k]);
+            for (let k = 0; k < shuttle.length; k++) {
+                let from = shuttle[k], to = shuttle[(k + 1) % shuttle.length];
+                let dwell = stopRoads.indexOf(from) >= 0 ? 0.65 : 0;
+                let duration = 1.5 * (1 + Math.min(2, uwNet.traffic[to] / 100)) + dwell;
+                journey.push({ from: from, to: to, dwell: dwell, duration: duration }); cycle += duration;
+            }
+        }
+        uwRoutes.push({ id: r, path: path, stopRoads: stopRoads, active: !reason, reason: reason || "Running", headway: headway, coverage: 0, journey: journey, cycle: cycle });
+    }
+}
+function uwRouteService() {
+    let field = uwZero(uwWorld.tiles.length, 0);
+    for (let r = 0; r < uwRoutes.length; r++) {
+        let route = uwRoutes[r];
+        if (!route.active) continue;
+        let walk = uwRoadDistances(route.stopRoads, 7, false), covered = 0;
+        let frequency = uwClamp(12 / route.headway, 0.15, 1);
+        for (let i = 0; i < field.length; i++) {
+            let road = uwNet.access[i];
+            if (road < 0 || walk.dist[road] > 7) continue;
+            let strength = Math.min(100, (100 - walk.dist[road] / 7 * 75) * frequency * uwWorld.funding.services / 100);
+            field[i] = Math.max(field[i], strength);
+            if (strength >= 25) covered += uwWorld.tiles[i].pop;
+        }
+        route.coverage = covered;
+    }
+    return field;
+}
+function uwTransitSnapshot() {
+    transitMode = uwWorld.transitMode;
+    let stops = [], rows = [];
+    for (let i = 0; i < uwWorld.tiles.length; i++) {
+        if (uwWorld.tiles[i].build !== "stop") continue;
+        let p = uwXZ(i), order = routeDraft.indexOf(i);
+        stops.push({ id: i, name: uwWorld.districtNames[uwDistrictOf(i)] + " · " + p.x + ", " + p.z, order: order < 0 ? "Add stop" : "Stop " + (order + 1), selected: order >= 0 });
+    }
+    for (let r = 0; r < uwWorld.busRoutes.length; r++) {
+        let line = uwWorld.busRoutes[r], state = uwRoutes[r];
+        rows.push({ id: r, name: line.name, color: UW_ROUTE_COLORS[r], enabled: line.enabled,
+            detail: line.stops.length + " stops · " + line.buses + " buses · " + uwMoney(line.buses * 45) + "/mo when enabled",
+            status: uwWorld.transitMode === "local" ? "Stored · automatic local service selected" : state ? state.reason : "Awaiting network update",
+            service: state && state.active && uwWorld.transitMode === "routes" ? "Estimated headway " + Math.round(state.headway) + " min · " + uwComma(state.coverage) + " residents in effective catchment" : "No scheduled service",
+            stops: line.stops.map(i => { let p = uwXZ(i); return p.x + "," + p.z; }).join(" → ") });
+    }
+    transitStops = stops;
+    transitRows = rows;
+    routeDraftRows = routeDraft.map((i, k) => { let p = uwXZ(i); return { index: k, label: (k + 1) + ". " + uwWorld.districtNames[uwDistrictOf(i)] + " · " + p.x + ", " + p.z + (uwWorld.tiles[i].build === "stop" ? "" : " · missing stop") }; });
+}
+function uwMoveDraft(index, direction) {
+    let to = index + direction;
+    if (!uwInt(index, 0, routeDraft.length - 1) || !uwInt(to, 0, routeDraft.length - 1)) return;
+    let stop = routeDraft[index]; routeDraft[index] = routeDraft[to]; routeDraft[to] = stop;
+    routeStatus = "Stop order updated. Save the line to apply changes."; uwTransitSnapshot();
+}
+function uwRemoveDraft(index) {
+    if (!uwInt(index, 0, routeDraft.length - 1)) return;
+    routeDraft.splice(index, 1); routeStatus = "Stop removed from the draft. Save the line to apply changes."; uwTransitSnapshot();
+}
+function uwDraftStop(i) {
+    if (!uwWorld || !uwInt(i, 0, uwWorld.tiles.length - 1) || uwWorld.tiles[i].build !== "stop") return;
+    let at = routeDraft.indexOf(i);
+    if (at >= 0) routeDraft.splice(at, 1);
+    else if (routeDraft.length < 12) routeDraft.push(i);
+    else { routeStatus = "A line can have at most 12 stops."; return; }
+    routeStatus = routeDraft.map(i => { let p = uwXZ(i); return p.x + "," + p.z; }).join(" → ") || "Choose stops in travel order.";
+    uwTransitSnapshot();
+}
+function uwNewRoute() {
+    routeDraft = []; routeEditing = -1; routeName = "Neighbourhood shuttle"; routeBuses = "2";
+    routeStatus = "Choose two or more stops in travel order.";
+    routeHighlight = -1;
+    if (uwWorld) uwTransitSnapshot();
+}
+function uwEditRoute(id) {
+    if (!uwInt(id, 0, uwWorld.busRoutes.length - 1)) return;
+    let line = uwWorld.busRoutes[id];
+    routeEditing = id; routeDraft = line.stops.slice(0); routeName = line.name; routeBuses = String(line.buses);
+    routeStatus = "Editing " + line.name + ". Click a selected stop to remove it; re-add to change its order.";
+    uwTransitSnapshot();
+}
+function uwSaveRoute() {
+    let name = String(routeName).trim(), buses = Number(routeBuses);
+    if (!name || name.length > 36 || !uwInt(buses, 1, 6) || routeDraft.length < 2 || routeDraft.length > 12) {
+        routeStatus = "Use a name of 1–36 characters, 1–6 buses and 2–12 stops."; return;
+    }
+    if (routeEditing < 0 && uwWorld.busRoutes.length >= 8) { routeStatus = "The city supports eight scheduled lines."; return; }
+    let line = { name: name, buses: buses, stops: routeDraft.slice(0), enabled: true };
+    if (routeEditing < 0) uwWorld.busRoutes.push(line);
+    else uwWorld.busRoutes[routeEditing] = line;
+    uwTransitChanged();
+    uwNewRoute();
+    routeStatus = "Line saved. Select Planned routes to operate scheduled buses. Disconnected lines remain saved for repair.";
+}
+function uwTransitChanged() {
+    uwUndo = []; canUndo = false;
+    uwRecalculate(); uwComputeHappiness(); uwStaticDirty = true; uwRenderStatic(); uwRefreshUI();
+}
+function uwToggleRoute(id) {
+    if (!uwInt(id, 0, uwWorld.busRoutes.length - 1)) return;
+    uwWorld.busRoutes[id].enabled = !uwWorld.busRoutes[id].enabled; uwTransitChanged();
+}
+function uwDeleteRoute(id) {
+    if (!uwInt(id, 0, uwWorld.busRoutes.length - 1)) return;
+    uwWorld.busRoutes.splice(id, 1); uwNewRoute(); uwTransitChanged();
+}
+function uwSetTransitMode(mode) {
+    if (["local", "routes"].indexOf(mode) < 0) return;
+    uwWorld.transitMode = mode; uwTransitChanged();
+}
+function uwShowRoute(id) {
+    if (!uwInt(id, 0, uwWorld.busRoutes.length - 1)) return;
+    routeHighlight = id; modal = ""; uwMapJump(uwWorld.busRoutes[id].stops[0]); uwRenderMotion();
+    uwNotify("Showing " + uwWorld.busRoutes[id].name + ". Open Transport to edit it or clear its map highlight.", "info");
+}

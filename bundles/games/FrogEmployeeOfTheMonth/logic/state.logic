@@ -1,0 +1,73 @@
+// Mutable simulation state is separate from the small, published UI bindings.
+let G = null;
+let profile = {done:0,best:0,flies:0,hops:0,achievements:[],legacy:false};
+let settings = {muted:false,gentle:false,reducedMotion:false,touch:false};
+let keys = {};
+let keyboardKeys = {};
+let touchKeys = {};
+let screen = "welcome";
+let sceneSource = "";
+let backgroundSource = "";
+let backgroundStyle = {};
+let targetHitboxes = [];
+let missionTitle = "";
+let missionText = "";
+let taskCounter = "";
+let contextHint = "";
+let roleText = "Intern Frog";
+let notice = "Six centimetres. A very full calendar.";
+let reportTitle = "";
+let reportText = "";
+let reportReward = "";
+let unlockedJobs = [];
+let earnedBadges = [];
+let saveStatus = "Local save ready";
+let confirmReset = false;
+let hasSave = false;
+let frameClock = 0;
+let accumulator = 0;
+let dirtyBackground = true;
+let inputInstalled = false;
+let audioTimes = {};
+let ambientHandle = null;
+let audioStarted = false;
+let ambientAge = 0;
+let feedbackAge = 0;
+function clamp(n,lo,hi) { return Math.max(lo,Math.min(hi,n)); }
+function approach(n,target,amount) { return n < target ? Math.min(target,n+amount) : Math.max(target,n-amount); }
+function dist(a,b) { let dx=a.x-b.x; let dy=a.y-b.y; return Math.sqrt(dx*dx+dy*dy); }
+function sign(n) { return n < 0 ? -1 : (n > 0 ? 1 : 0); }
+function clone(v) { return JSON.parse(JSON.stringify(v)); }
+function finite(n) { return typeof n === "number" && isFinite(n); }
+function makeFrog(x,y) { return {x:x,y:y,px:x,py:y,vx:0,vy:0,w:CFG.frogWidth,h:CFG.frogHeight,
+    face:1,grounded:false,support:"",mode:"air",coyote:0,buffer:0,charge:0,charging:false,
+    grip:1,wall:0,wallLock:0,squash:0,blink:0,invulnerable:0,airTime:0,lastImpact:0}; }
+function makeTongue() { return {state:"idle",target:"",x:0,y:0,length:0,time:0,pull:0,cooldown:0,originX:0,originY:0}; }
+function createGame(stage) { return {stage:stage,time:0,frame:0,p:makeFrog(110,520),tongue:makeTongue(),
+    world:null,camera:{x:0,y:0},checkpoint:{x:110,y:520,id:"start"},
+    mission:{done:false,carrying:"",coffee:100,matIds:[],connected:[],caught:[],boatTime:0,chairTime:0,
+      chairStarted:false,braked:false,reportTongued:false,projector:false},
+    health:100,score:0,flies:0,hops:0,swings:0,respawns:0,
+    projectiles:[],particles:[],clouds:[],boss:null,targetId:"",selectedTarget:"",targetLock:0,
+    feedback:"",feedbackTime:0,speech:"",speechTime:0,shake:0,saveAge:0,celebrate:0,
+    visited:[],lastLanding:"",completePending:0}; }
+function tell(text,seconds) { if (!G) return; G.feedback=text; G.feedbackTime=seconds || 4; notice=text; }
+function speak(text) { G.speech=text; G.speechTime=5; sound("chatter"); }
+function badge(id) { if (profile.achievements.indexOf(id)<0) {profile.achievements.push(id); tell("Badge: "+badgeName(id),4); sound("promote");} }
+function badgeName(id) { for(let i=0;i<BADGES.length;i++) if(BADGES[i].id===id) return BADGES[i].name; return id; }
+function inputAxis() { return (keys.right?1:0)-(keys.left?1:0); }
+function burst(x,y,color,count,speed) {
+    if (!G || settings.reducedMotion) return;
+    for(let i=0;i<count && G.particles.length<90;i++) {
+        let angle=(i*2.399963+G.time*3); let s=(speed||90)*(0.45+(i%5)*0.13);
+        G.particles.push({x:x,y:y,vx:Math.cos(angle)*s,vy:Math.sin(angle)*s-40,life:0.45+(i%4)*0.12,max:0.84,color:color,size:2+(i%3),paper:false});
+    }
+}
+function confetti(x,y) { burst(x,y,COLORS.yellow,30,220); burst(x,y,COLORS.pink,18,180); for(let i=0;i<G.particles.length;i++) G.particles[i].paper=true; }
+function damage(n,message) {
+    if(G.p.invulnerable>0 || G.mission.done) return;
+    G.health=clamp(G.health-n*(settings.gentle?0.45:1),0,100);
+    G.p.invulnerable=1.05; G.p.vx=-G.p.face*150; G.p.vy=Math.min(G.p.vy,-140);
+    G.shake=settings.reducedMotion?0:0.22; spillCoffee(n*0.5); tell(message,3); sound("bump");
+    if(G.health<=0) {G.health=100; respawn("Mandatory tea break. Back to the last paperclip.");}
+}

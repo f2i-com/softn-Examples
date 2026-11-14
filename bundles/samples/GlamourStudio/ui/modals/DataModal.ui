@@ -9,7 +9,7 @@
       <Text size=sm fontWeight=medium style={{ color: getHeadingColor() }}>Export Data</Text>
       <Stack direction=horizontal gap=md style={{ flexWrap: "wrap" }}>
         <Button variant=primary size=sm @click=exportAllData style={{ flex: 1, minWidth: "120px", background: "linear-gradient(135deg, " + getAccentColor() + ", " + getAccentHover() + ")", color: darkMode ? "#1c1917" : "#ffffff", border: "none", fontWeight: 600 }}>Export Data</Button>
-        <Button variant=secondary size=sm @click=copyToClipboard style={{ flex: 1, minWidth: "120px" }}>Copy to Clipboard</Button>
+        <Button variant=secondary size=sm @click=copyToClipboard style={{ flex: 1, minWidth: "120px" }}>{copiedExport ? "Copied!" : "Copy to Clipboard"}</Button>
       </Stack>
     </Stack>
 

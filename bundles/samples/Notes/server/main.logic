@@ -16,6 +16,21 @@ function handleCreateNote(req) {
   };
 }
 
+function handleUpdateNote(req) {
+  let payload = req.body;
+  if (!payload || !payload.id || !payload.data) {
+    return { status: 400, body: { error: "id and data are required" } };
+  }
+  let updated = db.update(payload.id, payload.data);
+  if (!updated) {
+    return { status: 404, body: { error: "note not found" } };
+  }
+  return {
+    status: 200,
+    body: { id: updated.id, data: updated.data }
+  };
+}
+
 function handleGetNotes(req) {
   let notes = db.query("notes");
   let result = [];
@@ -36,7 +51,6 @@ function handleDeleteNote(req) {
 
 function onBeforeSyncBatch(ops) {
   console.log("onBeforeSyncBatch: " + ops.length + " ops");
-  // Accept all ops
   return null;
 }
 

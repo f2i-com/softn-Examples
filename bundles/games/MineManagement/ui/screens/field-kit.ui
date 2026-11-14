@@ -1,0 +1,405 @@
+<!--
+  The field kit: three steps to fix a fault in person, opened with E beside the broken thing.
+  `fieldView` (logic/player/field-kit.logic) says which step is next and how it is done:
+    inspect   open the cover            isolate  flip the circuit switch
+    drag      move a plug, hose or hook kit      pick the right repair (not the tape)
+    reference type the measured value   plan     confirm the signed plan (not the shortcut)
+    pickup / place   carry a cone       hold     hold the control (or E) to verify
+  Finished steps are kept on a fault, so closing the kit loses nothing; a service job (fuel,
+  workshop, charger) starts over (fieldView.kept says which).
+-->
+<section class="mm-fieldwork" class:mm-fieldwork-carry={fieldView.carry} if={screen === 'play' && !tablet && fieldView.visible} aria-label="Field kit">
+  <header class="mm-field-head">
+    <span class="mm-label">FIELD KIT / {fieldView.recipe} / STEP {fieldView.step} OF 3</span>
+    <button class="mm-small-button" type="button" @click={cancelField}>Close ×</button>
+  </header>
+  <h2>{fieldView.title}</h2>
+  <p class="mm-field-detail">{fieldView.detail}</p>
+
+  <div class="mm-field-instruction">
+    <span class="mm-label">NEXT ACTION</span>
+    <h3>{fieldView.label}</h3>
+    <span>{fieldView.hint}</span>
+  </div>
+
+  <!-- Drag steps: carry the part from the left socket to the right one (or use the button). -->
+  <div class="mm-field-board" if={fieldView.action === 'drag'} @pointerdown={fieldDragStart} @pointermove={fieldDragMove} @pointerup={fieldDragEnd} @pointercancel={fieldDragCancel} @pointerleave={fieldDragCancel}>
+    <div class="mm-field-cable"></div>
+    <div class="mm-field-socket mm-field-source">{fieldView.recipe === 'winch' ? 'DRUM' : fieldView.recipe === 'jam' ? 'JAM' : 'OUT'}</div>
+    <div class="mm-field-socket mm-field-target">{fieldView.recipe === 'winch' ? 'ANCHOR' : fieldView.recipe === 'jam' ? 'CLEAR' : 'IN'}</div>
+    <div class="mm-field-plug" style={fieldView.dragStyle}>{fieldView.recipe === 'battery' ? '▥' : fieldView.recipe === 'jam' ? '◆' : fieldView.recipe === 'winch' ? '⚓' : '⊂'}</div>
+  </div>
+
+  <!-- Other steps: a little mechanism that opens, reads and turns as the work happens. -->
+  <div class="mm-kit-mechanism" if={fieldView.action !== 'drag' && !fieldView.carry}>
+    <div class="mm-kit-internals">
+      <div class="mm-kit-pilot" style={fieldView.lampStyle}></div>
+      <div class="mm-kit-gauge"><div class="mm-kit-needle" style={fieldView.needleStyle}></div></div>
+      <div class="mm-kit-tool" style={fieldView.toolStyle}><div></div><div></div></div>
+      <div class="mm-kit-cover" style={fieldView.coverStyle}><span>FIELD KIT</span><span>OPEN TO INSPECT</span></div>
+    </div>
+    <div>
+      <span class="mm-label">{fieldView.readout}</span>
+      <span class="mm-small">{fieldView.recipe === 'survey' ? 'Compare → record → verify' : fieldView.recipe === 'talk' ? 'Read → agree → confirm' : fieldView.recipe === 'winch' ? 'Look → hook → winch' : 'Inspect → prepare → verify'}</span>
+    </div>
+  </div>
+
+  <div class="mm-field-actions">
+    #if (fieldView.action === 'inspect')
+      <button class="mm-primary" type="button" @click={fieldAction('inspect')}>Open / inspect</button>
+    #elseif (fieldView.action === 'isolate')
+      <button class="mm-field-switch" type="button" @click={fieldAction('isolate')}>● ENERGISED → ISOLATE</button>
+    #elseif (fieldView.action === 'drag')
+      <button class="mm-primary" type="button" @click={fieldAttach}>{fieldView.recipe === 'jam' ? 'Clear obstruction' : fieldView.recipe === 'winch' ? 'Hook the anchor' : 'Attach to socket'}</button>
+    #elseif (fieldView.action === 'kit')
+      <button class="mm-primary" type="button" @click={fieldAction('kit')}>Fitted service kit</button>
+      <button class="mm-secondary" type="button" @click={fieldAction('tape')}>Duct tape</button>
+    #elseif (fieldView.action === 'reference')
+      <button class="mm-primary" type="button" @click={fieldAction('reference')}>Reference: 24</button>
+      <button class="mm-secondary" type="button" @click={fieldAction('guess')}>Assume: 42</button>
+    #elseif (fieldView.action === 'plan')
+      <button class="mm-primary" type="button" @click={fieldAction('plan')}>Confirm signed plan</button>
+      <button class="mm-secondary" type="button" @click={fieldAction('shortcut')}>Approve Oscar's shortcut</button>
+    #elseif (fieldView.action === 'pickup')
+      <button class="mm-primary" type="button" @click={fieldAction('pickup')}>Pick up cone</button>
+    #elseif (fieldView.action === 'place')
+      <button class="mm-primary" type="button" @click={fieldAction('place')}>Place cone / {fieldView.distance}</button>
+    #elseif (fieldView.action === 'hold')
+      <button class="mm-primary mm-field-hold" type="button" @pointerdown={fieldHoldStart} @pointerup={fieldHoldEnd} @pointercancel={fieldHoldEnd} @pointerleave={fieldHoldEnd}>Hold to {fieldView.recipe === 'winch' ? 'winch' : 'verify'} · or hold E</button>
+    #end
+  </div>
+  <p class="mm-field-feedback" if={fieldView.feedback !== ''}>{fieldView.feedback}</p>
+  <div class="mm-meter"><div style={fieldView.progress}></div></div>
+  <p class="mm-small">{fieldView.cost} on completion · {fieldView.kept ? 'finished steps are kept' : 'closing the kit starts it over'}</p>
+</section>
+
+<style>
+  .mm-fieldwork {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    z-index: 4;
+    width: min(520px, calc(100% - 32px));
+    max-height: calc(100% - 145px);
+    overflow-y: auto;
+    padding: 24px;
+    transform: translate(-50%, -50%);
+    background: linear-gradient(140deg, #223b40, #14282e);
+    border: 1px solid #8caaa0;
+    border-radius: 14px;
+    box-shadow: 0 20px 70px #071117a6;
+    color: #f3efdf;
+  }
+  .mm-field-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .mm-game .mm-fieldwork h2 {
+    margin: 14px 0 8px;
+    font-size: 25px;
+  }
+  .mm-field-detail {
+    font-size: 13px;
+    line-height: 1.6;
+    color: #bac9c1;
+  }
+  .mm-field-instruction {
+    margin: 20px 0;
+    padding: 4px 0 4px 14px;
+    border-left: 3px solid #ebbc6a;
+  }
+  .mm-game .mm-field-instruction h3 {
+    margin: 6px 0;
+    font-size: 19px;
+  }
+  .mm-field-instruction > span {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .mm-field-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 16px 0;
+  }
+  .mm-field-actions button {
+    min-height: 48px;
+    white-space: normal;
+  }
+  .mm-field-switch {
+    min-height: 58px;
+    padding: 14px 20px;
+    background: #503d22;
+    border: 2px solid #d69b49;
+    border-radius: 8px;
+    font-weight: 700;
+    color: #ffe2a7;
+  }
+  .mm-field-hold {
+    width: 100%;
+    touch-action: none;
+    user-select: none;
+  }
+  .mm-fieldwork .mm-meter {
+    margin: 18px 0 10px;
+  }
+  .mm-field-feedback {
+    font-size: 13px;
+    color: #f2ba81;
+  }
+
+  /* ---------- Drag board ---------- */
+  .mm-field-board {
+    position: relative;
+    height: 120px;
+    margin: 16px 0;
+    overflow: hidden;
+    background: #102227;
+    border: 2px solid #536963;
+    border-radius: 10px;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+  }
+  .mm-field-board * {
+    pointer-events: none;
+  }
+  .mm-field-cable {
+    position: absolute;
+    left: 15%;
+    right: 15%;
+    top: 50%;
+    height: 7px;
+    background: #9b733b;
+    border-radius: 8px;
+  }
+  .mm-field-socket {
+    position: absolute;
+    top: 30%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22%;
+    height: 40%;
+    border: 2px dashed #c5b386;
+    border-radius: 10px;
+    font: 10px monospace;
+    color: #d2c7a4;
+  }
+  .mm-field-source {
+    left: 4%;
+  }
+  .mm-field-target {
+    right: 4%;
+    border-color: #8fd3bd;
+    color: #8fd3bd;
+  }
+  .mm-field-plug {
+    position: absolute;
+    top: 30%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 17%;
+    height: 40%;
+    background: #e7b66b;
+    border: 3px solid #bd8842;
+    border-radius: 6px;
+    font-size: 26px;
+    color: #192e32;
+  }
+
+  /* ---------- The little mechanism ---------- */
+  .mm-kit-mechanism {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin: 12px 0;
+    padding: 12px 14px;
+    background: #0d2025;
+    border: 1px solid #50665f;
+    border-radius: 8px;
+  }
+  .mm-kit-mechanism > div:last-child {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .mm-kit-internals {
+    position: relative;
+    width: 120px;
+    min-width: 120px;
+    height: 70px;
+    background: #3b4e4d;
+    border: 3px solid #708079;
+    border-radius: 5px;
+  }
+  .mm-kit-cover {
+    position: absolute;
+    inset: -3px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    transform-origin: left;
+    background: linear-gradient(120deg, #80918a, #4b615e);
+    border: 2px solid #a0afa3;
+    border-radius: 4px;
+    backface-visibility: hidden;
+    pointer-events: none;
+    transition: transform 0.22s ease-out;
+  }
+  .mm-kit-cover span {
+    font: 8px monospace;
+    letter-spacing: 1px;
+    color: #e9ecdf;
+  }
+  .mm-kit-pilot {
+    position: absolute;
+    right: 10px;
+    top: 9px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    box-shadow: 0 0 9px #dbcd8340;
+  }
+  .mm-kit-gauge {
+    position: absolute;
+    left: 15px;
+    top: 12px;
+    width: 42px;
+    height: 42px;
+    background: #c6d4bd;
+    border: 4px solid #253c3b;
+    border-radius: 50%;
+  }
+  .mm-kit-needle {
+    position: absolute;
+    left: 14px;
+    top: 4px;
+    width: 3px;
+    height: 21px;
+    transform-origin: 50% 75%;
+    background: #ad653e;
+    transition: transform 0.1s linear;
+  }
+  .mm-kit-tool {
+    position: absolute;
+    right: 15px;
+    bottom: 6px;
+    width: 12px;
+    height: 36px;
+    transition: transform 0.12s linear;
+  }
+  .mm-kit-tool > div:first-child {
+    position: absolute;
+    top: 0;
+    width: 14px;
+    height: 13px;
+    border: 4px solid #aabeb2;
+    border-top: 0;
+  }
+  .mm-kit-tool > div:last-child {
+    position: absolute;
+    top: 10px;
+    left: 5px;
+    width: 5px;
+    height: 23px;
+    background: #aabeb2;
+  }
+
+  /* ---------- Carrying a cone: the kit shrinks to a strip at the top ---------- */
+  .mm-fieldwork-carry {
+    top: 100px;
+    width: min(470px, calc(100% - 24px));
+    max-height: calc(100% - 340px);
+    padding: 12px 18px;
+    transform: translateX(-50%);
+  }
+  .mm-fieldwork-carry .mm-field-detail,
+  .mm-fieldwork-carry > .mm-small {
+    display: none;
+  }
+  .mm-game .mm-fieldwork-carry h2 {
+    margin: 6px 0;
+    font-size: 18px;
+  }
+  .mm-fieldwork-carry .mm-field-instruction,
+  .mm-fieldwork-carry .mm-meter {
+    margin: 8px 0;
+  }
+
+  @media (max-width: 700px) {
+    .mm-fieldwork {
+      padding: 16px;
+    }
+    .mm-game .mm-fieldwork h2 {
+      font-size: 21px;
+    }
+    .mm-field-board {
+      height: 100px;
+    }
+    .mm-fieldwork-carry {
+      max-height: calc(100% - 330px);
+    }
+    .mm-kit-mechanism {
+      gap: 12px;
+      padding: 9px;
+    }
+  }
+  @media (max-height: 620px) {
+    .mm-fieldwork {
+      top: 80px;
+      max-height: calc(100% - 96px);
+      padding: 12px 18px;
+      transform: translateX(-50%);
+    }
+    .mm-field-detail {
+      display: none;
+    }
+    .mm-game .mm-fieldwork h2 {
+      margin: 4px 0;
+      font-size: 18px;
+    }
+    .mm-field-instruction,
+    .mm-field-actions,
+    .mm-fieldwork .mm-meter {
+      margin: 8px 0;
+    }
+    .mm-field-board {
+      height: 65px;
+    }
+    .mm-kit-mechanism {
+      margin: 6px 0;
+      padding: 6px 12px;
+    }
+    .mm-kit-internals {
+      height: 46px;
+    }
+    .mm-kit-gauge {
+      left: 20px;
+      top: 3px;
+      width: 32px;
+      height: 32px;
+    }
+    .mm-kit-needle {
+      left: 9px;
+      top: 1px;
+      height: 19px;
+    }
+    .mm-kit-cover span:last-child {
+      display: none;
+    }
+    .mm-fieldwork-carry {
+      width: calc(100% - 410px);
+      min-width: 270px;
+      max-height: calc(100% - 100px);
+    }
+    .mm-fieldwork-carry .mm-field-instruction {
+      display: none;
+    }
+  }
+</style>

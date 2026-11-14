@@ -1,0 +1,171 @@
+// Keyboard input, pause and resume, and opening and closing the PIT tablet.
+// keyDown and keyUp are the window key listeners (added in boot(), core/game-loop.logic). They keep
+// the global `keys` map (core/state.logic) of keys held down, which updatePlayer (movement.logic)
+// reads every simulation step for WASD, the arrows, Shift (run) and Space (brake); keys that do
+// one thing per press act here. touch-controls.logic is the touch equivalent of this file, and
+// movement.logic's header says where each player mode (foot, ute, truck, excavator) lives.
+// Owns no state of its own: it switches `screen` ('play' / 'pause'), `tablet` and `tab`.
+// Pausing and opening or closing the tablet close an open field-kit job (repairJob = null); a real
+// alert keeps its finished steps (alert.work), so the job resumes where it stopped (a service
+// point's one-off job starts again).
+
+// ---------- Keyboard ----------
+
+// The window keydown listener. Marks the key as held, then handles the one-press keys:
+//   Esc      closes the PIT export; else closes the tablet or pauses; in Pause, resumes
+//   1 / 2    answer a Head Office memo      T, Tab, M  PIT tablet
+//   E        the field kit's current step, else interact (interactions.logic)
+//   L        load, tip or discharge (mine/bays.logic)      C  cab / chase camera
+//   H horn   P park brake   G guide haul   R full tray (haul-assist.logic)   F headlamp
+//   Space    jump on foot, dig with the excavator (in the ute or a truck it is the brake, read
+//            as a held key by updatePlayer)
+// e.targetEditable (from SoftN) is true for contentEditable targets only, not for an <input>: the
+// title screen's seed box still sends its keys here, but nothing acts on them outside 'play'.
+function keyDown(e) {
+  if (!e || e.targetEditable) return;
+  // Lower-cased, so a W typed with Shift held (the run key) still counts as 'w'.
+  var key = String(e.key || '').toLowerCase();
+  keys[key] = true;
+  // Auto-repeat keeps the key held but must not repeat the one-press actions below.
+  if (e.repeat) return;
+  if (key === 'escape') {
+    if (exportOpen) {
+      hideExport();
+      return;
+    }
+    if (screen === 'play') {
+      if (tablet) toggleTablet();
+      else pauseGame();
+    } else if (screen === 'pause') resumeGame();
+    return;
+  }
+  if (screen !== 'play') return;
+  if ((key === '1' || key === '2') && memoView.visible) {
+    answerMemo(key === '1' ? 'a' : 'b');
+    return;
+  }
+  if (key === 't' || key === 'tab' || key === 'm') {
+    toggleTablet();
+    return;
+  }
+  if (tablet || exportOpen) return;
+  if (key === 'e') {
+    // During a field-kit job, E sends the step's own (right) action. A hold step reads E as held
+    // (keys.e, in advanceFieldRepair); a drag step needs the board or its button.
+    if (repairJob) {
+      var step = fieldStep();
+      if (step && step.action !== 'hold' && step.action !== 'drag') fieldAction(step.action);
+    } else interact(false);
+  }
+  if (key === 'l') manualLoad();
+  if (key === 'c') toggleCamera();
+  if (key === 'h') honk();
+  if (key === 'p') toggleParkBrake();
+  if (key === 'g') guideHaul();
+  if (key === 'r') toggleFillTray();
+  if (key === 'f') {
+    lamp = !lamp;
+    sfx('click');
+  }
+  if (key === ' ' && S.player.mode === 'foot' && S.player.grounded) {
+    // Take-off speed in m/s; updatePlayer applies 13 m/s² gravity: a hop of just under a metre.
+    S.player.vy = 5;
+    S.player.grounded = false;
+  }
+  if (key === ' ' && S.player.mode === 'excavator') scoopBucket();
+}
+
+function keyUp(e) {
+  if (!e) return;
+  keys[String(e.key || '').toLowerCase()] = false;
+}
+
+// ---------- On-screen buttons held like keys ----------
+
+// A touch button that acts as a held key while pressed: touch-controls.ui's Hold brake presses
+// ' '. controlActive (touch-controls.logic) reads `keys` and screenKeys alike.
+function pressControl(k) {
+  if (!controlsAllowed()) return;
+  screenKeys[k] = true;
+}
+
+function releaseControl(k) {
+  screenKeys[k] = false;
+}
+
+// ---------- Pause and the tablet ----------
+
+// Pause: Esc, the HUD's pause button, or the window losing focus. Closes the field kit (a real
+// alert keeps its finished steps), gives the mouse back and saves.
+function pauseGame() {
+  if (screen !== 'play') return;
+  screen = 'pause';
+  releaseMouse();
+  cancelField();
+  // A tow armed before the pause (or on the title screen) must not confirm with one click here.
+  resetConfirm = false;
+  saveGame(true);
+  refreshUI();
+}
+
+// The window blur listener. Keys held as focus left would never see their keyup, so forget them.
+function focusLost() {
+  resetInputs();
+  if (screen === 'play') pauseGame();
+}
+
+// Back to work from Pause (its button, or Esc), and from a tow (recoverVehicle).
+function resumeGame() {
+  if (screen !== 'pause') return;
+  screen = 'play';
+  // tick() treats the next frame as a fresh start (1/30 s), so the paused time is not simulated.
+  lastFrameTime = 0;
+  // Disarms a half-confirmed tow (recoverVehicle).
+  resetConfirm = false;
+  takeMouse();
+  sfx('click');
+  refreshUI();
+}
+
+// Open or close the PIT tablet: T, Tab, M, the HUD button, the tablet's Close button, and other
+// logic that wants the tablet up. Either way the field kit closes (a real alert keeps its
+// finished steps) and inputs reset. Opening gives the mouse back; closing also shuts the PIT
+// export and asks for the mouse again.
+function toggleTablet() {
+  if (screen !== 'play') return;
+  tablet = !tablet;
+  cancelField();
+  resetInputs();
+  if (tablet) {
+    S.tutorial.tablet = true;
+    releaseMouse();
+    refreshUI();
+  } else {
+    exportOpen = false;
+    takeMouse();
+  }
+  sfx('click');
+}
+
+function openTab(name) {
+  tab = name;
+  refreshUI();
+  sfx('click');
+}
+
+// ---------- Camera ----------
+
+// C or the touch Cab / chase button: switch the view from a vehicle between the cab and behind
+// it (world/camera.logic places it), dropping any free look. The pitches here are only a start:
+// while driving, updatePlayer re-aims the view every step with its own.
+function toggleCamera() {
+  cameraYawOffset = 0;
+  cameraPitchOffset = 0;
+  cameraMode = cameraMode === 'cab' ? 'chase' : 'cab';
+  if (S.player.mode === 'ute') setLook(S.ute.heading, cameraMode === 'chase' ? -0.22 : -0.04);
+  else if (S.player.mode === 'truck') {
+    var t = getTruck(S.player.vehicle);
+    setLook(t.heading, cameraMode === 'chase' ? -0.22 : -0.04);
+  }
+  sfx('click');
+}

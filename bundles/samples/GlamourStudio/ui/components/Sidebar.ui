@@ -40,6 +40,7 @@
       <NavItem icon=users label="Clients" active={currentPage === "clients"} @click={navigate("clients")} />
       <NavItem icon=scissors label="Staff" active={currentPage === "staff"} @click={navigate("staff")} />
       <NavItem icon=list label="Services" active={currentPage === "services"} @click={navigate("services")} />
+      <NavItem icon=star label="Beauty Studio" active={currentPage === "studio"} @click={navigate("studio")} />
 
       <Box style={{ marginTop: "auto" }} />
       <Divider style={{ borderColor: getBorderColor() }} />
@@ -110,6 +111,7 @@
       <NavItem icon=users label="Clients" active={currentPage === "clients"} collapsed={true} @click={navigate("clients")} />
       <NavItem icon=scissors label="Staff" active={currentPage === "staff"} collapsed={true} @click={navigate("staff")} />
       <NavItem icon=list label="Services" active={currentPage === "services"} collapsed={true} @click={navigate("services")} />
+      <NavItem icon=star label="Beauty Studio" active={currentPage === "studio"} collapsed={true} @click={navigate("studio")} />
     </Stack>
 
     // Bottom Actions

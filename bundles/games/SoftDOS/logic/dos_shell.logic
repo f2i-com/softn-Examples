@@ -264,6 +264,9 @@ function dosShell_returnToPrompt(note) {
   activeMode = "prompt";
   runFrames = 0;
   DOS_VIDEO_MODE = 0x03;
+  dosVga_planarReset();
+  dosVga_initPalette();
+  DOS_SPEAKER_ON = 0;
   DOS_HALTED = 0;
   DOS_SHELL_ACTIVE = 1;
   DOS_CURSOR_VISIBLE = 1;

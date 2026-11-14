@@ -1,0 +1,63 @@
+// A small deterministic population, not a random patience queue.
+function currencyFor(who,stage){
+ if(who===2)return "memory";
+ if(who===1)return "impossible";
+ if(who===3)return "seconds";
+ if(who===4)return stage>=3?"name":"starlight";
+ if(who===5)return stage>=2?"favour":"credits";
+ return stage>=1?"starlight":"credits";
+}
+function spawnCustomer(who){
+ let id=S.nextCustomerId++;
+ S.customers.push({id:id,who:who,item:REGULARS[who].item,currency:currencyFor(who,S.stage),
+  state:"enter",x:92,y:61,age:0,wait:0,paid:false,talked:false,inspected:false,payment:"",rained:false});
+ sfx("door","The door chimes. "+REGULARS[who].name+" comes in.",0.40);
+ if(S.characters[who].visits>0)tell(REGULARS[who].name+" is back. "+(S.stage===6?"One more usual.":"The familiar door chime sounds a little warmer."));
+}
+function scheduledSpawn(){
+ if(S.shift.spawned>=S.shift.roster.length)return false;
+ let busy=0;
+ for(let i=0;i<S.customers.length;i++)if(!S.customers[i].paid)busy++;
+ if(busy>=3)return false;
+ let who=S.shift.roster[S.shift.spawned];
+ S.shift.spawned++;spawnCustomer(who);S.shift.spawnIn=14;return true;
+}
+function approach(n,target,speed){if(Math.abs(n-target)<=speed)return target;return n+(n<target?speed:-speed);}
+function stepCustomers(dt){
+ S.shift.spawnIn-=dt;
+ if(S.shift.spawnIn<=0)scheduledSpawn();
+ let counter=activeCustomer(),line=0,keep=[];
+ for(let i=0;i<S.customers.length;i++){
+  let c=S.customers[i];c.age+=dt;
+  if(c.state==="enter"){
+   c.x=approach(c.x,77,dt*13);
+   if(c.x===77){c.state="browse";c.age=0;}
+  }else if(c.state==="browse"){
+   let bx=[19,34,68,61,73,46][c.who];
+   c.x=approach(c.x,bx,dt*13);
+   if(c.age>4.5){c.state="queue";c.age=0;}
+   if(c.who===4 && c.age>2 && !c.rained){c.rained=true;if(S.stage>=2)S.store.spill=Math.max(S.store.spill,1);}
+  }else if(c.state==="queue"){
+   let target=counter?74+line*7:54;
+   c.x=approach(c.x,target,dt*14);c.y=approach(c.y,counter?66:72,dt*5);
+   if(!counter && c.x===54){c.state="counter";c.age=0;counter=c;sfx("motif-"+REGULARS[c.who].motif,"",0.16);}
+   else line++;
+  }else if(c.state==="counter"){
+   c.y=approach(c.y,72,dt*5);c.wait+=dt;
+   // They do not abandon a story because the player took time to read it.
+  }else if(c.state==="leaving"){
+   c.y=approach(c.y,61,dt*6);c.x=approach(c.x,96,dt*14);
+   if(c.x===96){sfx("door","The door chimes softly.",0.22);continue;}
+  }else if(c.state==="settling"){
+   let sx=15+c.who*10;
+   c.x=approach(c.x,sx,dt*11);c.y=approach(c.y,58,dt*5);
+   if(c.x===sx){c.state="sit";c.age=0;}
+  }
+  keep.push(c);
+ }
+ S.customers=keep;
+}
+function customerThanks(c){
+ let lines=["I will put it in the little fridge. Same shelf tomorrow?","A perfectly serviceable banana. A very good evening.","Warm all the way through. Somehow.","See you yesterday. Or ... hello tomorrow.","I feel rather more together. Thank you.","Just what I needed. Keep the receipt somewhere safe."];
+ return REGULARS[c.who].name+": “"+lines[c.who]+"”";
+}

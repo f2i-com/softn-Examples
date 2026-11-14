@@ -1,7 +1,7 @@
-// SyncModal.ui - Room connection info
+// SyncModal.ui - Room & Online Authority connection info
 
-<Modal open={showSyncModal} onClose={closeSyncModal} title="Room Info" size=md>
-  <Stack direction=vertical gap=lg style={{ padding: "0.5rem 0" }}>
+<Modal open={showSyncModal} onClose={closeSyncModal} title={authorityMode ? "Online Table Info" : "Room Info"} size=md>
+  <Stack direction=vertical gap=md style={{ padding: "0.4rem 0" }}>
 
     // Connection status
     <Card padding=md style={{
@@ -14,30 +14,52 @@
           width: "10px",
           height: "10px",
           borderRadius: "50%",
-          background: syncConnected ? "#22c55e" : (syncConnecting ? "#eab308" : "#78716c"),
+          background: syncConnected ? "#22c55e" : (syncConnecting ? "#eab308" : (botSeats.length > 0 ? "#c8aa6e" : "#78716c")),
           boxShadow: syncConnected ? "0 0 8px rgba(34, 197, 94, 0.4)" : "none",
           flexShrink: 0
         }} />
-        <Stack direction=vertical gap=xs style={{ flex: 1 }}>
+        <Stack direction=vertical gap=xs style={{ flex: 1, minWidth: 0 }}>
           <Text fontWeight=semibold size=sm style={{ color: "#fff" }}>
-            {syncConnected ? "Connected" : (syncConnecting ? "Connecting..." : "Not connected")}
+            {syncModalStatusTitle()}
           </Text>
-          <Text size=xs style={{ color: "rgba(255,255,255,0.5)" }}>
-            {syncConnected ? syncPeers + " peer(s) online" : (syncConnecting ? "Establishing WebRTC connection..." : "Not in a room")}
+          <Text size=xs style={{ color: "rgba(255,255,255,0.56)", wordBreak: "break-word" }}>
+            {syncModalStatusDetail()}
           </Text>
         </Stack>
       </Stack>
     </Card>
 
-    // Room code display
-    <Stack direction=vertical gap=sm if={syncRoom}>
-      <Text size=sm fontWeight=medium style={{ color: "#fff" }}>Room Code</Text>
+    // Authority server URL (online HTTP mode only)
+    <Stack direction=vertical gap=xs if={authorityMode && authorityUrl}>
+      <Text size=sm fontWeight=medium style={{ color: "#fff" }}>Table Server</Text>
       <Stack direction=horizontal gap=sm align=center>
         <Card padding=sm style={{
           background: "rgba(255,255,255,0.06)",
           borderRadius: "8px",
           border: "1px solid rgba(200,170,110,0.2)",
-          flex: 1
+          flex: 1,
+          minWidth: 0
+        }}>
+          <Text size=xs fontWeight=bold style={{ color: "#e5e7eb", fontFamily: "monospace", wordBreak: "break-all" }}>
+            {authorityUrl}
+          </Text>
+        </Card>
+        <Button variant=secondary size=sm @click=copyAuthorityUrl style={{ padding: "0.4rem 0.6rem", fontSize: "0.75rem", flexShrink: 0 }}>
+          Copy
+        </Button>
+      </Stack>
+    </Stack>
+
+    // Room / Table code display
+    <Stack direction=vertical gap=xs if={syncRoom}>
+      <Text size=sm fontWeight=medium style={{ color: "#fff" }}>{authorityMode ? "Table Code" : "Room Code"}</Text>
+      <Stack direction=horizontal gap=sm align=center>
+        <Card padding=sm style={{
+          background: "rgba(255,255,255,0.06)",
+          borderRadius: "8px",
+          border: "1px solid rgba(200,170,110,0.2)",
+          flex: 1,
+          minWidth: 0
         }}>
           <Text size=sm fontWeight=bold style={{ color: "#c8aa6e", fontFamily: "monospace", letterSpacing: "0.05em" }}>
             {syncRoom}
@@ -47,8 +69,8 @@
           Copy
         </Button>
       </Stack>
-      <Text size=xs style={{ color: "rgba(255,255,255,0.4)" }}>
-        Share this code with friends to play together.
+      <Text size=xs style={{ color: "rgba(255,255,255,0.42)" }}>
+        {authorityMode ? "Share the server address and table code so others can take an authoritative seat." : "Share this room code with friends to play together."}
       </Text>
     </Stack>
 

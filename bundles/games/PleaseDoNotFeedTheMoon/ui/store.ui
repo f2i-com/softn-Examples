@@ -1,0 +1,80 @@
+<Box className="shop" style={V.roomStyle}>
+ <Box className="room" style={V.shopTilt}>
+  <Box className="back-wall" />
+  <Box className="night-window">
+   <Box className="sky-haze" />
+   <Box className="skyline"><Box /><Box /><Box /><Box /><Box /><Box /><Box /></Box>
+  </Box>
+  #each (star in V.stars)
+   <Box className="star" style={star.style} />
+  #end
+  <Box className="moon-aura" style={V.glowStyle} />
+  <Box className="reflection-moon" style={V.mirrorStyle}><Image loading="eager" src={asset("assets/moon-surface.png")} alt="A second moon in the wrong reflection" width="100%" height="100%" objectFit="contain" /></Box>
+  <Box className="moon-position" style={V.moonStyle}>
+   <Box className="lunar-ring" style={V.moonRingStyle} />
+   <Button variant="ghost" className={V.moonClass} style={V.moonShape} disabled={screen !== "play" || !V.canFeed} @click={feedMoon} ariaLabel={"Feed the moon " + V.selected.name}>
+    <Image loading="eager" className="moon-texture" src={asset("assets/moon-surface.png")} alt="An impossibly close, cratered moon" width="100%" height="100%" objectFit="contain" showPlaceholder={false} />
+    <Box className="moon-tint" style={V.heatTint} />
+    <Box className="lunar-face" style={V.faceStyle}><Box className="eye eye-left"><Box className="eye-glint" /></Box><Box className="eye eye-right"><Box className="eye-glint" /></Box><Box className="moon-mouth" /></Box>
+    <Box if={S.fx.donut > 0} className="doughnut-hole" />
+    <Box if={S.fx.television > 0} className="lunar-tv"><Box className="tv-shop"><Box className="tv-moon" /><Box className="tv-counter" /></Box><Text style={TEXT_STYLE} className="tv-live">LIVE • NIGHT SHIFT</Text></Box>
+    <Image loading="eager" if={S.fx.fridge > 0} className="lunar-polar-cap" src={asset("assets/items/fridge.svg")} alt="A refrigerator-shaped polar cap" width="100%" height="100%" objectFit="contain" />
+    <Box if={S.fx.heart > 0 || S.bond > 65} className="lunar-blush" />
+    <Box if={S.fx.electric > 0} className="lunar-circuit" />
+    <Box if={S.fx.radio > 0 || S.broadcast} className="broadcast-mark"><Box /><Box /><Box /><Box /><Box /></Box>
+    <Box if={S.flags.union} className="picket-sign"><Text style={TEXT_STYLE}>FAIR PAY</Text><Text style={TEXT_STYLE} className="picket-small">ALL PHASES</Text></Box>
+    <Image loading="eager" if={S.flags.employee && !S.flags.union} className="lunar-badge" src={asset("assets/items/badge.svg")} alt="The moon is wearing a staff badge" width="100%" height="100%" objectFit="contain" />
+   </Button>
+   #each (sprout in V.growth)
+    <Image loading="eager" className="lunar-growth" style={sprout.style} src={asset("assets/items/plant.svg")} width="100%" height="100%" objectFit="contain" alt="A little lunar plant leaning toward the shop" />
+   #end
+  </Box>
+  #each (satellite in V.orbiters)
+   <Image loading="eager" className="satellite" style={satellite.style} src={asset(satellite.art)} alt="A snack in orbit" width="100%" height="100%" objectFit="contain" />
+  #end
+  <Box className="window-shine" />
+  <Box className="window-fog" style={V.fogStyle} />
+  <Box className="window-frost" style={V.frostStyle}><Box /><Box /><Box /><Box /></Box>
+  <Box if={S.fx.electric > 0} className="electric-arc arc-a" /><Box if={S.fx.electric > 0} className="electric-arc arc-b" />
+  <Box if={S.flags.cosmic} className="other-shop"><Text style={TEXT_STYLE}>OPEN ON THE OTHER SIDE</Text><Box className="other-counter" /><Box className="other-employee"><Box /><Box /></Box></Box>
+  <Box className="window-frame"><Box className="mullion first" /><Box className="mullion second" /><Box className="window-sill" /></Box>
+  <Box className="ceiling"><Box className="fluorescent tube-left" /><Box className="fluorescent tube-right" /></Box>
+  <Box className="floor"><Box className="floor-reflection" /><Box className="floor-lines" /></Box>
+  <Box if={S.fx.rain > 0 || S.gravity > 45 || S.fx.bath > 0} className="indoor-tide" />
+  <Box className="policy-wrap"><Text style={TEXT_STYLE} className="notice-header">NIGHT STAFF / PLEASE READ</Text><Button variant="ghost" className="policy-sign" @click={refuseMoon} disabled={screen !== "play"}><Text style={TEXT_STYLE}>PLEASE DO NOT</Text><Text style={TEXT_STYLE} className="policy-big">FEED THE MOON</Text><Text style={TEXT_STYLE} className="notice-foot">It is not on the loyalty programme.</Text></Button><Text style={TEXT_STYLE} className="sticky-note">{"Especially not the fridge.\n— Management"}</Text></Box>
+  <Box className="shelf-unit" style={V.shelfStyle}>
+   <Text style={TEXT_STYLE} className="shelf-sign">LATE-NIGHT ESSENTIALS</Text>
+   <Box className="display-row"><Image loading="eager" src={asset("assets/items/cheese.svg")} alt="Cheddar display" width="100%" height="100%" objectFit="contain" /><Image loading="eager" src={asset("assets/items/sandwich.svg")} alt="Sandwich display" width="100%" height="100%" objectFit="contain" /><Image loading="eager" src={asset("assets/items/noodles.svg")} alt="Noodles display" width="100%" height="100%" objectFit="contain" /></Box>
+   <Box className="shelf-plank" /><Box className="display-row lower"><Image loading="eager" src={asset("assets/items/donut.svg")} alt="Doughnut display" width="100%" height="100%" objectFit="contain" /><Image loading="eager" src={asset("assets/items/coffee.svg")} alt="Coffee display" width="100%" height="100%" objectFit="contain" /></Box><Box className="shelf-plank lower-plank" />
+  </Box>
+  <Box className="refrigerator" style={V.fridgeStyle}><Text style={TEXT_STYLE} className="fridge-brand">COLD / MOSTLY</Text><Box className="fridge-case"><Box className="fridge-light" /><Box className="fridge-lines" /><Box className="fridge-handle" /></Box><Text style={TEXT_STYLE} className="fridge-temp">{V.temperature}</Text><Box className="fridge-grille" /></Box>
+  <Text style={TEXT_STYLE} className="neon-sign">{V.neonText}</Text>
+  <Button variant="ghost" className={V.canClose ? "time-clock ready" : "time-clock"} @click={clockOut} disabled={screen !== "play" || S.freeplay}><Text style={TEXT_STYLE} className="clock-night">{V.night}</Text><Text style={TEXT_STYLE} className="clock-digits">{V.clock}</Text><Text style={TEXT_STYLE} className="clock-out">{S.freeplay ? "OFF THE CLOCK" : V.canClose ? "CLOCK OUT ↗" : "SHIFT IN PROGRESS"}</Text></Button>
+  <Button variant="ghost" className={V.groundReady ? "breaker" : "breaker resetting"} @click={stabilise} disabled={screen !== "play" || !V.groundReady} ariaLabel="Reset circuit breaker and stabilise the store"><Box className="breaker-led" /><Box className="breaker-switch" /><Text style={TEXT_STYLE}>GROUND</Text></Button>
+  #each (prop in V.loose)
+   <Button variant="ghost" className={prop.catchable ? "loose-product catchable" : "loose-product"} style={prop.style} @click={catchProduct(prop.id)} disabled={screen !== "play" || !prop.catchable} ariaLabel={prop.label}><Image loading="eager" src={asset(prop.art)} alt="" width="100%" height="100%" objectFit="contain" /></Button>
+  #end
+  #each (particle in V.particles)
+   <Box className={particle.kind} style={particle.style} />
+  #end
+  <Box className="customer-zone">
+   #each (c in V.customers)
+    <Button variant="ghost" className={c.className} style={c.style} @click={serveCustomer(c.id)} disabled={screen !== "play"} ariaLabel={"Serve " + c.name + ": " + c.order}>
+     <Box className={c.urgent ? "order-bubble urgent" : "order-bubble"}><Image loading="eager" src={asset(c.art)} alt="" width="100%" height="100%" objectFit="contain" /><Text style={TEXT_STYLE} className="order-name">{c.order}</Text><Text style={TEXT_STYLE} className="serve-invite">TAP TO SERVE</Text></Box>
+     <Box className="person"><Box className="person-head"><Box className="person-hair" /><Box className="person-eyes" /></Box><Box className="person-coat" /><Box className="person-hand" /></Box>
+     <Text style={TEXT_STYLE} className="customer-name">{c.name}</Text>
+    </Button>
+   #end
+  </Box>
+  <Box className="counter-back" />
+  <Box className="till"><Text style={TEXT_STYLE} className="till-brand">STARLING / 24</Text><Box className="till-screen"><Text style={TEXT_STYLE}>{V.register}</Text></Box><Box className="till-keys" /><Text style={TEXT_STYLE} className="till-little">{S.served + " CUSTOMERS THIS SHIFT"}</Text></Box>
+  <Box className="counter-cup"><Box className="drink-liquid" style={V.drinkStyle} /><Box className="cup-straw" /></Box>
+  <Button variant="ghost" className={V.newReceipt ? "receipt-roll unread" : "receipt-roll"} @click={openJournal} ariaLabel="Open employee discovery log"><Box className="receipt-machine" /><Box className="receipt-paper"><Text style={TEXT_STYLE}>LUNAR LOG</Text><Text style={TEXT_STYLE} className="receipt-count">{V.noteCount}</Text><Text style={TEXT_STYLE}>{V.newReceipt ? "NEW FINDING" : "PULL TO READ"}</Text></Box></Button>
+  <Button variant="ghost" className="delivery-crate" @click={delivery} disabled={screen !== "play"} ariaLabel={"Restock " + V.selected.name}><Text style={TEXT_STYLE}>NIGHT DELIVERY</Text><Box className="crate-tape" /><Text style={TEXT_STYLE} className="crate-label">RESTOCK ↗</Text></Button>
+  <Image loading="eager" if={S.offering && !S.shot} className="held-item" src={asset(V.selectedArt)} alt={"Offering " + V.selected.name} width="100%" height="100%" objectFit="contain" />
+  <Image loading="eager" if={V.shot} className="thrown-item" style={V.shot ? V.shot.style : {}} src={asset(V.shot ? V.shot.art : V.selectedArt)} alt="An offering on its way to the moon" width="100%" height="100%" objectFit="contain" />
+  <Box className="shop-vignette" style={{backgroundImage:"url(" + asset("assets/grain.png") + ")"}} />
+  <Text style={TEXT_STYLE} className="room-status">{V.shopCondition}</Text>
+ </Box>
+ <Box className="shop-subtitles" role="status" aria-live="polite"><Box className="subtitle-dot" /><Text style={TEXT_STYLE}>{V.line}</Text></Box>
+</Box>

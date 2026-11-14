@@ -42,6 +42,7 @@ let toastTimer = 0.0
 let flying = false
 let underwater = false
 let dayPhase = 0.28
+let muted = false
 
 // Player state lives in the VM.
 let px = 32
@@ -60,6 +61,8 @@ let dirty = false
 let particles = []
 let pad = { presses: {} }
 let touchJumpHeld = false
+let touchSinkHeld = false
+let pauseStamp = 0
 let pickSwingTimer = 0.0
 let chestPos = { x: 32.5, y: 20.0, z: 32.5 }
 let chestCollected = false
@@ -77,9 +80,19 @@ let breakCooldown = 0
 let placeCooldown = 0
 
 function playSfx(path, vol) {
+  if (muted) { return }
   try {
     if (typeof softn !== "undefined" && softn.audio && softn.audio.play) {
       softn.audio.play(path, { volume: vol || 0.45 })
+    }
+  } catch (err) {}
+}
+
+function toggleMute() {
+  muted = !muted
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("blockscape:muted", muted ? "1" : "0")
     }
   } catch (err) {}
 }
@@ -103,7 +116,7 @@ function myRand() {
 // ---- Init and input -----------------------------------------------------
 
 function isUiControl(e) {
-  let tag = e.targetTag || ""
+  let tag = e.targetTag || (e.target && e.target.tagName ? e.target.tagName.toLowerCase() : "")
   return tag === "input" || tag === "textarea" || tag === "select" || tag === "button" || !!e.targetEditable
 }
 
@@ -111,7 +124,7 @@ function isLikelyTouch() {
   if (typeof window === "undefined") { return false }
   let coarse = false
   try { coarse = !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches) } catch (err) {}
-  return (typeof navigator !== "undefined" && navigator.maxTouchPoints > 0) || coarse || window.innerWidth <= 860
+  return coarse || window.innerWidth <= 760
 }
 
 function _init() {
@@ -120,6 +133,7 @@ function _init() {
   rngSeed = (Date.now() % 100000) + 17
   pad = { presses: {} }
   touchJumpHeld = false
+  touchSinkHeld = false
   touchSprint = false
   touchMode = isLikelyTouch()
   if (typeof window !== "undefined") {
@@ -145,18 +159,19 @@ function _init() {
       if (e.deltaY > 0) { window.__vxWheel = 1 }
       else if (e.deltaY < 0) { window.__vxWheel = -1 }
     }
-    function onTouch(e) {
-      window.__vxTouch = true
-    }
     window.addEventListener("wheel", onWheel)
-    window.addEventListener("touchstart", onTouch, { passive: true })
     window.__vxCleanup = function () {
       window.removeEventListener("wheel", onWheel)
-      window.removeEventListener("touchstart", onTouch)
     }
   }
 
-  try { hasSave = !!localStorage.getItem("blockscape:world") } catch (err) { hasSave = false }
+  try {
+    hasSave = !!localStorage.getItem("blockscape:world")
+    muted = localStorage.getItem("blockscape:muted") === "1"
+  } catch (err) {
+    hasSave = false
+    muted = false
+  }
   generateWorld(Math.floor(Date.now() % 100000))
   titleOrbit()
   buildLights()
@@ -166,6 +181,7 @@ function _init() {
 function _onHide() {
   pad = { presses: {} }
   touchJumpHeld = false
+  touchSinkHeld = false
   if (started && !paused) { paused = true }
   if (typeof window !== "undefined" && window.__vxCleanup) {
     window.__vxCleanup()
@@ -175,11 +191,23 @@ function _onHide() {
 
 function onControlPress(action) {
   if (!started) { return }
-  if (action === "fly") {
-    if (!paused && !showHelp) {
-      flying = !flying
-      vy = 0
-      showToast(flying ? "Flying. Space to rise, C to sink." : "Walking.")
+  if (action === "mute") {
+    toggleMute()
+    return
+  }
+  if (action === "pause") {
+    if (showHelp) {
+      showHelp = false
+      if (!paused && !touchMode && typeof window !== "undefined") { window.__scene3dWantLock = true }
+      return
+    }
+    if (paused) {
+      if (Date.now() - pauseStamp < 220) { return }
+      resumeGame()
+    } else {
+      paused = true
+      pauseStamp = Date.now()
+      if (typeof window !== "undefined") { window.__scene3dReleaseLock = true }
     }
     return
   }
@@ -187,10 +215,17 @@ function onControlPress(action) {
     showHelp = !showHelp
     let locked = typeof window !== "undefined" && !!window.__scene3dLocked
     if (showHelp && locked && typeof window !== "undefined") { window.__scene3dReleaseLock = true }
-    else if (!showHelp && paused && !touchMode) { resumeGame() }
+    else if (!showHelp && !paused && !touchMode && typeof window !== "undefined") { window.__scene3dWantLock = true }
     return
   }
   if (paused || showHelp) { return }
+  if (action === "fly") {
+    flying = !flying
+    vy = 0
+    touchSinkHeld = false
+    showToast(flying ? "Flying. Space to rise, C to sink." : "Walking.")
+    return
+  }
   if (action === "chest") { tryOpenChest(); return }
   if (action === "break") { doBreak(); return }
   if (action === "place") { doPlace(); return }
@@ -245,8 +280,36 @@ function newWorld(fresh) {
   showToast("Welcome to a new island.")
 }
 
+function startFirstWorld() {
+  newWorld(false)
+}
+
+function startFreshWorld() {
+  newWorld(true)
+}
+
 function isNum(v) {
   return typeof v === "number" && v === v && v - v === 0
+}
+
+function scanGlowTorchesFromWorld() {
+  let found = []
+  let x = 0
+  while (x < WX && found.length < 10) {
+    let z = 0
+    while (z < WZ && found.length < 10) {
+      let y = 1
+      while (y < WY && found.length < 10) {
+        if (blockAt(x, y, z) === B_GLOW) {
+          found.push({ x: x, y: y, z: z })
+        }
+        y = y + 1
+      }
+      z = z + 1
+    }
+    x = x + 1
+  }
+  return found
 }
 
 function continueWorld() {
@@ -265,6 +328,7 @@ function continueWorld() {
   }
   particles = []
   hitOk = false
+  if (meta && isNum(meta.seed)) { worldSeed = meta.seed }
   // A player record is only trusted whole: finite numbers, on or above the
   // island, and not inside a block (a NaN here would sink the camera for good).
   let placeOk = meta && isNum(meta.x) && isNum(meta.y) && isNum(meta.z) &&
@@ -283,6 +347,31 @@ function continueWorld() {
     if (isNum(meta.day)) { dayPhase = meta.day >= 0 && meta.day < 1 ? meta.day : ((meta.day % 1) + 1) % 1 }
     placedCount = isNum(meta.placed) ? Math.max(0, Math.floor(meta.placed)) : 0
     slotIdx = isNum(meta.slot) ? Math.max(0, Math.min(hotbar.length - 1, Math.floor(meta.slot))) : 0
+    if (meta.chestPos && isNum(meta.chestPos.x) && isNum(meta.chestPos.y) && isNum(meta.chestPos.z)) {
+      chestPos = { x: meta.chestPos.x, y: meta.chestPos.y, z: meta.chestPos.z }
+    } else {
+      let cx = Math.min(WX - 3, Math.max(2, Math.floor(px) + 2))
+      let cz = Math.min(WZ - 3, Math.max(2, Math.floor(pz) + 2))
+      let ch = Math.max(SEA + 1, groundHeight(cx, cz))
+      chestPos = { x: cx + 0.5, y: ch + 1.0, z: cz + 0.5 }
+    }
+    chestCollected = !!meta.chestCollected
+    if (Array.isArray(meta.glowTorches)) {
+      let restored = []
+      let ti = 0
+      while (ti < meta.glowTorches.length && restored.length < 10) {
+        let gt = meta.glowTorches[ti]
+        if (gt && isNum(gt.x) && isNum(gt.y) && isNum(gt.z) && blockAt(gt.x, gt.y, gt.z) === B_GLOW) {
+          restored.push({ x: gt.x, y: gt.y, z: gt.z })
+        }
+        ti = ti + 1
+      }
+      glowTorches = restored
+    } else {
+      glowTorches = scanGlowTorchesFromWorld()
+    }
+  } else {
+    glowTorches = scanGlowTorchesFromWorld()
   }
   showHelp = false
   autosaveTimer = 0.0
@@ -349,10 +438,12 @@ function spawnPlayer() {
 function tryOpenChest() {
   if (chestCollected) { return }
   let dx = px - chestPos.x
+  let dy = py - chestPos.y
   let dz = pz - chestPos.z
-  if (dx * dx + dz * dz <= 9.0) {
+  if (dx * dx + dz * dz <= 9.0 && Math.abs(dy) <= 3.2) {
     chestCollected = true
     placedCount = placedCount + 50
+    dirty = true
     playSfx("assets/sfx/chest.wav", 0.55)
     spawnDebris(chestPos.x, chestPos.y + 0.4, chestPos.z, "#ffd24d")
     showToast("Island Treasure Opened! +50 Score")
@@ -362,7 +453,21 @@ function tryOpenChest() {
 function saveWorld() {
   try {
     localStorage.setItem("blockscape:world", encodeWorld())
-    localStorage.setItem("blockscape:player", JSON.stringify({ x: px, y: py, z: pz, yaw: yaw, pitch: pitch, day: dayPhase, placed: placedCount, slot: slotIdx, flying: flying }))
+    localStorage.setItem("blockscape:player", JSON.stringify({
+      x: px,
+      y: py,
+      z: pz,
+      yaw: yaw,
+      pitch: pitch,
+      day: dayPhase,
+      placed: placedCount,
+      slot: slotIdx,
+      flying: flying,
+      seed: worldSeed,
+      chestPos: chestPos,
+      chestCollected: chestCollected,
+      glowTorches: glowTorches
+    }))
     hasSave = true
     dirty = false
     return true
@@ -377,7 +482,7 @@ function saveNow() {
 }
 
 function resetWorld() {
-  newWorld()
+  newWorld(true)
   saveWorld()
 }
 
@@ -488,9 +593,8 @@ function frameStep(rawDt) {
   }
   let locked = typeof window !== "undefined" ? !!window.__scene3dLocked : false
   isLocked = locked
-  if (lastLocked && !locked && !touchMode) { paused = true }
+  if (lastLocked && !locked && !touchMode) { paused = true; pauseStamp = Date.now() }
   lastLocked = locked
-  if (typeof window !== "undefined" && window.__vxTouch) { touchMode = true }
 
   if (toastTimer > 0.0) {
     toastTimer = Math.max(0.0, toastTimer - dt)
@@ -532,8 +636,9 @@ function frameStep(rawDt) {
   hudBlocks = placedCount
   if (!chestCollected) {
     let cdx = px - chestPos.x
+    let cdy = py - chestPos.y
     let cdz = pz - chestPos.z
-    nearChest = (cdx * cdx + cdz * cdz) <= 9.0
+    nearChest = (cdx * cdx + cdz * cdz) <= 9.0 && Math.abs(cdy) <= 3.2
   } else {
     nearChest = false
   }
@@ -562,7 +667,7 @@ function movePlayer(dt) {
   wasWet = wet
   underwater = eyesInWater(px, py, pz)
   let jumpHeld = !!(pad.jump || touchJumpHeld)
-  let sinkHeld = !!pad.sink
+  let sinkHeld = !!(pad.sink || touchSinkHeld)
   let speed = flying ? FLY : (wet ? SWIM : ((pad.sprint || touchSprint) ? SPRINT : WALK))
   let wx = Math.sin(yaw) * fwd - Math.cos(yaw) * str
   let wz = Math.cos(yaw) * fwd + Math.sin(yaw) * str
@@ -680,6 +785,8 @@ function doPlace() {
 
 function touchJumpDown() { touchJumpHeld = true }
 function touchJumpUp() { touchJumpHeld = false }
+function touchSinkDown() { touchSinkHeld = true }
+function touchSinkUp() { touchSinkHeld = false }
 function touchBreak() { window.__vxAction = 1 }
 function touchPlace() { window.__vxAction = 2 }
 function touchFly() { onControlPress("fly") }
@@ -695,21 +802,20 @@ function toggleTouchMode() {
 function touchPause() {
   if (!started) { return }
   paused = !paused
+  pauseStamp = Date.now()
   if (paused && typeof window !== "undefined") { window.__scene3dReleaseLock = true }
   else if (!paused && !touchMode && typeof window !== "undefined") { window.__scene3dWantLock = true }
 }
 function pickSlot(i) { slotIdx = i }
 
-// A locked pointer reports every button through the scene's click; with a
-// touch screen or an unlocked pointer a plain tap on the world places.
+// A locked pointer reports every button through the scene's click.
+// Touch mode uses explicit Mine / Build buttons so camera drags never place blocks accidentally.
 function onSceneClick(hit) {
-  if (!started || paused) { return }
+  if (!started || paused || showHelp) { return }
   if (hit && hit.locked) {
     if (hit.button === 2) { window.__vxAction = 2 }
     else if (hit.button === 0) { window.__vxAction = 1 }
     else if (hit.button === 1) { pickTargetBlock() }
-  } else if (touchMode) {
-    window.__vxAction = 2
   }
 }
 

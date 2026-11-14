@@ -1,0 +1,397 @@
+// Bounded oriented footprints and swept movement; no physics engine or mesh scans.
+// Every solid thing is a collider: a box standing on the ground plane, turned by a yaw, with a base
+// height and a height (see collider()). Overlaps are measured in metres of penetration.
+//
+// State: siteBounds (the static site: SOLIDS from terrain-data.logic, the fittings listed in
+// initCollisions() and the rock outcrops) and collisionGrid (siteBounds bucketed in 16 m cells),
+// rebuilt by initCollisions() from initWorld(). Everything else (vehicles, people, robots, Kevin,
+// the berms, and the ore piles, which grow) is not stored: clearanceScore() adds it on each query.
+//
+// Callers: clearanceScore() (mine/route.logic, player/movement.logic and field-kit.logic, props,
+// wildlife), sweepVehicle() (robot trucks in route.logic, driven vehicles in movement.logic),
+// safeExit() (player/interactions.logic), cameraClearance() (camera.logic) and
+// migrateSiteClearance() (initWorld). The site ends at a square edge 226 m from the centre on each
+// axis (hitsSolid in movement.logic uses the same edge). Robot trucks deliberately ignore each
+// other: see the note in clearanceScore().
+
+// ---------- Colliders and the static site ----------
+
+// The static colliders, built by initCollisions(). Each gets a `key` (its index), which
+// nearbyBounds() uses to return it only once.
+var siteBounds = [];
+
+// siteBounds by 16 m grid cell: 'gx,gz' -> the colliders that reach into that cell.
+var collisionGrid = {};
+
+// A collider centred on (x, z), w wide along its own x and d deep along its own z, standing from
+// height y to y + h, turned by yaw. It stores HALF the width and depth (as w and d) and the yaw as
+// `a`, which is what overlapDepth() and cameraClearance() expect.
+function collider(x, z, w, d, y, h, yaw) {
+  return { x: x, z: z, w: w / 2, d: d / 2, y: y, h: h, a: yaw || 0 };
+}
+
+// Builds siteBounds and collisionGrid. Runs from initWorld(); run it again after changing SOLIDS,
+// ROCK_BOUNDS or the fittings below.
+function initCollisions() {
+  siteBounds = [];
+  // Buildings and walls from SOLIDS are 8 m tall, except the relay mast at x = 115, which is 27 m.
+  for (var i = 0; i < SOLIDS.length; i++) {
+    var b = SOLIDS[i];
+    siteBounds.push(collider(b[0], b[1], b[2], b[3], heightAt(b[0], b[1]), b[0] === 115 ? 27 : 8));
+  }
+  // Fittings that aren't in SOLIDS: [x, z, width, depth, base height, height, yaw]. The
+  // compound's pad is flat at 4 m, hence the base height of 4 for those standing on it.
+  var props = [
+    [-76, 120, 1, 1, 4, 8], // The workshop's roof columns.
+    [-54, 120, 1, 1, 4, 8],
+    [-76, 137, 1, 1, 4, 8],
+    [-54, 137, 1, 1, 4, 8],
+    [-59, 124, 2.4, 2.2, 4, 2.2],
+    [-59, 133, 2.4, 2.2, 4, 2.2],
+    [9, 157, 1.5, 1, 4, 3], // The fuel point.
+    [20, 164, 0.4, 0.4, 4, 7.6], // The charger canopy's posts.
+    [42, 164, 0.4, 0.4, 4, 7.6],
+    [-52, 149, 2, 1.4, 4, 2],
+    [-20, 126, 0.4, 0.4, 4, 12],
+    [47, 120, 0.4, 0.4, 4, 12],
+    [91, 150, 0.4, 0.4, 4, 12],
+    [-80, 139, 0.4, 0.4, 4, 12],
+    [17, 147, 0.4, 0.4, 4, 12],
+    [47, 123, 1.4, 1.4, 4, 6],
+    [58, 123, 1.4, 1.4, 4, 6],
+    [47, 139, 1.4, 1.4, 4, 6],
+    [58, 139, 1.4, 1.4, 4, 6],
+    [61, 152, 0.4, 0.4, 4, 5], // The conveyor's legs, in pairs along its line.
+    [63, 152, 0.4, 0.4, 4, 5],
+    [70, 159, 0.4, 0.4, 4, 6],
+    [72, 159, 0.4, 0.4, 4, 6],
+    [79, 166, 0.4, 0.4, 4, 6],
+    [81, 166, 0.4, 0.4, 4, 6],
+
+    [-35, 152, 18, 11, 11.6, 0.4], // The office roof.
+    [-35, 147, 8.5, 0.3, 8.2, 3.2], // The panel over the office entrance that carries its sign.
+    [-65, 128.5, 24, 20, 11.8, 0.6], // The workshop roof.
+    [31, 164, 24, 11, 11.3, 0.4], // The charger canopy.
+    [53, 129, 12, 14, 8.6, 4.8], // The raised hopper.
+    [66.5, 155.5, 2.9, 34.2, 8, 2.7, 0.91] // The conveyor, from the crusher to the stockpile.
+  ];
+  for (var j = 0; j < props.length; j++) {
+    var q = props[j];
+    siteBounds.push(collider(q[0], q[1], q[2], q[3], q[4], q[5], q[6]));
+  }
+  for (var x of [-22, -15, 0, 15, 47]) siteBounds.push(collider(x, 136, 0.7, 0.7, 4, 0.8));
+  // Three units 4 m south of the spots where idle robots stand (mine/workforce.logic: x 25, 31
+  // and 37, z 163).
+  for (var x = 25; x <= 37; x += 6) siteBounds.push(collider(x, 167, 2, 0.6, 4, 3.4));
+  // The two posts of the sign in the pit (the sign itself is placed in initWorld()).
+  for (var x of [-6, -2]) siteBounds.push(collider(x, -9.85, 0.2, 0.2, heightAt(x, -9.85), 6));
+  // Rock outcrops: [x, z, width, depth, base height, height].
+  if (typeof ROCK_BOUNDS !== 'undefined')
+    for (var k = 0; k < ROCK_BOUNDS.length; k++) {
+      var r = ROCK_BOUNDS[k];
+      siteBounds.push(collider(r[0], r[1], r[2], r[3], r[4], r[5]));
+    }
+  // File each collider under every 16 m cell that its bounding circle (radius: half its diagonal)
+  // reaches into.
+  collisionGrid = {};
+  for (var n = 0; n < siteBounds.length; n++) {
+    var b = siteBounds[n],
+      radius = Math.hypot(b.w, b.d);
+    b.key = n;
+    for (var gx = Math.floor((b.x - radius) / 16); gx <= Math.floor((b.x + radius) / 16); gx++)
+      for (var gz = Math.floor((b.z - radius) / 16); gz <= Math.floor((b.z + radius) / 16); gz++) {
+        var key = gx + ',' + gz;
+        if (!collisionGrid[key]) collisionGrid[key] = [];
+        collisionGrid[key].push(b);
+      }
+  }
+}
+
+// The static colliders filed under the cells that cover the square of half-size r around (x, z),
+// each once. Only a coarse first cut: callers still test each one with overlapDepth().
+function nearbyBounds(x, z, r) {
+  var out = [],
+    seen = {};
+  for (var gx = Math.floor((x - r) / 16); gx <= Math.floor((x + r) / 16); gx++)
+    for (var gz = Math.floor((z - r) / 16); gz <= Math.floor((z + r) / 16); gz++) {
+      var bucket = collisionGrid[gx + ',' + gz] || [];
+      for (var b of bucket)
+        if (!seen[b.key]) {
+          seen[b.key] = true;
+          out.push(b);
+        }
+    }
+  return out;
+}
+
+// ---------- Overlap ----------
+
+// The collider of a ute, a haul truck or a person ('foot') standing at (x, z) on the bare terrain,
+// facing a (v.heading when a is left out).
+function bodyBounds(v, kind, x, z, a) {
+  return collider(
+    x,
+    z,
+    kind === 'ute' ? 2.85 : kind === 'truck' ? 7.75 : 0.7,
+    kind === 'ute' ? 5.5 : kind === 'truck' ? 11 : 0.7,
+    heightAt(x, z),
+    kind === 'ute' ? 2.75 : kind === 'truck' ? 6.4 : 1.8,
+    a === undefined ? v.heading || 0 : a
+  );
+}
+
+// How far two colliders overlap, in metres; 0 if they don't. Heights first (within 2 cm doesn't
+// count, so one thing can rest on another), then a quick check on the bounding squares, then the
+// separating-axis test on the four edge directions of the two boxes. The answer is the shallowest
+// overlap along those axes.
+function overlapDepth(a, b) {
+  if (a.y + a.h <= b.y + 0.02 || b.y + b.h <= a.y + 0.02) return 0;
+  var dx = b.x - a.x,
+    dz = b.z - a.z;
+  if (Math.abs(dx) > a.w + a.d + b.w + b.d || Math.abs(dz) > a.w + a.d + b.w + b.d) return 0;
+  var ax = Math.cos(a.a),
+    az = -Math.sin(a.a),
+    bx = Math.cos(b.a),
+    bz = -Math.sin(b.a),
+    best = 10000;
+  // Each box's own x and z axes, in world coordinates.
+  var axes = [
+    [ax, az],
+    [-az, ax],
+    [bx, bz],
+    [-bz, bx]
+  ];
+  for (var i = 0; i < 4; i++) {
+    var u = axes[i],
+      ra = a.w * Math.abs(u[0] * ax + u[1] * az) + a.d * Math.abs(-u[0] * az + u[1] * ax),
+      rb = b.w * Math.abs(u[0] * bx + u[1] * bz) + b.d * Math.abs(-u[0] * bz + u[1] * bx),
+      depth = ra + rb - Math.abs(dx * u[0] + dz * u[1]);
+    if (depth <= 0.001) return 0;
+    best = Math.min(best, depth);
+  }
+  return best;
+}
+
+// How badly a body of this kind ('ute', 'truck' or 'foot') would overlap the world standing at
+// (x, z) facing a: the sum of every overlap depth in metres, plus 10 off the site. Below 0.001
+// counts as clear. v is the body's owner, so it doesn't collide with itself. With dynamic false
+// only the fixed things count (the site, berms, ore piles, parked visitors); vehicles, people,
+// robots and Kevin are skipped.
+function clearanceScore(v, kind, x, z, a, dynamic) {
+  var body = bodyBounds(v, kind, x, z, a),
+    score = 0;
+  if (Math.abs(x) + body.w > 226 || Math.abs(z) + body.d > 226) score += 10;
+  var nearby = nearbyBounds(x, z, Math.hypot(body.w, body.d));
+  for (var i = 0; i < nearby.length; i++) score += overlapDepth(body, nearby[i]);
+  // Berms ([x1, z1, x2, z2, half-width] in terrain-data.logic): a 1.2 m high box along each one.
+  for (var k = 0; k < BERMS.length; k++) {
+    var b = BERMS[k],
+      dx = b[2] - b[0],
+      dz = b[3] - b[1];
+    score += overlapDepth(
+      body,
+      collider(
+        (b[0] + b[2]) / 2,
+        (b[1] + b[3]) / 2,
+        b[4] * 2,
+        Math.hypot(dx, dz),
+        heightAt((b[0] + b[2]) / 2, (b[1] + b[3]) / 2),
+        1.2,
+        Math.atan2(dx, dz)
+      )
+    );
+  }
+  // The stockpile and the ore at the pit face change size, so their boxes are made here, scaled
+  // exactly as buildWorldFrame() (scene.logic) scales the 'stockpile' and 'face-ore' models (the
+  // stockpile model is 18 m across and 5 m high at scale 1). Change the two together.
+  var pile = 1 + Math.min(0.5, S.plant.processed / 6000);
+  score += overlapDepth(
+    body,
+    collider(82, 168, 18 * pile, 18 * pile, 4, 5 * (0.35 + Math.min(0.65, S.plant.processed / 2500)))
+  );
+  score += overlapDepth(
+    body,
+    collider(33, -33, 10.8, 11.7, heightAt(33, -33), 5 * Math.max(0.1, S.extraction / 5000))
+  );
+  // Parked visitors that appendFieldObjects() (player/field-kit.logic) draws: the contractor's ute
+  // on shift 4, the survey ute and its crate from shift 5. Keep the two in step.
+  if (S.shift === 4)
+    score += overlapDepth(body, collider(-88, 145, 2.85, 5.5, heightAt(-88, 145), 2.75, Math.PI / 2));
+  if (S.shift >= 5) {
+    score += overlapDepth(body, collider(-84, 178, 2.85, 5.5, heightAt(-84, 178), 2.75, -0.35));
+    score += overlapDepth(body, collider(-81, 180, 1.4, 1, heightAt(-81, 180), 1));
+  }
+  if (!dynamic) return score;
+  // Robot trucks keep apart by route spacing (same-lane gaps, 15 m queue slots, lanes 8.8 m apart),
+  // not by bumping: two of them blocking each other on a bend or in the tip bay would wait forever.
+  // Everything respects a truck a person is driving or has parked. This rule was added to break the
+  // fleet's deadlocks. The spacing is kept by mine/route.logic and mine/simulation.logic, and
+  // fleetWatchdog() in mine/traffic.logic is the last resort if the trucks jam anyway.
+  for (var t of S.trucks) {
+    if (t === v) continue;
+    if (kind === 'truck' && v.phase !== 'manual' && t.phase !== 'manual' && !t.parkedManual) continue;
+    score += overlapDepth(body, bodyBounds(t, 'truck', t.x, t.z));
+  }
+  if (v !== S.ute) score += overlapDepth(body, bodyBounds(S.ute, 'ute', S.ute.x, S.ute.z));
+  // Both excavators, at their fixed spots (excavatorLocation in mine/excavators.logic).
+  for (var e of S.excavators) {
+    var ex = excavatorLocation(e.id);
+    score += overlapDepth(body, collider(ex.x, ex.z, 8.5, 10.7, ex.y, 4.7, ex.heading));
+  }
+  if (kind !== 'foot' && S.player.mode === 'foot')
+    score += overlapDepth(body, bodyBounds(S.player, 'foot', S.player.x, S.player.z));
+  // Robots on foot (not driving an active truck, and not on the excavator, which is assigned -1):
+  // 1 m posts on a fixed base of 4.36 m, the compound's pad (4 m) plus the 0.36 m they are drawn
+  // above the ground.
+  for (var bot of S.robots) {
+    var tr = bot.assigned > 0 ? getTruck(bot.assigned) : null;
+    if (bot.assigned === -1 || (tr && tr.active)) continue;
+    score += overlapDepth(body, collider(bot.x, bot.z, 1, 1, 4.36, 2, 0));
+  }
+  // Robot trucks give way to Kevin. Kevin gives way to nobody. This holds while he stands in the
+  // haul lane, and for a truck a person is driving as well (kind is 'truck' either way).
+  if (kind === 'truck' && S.kevin && S.kevin.mode === 'road')
+    score += overlapDepth(
+      body,
+      collider(S.kevin.x, S.kevin.z, 1.6, 1.6, heightAt(S.kevin.x, S.kevin.z), 2, 0)
+    );
+  return score;
+}
+
+// ---------- Moving, getting out, and the chase camera ----------
+
+// Moves vehicle v by (dx, dz) while turning it to heading, in sub-steps of at most 0.4 m and
+// 0.045 rad, and stops at the first sub-step that is refused. A sub-step is refused if it makes
+// an overlap where there was none, or deepens an existing one (so a vehicle already touching
+// something can still back away), or crosses ground steeper than 0.9 m per metre. Writes v.x, v.z,
+// v.heading and v.y (bare terrain; player/movement.logic sets y again for driven vehicles).
+// Returns true if it was stopped.
+function sweepVehicle(v, kind, dx, dz, heading) {
+  var steps = Math.max(
+      1,
+      Math.ceil(Math.hypot(dx, dz) / 0.4),
+      Math.ceil(Math.abs(wrapAngle(heading - v.heading)) / 0.045)
+    ),
+    startX = v.x,
+    startZ = v.z,
+    startA = v.heading,
+    score = clearanceScore(v, kind, v.x, v.z, v.heading, true),
+    blocked = false;
+  for (var i = 1; i <= steps; i++) {
+    var f = i / steps,
+      x = startX + dx * f,
+      z = startZ + dz * f,
+      a = startA + wrapAngle(heading - startA) * f,
+      next = clearanceScore(v, kind, x, z, a, true);
+    if ((next > 0.001 && (score < 0.001 || next > score + 0.0001)) || slopeBlocked(v.x, v.z, x, z, 0.9)) {
+      blocked = true;
+      break;
+    }
+    v.x = x;
+    v.z = z;
+    v.heading = a;
+    score = next;
+  }
+  v.y = heightAt(v.x, v.z);
+  return blocked;
+}
+
+// Where a person can climb out of vehicle v: tries 12 directions 30 degrees apart, starting square
+// to the vehicle's side, at distance, then 2 m and 4 m further out. The spot must fit a person (the
+// vehicle itself counts as an obstacle) and be no steeper than 2 m per metre from the vehicle.
+// Returns { x, z }, or null when boxed in (exitVehicle in player/interactions.logic then refuses).
+function safeExit(v, distance) {
+  for (var r = 0; r < 3; r++)
+    for (var i = 0; i < 12; i++) {
+      var a = (v.heading || 0) + Math.PI / 2 + (i * Math.PI) / 6,
+        x = v.x + Math.sin(a) * (distance + r * 2),
+        z = v.z + Math.cos(a) * (distance + r * 2);
+      if (clearanceScore(S.player, 'foot', x, z, 0, true) < 0.001 && !slopeBlocked(v.x, v.z, x, z, 2))
+        return { x: x, z: z };
+    }
+  return null;
+}
+
+// Pulls a chase camera in from `desired` towards `anchor` (a point above the vehicle) so it never
+// ends up inside a building, a truck, the ute or the ground. Boxes are padded by 0.3 m and the
+// camera stops 0.3 m short of the first one; then the line is walked in 0.5 m steps to keep the
+// camera 0.4 m above groundAt(). Returns the position to use.
+function cameraClearance(anchor, desired) {
+  var dx = desired.x - anchor.x,
+    dy = desired.y - anchor.y,
+    dz = desired.z - anchor.z,
+    length = Math.hypot(dx, dy, dz),
+    fraction = 1;
+  var nearby = nearbyBounds((anchor.x + desired.x) / 2, (anchor.z + desired.z) / 2, length / 2 + 0.5);
+  // The trucks and the ute too, except the one being driven: the anchor is inside it.
+  for (var t of S.trucks)
+    if (!(S.player.mode === 'truck' && t.id === S.player.vehicle))
+      nearby.push(bodyBounds(t, 'truck', t.x, t.z));
+  if (S.player.mode !== 'ute') nearby.push(bodyBounds(S.ute, 'ute', S.ute.x, S.ute.z));
+  // The line against each box, in the box's own frame (the slab test): enter and leave are the
+  // fractions of the line at which it is inside all three slabs.
+  for (var b of nearby) {
+    var c = Math.cos(b.a),
+      s = Math.sin(b.a),
+      rx = anchor.x - b.x,
+      rz = anchor.z - b.z;
+    var origin = [rx * c - rz * s, anchor.y - b.y, rx * s + rz * c],
+      delta = [dx * c - dz * s, dy, dx * s + dz * c],
+      low = [-b.w - 0.3, -0.3, -b.d - 0.3],
+      high = [b.w + 0.3, b.h + 0.3, b.d + 0.3],
+      enter = 0,
+      leave = 1;
+    for (var axis = 0; axis < 3; axis++) {
+      if (Math.abs(delta[axis]) < 0.00001) {
+        if (origin[axis] < low[axis] || origin[axis] > high[axis]) leave = -1;
+      } else {
+        var a = (low[axis] - origin[axis]) / delta[axis],
+          end = (high[axis] - origin[axis]) / delta[axis];
+        enter = Math.max(enter, Math.min(a, end));
+        leave = Math.min(leave, Math.max(a, end));
+      }
+    }
+    if (enter <= leave && leave >= 0 && enter <= 1)
+      fraction = Math.min(fraction, Math.max(0, enter - 0.3 / (length || 1)));
+  }
+  var steps = Math.ceil(length / 0.5);
+  for (var i = 1; i <= steps; i++) {
+    var f = i / steps;
+    if (f > fraction) break;
+    var x = anchor.x + dx * f,
+      z = anchor.z + dz * f;
+    if (anchor.y + dy * f < groundAt(x, z) + 0.4) {
+      fraction = Math.max(0, (i - 1) / steps);
+      break;
+    }
+  }
+  return { x: anchor.x + dx * fraction, y: anchor.y + dy * fraction, z: anchor.z + dz * fraction };
+}
+
+// ---------- Old saves ----------
+
+// A one-off fix for saves made before site layout 7, which moved the crusher's service point
+// (x 61 to 49) and the relay's ((108, 116) to (115, 105)): snaps robot trucks in standby to their
+// parking spots, moves open crusher and relay alerts and an old waypoint to the new points, then
+// records the layout in S.siteLayout. Runs from initWorld(). S.siteLayout is not set by newState()
+// or checked by validState(), so a new game runs this once too, harmlessly.
+function migrateSiteClearance() {
+  if (S.siteLayout === 7) return;
+  for (var t of S.trucks) if (t.phase === 'standby' && !t.parkedManual) setTruckPosition(t);
+  for (var a of S.alerts) {
+    if (a.kind === 'crusher') {
+      a.x = 49;
+      a.z = 143;
+    }
+    if (a.kind === 'relay') {
+      a.x = 115;
+      a.z = 105;
+    }
+  }
+  if (S.waypoint && S.waypoint.x === 61 && S.waypoint.z === 143) S.waypoint.x = 49;
+  if (S.waypoint && S.waypoint.x === 108 && S.waypoint.z === 116) {
+    S.waypoint.x = 115;
+    S.waypoint.z = 105;
+  }
+  S.siteLayout = 7;
+}

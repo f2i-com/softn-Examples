@@ -1,0 +1,75 @@
+// Printer encounter: every phase has anticipation, an attack, and a clear pull window.
+function createBoss() {return {x:1750,y:270,w:450,h:310,phase:1,cleared:0,state:"dormant",timer:1,
+    shotTimer:0,shotsLeft:0,cycle:0,lcd:"READY. UNFORTUNATELY.",tray:0,tonerClock:0,meltdown:0,baseX:1750};}
+function bossPhaseName() {if(!G.boss)return "";return ["","1 / COLLATION DISPUTE","2 / TONER DEPARTMENT","3 / UPPER MANAGEMENT"][G.boss.phase];}
+function bossEnter(state,time) {
+    let b=G.boss;b.state=state;b.timer=time;
+    if(state==="telegraph") {b.lcd=b.phase===1?"PREPARING STRONG OPINIONS":(b.phase===2?"TONER IS NOT A FOOD GROUP":"ESCALATING TO EVERYONE");sound("printer",0.42);}
+    if(state==="volley") {b.lcd="DOCUMENTS INCOMING";b.shotsLeft=3+b.phase;b.shotTimer=0;}
+    if(state==="jammed") {
+        b.lcd="PAPER DISAGREEMENT / PULL";let t=findTarget("jam");t.active=true;t.holdTime=settings.gentle?0.42:0.72;
+        createJamPlatforms();sound("jam");tell("Paper jam! Hold X on the flashing pink sheet until it tears free.",4);
+    }
+}
+function createJamPlatforms() {
+    let b=G.boss;
+    for(let i=0;i<b.phase+1;i++) {
+        let id="boss-paper-"+i,p=findPlatform(id);
+        if(!p){p=addP(G.world,id,b.x-325+i*115,505-i*78,138,15,"jam-paper",false);p.dynamic=true;p.bossPaper=true;}
+    }
+}
+function printerShot(offset) {
+    let b=G.boss,from={x:b.x+15,y:b.y+92};let dx=G.p.x-from.x,dy=(G.p.y-16)-from.y;
+    let angle=Math.atan2(dy,dx)+offset,speed=(settings.gentle?220:275)+b.phase*22;
+    G.projectiles.push({x:from.x,y:from.y,px:from.x,py:from.y,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed,
+        life:5.5,angle:0,w:38,h:18});sound("paper",0.40);
+}
+function pullBossJam() {
+    let b=G.boss;if(!b || b.state!=="jammed" || !findTarget("jam").active)return false;
+    findTarget("jam").active=false;b.cleared++;G.score+=250;
+    burst(b.x,b.y+80,COLORS.paper,28,210);sound("tear");G.shake=settings.reducedMotion?0:0.2;
+    if(b.cleared>=3) {b.state="meltdown";b.timer=3.2;b.meltdown=0;b.lcd="PLEASE CONSULT A SMALLER EMPLOYEE";G.projectiles=[];G.clouds=[];tell("The printer is experiencing a personal development opportunity.",5);}
+    else {b.phase=b.cleared+1;b.state="recover";b.timer=1.8;b.lcd=b.phase===2?"PLEASE ENJOY THIS TONER":"CONTACTING UPPER MANAGEMENT";tell("Jam cleared. The printer has changed departments.",3);}
+    return true;
+}
+function bossStep(dt) {
+    let b=G.boss;if(!b)return;
+    if(b.state==="dormant") {if(G.p.x>930){bossEnter("telegraph",1.3);speak("Printer: Your document has been referred to a larger printer.");}return;}
+    if(b.state==="defeated")return;
+    if(b.state==="meltdown") {
+        b.timer-=dt;b.meltdown+=dt;b.tray=Math.sin(b.meltdown*22)*0.5+0.5;
+        if(G.frame%9===0)confetti(b.x+b.w/2,b.y+60);
+        if(b.timer<=0){b.state="defeated";b.lcd="THANK YOU, SMALL COLLEAGUE";completeMission();}return;
+    }
+    b.cycle+=dt;b.timer-=dt;
+    // The machine rolls, but its useful paper footholds stay put.
+    b.x=b.baseX+(b.phase===1?0:Math.sin(b.cycle*(b.phase===2?0.55:0.9))*(b.phase===2?55:95));
+    let jam=findTarget("jam");jam.x=b.x-12;jam.y=b.y+130-(b.phase-1)*83;
+    b.tray=b.state==="telegraph"?clamp(1-b.timer/1.2,0,1):(b.state==="volley"?1:0);
+    if(b.state==="telegraph" && b.timer<=0)bossEnter("volley",2.1);
+    if(b.state==="volley") {
+        b.shotTimer-=dt;
+        if(b.shotTimer<=0 && b.shotsLeft>0){printerShot(Math.sin(b.shotsLeft*2.5)*0.12);b.shotsLeft--;b.shotTimer=settings.gentle?0.46:0.32;}
+        if(b.phase>=2 && b.timer<1.8 && b.tonerClock<=0) {
+            G.clouds.push({x:b.x-215,y:543,r:65,life:3.4,max:3.4});b.tonerClock=4;
+        }
+        // Trays are harmful only after the very visible opening warning.
+        let trayX=b.x-175,trayY=b.y+b.h-75;
+        if(G.p.x>trayX-12 && G.p.x<b.x+20 && G.p.y>trayY-6 && G.p.y-G.p.h<trayY+27)damage(17,"The paper tray has expanded your responsibilities.");
+        if(b.shotsLeft<=0 && b.timer<=0)bossEnter("jammed",settings.gentle?12:8);
+    }
+    if(b.state==="jammed" && b.timer<=0) {jam.active=false;if(G.tongue.target==="jam")releaseTongue();bossEnter("telegraph",1.25);}
+    if(b.state==="recover" && b.timer<=0)bossEnter("telegraph",1.5);
+    b.tonerClock=Math.max(0,b.tonerClock-dt);
+    let shots=[];
+    for(let i=0;i<G.projectiles.length;i++) {let s=G.projectiles[i];s.px=s.x;s.py=s.y;s.x+=s.vx*dt;s.y+=s.vy*dt;s.angle+=dt*5;s.life-=dt;
+        let hit=segmentBox(s.px,s.py,s.x,s.y,{x:G.p.x-G.p.w/2-16,y:G.p.y-G.p.h-8,w:G.p.w+32,h:G.p.h+16});
+        if(hit){damage(12,"A paper cut. On company time.");burst(s.x,s.y,COLORS.paper,8,80);}
+        else if(s.life>0 && s.x>-50 && s.x<G.world.width+50)shots.push(s);
+    }G.projectiles=shots;
+    let clouds=[];
+    for(let i=0;i<G.clouds.length;i++) {let c=G.clouds[i];c.life-=dt;c.x-=dt*24;
+        if(c.life<=0)continue;
+        if(dist({x:G.p.x,y:G.p.y-14},c)<c.r*0.72)damage(9,"Toner is not a suitable moisturiser.");clouds.push(c);
+    }G.clouds=clouds;
+}

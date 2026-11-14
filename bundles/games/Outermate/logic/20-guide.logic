@@ -26,12 +26,13 @@ function requestBuy(lineId){if(!shopLine(lineId))return false;return queueTask({
 // The steps a route still needs, in the order a player would take them. Only undone steps are listed.
 function guideSteps(){
   let g=guideState(),r=routeById(g.route);if(!r||!omGame||omGame.over||omGame.escape)return [];
+  if(r.id==="paper")projectReady("paper");
   let p=player(),d=projectById(r.project),s=projectState(d.id),steps=[],needLock=null;
   // Fixtures inside work rooms need that room's detail; the choice queues the change first.
   function accessJob(siteId){let job=jobForSite(siteId);return job&&p.job!==job.id?job:null;}
   function accessLabel(siteId,verb){let job=accessJob(siteId);return "Queue: "+(job?job.name+" detail, then ":"")+verb;}
   function withAccess(siteId,run){return function(){let job=accessJob(siteId);if(job)requestAssignment(job.id);run();};}
-  let claimed={},stashClaimed={},stepIds={};
+  let claimed={},stashClaimed={},heldClaimed={},stepIds={};
   function add(step){let id=step.id;if(stepIds[id]){stepIds[id]++;step.id=id+"#"+stepIds[id];}else stepIds[id]=1;step.skipped=g.skipped.indexOf(step.id)>=0;step.queued=step.match?guideQueued(step.match):0;steps.push(step);}
   function need(item,n,why){
     // Project costs are paid from your pockets, so stored goods are fetched first without double-counting shared items.
@@ -40,6 +41,9 @@ function guideSteps(){
     if(best){let k=best.id+":"+item,take=Math.min(bestAvail,missing);stashClaimed[k]=(stashClaimed[k]||0)+take;
       add({match:function(t){return t.type==="fetch"&&t.item===item;},id:"fetch:"+item,title:"Fetch "+ITEMS[item].name+" ×"+take+" from the "+best.name.toLowerCase(),text:"Project materials are paid from your pockets. "+(why?"Needed "+why+".":""),choices:[{id:"fetch",primary:true,locked:false,label:"Queue: fetch ×"+take,hint:"A visit to "+siteById(best.site).name+".",run:function(){requestFetch(best.id,item,take);}}]});
       missing-=take;if(missing<=0)return;}
+    for(let c of omGame.people){if(c.role!=="inmate"||c.escaped)continue;let hk=c.id+":"+item,avail=Math.max(0,((c.holding&&c.holding[item])||0)-(heldClaimed[hk]||0));if(avail>0){let take=Math.min(avail,missing);heldClaimed[hk]=(heldClaimed[hk]||0)+take;
+      add({match:function(t){return t.type==="collect"&&t.actor===c.id;},id:"collect:"+c.id+":"+item,title:"Collect "+ITEMS[item].name+" from "+c.short,text:c.short+" is holding this out of sight for you."+(why?" Needed "+why+".":""),choices:[{id:"collect",primary:true,locked:false,label:"Queue: collect from "+c.short,hint:"Walk over and ask for it back.",run:function(){requestSocial(c.id,"collect");}}]});
+      missing-=take;if(missing<=0)return;}}
     if(rec){
       for(let id of Object.keys(rec.cost))need(id,rec.cost[id]*missing,"for the "+ITEMS[item].name.toLowerCase());
       let job=jobForSite(rec.site),locked=!jobUnlocked(job);if(locked&&!needLock)needLock=job;
@@ -57,6 +61,7 @@ function guideSteps(){
   }
   if(!s||!s.complete){if(!s||!s.paid)for(let id of Object.keys(d.cost))need(id,d.cost[id],"for "+d.name.toLowerCase());for(let id of d.requires)need(id,1,"to work on "+d.name.toLowerCase());}
   if(r.id==="maintenance"){need("uniform",1,"for cover");need("pass",1,"for cover");}
+  if(r.id==="paper"&&s&&s.complete)need("release",1,"for the administrative checkpoint");
   if(!knownIntel(r.intel)){let site=findIntelSite(r.intel);let lockedObserve=!jobUnlocked(accessJob(site));if(accessJob(site)&&!jobUnlocked(accessJob(site))&&!needLock)needLock=accessJob(site);add({match:function(t){return t.type==="observe"&&t.site===site;},id:"observe",title:"Study "+castText(siteById(site).name),text:INTEL[r.intel].body,choices:[{id:"observe",primary:true,locked:lockedObserve,label:accessLabel(site,"study it in person"),hint:"A rumour is not enough; observation is."+(lockedObserve?" Needs two work batches first.":""),run:withAccess(site,function(){requestAction(site,"observe");})}]});}
   if(!(s&&s.complete)){let lockedProject=!jobUnlocked(accessJob(d.site));if(accessJob(d.site)&&lockedProject&&!needLock)needLock=accessJob(d.site);add({match:function(t){return t.type==="project"&&t.project===d.id;},id:"project",title:"Prepare: "+d.name,text:d.description,choices:[{id:"project",primary:true,locked:lockedProject,label:accessLabel(d.site,s&&s.paid?"resume the project":"work the project"),hint:d.id==="tunnel"?"Worked after lock-in over a few nights; Auto pauses while the night officer looks in.":d.id==="perimeter"?"Dusk work, 19:00 to 21:00; Auto pauses while an officer can see the fence.":"Progress persists; interrupted work resumes.",run:withAccess(d.site,function(){requestProject(d.id);})}]});}
   if(r.id==="cargo"&&p.job!=="loading"){let job=jobFor("loading"),locked=!jobUnlocked(job);add({match:function(t){return t.type==="assignment"&&t.job==="loading";},id:"job:loading",title:"Join the freight detail",text:"The loading dock only opens to freight porters.",choices:[{id:"job",primary:true,locked:locked,label:"Queue: change to Freight porter",hint:locked?"Needs two work batches first.":"A visit to the noticeboard.",run:function(){requestAssignment("loading");}}]});}

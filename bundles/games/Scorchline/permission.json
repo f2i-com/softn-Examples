@@ -1,0 +1,28 @@
+{
+  "app": {
+    "id": "com.f2i.scorchline",
+    "name": "Scorchline",
+    "version": "0.2.0"
+  },
+  "permissions": {
+    "files": {
+      "enabled": true,
+      "scopes": [
+        "user_selected"
+      ]
+    },
+    "net": {
+      "enabled": false
+    },
+    "camera": {
+      "enabled": false
+    },
+    "mic": {
+      "enabled": false
+    },
+    "sync": {
+      "enabled": false
+    }
+  },
+  "version": 1
+}

@@ -343,22 +343,32 @@ function dosKernel_handleInt(intNum) {
     let al = DOS_REGS32[0] & 0xFF;
 
     if (ah === 0x00) {
-      // Set Video Mode
-      DOS_VIDEO_MODE = al;
-      dosVga_modeRegs(al);
-      if (al === 0x13) {
+      // Set Video Mode (bit 7 of AL preserves display memory)
+      let mode = al & 0x7F;
+      let clearMem = (al & 0x80) === 0;
+      DOS_VIDEO_MODE = mode;
+      dosVga_planarReset();
+      if (DOS_JIT_ST !== null) {
+        DOS_JIT_ST[8] = dosVga_jitFlag();
+        DOS_JIT_ST[7] = DOS_VGA_MAP_MASK;
+      }
+      dosVga_initPalette();
+      if (mode === 0x13) {
         // Clear VGA graphics buffer
-        DOS_RAM.fill(0, 0xA0000, 0xA0000 + 64000);
-      } else if (al === 0x03) {
+        if (clearMem) DOS_RAM.fill(0, 0xA0000, 0xA0000 + 64000);
+      } else if (mode === 0x03) {
         // Clear text mode buffer
-        let textBase = 0xB8000;
-        for (let i = 0; i < 2000; i++) {
-          DOS_RAM[textBase + (i * 2)] = 32;
-          DOS_RAM[textBase + (i * 2) + 1] = 0x07;
+        if (clearMem) {
+          let textBase = 0xB8000;
+          for (let i = 0; i < 2000; i++) {
+            DOS_RAM[textBase + (i * 2)] = 32;
+            DOS_RAM[textBase + (i * 2) + 1] = 0x07;
+          }
         }
         DOS_CURSOR_COL = 0;
         DOS_CURSOR_ROW = 0;
       }
+      dosMouse_clamp();
       return;
     }
 

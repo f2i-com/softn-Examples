@@ -1,4 +1,4 @@
-// Listen.ui — the half that needed a microphone component to exist at all.
+// Listen.ui — record from microphone, import a WAV file, or run a blind loopback capture.
 
 <Stack direction=vertical gap=md if={currentPage === "listen"}>
 
@@ -7,33 +7,33 @@
     // ── The ear ─────────────────────────────────────────────────────────────
     <Card className="ww-hard" padding=lg style={{ background: "#20343d", borderRadius: "0", color: "#f4eddc" }}>
       <Stack direction=vertical gap=md>
-        <Text className="ww-mono" style={{ fontSize: "0.625rem", color: "#a9dce8" }}>01 — Microphone</Text>
+        <Text className="ww-mono" style={{ fontSize: "0.625rem", color: "#a9dce8" }}>01 — Capture or Import</Text>
 
-        <Text style={{ fontSize: "0.8125rem", color: "#c4d2d8", lineHeight: 1.55 }}>
-          Play a song on one device and record it on another. Hold the record button
-          down for the whole burst — a Wren frame runs 8.5 seconds.
-        </Text>
-        <Text style={{ fontSize: "0.8125rem", color: "#c4d2d8", lineHeight: 1.55 }}>
-          Only one device? Generate a song in Compose, come back here, press
-          Test with this device, then hold Record while it plays — the microphone
-          hears the speaker.
+        <Text style={{ fontSize: "0.8125rem", color: "#d5e1e6", lineHeight: 1.55 }}>
+          Play a WarbleWire song on another device and hold Record below for the full burst (a Wren frame runs ~8.5 s). Raw 48 kHz capture disables speech noise-suppression so pure bird tones survive intact.
         </Text>
 
-        // The single-device path: the Compose song, played after a two-second
-        // pause so there is time to press and hold Record before it starts.
-        <Box style={{ display: "flex", alignItems: "center", gap: "0.625rem", flexWrap: "wrap" }}>
+        <Box style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
           <Button @click={playForListener} disabled={!hasSignal} variant=ghost style={{
-            minHeight: "40px", borderRadius: "999px", border: "1px solid #c7ee53", background: "transparent",
-            color: "#c7ee53", fontWeight: 600, fontSize: "0.8125rem", padding: "0.5rem 0.875rem"
-          }}>Test with this device</Button>
-          <Text className="ww-mono" style={{ fontSize: "0.5625rem", color: "#6d7f88" }}>
-            {hasSignal ? "Plays the Compose song after a two-second pause" : "Generate a song in Compose first"}
-          </Text>
+            minHeight: "38px", borderRadius: "999px", border: "1px solid #c7ee53", background: "transparent",
+            color: "#c7ee53", fontWeight: 600, fontSize: "0.78rem", padding: "0.45rem 0.85rem"
+          }}>Speaker → Mic test</Button>
+
+          <Button @click={decodeLoopbackDirect} disabled={!hasSignal} variant=ghost style={{
+            minHeight: "38px", borderRadius: "999px", border: "1px solid #a9dce8", background: "transparent",
+            color: "#a9dce8", fontWeight: 600, fontSize: "0.78rem", padding: "0.45rem 0.85rem"
+          }}>Loopback decode</Button>
+
+          <Button @click={importWavForListen} variant=ghost style={{
+            minHeight: "38px", borderRadius: "999px", border: "1px solid #fbe3a0", background: "transparent",
+            color: "#fbe3a0", fontWeight: 600, fontSize: "0.78rem", padding: "0.45rem 0.85rem"
+          }}>Import .wav</Button>
         </Box>
 
-        // processing={false} is the entire reason this works. Echo cancellation,
-        // noise suppression and automatic gain control are trained on speech and
-        // treat a steady tone as noise to remove — which is exactly the signal.
+        <Text className="ww-mono" style={{ fontSize: "0.5625rem", color: "#9ab0ba" }}>
+          {listening ? "Recording active — Speaker test starts after 0.45 s" : "Hold Record first (or press Speaker → Mic test for a 2.2 s countdown)"}
+        </Text>
+
         <Microphone
           mode="clip"
           sampleRate={48000}
@@ -46,11 +46,11 @@
           style={{ background: "#18262d", border: "1px solid #3f4f57", borderRadius: "0" }}
         />
 
-        <Text if={micRate !== ""} className="ww-mono" style={{ fontSize: "0.5625rem", color: "#6d7f88" }}>
-          {"Captured at " + micRate}
+        <Text if={micRate !== ""} className="ww-mono" style={{ fontSize: "0.5625rem", color: "#b0c2ca" }}>
+          {"Captured source: " + micRate}
         </Text>
 
-        <Box if={heardWaveformSvg !== ""} style={{ background: "#18262d", border: "1px solid #3f4f57" }}>
+        <Box if={heardWaveformSvg !== ""} style={{ background: "#18262d", border: "1px solid #3f4f57", overflow: "hidden" }}>
           <Icon svg={heardWaveformSvg} size="100%" style={{ width: "100%", display: "block" }} />
         </Box>
       </Stack>
@@ -62,7 +62,14 @@
       borderRadius: "0"
     }}>
       <Stack direction=vertical gap=md>
-        <Text className="ww-mono" style={{ fontSize: "0.625rem", color: "#6d7f88" }}>02 — Recovered</Text>
+        <Box style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <Text className="ww-mono" style={{ fontSize: "0.625rem", color: "#6d7f88" }}>02 — Recovered Frame</Text>
+          <Button if={heardText !== ""} size=xs variant=ghost @click={copyHeardText} style={{
+            border: "1px solid #18262d", borderRadius: "999px", padding: "0.2rem 0.65rem",
+            background: copiedHeard ? "#c7ee53" : "#f4eddc", color: "#18262d",
+            fontSize: "0.68rem", fontWeight: 600
+          }}>{copiedHeard ? "✓ Copied" : "Copy message"}</Button>
+        </Box>
 
         <Text style={{ fontSize: "1rem", fontWeight: 700, letterSpacing: "-0.02em" }}>{heardTitle}</Text>
 
@@ -70,7 +77,8 @@
           background: "#f4eddc",
           padding: "0.875rem",
           fontSize: "1.0625rem",
-          lineHeight: 1.45
+          lineHeight: 1.45,
+          wordBreak: "break-word"
         }}>
           <Text>{heardText}</Text>
         </Box>
@@ -80,11 +88,11 @@
         <Stack if={heardConfidence !== ""} direction=vertical gap=xs style={{ borderTop: "1px solid #18262d", paddingTop: "0.625rem" }}>
           <Box style={{ display: "flex", justifyContent: "space-between" }}>
             <Text className="ww-mono" style={{ fontSize: "0.5625rem", color: "#6d7f88" }}>Symbol confidence</Text>
-            <Text className="ww-mono" style={{ fontSize: "0.5625rem" }}>{heardConfidence}</Text>
+            <Text className="ww-mono" style={{ fontSize: "0.5625rem", fontWeight: 600 }}>{heardConfidence}</Text>
           </Box>
           <Box style={{ display: "flex", justifyContent: "space-between" }}>
-            <Text className="ww-mono" style={{ fontSize: "0.5625rem", color: "#6d7f88" }}>Frame start</Text>
-            <Text className="ww-mono" style={{ fontSize: "0.5625rem" }}>{heardOffset}</Text>
+            <Text className="ww-mono" style={{ fontSize: "0.5625rem", color: "#6d7f88" }}>Frame onset</Text>
+            <Text className="ww-mono" style={{ fontSize: "0.5625rem", fontWeight: 600 }}>{heardOffset}</Text>
           </Box>
         </Stack>
       </Stack>
@@ -92,6 +100,6 @@
   </Grid>
 
   <Text style={{ fontSize: "0.6875rem", color: "#6d7f88", lineHeight: 1.5 }}>
-    Two devices in the same room work best; clock drift between devices is not corrected yet.
+    Tip: No microphone handy? Use Loopback decode or Export WAV in Compose and Import .wav here to inspect full blind preamble detection across all 12 tempo × voice profiles.
   </Text>
 </Stack>

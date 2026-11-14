@@ -1,0 +1,9 @@
+<Box if={view.mainVisible} className={view.heroClass} style={view.heroStyle}>
+  <Button className="hero-button" ariaLabel="Press the duck" disabled={view.mainDisabled} @click={pressDuck}>
+    <Box className="duck-shadow" /><Box className="button-legs" /><Box className="button-bottom" /><Box className="plinth-top" />
+    <Box className="hero-body"><Image loading="eager" className="hero-art" src={asset("assets/art/duck-body.svg")} width="100%" height="100%" objectFit="fill" showPlaceholder={false} alt="" /></Box>
+    <Box className="hero-head"><Image loading="eager" className="hero-art" src={asset("assets/art/duck-head.svg")} width="100%" height="100%" objectFit="fill" showPlaceholder={false} alt="" /><Box className="duck-eye" /><Box className="duck-eyebrow" /></Box>
+    <Text className="button-label">DO NOT</Text>
+  </Button>
+</Box>
+<Box if={view.showEnding} className={view.heroClass} style={view.heroStyle}><Image loading="eager" src={asset(view.endingArt)} width="100%" height="100%" objectFit="contain" showPlaceholder={false} alt="A very contented duck" /></Box>

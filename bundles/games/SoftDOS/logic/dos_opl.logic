@@ -338,8 +338,12 @@ function dosOpl_render(ST, h) {
 
 // Hand the renderer to the host, when the accel capability is granted.
 function dosOpl_accelInit() {
+  if (DOS_OPL_READY === 0) dosOpl_init();
   DOS_OPL_ACCEL = -1;
-  if (typeof accel === "undefined") return;
+  if (typeof accel === "undefined") {
+    dosOpl_setRate(24000);
+    return;
+  }
   try {
     let body = dosJit_fnBody(dosOpl_render);
     body = dosJit_replaceAll(body, "DOS_OPL_LFO[", "LFO[");

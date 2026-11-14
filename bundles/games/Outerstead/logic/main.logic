@@ -51,8 +51,21 @@ function initialiseOuterstead() {
   if(booted)return;booted=true;loadPresentationPreferences();initialiseTitleScene();initialiseOpeningShots();initialiseMods();
   try{refreshSlots();}catch(error){saveAvailable=false;}
   try{if(typeof softn!=="undefined"&&softn.input)softn.input.captureKeys([" ","1","2","3","4","ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Home"],function(){});}catch(error){/* Hosts without key capture still support toolbar controls. */}
-  if(typeof window!=="undefined"&&window.addEventListener){window.addEventListener("keydown",onGameKey);window.addEventListener("blur",onGameBlur);window.addEventListener("pointerdown",resumeAudioAfterGesture);window.addEventListener("keydown",resumeAudioAfterGesture);window.addEventListener("pagehide",onGameUnload);window.addEventListener("beforeunload",onGameUnload);window.addEventListener("visibilitychange",onGameHidden);}
+  if(typeof window!=="undefined"&&window.addEventListener){
+    if(window.__osCleanup)try{window.__osCleanup();}catch(e){}
+    window.addEventListener("keydown",onGameKey);window.addEventListener("blur",onGameBlur);window.addEventListener("pointerdown",resumeAudioAfterGesture);window.addEventListener("keydown",resumeAudioAfterGesture);window.addEventListener("pagehide",onGameUnload);window.addEventListener("beforeunload",onGameUnload);window.addEventListener("visibilitychange",onGameHidden);
+    window.__osCleanup=function(){try{window.removeEventListener("keydown",onGameKey);window.removeEventListener("blur",onGameBlur);window.removeEventListener("pointerdown",resumeAudioAfterGesture);window.removeEventListener("keydown",resumeAudioAfterGesture);window.removeEventListener("pagehide",onGameUnload);window.removeEventListener("beforeunload",onGameUnload);window.removeEventListener("visibilitychange",onGameHidden);}catch(e){}window.__osCleanup=null;};
+  }
   refreshCamera();
   resumeFromLastSession();
+}
+function _onHide() {
+  onGameUnload();
+  stopOpeningNarration();
+  stopChapterNarration();
+  stopWeatherAudio();
+  audioRevision++;cueRevision++;audioHandle="";cueHandle="";
+  try{if(typeof softn!=="undefined"&&softn.audio)softn.audio.stopAll(function(){});}catch(e){}
+  if(typeof window!=="undefined"&&window.__osCleanup)try{window.__osCleanup();}catch(e){}
 }
 initialiseOuterstead();

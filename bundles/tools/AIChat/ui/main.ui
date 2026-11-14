@@ -1,13 +1,12 @@
 // main.ui - AI Chat
-// Local chat with a small on-device model · responsive layout
+// Private on-device Qwen3-0.6B studio · responsive layout
 
 <logic src="../logic/main.logic" />
 
 <style>
-/* ── Animations ── */
 @keyframes dot-bounce {
-  0%, 80%, 100% { transform: translateY(0); }
-  40% { transform: translateY(-5px); }
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.45; }
+  40% { transform: translateY(-4px); opacity: 1; }
 }
 @keyframes msg-in {
   from { opacity: 0; transform: translateY(6px); }
@@ -21,258 +20,183 @@
   from { opacity: 0; }
   to { opacity: 1; }
 }
-@keyframes pulse-glow {
-  0%, 100% { opacity: 0.6; }
-  50% { opacity: 1; }
-}
 @keyframes fade-up {
-  from { opacity: 0; transform: translateY(12px); }
+  from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.msg-enter { animation: msg-in 0.2s ease-out; }
-.dot-1 { animation: dot-bounce 1.4s ease-in-out infinite; }
-.dot-2 { animation: dot-bounce 1.4s ease-in-out 0.2s infinite; }
-.dot-3 { animation: dot-bounce 1.4s ease-in-out 0.4s infinite; }
-.pulse { animation: pulse-glow 2s ease-in-out infinite; }
-.fade-up { animation: fade-up 0.4s ease-out; }
-.fade-up-delay { animation: fade-up 0.4s 0.08s ease-out both; }
-.fade-up-delay2 { animation: fade-up 0.4s 0.16s ease-out both; }
-.fade-up-delay3 { animation: fade-up 0.4s 0.24s ease-out both; }
-
-/* ── Sidebar ── */
-.sidebar {
-  width: 260px;
-  min-width: 260px;
-  display: flex;
-  flex-direction: column;
-  border-right: 1px solid rgba(255,255,255,0.06);
-  background: #0c0c15;
-  z-index: 20;
-}
-.sidebar-item {
-  padding: 0.5rem 0.75rem;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 120ms ease;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 1px;
-}
-.sidebar-item:hover { background: rgba(255,255,255,0.04); }
-/* Always findable at low opacity; full opacity while armed ("Delete?"). */
-.sidebar-item .del-btn { opacity: 0.35; transition: opacity 120ms; }
-.sidebar-item:hover .del-btn { opacity: 0.85; }
-.sidebar-item .del-btn.del-btn-confirm { opacity: 1; }
-
-/* ── Download progress (indeterminate: the loader reports no progress) ── */
 @keyframes dl-slide {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(300%); }
 }
+
+.msg-enter { animation: msg-in 0.2s ease-out; }
+.dot-1 { animation: dot-bounce 1.3s ease-in-out infinite; }
+.dot-2 { animation: dot-bounce 1.3s ease-in-out 0.18s infinite; }
+.dot-3 { animation: dot-bounce 1.3s ease-in-out 0.36s infinite; }
+.fade-up { animation: fade-up 0.35s ease-out; }
+.fade-up-delay { animation: fade-up 0.35s 0.06s ease-out both; }
+.fade-up-delay2 { animation: fade-up 0.35s 0.12s ease-out both; }
+
+.sidebar {
+  width: 268px;
+  min-width: 268px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid rgba(148, 163, 184, 0.12);
+  background: #0b101b;
+  z-index: 20;
+}
+.sidebar-item {
+  padding: 0.5rem 0.65rem;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 2px;
+  border: 1px solid transparent;
+}
+.sidebar-item:hover { background: rgba(148, 163, 184, 0.07); }
+.sidebar-item .del-btn { opacity: 0.55; transition: opacity 120ms; }
+.sidebar-item:hover .del-btn { opacity: 1; }
+.sidebar-item .del-btn.del-btn-confirm { opacity: 1; }
+
 .dl-bar {
   width: 100%;
-  height: 4px;
+  height: 5px;
   border-radius: 999px;
-  background: rgba(255,255,255,0.06);
+  background: rgba(148, 163, 184, 0.14);
   overflow: hidden;
 }
 .dl-bar-fill {
-  width: 33%;
+  width: 35%;
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, rgba(16,185,129,0.15), #10b981, rgba(16,185,129,0.15));
-  animation: dl-slide 1.6s ease-in-out infinite;
+  background: linear-gradient(90deg, rgba(16,185,129,0.2), #10b981, #34d399, rgba(16,185,129,0.2));
+  animation: dl-slide 1.5s ease-in-out infinite;
 }
 
-/* ── Chat bubbles ── */
 .bubble-user {
-  background: linear-gradient(135deg, #065f46, #064e3b);
+  background: linear-gradient(135deg, #059669, #047857);
+  border: 1px solid rgba(52, 211, 153, 0.25);
   border-radius: 18px 18px 4px 18px;
-  padding: 0.625rem 0.9375rem;
-  color: #d1fae5;
-  font-size: 0.8125rem;
-  line-height: 1.65;
+  padding: 0.65rem 0.95rem;
+  color: #ecfdf5;
+  font-size: 0.85rem;
+  line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
-  max-width: 72%;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+  max-width: 76%;
+  box-shadow: 0 4px 14px rgba(4, 120, 87, 0.22);
 }
 .bubble-ai {
-  background: rgba(255,255,255,0.025);
-  border: 1px solid rgba(255,255,255,0.045);
+  background: #111827;
+  border: 1px solid rgba(148, 163, 184, 0.14);
   border-radius: 18px 18px 18px 4px;
-  padding: 0.625rem 0.9375rem;
-  color: #d0d0e4;
-  font-size: 0.8125rem;
+  padding: 0.7rem 1rem;
+  color: #e2e8f0;
+  font-size: 0.85rem;
   line-height: 1.65;
   white-space: pre-wrap;
   word-break: break-word;
-  max-width: 72%;
+  max-width: 100%;
+}
+.think-box {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(16, 185, 129, 0.22);
+  border-radius: 10px;
+  padding: 0.55rem 0.75rem;
+  margin-bottom: 0.45rem;
+  color: #94a3b8;
+  font-size: 0.75rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
 }
 
-/* ── Input ── */
 .input-container {
-  background: #111120;
-  border: 1px solid rgba(255,255,255,0.07);
+  background: #111827;
+  border: 1px solid rgba(148, 163, 184, 0.18);
   border-radius: 16px;
   display: flex;
   align-items: flex-end;
-  padding: 0.25rem 0.25rem 0.25rem 0.375rem;
-  transition: border-color 200ms;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  gap: 0.375rem;
+  padding: 0.35rem 0.45rem 0.35rem 0.75rem;
+  transition: border-color 180ms, box-shadow 180ms;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
 }
 .input-container:focus-within {
-  border-color: rgba(16,185,129,0.35);
-  box-shadow: 0 2px 12px rgba(16,185,129,0.06);
+  border-color: rgba(16, 185, 129, 0.55);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
 }
 
-/* ── Send button ── */
 .send-btn {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
   border: none;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
-  transition: all 180ms ease;
+  transition: transform 150ms ease, opacity 150ms ease;
   min-width: auto;
   padding: 0;
 }
-.send-btn:hover {
-  transform: scale(1.05);
-}
+.send-btn:hover { transform: translateY(-1px); }
 
-/* ── Suggestion cards ── */
 .suggestion-card {
-  background: rgba(255,255,255,0.025);
-  border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(17, 24, 39, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.14);
   border-radius: 14px;
-  padding: 1rem 1.25rem;
+  padding: 0.85rem 1rem;
   cursor: pointer;
-  transition: all 180ms ease;
-  flex: 1;
-  min-width: 140px;
-  max-width: 200px;
+  transition: all 160ms ease;
+  flex: 1 1 200px;
+  max-width: 240px;
 }
 .suggestion-card:hover {
-  background: rgba(16,185,129,0.06);
-  border-color: rgba(16,185,129,0.15);
-  transform: translateY(-1px);
+  background: rgba(16, 185, 129, 0.09);
+  border-color: rgba(16, 185, 129, 0.38);
+  transform: translateY(-2px);
 }
 
-/* ── Image attachment ── */
-.attach-preview {
-  position: relative;
-  display: inline-flex;
-  border-radius: 12px;
-  overflow: hidden;
-  border: 1px solid rgba(255,255,255,0.08);
-}
-.attach-preview img {
-  width: 56px;
-  height: 56px;
-  object-fit: cover;
-  display: block;
-}
-.attach-remove {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: rgba(0,0,0,0.7);
-  color: #fff;
-  font-size: 0.6rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  border: none;
-  line-height: 1;
-}
-
-.msg-image img {
-  max-width: 200px;
-  max-height: 150px;
-  border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.06);
-  display: block;
-}
-
-/* ── Attach button ── */
-.attach-btn {
-  padding: 0.375rem;
-  min-width: 34px;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  transition: all 150ms ease;
-  font-weight: 300;
-}
-.attach-btn:hover {
-  background: rgba(255,255,255,0.04);
-  color: #10b981 !important;
-}
-
-/* ── Scrollbars ── */
-.scroll-thin::-webkit-scrollbar { width: 4px; }
+.scroll-thin::-webkit-scrollbar { width: 5px; }
 .scroll-thin::-webkit-scrollbar-track { background: transparent; }
-.scroll-thin::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 4px; }
-.scroll-thin::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.12); }
+.scroll-thin::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.18); border-radius: 4px; }
+.scroll-thin::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.32); }
 
-/* ── Backdrop (mobile sidebar overlay) ── */
 .backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(0,0,0,0.5);
+  background: rgba(2, 6, 23, 0.65);
+  backdrop-filter: blur(2px);
   z-index: 15;
   animation: backdrop-in 0.15s ease-out;
 }
 
-/* ── Mobile responsive ── */
-@media (max-width: 639px) {
+@media (max-width: 679px) {
   .sidebar {
     position: absolute;
     top: 0;
     left: 0;
     bottom: 0;
-    width: 280px;
-    min-width: 280px;
+    width: 282px;
+    min-width: 282px;
     animation: sidebar-slide 0.2s ease-out;
-    box-shadow: 4px 0 24px rgba(0,0,0,0.4);
+    box-shadow: 8px 0 32px rgba(0, 0, 0, 0.55);
   }
-  .bubble-user, .bubble-ai {
-    max-width: 88%;
-    font-size: 0.875rem;
-  }
-  .msg-image img {
-    max-width: 180px;
-  }
-  .attach-preview img {
-    width: 48px;
-    height: 48px;
-  }
+  .bubble-user { max-width: 88%; }
   .suggestion-card {
-    min-width: 120px;
-    padding: 0.75rem;
+    flex: 1 1 145px;
+    max-width: none;
+    padding: 0.75rem 0.85rem;
   }
 }
 </style>
 
-// Counts down an armed delete; only runs while a row is armed.
-<Loop interval={1000} running={confirmDeleteId !== ""} @tick={tickDeleteConfirm} />
+<Loop interval={1000} running={confirmDeleteId !== "" || copiedMsgId !== ""} @tick={tickUiTimers} />
 
 <App theme="dark">
   <Box style={{
@@ -280,166 +204,216 @@
     width: "100%",
     height: "100%",
     overflow: "hidden",
-    background: "#09090f",
+    background: "#070b14",
+    color: "#e2e8f0",
     position: "relative",
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif"
+    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif"
   }}>
 
-    // ═══════ MOBILE BACKDROP ═══════
     <Box if={showSidebar && isMobile} className="backdrop" @click={closeSidebar} />
 
     // ═══════ SIDEBAR ═══════
     <Box if={showSidebar} className="sidebar">
-      // Header
       <Box style={{
-        padding: "0.75rem",
+        padding: "0.8rem 0.85rem",
         display: "flex",
         alignItems: "center",
         gap: "0.625rem",
-        borderBottom: "1px solid rgba(255,255,255,0.05)"
+        borderBottom: "1px solid rgba(148, 163, 184, 0.1)"
       }}>
         <Box style={{
-          width: "30px",
-          height: "30px",
-          borderRadius: "9px",
+          width: "32px",
+          height: "32px",
+          borderRadius: "10px",
           background: "linear-gradient(135deg, #10b981, #047857)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          flexShrink: 0
+          flexShrink: 0,
+          boxShadow: "0 4px 12px rgba(16, 185, 129, 0.25)"
         }}>
-          <Text style={{ color: "#fff", fontSize: "0.6875rem", fontWeight: 700 }}>AI</Text>
+          <Text style={{ color: "#fff", fontSize: "0.72rem", fontWeight: 700 }}>AI</Text>
         </Box>
-        <Text style={{ fontSize: "0.875rem", fontWeight: 600, color: "#e4e4ed", flex: 1 }}>AI Chat</Text>
-        // Close sidebar on mobile
+        <Box style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ fontSize: "0.875rem", fontWeight: 600, color: "#f1f5f9", display: "block" }}>AI Chat</Text>
+          <Text style={{ fontSize: "0.65rem", color: "#94a3b8", display: "block" }}>Qwen3-0.6B · Local</Text>
+        </Box>
         <Button if={isMobile} variant=ghost @click={closeSidebar} ariaLabel="Close sidebar" title="Close" style={{
-          padding: "4px 6px",
-          color: "#666",
-          minWidth: "auto",
-          display: "flex",
-          alignItems: "center"
-        }}><Icon name="close" size={16} color="#777" /></Button>
+          padding: "5px",
+          color: "#94a3b8",
+          minWidth: "auto"
+        }}><Icon name="close" size={16} color="#94a3b8" /></Button>
       </Box>
 
-      // New chat button
-      <Box style={{ padding: "0.5rem 0.625rem" }}>
+      <Box style={{ padding: "0.625rem 0.7rem 0.4rem", display: "flex", flexDirection: "column", gap: "0.45rem" }}>
         <Button @click={newConversation} style={{
           width: "100%",
-          background: "rgba(16,185,129,0.1)",
-          color: "#10b981",
-          border: "1px solid rgba(16,185,129,0.15)",
-          borderRadius: "8px",
-          padding: "0.5rem",
+          background: "rgba(16, 185, 129, 0.14)",
+          color: "#34d399",
+          border: "1px solid rgba(16, 185, 129, 0.3)",
+          borderRadius: "10px",
+          padding: "0.52rem",
           fontSize: "0.8125rem",
-          fontWeight: 500,
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: "0.375rem"
+          fontWeight: 600,
+          cursor: "pointer"
         }}>+ New Chat</Button>
+
+        <Input
+          if={conversations.length > 2}
+          value={searchQuery}
+          @change={setSearchQuery}
+          placeholder="Filter chats…"
+          style={{
+            width: "100%",
+            background: "#111827",
+            border: "1px solid rgba(148, 163, 184, 0.16)",
+            borderRadius: "8px",
+            padding: "0.38rem 0.6rem",
+            fontSize: "0.75rem",
+            color: "#e2e8f0"
+          }}
+        />
       </Box>
 
-      // Conversation list
       <Box className="scroll-thin" style={{
         flex: 1,
         overflowY: "auto",
-        padding: "0.25rem 0.5rem"
+        padding: "0.25rem 0.55rem"
       }}>
-        #each (conv in conversations)
+        #each (conv in filteredConversations)
           <Box className="sidebar-item" @click={selectConversation(conv)} style={{
-            background: isActiveConv(conv) ? "rgba(16,185,129,0.08)" : "transparent"
+            background: isActiveConv(conv) ? "rgba(16, 185, 129, 0.11)" : "transparent",
+            borderColor: isActiveConv(conv) ? "rgba(16, 185, 129, 0.24)" : "transparent"
           }}>
             <Box style={{
-              width: "5px",
-              height: "5px",
+              width: "6px",
+              height: "6px",
               borderRadius: "50%",
-              background: isActiveConv(conv) ? "#10b981" : "transparent",
+              background: isActiveConv(conv) ? "#10b981" : "rgba(148, 163, 184, 0.3)",
               flexShrink: 0
             }} />
             <Box style={{ flex: 1, minWidth: 0 }}>
               <Text style={{
                 fontSize: "0.8125rem",
-                color: isActiveConv(conv) ? "#d1fae5" : "#8888a0",
+                color: isActiveConv(conv) ? "#ecfdf5" : "#cbd5e1",
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
-                fontWeight: isActiveConv(conv) ? 500 : 400,
+                fontWeight: isActiveConv(conv) ? 600 : 400,
                 display: "block"
               }}>{getConvTitle(conv)}</Text>
             </Box>
             <Text style={{
-              fontSize: "0.625rem",
-              color: "#444",
+              fontSize: "0.65rem",
+              color: "#64748b",
               flexShrink: 0,
               whiteSpace: "nowrap"
             }}>{getConvTime(conv)}</Text>
-            <Button className={isConfirmingDelete(conv) ? "del-btn del-btn-confirm" : "del-btn"} variant=ghost @click={requestDelete(conv.id)} ariaLabel={isConfirmingDelete(conv) ? "Click again to delete this conversation" : "Delete conversation"} title={isConfirmingDelete(conv) ? "Click again to delete" : "Delete conversation"} style={{
-              padding: "2px 5px",
-              fontSize: "0.625rem",
+            <Button className={isConfirmingDelete(conv) ? "del-btn del-btn-confirm" : "del-btn"} variant=ghost @click={requestDelete(conv.id)} ariaLabel={isConfirmingDelete(conv) ? "Confirm delete" : "Delete conversation"} title={isConfirmingDelete(conv) ? "Tap again to delete" : "Delete conversation"} style={{
+              padding: "3px 6px",
+              fontSize: "0.65rem",
               fontWeight: 600,
-              color: isConfirmingDelete(conv) ? "#fca5a5" : "#777",
-              background: isConfirmingDelete(conv) ? "rgba(239,68,68,0.15)" : "transparent",
-              borderRadius: "5px",
+              color: isConfirmingDelete(conv) ? "#fecaca" : "#94a3b8",
+              background: isConfirmingDelete(conv) ? "rgba(239, 68, 68, 0.24)" : "transparent",
+              borderRadius: "6px",
               flexShrink: 0,
               minWidth: "auto",
               display: "flex",
               alignItems: "center"
             }}>
-              <Icon if={!isConfirmingDelete(conv)} name="close" size={11} color="#888" />
-              <Text if={isConfirmingDelete(conv)} style={{ fontSize: "0.625rem", color: "#fca5a5", fontWeight: 600, whiteSpace: "nowrap" }}>Delete?</Text>
+              <Icon if={!isConfirmingDelete(conv)} name="close" size={12} color="#94a3b8" />
+              <Text if={isConfirmingDelete(conv)} style={{ fontSize: "0.65rem", color: "#fecaca", fontWeight: 600, whiteSpace: "nowrap" }}>Delete?</Text>
             </Button>
           </Box>
         #empty
-          <Box style={{ padding: "2.5rem 1rem", textAlign: "center" }}>
-            <Text style={{ fontSize: "0.75rem", color: "#3a3a50", lineHeight: 1.6 }}>
-              No conversations yet
+          <Box style={{ padding: "2.25rem 1rem", textAlign: "center" }}>
+            <Text style={{ fontSize: "0.78rem", color: "#64748b", lineHeight: 1.6 }}>
+              {conversations.length > 0 ? "No matching chats" : "No conversations yet"}
             </Text>
           </Box>
         #end
       </Box>
 
-      // Settings
-      <Box style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+      // Model & Generation Settings
+      <Box style={{ borderTop: "1px solid rgba(148, 163, 184, 0.1)", background: "#090e18" }}>
         <Button variant=ghost @click={toggleSettings} style={{
           width: "100%",
           textAlign: "left",
-          padding: "0.5rem 0.75rem",
-          fontSize: "0.6875rem",
-          color: "#555",
+          padding: "0.6rem 0.85rem",
+          fontSize: "0.75rem",
+          fontWeight: 500,
+          color: "#cbd5e1",
           display: "flex",
           alignItems: "center",
-          gap: "0.375rem"
+          justifyContent: "space-between"
         }}>
-          {(showSettings ? "▾ " : "▸ ") + "Settings"}
+          <Text style={{ fontSize: "0.75rem", color: "#cbd5e1" }}>{(showSettings ? "▾ " : "▸ ") + "Model Settings"}</Text>
+          <Text style={{ fontSize: "0.65rem", color: "#64748b" }}>{"T=" + temperature}</Text>
         </Button>
-        <Box if={showSettings} style={{ padding: "0 0.75rem 0.625rem" }}>
+
+        <Box if={showSettings} style={{ padding: "0.15rem 0.85rem 0.8rem" }}>
           <Stack direction=vertical gap=xs>
             <Stack direction=horizontal gap=xs align=center justify="space-between">
-              <Text style={{ fontSize: "0.6875rem", color: "#555" }}>Temperature 0–2</Text>
-              <Input type="number" min={0} max={2} step={0.1} value={temperatureText} @change={setTemperature} error={settingsErrorField === "temperature"} style={{
-                width: "64px", height: "auto", background: "#0e0e1a",
-                border: settingsErrorField === "temperature" ? "1px solid rgba(248,113,113,0.6)" : "1px solid rgba(255,255,255,0.06)",
-                color: "#999", borderRadius: "5px", padding: "3px 6px", fontSize: "0.6875rem", textAlign: "center"
-              }} />
+              <Text style={{ fontSize: "0.72rem", color: "#94a3b8" }}>Reasoning (&lt;think&gt;)</Text>
+              <Button size=xs variant=ghost @click={toggleThinkingMode} style={{
+                padding: "3px 9px",
+                borderRadius: "999px",
+                fontSize: "0.68rem",
+                fontWeight: 600,
+                background: thinkingMode ? "rgba(16, 185, 129, 0.2)" : "rgba(148, 163, 184, 0.12)",
+                color: thinkingMode ? "#34d399" : "#94a3b8",
+                border: thinkingMode ? "1px solid rgba(16, 185, 129, 0.4)" : "1px solid rgba(148, 163, 184, 0.2)"
+              }}>{thinkingMode ? "On" : "Off (Fast)"}</Button>
             </Stack>
+
             <Stack direction=horizontal gap=xs align=center justify="space-between">
-              <Text style={{ fontSize: "0.6875rem", color: "#555" }}>Max tokens 1–1024</Text>
-              <Input type="number" min={1} max={1024} step={1} value={maxTokensText} @change={setMaxTokens} error={settingsErrorField === "maxTokens"} style={{
-                width: "64px", height: "auto", background: "#0e0e1a",
-                border: settingsErrorField === "maxTokens" ? "1px solid rgba(248,113,113,0.6)" : "1px solid rgba(255,255,255,0.06)",
-                color: "#999", borderRadius: "5px", padding: "3px 6px", fontSize: "0.6875rem", textAlign: "center"
+              <Text style={{ fontSize: "0.72rem", color: "#94a3b8" }}>Temperature (0–2)</Text>
+              <Input type="number" min={0} max={2} step={0.1} value={temperatureText} @change={setTemperature} style={{
+                width: "68px", height: "auto", background: "#111827",
+                border: settingsErrorField === "temperature" ? "1px solid #f87171" : "1px solid rgba(148, 163, 184, 0.2)",
+                color: "#f1f5f9", borderRadius: "6px", padding: "3px 6px", fontSize: "0.72rem", textAlign: "center"
               }} />
             </Stack>
+
             <Stack direction=horizontal gap=xs align=center justify="space-between">
-              <Text style={{ fontSize: "0.6875rem", color: "#555" }}>Top-P 0–1</Text>
-              <Input type="number" min={0} max={1} step={0.05} value={topPText} @change={setTopP} error={settingsErrorField === "topP"} style={{
-                width: "64px", height: "auto", background: "#0e0e1a",
-                border: settingsErrorField === "topP" ? "1px solid rgba(248,113,113,0.6)" : "1px solid rgba(255,255,255,0.06)",
-                color: "#999", borderRadius: "5px", padding: "3px 6px", fontSize: "0.6875rem", textAlign: "center"
+              <Text style={{ fontSize: "0.72rem", color: "#94a3b8" }}>Max tokens (16–1536)</Text>
+              <Input type="number" min={16} max={1536} step={32} value={maxTokensText} @change={setMaxTokens} style={{
+                width: "68px", height: "auto", background: "#111827",
+                border: settingsErrorField === "maxTokens" ? "1px solid #f87171" : "1px solid rgba(148, 163, 184, 0.2)",
+                color: "#f1f5f9", borderRadius: "6px", padding: "3px 6px", fontSize: "0.72rem", textAlign: "center"
               }} />
             </Stack>
-            <Text if={settingsError} style={{ fontSize: "0.625rem", color: "#f87171", lineHeight: 1.4 }}>{settingsError}</Text>
+
+            <Stack direction=horizontal gap=xs align=center justify="space-between">
+              <Text style={{ fontSize: "0.72rem", color: "#94a3b8" }}>Top-P (0–1)</Text>
+              <Input type="number" min={0} max={1} step={0.05} value={topPText} @change={setTopP} style={{
+                width: "68px", height: "auto", background: "#111827",
+                border: settingsErrorField === "topP" ? "1px solid #f87171" : "1px solid rgba(148, 163, 184, 0.2)",
+                color: "#f1f5f9", borderRadius: "6px", padding: "3px 6px", fontSize: "0.72rem", textAlign: "center"
+              }} />
+            </Stack>
+
+            <Box style={{ marginTop: "0.25rem" }}>
+              <Text style={{ fontSize: "0.68rem", color: "#94a3b8", display: "block", marginBottom: "0.25rem" }}>System prompt</Text>
+              <TextArea
+                className="sys-prompt-input"
+                value={systemPrompt}
+                @change={setSystemPrompt}
+                rows={2}
+                style={{
+                  width: "100%",
+                  background: "#111827",
+                  border: "1px solid rgba(148, 163, 184, 0.2)",
+                  borderRadius: "6px",
+                  color: "#e2e8f0",
+                  fontSize: "0.72rem",
+                  padding: "0.35rem 0.5rem",
+                  lineHeight: 1.4
+                }}
+              />
+            </Box>
+
+            <Text if={settingsError} style={{ fontSize: "0.68rem", color: "#fca5a5", lineHeight: 1.4 }}>{settingsError}</Text>
           </Stack>
         </Box>
       </Box>
@@ -459,23 +433,22 @@
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        padding: "0.375rem 0.625rem",
-        borderBottom: "1px solid rgba(255,255,255,0.04)",
-        background: "#0b0b13",
+        padding: "0.45rem 0.75rem",
+        borderBottom: "1px solid rgba(148, 163, 184, 0.1)",
+        background: "#0b101b",
         flexShrink: 0,
-        minHeight: "42px",
+        minHeight: "46px",
         gap: "0.5rem"
       }}>
-        // Left: hamburger + status
         <Stack direction=horizontal gap=sm align=center style={{ flex: 1, minWidth: 0 }}>
-          <Button variant=ghost @click={toggleSidebar} style={{
+          <Button variant=ghost @click={toggleSidebar} ariaLabel="Toggle sidebar" title="Conversations" style={{
             padding: "6px",
-            color: "#666",
-            minWidth: "32px",
-            height: "32px",
+            minWidth: "34px",
+            height: "34px",
             display: "flex",
             alignItems: "center",
-            justifyContent: "center"
+            justifyContent: "center",
+            borderRadius: "8px"
           }}>
             <Box style={{
               width: "16px",
@@ -484,170 +457,205 @@
               flexDirection: "column",
               justifyContent: "space-between"
             }}>
-              <Box style={{ height: "1.5px", background: "#888", borderRadius: "1px" }} />
-              <Box style={{ height: "1.5px", background: "#888", borderRadius: "1px", width: "70%" }} />
-              <Box style={{ height: "1.5px", background: "#888", borderRadius: "1px" }} />
+              <Box style={{ height: "1.75px", background: "#cbd5e1", borderRadius: "1px" }} />
+              <Box style={{ height: "1.75px", background: "#cbd5e1", borderRadius: "1px", width: "72%" }} />
+              <Box style={{ height: "1.75px", background: "#cbd5e1", borderRadius: "1px" }} />
             </Box>
           </Button>
 
           <Box style={{
-            width: "7px", height: "7px", borderRadius: "50%", flexShrink: 0,
-            background: modelLoaded ? "#10b981" : modelLoading ? "#f59e0b" : "#555",
-            boxShadow: modelLoaded ? "0 0 6px rgba(16,185,129,0.4)" : "none"
+            width: "8px", height: "8px", borderRadius: "50%", flexShrink: 0,
+            background: modelLoaded ? "#10b981" : modelLoading ? "#f59e0b" : loadError ? "#ef4444" : "#64748b",
+            boxShadow: modelLoaded ? "0 0 8px rgba(16, 185, 129, 0.5)" : "none"
           }} />
           <Text style={{
-            fontSize: "0.6875rem",
-            color: "#555",
+            fontSize: "0.75rem",
+            color: loadError ? "#fca5a5" : "#94a3b8",
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis"
           }}>{statusText}</Text>
         </Stack>
 
-        // Right: model actions
-        <Box style={{ flexShrink: 0 }}>
+        <Box style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexShrink: 0 }}>
+          <Button if={chatMessages.length > 0 && !generating} variant=ghost @click={clearActiveConversation} title="Clear messages in this chat" style={{
+            fontSize: "0.7rem", color: "#94a3b8", padding: "0.3rem 0.55rem"
+          }}>Clear</Button>
+
           <Button if={!modelLoaded && !modelLoading} @click={loadModel} style={{
             background: "linear-gradient(135deg, #10b981, #059669)",
             color: "#fff", border: "none", borderRadius: "8px",
-            padding: "0.3rem 0.75rem", fontSize: "0.6875rem", fontWeight: 500
-          }}>Download and start</Button>
+            padding: "0.35rem 0.8rem", fontSize: "0.72rem", fontWeight: 600
+          }}>{loadError ? "Retry download" : "Download & start"}</Button>
+
           <Button if={modelLoading} style={{
-            background: "#141425", color: "#f59e0b",
-            border: "1px solid rgba(245,158,11,0.15)", borderRadius: "8px",
-            padding: "0.3rem 0.75rem", fontSize: "0.6875rem", cursor: "wait"
-          }}>Downloading...</Button>
-          <Button if={modelLoaded} variant=ghost @click={unloadModel} style={{
-            fontSize: "0.625rem", color: "#555", padding: "0.3rem 0.5rem"
+            background: "rgba(245, 158, 11, 0.12)", color: "#fbbf24",
+            border: "1px solid rgba(245, 158, 11, 0.3)", borderRadius: "8px",
+            padding: "0.35rem 0.8rem", fontSize: "0.72rem", cursor: "wait"
+          }}>Downloading…</Button>
+
+          <Button if={modelLoaded} disabled={generating} variant=ghost @click={unloadModel} style={{
+            fontSize: "0.7rem", color: "#94a3b8", padding: "0.3rem 0.55rem",
+            opacity: generating ? 0.45 : 1
           }}>Unload</Button>
         </Box>
       </Box>
 
       // ── Messages ──
-      <Box className="scroll-thin" style={{
-        flex: 1, overflowY: "auto", padding: "0.75rem 0", minHeight: 0
+      <Box className="scroll-thin chat-scroll-area" style={{
+        flex: 1, overflowY: "auto", padding: "0.85rem 0", minHeight: 0
       }}>
 
         // ─── Welcome state ───
         <Box if={chatMessages.length === 0} style={{
           display: "flex", flexDirection: "column", alignItems: "center",
-          justifyContent: "center", height: "100%", gap: "1.5rem", padding: "2rem 1.5rem"
+          justifyContent: "center", minHeight: "100%", gap: "1.25rem", padding: "1.5rem 1.25rem"
         }}>
-          // Logo
           <Box className="fade-up" style={{
-            width: "72px", height: "72px", borderRadius: "22px",
-            background: "linear-gradient(135deg, #10b981 0%, #059669 50%, #047857 100%)",
+            width: "68px", height: "68px", borderRadius: "20px",
+            background: "linear-gradient(135deg, #10b981 0%, #059669 55%, #047857 100%)",
             display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: "0 12px 40px rgba(16,185,129,0.2), 0 0 0 1px rgba(16,185,129,0.1)"
+            boxShadow: "0 12px 36px rgba(16, 185, 129, 0.25), 0 0 0 1px rgba(52, 211, 153, 0.2)"
           }}>
-            <Icon name="chat" size={34} color="#fff" />
+            <Icon name="chat" size={32} color="#fff" />
           </Box>
 
           <Stack className="fade-up-delay" direction=vertical gap=xs align=center>
-            <Text style={{ fontSize: "1.5rem", fontWeight: 600, color: "#e4e4ed", letterSpacing: "-0.02em" }}>Chat, privately</Text>
+            <Text style={{ fontSize: "1.45rem", fontWeight: 700, color: "#f8fafc", letterSpacing: "-0.02em" }}>Chat privately on your device</Text>
             <Text style={{
-              fontSize: "0.8125rem", color: "#4a4a60", textAlign: "center",
-              maxWidth: "380px", lineHeight: 1.7
+              fontSize: "0.84rem", color: "#94a3b8", textAlign: "center",
+              maxWidth: "430px", lineHeight: 1.65
             }}>
-              A small language model downloads once (about 400 MB) and then runs on this device. Nothing you type leaves it.
+              Qwen3-0.6B (~400 MB GGUF) downloads once from Hugging Face and runs locally via WebGPU/WASM. Every prompt and reply stays on this machine.
             </Text>
           </Stack>
 
-          // Suggestion cards: shown whenever the open chat has no messages yet
-          <Box if={modelLoaded} className="fade-up-delay2" style={{
-            display: "flex", flexWrap: "wrap", gap: "0.625rem", justifyContent: "center",
-            maxWidth: "480px", marginTop: "0.25rem"
+          <Box if={loadError !== ""} style={{
+            maxWidth: "460px", width: "100%",
+            background: "rgba(239, 68, 68, 0.1)",
+            border: "1px solid rgba(248, 113, 113, 0.35)",
+            borderRadius: "12px",
+            padding: "0.75rem 1rem"
           }}>
-            <Box className="suggestion-card" @click={startWithPrompt("Explain quantum computing in simple terms")}>
-              <Text style={{ fontSize: "0.75rem", color: "#10b981", fontWeight: 500, marginBottom: "0.375rem", display: "block" }}>Explain</Text>
-              <Text style={{ fontSize: "0.75rem", color: "#6a6a80", lineHeight: 1.5, display: "block" }}>Quantum computing in simple terms</Text>
-            </Box>
-            <Box className="suggestion-card" @click={startWithPrompt("Write a haiku about programming")}>
-              <Text style={{ fontSize: "0.75rem", color: "#10b981", fontWeight: 500, marginBottom: "0.375rem", display: "block" }}>Create</Text>
-              <Text style={{ fontSize: "0.75rem", color: "#6a6a80", lineHeight: 1.5, display: "block" }}>Write a haiku about programming</Text>
-            </Box>
-            <Box className="suggestion-card" @click={startWithPrompt("What are the benefits of learning Rust?")}>
-              <Text style={{ fontSize: "0.75rem", color: "#10b981", fontWeight: 500, marginBottom: "0.375rem", display: "block" }}>Discuss</Text>
-              <Text style={{ fontSize: "0.75rem", color: "#6a6a80", lineHeight: 1.5, display: "block" }}>Benefits of learning Rust</Text>
-            </Box>
-            <Box className="suggestion-card" @click={startWithPrompt("Give me 5 fun facts about the ocean")}>
-              <Text style={{ fontSize: "0.75rem", color: "#10b981", fontWeight: 500, marginBottom: "0.375rem", display: "block" }}>Discover</Text>
-              <Text style={{ fontSize: "0.75rem", color: "#6a6a80", lineHeight: 1.5, display: "block" }}>5 fun facts about the ocean</Text>
-            </Box>
+            <Text style={{ fontSize: "0.78rem", color: "#fecaca", lineHeight: 1.55, display: "block" }}>{loadError}</Text>
           </Box>
 
-          // Download CTA
-          <Box if={!modelLoaded && !modelLoading} className="fade-up-delay2" style={{ marginTop: "0.25rem" }}>
+          <Box if={!modelLoaded && !modelLoading} className="fade-up-delay2">
             <Button @click={loadModel} style={{
               background: "linear-gradient(135deg, #10b981, #059669)",
               color: "#fff", border: "none", borderRadius: "12px",
-              padding: "0.625rem 1.75rem", fontSize: "0.875rem", fontWeight: 500,
-              boxShadow: "0 4px 20px rgba(16,185,129,0.25)"
-            }}>Download and start</Button>
+              padding: "0.65rem 1.65rem", fontSize: "0.875rem", fontWeight: 600,
+              boxShadow: "0 6px 24px rgba(16, 185, 129, 0.28)"
+            }}>{loadError ? "Retry model download" : "Download model & start"}</Button>
           </Box>
 
-          // Waiting state. The loader gives no progress events, so the bar is
-          // indeterminate; the copy says how long to expect instead.
           <Box if={modelLoading} className="fade-up-delay2" style={{
-            display: "flex", flexDirection: "column", alignItems: "center", gap: "0.625rem",
-            width: "min(320px, 100%)", marginTop: "0.25rem"
+            display: "flex", flexDirection: "column", alignItems: "center", gap: "0.55rem",
+            width: "min(340px, 100%)"
           }}>
             <Box className="dl-bar">
               <Box className="dl-bar-fill" />
             </Box>
-            <Text style={{ fontSize: "0.8125rem", color: "#a7f3d0", textAlign: "center" }}>Downloading… this takes a few minutes the first time</Text>
-            <Text style={{ fontSize: "0.6875rem", color: "#4a4a60", textAlign: "center", lineHeight: 1.6 }}>About 400 MB. Your browser keeps it, so the next start is quick.</Text>
+            <Text style={{ fontSize: "0.8125rem", color: "#6ee7b7", textAlign: "center", fontWeight: 500 }}>
+              {pendingPrompt ? "Downloading model, then sending your prompt…" : "Downloading Qwen3-0.6B…"}
+            </Text>
+            <Text style={{ fontSize: "0.72rem", color: "#94a3b8", textAlign: "center", lineHeight: 1.5 }}>
+              Cached by your browser after the first download so future launches start right away.
+            </Text>
+          </Box>
+
+          // Starter prompts — clickable anytime (auto-loads model if needed)
+          <Box if={!modelLoading} className="fade-up-delay2" style={{
+            display: "flex", flexWrap: "wrap", gap: "0.625rem", justifyContent: "center",
+            maxWidth: "520px", width: "100%", marginTop: "0.25rem"
+          }}>
+            <Box className="suggestion-card" @click={startWithPrompt("Explain how WebGPU speeds up local AI models in plain English.")}>
+              <Text style={{ fontSize: "0.72rem", color: "#34d399", fontWeight: 600, marginBottom: "0.25rem", display: "block" }}>Explain</Text>
+              <Text style={{ fontSize: "0.78rem", color: "#cbd5e1", lineHeight: 1.45, display: "block" }}>How WebGPU speeds up local AI</Text>
+            </Box>
+            <Box className="suggestion-card" @click={startWithPrompt("Write a crisp haiku about coding late at night.")}>
+              <Text style={{ fontSize: "0.72rem", color: "#34d399", fontWeight: 600, marginBottom: "0.25rem", display: "block" }}>Create</Text>
+              <Text style={{ fontSize: "0.78rem", color: "#cbd5e1", lineHeight: 1.45, display: "block" }}>A haiku about late-night coding</Text>
+            </Box>
+            <Box className="suggestion-card" @click={startWithPrompt("Give me a 3-step checklist for debugging tricky async race conditions.")}>
+              <Text style={{ fontSize: "0.72rem", color: "#34d399", fontWeight: 600, marginBottom: "0.25rem", display: "block" }}>Debug</Text>
+              <Text style={{ fontSize: "0.78rem", color: "#cbd5e1", lineHeight: 1.45, display: "block" }}>3-step async race checklist</Text>
+            </Box>
+            <Box className="suggestion-card" @click={startWithPrompt("Share 4 surprising facts about deep-sea bioluminescence.")}>
+              <Text style={{ fontSize: "0.72rem", color: "#34d399", fontWeight: 600, marginBottom: "0.25rem", display: "block" }}>Discover</Text>
+              <Text style={{ fontSize: "0.78rem", color: "#cbd5e1", lineHeight: 1.45, display: "block" }}>Deep-sea bioluminescence facts</Text>
+            </Box>
           </Box>
         </Box>
 
         // ─── Chat messages ───
         <Box if={chatMessages.length > 0} style={{
-          display: "flex", flexDirection: "column", gap: "0.25rem"
+          display: "flex", flexDirection: "column", gap: "0.4rem", maxWidth: "860px", margin: "0 auto", width: "100%"
         }}>
           #each (msg in chatMessages)
-            // User message
             <Box if={isUserMsg(msg)} className="msg-enter" style={{
               display: "flex", flexDirection: "column", alignItems: "flex-end",
-              padding: "0.25rem 1rem 0.25rem 2.5rem"
+              padding: "0.25rem 1rem 0.25rem 2.25rem"
             }}>
-              <Box if={hasImage(msg)} className="msg-image" style={{ marginBottom: "0.25rem" }}>
-                <Image src={msg.data.imageDataUrl} alt="attached" borderRadius="md" />
-              </Box>
               <Box if={hasContent(msg)} className="bubble-user">{msg.data.content}</Box>
               <Text style={{
-                fontSize: "0.5625rem", color: "#3a3a50", marginTop: "0.2rem", paddingRight: "0.125rem"
+                fontSize: "0.65rem", color: "#64748b", marginTop: "0.22rem", paddingRight: "0.2rem"
               }}>{getMsgTime(msg)}</Text>
             </Box>
 
-            // Assistant message
             <Box if={isAssistantMsg(msg)} className="msg-enter" style={{
-              display: "flex", gap: "0.5rem", alignItems: "flex-start",
-              padding: "0.375rem 2.5rem 0.375rem 1rem"
+              display: "flex", gap: "0.6rem", alignItems: "flex-start",
+              padding: "0.35rem 1.5rem 0.35rem 1rem"
             }}>
-              // Avatar
               <Box style={{
                 width: "28px", height: "28px", borderRadius: "9px",
                 background: "linear-gradient(135deg, #10b981, #059669)",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 flexShrink: 0, marginTop: "2px"
               }}>
-                <Text style={{ color: "#fff", fontSize: "0.5625rem", fontWeight: 700 }}>Q</Text>
+                <Text style={{ color: "#fff", fontSize: "0.62rem", fontWeight: 700 }}>Q3</Text>
               </Box>
-              <Box style={{ minWidth: 0 }}>
-                <Box className="bubble-ai">{msg.data.content}</Box>
-                <Box style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.2rem", paddingLeft: "0.125rem" }}>
-                  <Text style={{ fontSize: "0.5625rem", color: "#3a3a50" }}>{getMsgTime(msg)}</Text>
-                  <Button variant=ghost size=xs @click={copyReply(msg.id, msg.data.content)} style={{ fontSize: "0.5625rem", padding: "1px 6px", color: copiedMsgId === msg.id ? "#10b981" : "#6a6a80", minHeight: "auto", height: "auto" }}>
-                    {copiedMsgId === msg.id ? "Copied" : "Copy"}
+
+              <Box style={{ minWidth: 0, maxWidth: "82%" }}>
+                <Box if={hasMsgThink(msg)} style={{ marginBottom: "0.3rem" }}>
+                  <Button variant=ghost size=xs @click={toggleThink(msg.id)} style={{
+                    fontSize: "0.68rem", color: "#34d399", padding: "2px 8px",
+                    background: "rgba(16, 185, 129, 0.1)", borderRadius: "999px",
+                    border: "1px solid rgba(16, 185, 129, 0.25)"
+                  }}>
+                    {(isThinkOpen(msg) ? "▾ Hide reasoning" : "▸ Show reasoning")}
+                  </Button>
+                </Box>
+
+                <Box if={hasMsgThink(msg) && isThinkOpen(msg)} className="think-box">
+                  {getMsgThink(msg)}
+                </Box>
+
+                <Box className="bubble-ai">{getMsgAnswer(msg)}</Box>
+
+                <Box style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginTop: "0.25rem", paddingLeft: "0.2rem" }}>
+                  <Text style={{ fontSize: "0.65rem", color: "#64748b" }}>{getMsgTime(msg)}</Text>
+                  <Button variant=ghost size=xs @click={copyReply(msg.id, msg)} style={{
+                    fontSize: "0.68rem", padding: "1px 6px",
+                    color: copiedMsgId === msg.id ? "#34d399" : "#94a3b8",
+                    minHeight: "auto", height: "auto"
+                  }}>
+                    {copiedMsgId === msg.id ? "✓ Copied" : "Copy"}
+                  </Button>
+                  <Button if={isLastAssistantMsg(msg) && modelLoaded} variant=ghost size=xs @click={regenerateLastReply} style={{
+                    fontSize: "0.68rem", padding: "1px 6px", color: "#94a3b8",
+                    minHeight: "auto", height: "auto"
+                  }}>
+                    Regenerate
                   </Button>
                 </Box>
               </Box>
             </Box>
           #end
 
-          // Generating indicator
-          <Box if={generating} style={{
-            display: "flex", gap: "0.5rem", alignItems: "flex-start",
-            padding: "0.375rem 2.5rem 0.375rem 1rem"
+          <Box if={generating && generatingConvId === activeConversationId} style={{
+            display: "flex", gap: "0.6rem", alignItems: "flex-start",
+            padding: "0.35rem 1.5rem 0.35rem 1rem"
           }}>
             <Box style={{
               width: "28px", height: "28px", borderRadius: "9px",
@@ -655,14 +663,17 @@
               display: "flex", alignItems: "center", justifyContent: "center",
               flexShrink: 0, marginTop: "2px"
             }}>
-              <Text style={{ color: "#fff", fontSize: "0.5625rem", fontWeight: 700 }}>Q</Text>
+              <Text style={{ color: "#fff", fontSize: "0.62rem", fontWeight: 700 }}>Q3</Text>
             </Box>
             <Box className="bubble-ai" style={{
-              display: "flex", gap: "5px", alignItems: "center", padding: "0.75rem 1rem"
+              display: "flex", gap: "6px", alignItems: "center", padding: "0.75rem 1rem"
             }}>
-              <Box className="dot-1" style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#10b981" }} />
-              <Box className="dot-2" style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#10b981" }} />
-              <Box className="dot-3" style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#10b981" }} />
+              <Box className="dot-1" style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#34d399" }} />
+              <Box className="dot-2" style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#34d399" }} />
+              <Box className="dot-3" style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#34d399" }} />
+              <Text style={{ fontSize: "0.72rem", color: "#94a3b8", marginLeft: "0.25rem" }}>
+                {thinkingMode ? "Reasoning…" : "Thinking…"}
+              </Text>
             </Box>
           </Box>
         </Box>
@@ -670,16 +681,14 @@
 
       // ── Input area ──
       <Box style={{
-        padding: "0.5rem 0.875rem 0.75rem", flexShrink: 0
+        padding: "0.55rem 0.9rem 0.75rem", flexShrink: 0, maxWidth: "860px", width: "100%", margin: "0 auto", boxSizing: "border-box"
       }}>
-        // Input bar
         <Box className="input-container">
-          // Text — wrapped in Box for flex stretch
           <Box style={{ flex: 1, minWidth: 0 }}>
             <TextArea
               value={inputText}
               @change={updateInput}
-              placeholder={modelLoaded ? "Type a message… Enter sends, Shift+Enter for a new line" : "Download the model to start chatting…"}
+              placeholder={modelLoaded ? "Ask anything… (Enter sends, Shift+Enter for new line)" : "Type a prompt to auto-download Qwen3-0.6B and send…"}
               rows=1
               autoResize={true}
               fullWidth={true}
@@ -688,27 +697,41 @@
               resize="none"
               style={{
                 background: "transparent", border: "none",
-                color: "#e4e4ed", fontSize: "0.8125rem",
-                padding: "0.5rem 0.25rem", lineHeight: 1.5, outline: "none",
+                color: "#f1f5f9", fontSize: "0.85rem",
+                padding: "0.45rem 0.25rem", lineHeight: 1.5, outline: "none",
                 boxShadow: "none", width: "100%"
               }}
             />
           </Box>
 
-          // Send button — paper plane
-          <Button className="send-btn" @click={sendMessage} style={{
-            background: canSend() ? "linear-gradient(135deg, #10b981, #059669)" : "rgba(255,255,255,0.04)",
+          <Button variant=ghost size=xs @click={toggleThinkingMode} title="Toggle Qwen3 step-by-step reasoning" style={{
+            height: "32px",
+            marginBottom: "2px",
+            padding: "0 0.55rem",
+            borderRadius: "9px",
+            fontSize: "0.68rem",
+            fontWeight: 600,
+            background: thinkingMode ? "rgba(16, 185, 129, 0.16)" : "rgba(148, 163, 184, 0.08)",
+            color: thinkingMode ? "#34d399" : "#94a3b8",
+            border: thinkingMode ? "1px solid rgba(16, 185, 129, 0.35)" : "1px solid rgba(148, 163, 184, 0.14)",
+            flexShrink: 0
+          }}>
+            {thinkingMode ? "Think: ON" : "Fast"}
+          </Button>
+
+          <Button className="send-btn" @click={sendMessage} title="Send message" style={{
+            background: canSend() ? "linear-gradient(135deg, #10b981, #059669)" : "rgba(148, 163, 184, 0.1)",
             cursor: generating ? "wait" : "pointer",
             opacity: generating ? 0.5 : 1,
-            boxShadow: canSend() ? "0 2px 8px rgba(16,185,129,0.25)" : "none"
+            boxShadow: canSend() ? "0 3px 10px rgba(16, 185, 129, 0.3)" : "none"
           }}>
-            <Icon name="send" size=16 color={canSend() ? "#fff" : "#3a3a50"} />
+            <Icon name="send" size=16 color={canSend() ? "#fff" : "#64748b"} />
           </Button>
         </Box>
 
         <Text style={{
-          fontSize: "0.5625rem", color: "#2a2a3a", textAlign: "center", marginTop: "0.5rem"
-        }}>Runs locally in your browser via WebGPU/WASM</Text>
+          fontSize: "0.65rem", color: "#64748b", textAlign: "center", marginTop: "0.45rem", display: "block"
+        }}>100% private · Runs locally in your browser via WebGPU / WASM</Text>
       </Box>
     </Box>
   </Box>

@@ -1,0 +1,212 @@
+function uwNotify(text, tone) { uiNotice = text; noticeTone = tone || "info"; }
+function uwNews(title, body, kind) {
+    if (!uwWorld)
+        return;
+    uwWorld.news.unshift({ date: uwDate(uwWorld.month), title: title, body: body, kind: kind || "city" });
+    if (uwWorld.news.length > 36)
+        uwWorld.news.pop();
+    newsRows = uwWorld.news.slice(0, 24);
+}
+function uwAdvanceEvents() {
+    if (uwWorld.festival > 0)
+        uwWorld.festival -= 1;
+    if (uwWorld.weatherMonths > 0)
+        uwWorld.weatherMonths -= 1;
+    if (uwWorld.weatherMonths === 0) {
+        let r = uwRandom();
+        uwWorld.weather = r < 0.2 ? "Still air" : r < 0.4 ? "Light rain" : "Clear";
+        uwWorld.weatherMonths = 2 + Math.floor(uwRandom() * 4);
+    }
+    let burning = [], nextFire = [];
+    for (let i = 0; i < uwWorld.tiles.length; i = i + 1) {
+        let t = uwWorld.tiles[i];
+        if (t.flood > 0) {
+            t.flood -= 1;
+            t.pop = Math.floor(t.pop * 0.9);
+            uwStaticDirty = true;
+        }
+        if (t.fire > 0)
+            burning.push(i);
+    }
+    for (let k = 0; k < burning.length; k = k + 1) {
+        let i = burning[k], t = uwWorld.tiles[i], response = uwNet && uwNet.service.fire ? uwNet.service.fire[i] : 0;
+        if (response > 35 || t.fire >= 4) {
+            if (response <= 35) {
+                t.level = 0;
+                t.pop = 0;
+                t.stage = 0;
+                if (t.build)
+                    t.build = "";
+            }
+            t.fire = 0;
+            uwStaticDirty = true;
+            uwNews(response > 35 ? "Fire crews contain a blaze" : "Uncontrolled blaze destroys a building", response > 35 ? "Road access and fire-station coverage protected the neighbourhood." : "The lot is ready for redevelopment. A connected fire station would improve its protection.", "emergency");
+        }
+        else {
+            t.fire += 1;
+            t.pop = Math.floor(t.pop * 0.7);
+            let nn = uwNeighbours(i);
+            for (let j = 0; j < nn.length; j = j + 1) {
+                let b = uwWorld.tiles[nn[j]];
+                if ((b.level || b.build) && !b.fire && uwRandom() < 0.09)
+                    nextFire.push(nn[j]);
+            }
+        }
+    }
+    for (let k = 0; k < nextFire.length; k = k + 1)
+        uwWorld.tiles[nextFire[k]].fire = 1;
+    if (nextFire.length)
+        uwStaticDirty = true;
+    if (uwWorld.disasters && uwWorld.population > 150 && uwRandom() < 0.035)
+        uwStartFire(-1);
+    if (uwWorld.disasters && uwWorld.month % 18 === 0 && uwRandom() < 0.4) {
+        uwWorld.weather = "Severe storm";
+        uwWorld.weatherMonths = 3;
+        let affected = 0;
+        for (let i = 0; i < uwWorld.tiles.length; i = i + 1) {
+            let t = uwWorld.tiles[i];
+            if (t.wet || t.h > 1)
+                continue;
+            let nn = uwNeighbours(i), water = false;
+            for (let j = 0; j < nn.length; j = j + 1)
+                if (uwWorld.tiles[nn[j]].wet)
+                    water = true;
+            if (water && uwRandom() < 0.23) {
+                t.flood = 3;
+                affected += 1;
+            }
+        }
+        uwStaticDirty = true;
+        uwNews("Storm warning for low-lying streets", affected + " shoreline lots are temporarily flooded. Power output is reduced for three months.", "emergency");
+    }
+    if (uwWorld.month % 6 === 0 && !uwWorld.pendingChoice && uwWorld.population > 80) {
+        uwWorld.pendingChoice = uwWorld.month % 12 === 0 ? "festival" : "grant";
+    }
+}
+function uwStartFire(index) {
+    let i = Number(index);
+    if (i < 0 || !uwWorld.tiles[i] || !(uwWorld.tiles[i].level || uwWorld.tiles[i].build)) {
+        let options = [];
+        for (let k = 0; k < uwWorld.tiles.length; k = k + 1)
+            if (uwWorld.tiles[k].zone === 3 && uwWorld.tiles[k].level > 0 && !uwWorld.tiles[k].fire)
+                options.push(k);
+        if (!options.length)
+            for (let k = 0; k < uwWorld.tiles.length; k = k + 1)
+                if (uwWorld.tiles[k].level > 0 && !uwWorld.tiles[k].fire)
+                    options.push(k);
+        if (!options.length) {
+            uwNotify("There are no occupied buildings available for a fire scenario.", "info");
+            return;
+        }
+        i = options[Math.floor(uwRandom() * options.length)];
+    }
+    uwWorld.tiles[i].fire = 1;
+    uwStaticDirty = true;
+    uwNews("Fire reported in " + uwWorld.districtNames[uwDistrictOf(i)], "Connected fire-station coverage above 35% can contain the incident next month. Unprotected fires may spread.", "emergency");
+}
+function uwConfirmFire() { if (!uwWorld)
+    return; uwStartFire(uwSelectedIndex); modal = ""; uwRecalculate(); uwRenderStatic(); uwRefreshUI(); }
+function uwToggleDisasters() { if (!uwWorld)
+    return; uwWorld.disasters = !uwWorld.disasters; uwNotify(uwWorld.disasters ? "Random fires and occasional shoreline floods are enabled." : "Random disasters are disabled. Existing incidents still resolve.", "info"); uwRefreshUI(); }
+function uwResolveChoice(left) {
+    if (!uwWorld || !uwWorld.pendingChoice)
+        return;
+    if (uwWorld.pendingChoice === "grant") {
+        if (left) {
+            uwWorld.funds += 6000;
+            uwWorld.tax[2] = 8;
+            uwWorld.policies.clean = false;
+            uwNews("Council accepts industrial development grant", "A $6,000 grant arrives. Industrial tax is set to 8%, and clean-industry standards are suspended. Both settings remain yours to change.", "council");
+        }
+        else
+            uwNews("Council declines industrial grant", "No fiscal or policy changes were made.", "council");
+    }
+    else {
+        if (left && uwWorld.funds < 900) {
+            uwNotify("The festival needs $900 from the treasury.", "bad");
+            return;
+        }
+        if (left) {
+            uwWorld.funds -= 900;
+            uwWorld.festival = 6;
+            uwNews("A festival for the people who built this city", "A $900 community festival gives households a five-point happiness bonus for six months.", "culture");
+        }
+        else
+            uwNews("Council keeps festival funds in reserve", "The treasurer calls it a very quiet celebration.", "council");
+    }
+    uwWorld.pendingChoice = "";
+    modal = "";
+    uwUndo = [];
+    canUndo = false;
+    uwComputeHappiness();
+    uwRefreshUI();
+}
+function uwCheckMilestones() {
+    let thresholds = [100, 500, 1500, 5000, 12000], labels = ["First neighbours", "Growing town", "Borough charter", "City status", "Regional capital"], rewards = [1000, 2500, 5000, 8000, 12000];
+    for (let k = 0; k < thresholds.length; k = k + 1)
+        if (uwWorld.population >= thresholds[k] && uwWorld.awards.indexOf(thresholds[k]) < 0) {
+            uwWorld.awards.push(thresholds[k]);
+            if (uwWorld.scenario !== "showcase")
+                uwWorld.funds += rewards[k];
+            uwNews(labels[k] + ": " + uwComma(thresholds[k]) + " residents", uwWorld.scenario === "showcase" ? "A milestone in the live city's growth." : "The region awards " + uwMoney(rewards[k]) + " for civic development.", "milestone");
+            uwSfx("milestone");
+        }
+}
+function uwObjectiveData() {
+    let roads = 0, r = 0, c = 0, ind = 0, power = 0, water = 0, school = 0, clinic = 0;
+    for (let i = 0; i < uwWorld.tiles.length; i = i + 1) {
+        let t = uwWorld.tiles[i];
+        if (t.road)
+            roads++;
+        if (t.zone === 1 || t.zone === 4)
+            r++;
+        if (t.zone === 2)
+            c++;
+        if (t.zone === 3)
+            ind++;
+        if (t.build && UW_FACILITIES[t.build].power)
+            power++;
+        if (t.build && UW_FACILITIES[t.build].water)
+            water++;
+        if (t.build === "school")
+            school++;
+        if (t.build === "clinic")
+            clinic++;
+    }
+    let net = uwForecast().net;
+    return [
+        { id: 0, title: "Lay the first streets", text: "Build at least 12 road tiles. Shared utility ducts run beneath roads.", done: roads >= 12 },
+        { id: 1, title: "Connect the essentials", text: "Place at least one power source and one water facility beside a road.", done: power > 0 && water > 0 && uwNet.powerSupply > 0 && uwNet.waterSupply > 0 },
+        { id: 2, title: "Give the town somewhere to grow", text: "Zone 16 residential, 6 commercial and 8 industrial lots, within two tiles of a road.", done: r >= 16 && c >= 6 && ind >= 8 },
+        { id: 3, title: "Welcome your first neighbours", text: "Reach a population of 100. Let construction finish over several months.", done: uwWorld.population >= 100 },
+        { id: 4, title: "Build a healthy beginning", text: "Add a school and a clinic to connected streets.", done: school > 0 && clinic > 0 },
+        { id: 5, title: "Balance the books", text: "Reach 250 residents with a non-negative projected monthly balance.", done: uwWorld.population >= 250 && net >= 0 },
+        { id: 6, title: "A place worth staying", text: "Reach 1,500 residents with 70% approval. High-density lots can now develop further.", done: uwWorld.population >= 1500 && uwWorld.happiness >= 70 }
+    ];
+}
+function uwCheckGoals() {
+    let list = uwObjectiveData();
+    for (let i = 0; i < list.length; i = i + 1)
+        if (list[i].done && uwWorld.objectives.indexOf(i) < 0)
+            uwWorld.objectives.push(i);
+    if (uwWorld.scenario === "growth" && !uwWorld.elapsedGoal && uwWorld.population >= 3000 && uwForecast().net >= 0) {
+        uwWorld.elapsedGoal = true;
+        uwNews("Growth challenge completed", "You reached 3,000 residents with a sustainable monthly budget in " + uwWorld.month + " months" + (uwWorld.month <= 60 ? ", inside the five-year target." : ". The target was missed, but the city got there."), "milestone");
+    }
+    if (uwWorld.scenario === "recovery" && !uwWorld.elapsedGoal && uwWorld.happiness >= 75 && uwForecast().net >= 0) {
+        uwWorld.elapsedGoal = true;
+        uwNews("River recovery succeeds", "Approval is at least 75% and the operating budget is non-negative. The city has turned a corner.", "milestone");
+    }
+}
+function uwPeriodicNews() {
+    if (uwWorld.month % 4 !== 0 || uwWorld.population < 40)
+        return;
+    if (uwNet.congestion > 18)
+        uwNews("Commuters request a shorter relationship with traffic lights", "Congestion pressure is " + uwPercent(uwNet.congestion) + ". Avenues and connected bus services can help.", "transport");
+    else if (uwWorld.demand[0] > 55)
+        uwNews("House hunters eye the next neighbourhood", "Residential demand is " + uwWorld.demand[0] + ". Serviceable land is ready for new housing.", "housing");
+    else if (uwWorld.month % 12 === 0)
+        uwNews("Annual city ledger published", uwComma(uwWorld.population) + " residents, " + uwComma(uwWorld.jobs) + " usable jobs and " + uwPercent(uwWorld.happiness) + " approval. The pigeons have declined to comment.", "city");
+    else
+        uwNews("Council confirms park bench remains a bench", "In more consequential news, the projected monthly balance is " + uwMoney(uwForecast().net) + ". The full budget is available at City Hall.", "city");
+}

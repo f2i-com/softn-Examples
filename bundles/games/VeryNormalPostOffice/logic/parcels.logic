@@ -1,0 +1,194 @@
+// Seeded parcel simulation. No wall clock, DOM, renderer or random presentation effects.
+function makeParcel(type, index, stage) {
+    let district = randomInt(0, 3);
+    // Curated teaching cases sit on top of seeded recipients, mass and addresses.
+    if (stage === 0)
+        district = [0, 2, 1, 3, 0, 2][index];
+    if ((stage === 3 && index === 6) || (stage === 7 && index === 5))
+        district = stage === 3 ? 4 : 2;
+    let weight = type === "heavy" ? randomInt(11, 19) : randomInt(2, 9);
+    if (stage === 1 && index === 3)
+        weight = 10; // Explicit threshold test, not a trick.
+    if (stage === 5 && index === 0)
+        weight = 8; // A drifting scale would misclassify this.
+    let inner = type === "density" ? weight + 14 : Math.max(1, weight - 1);
+    let width = randomInt(20, 31);
+    if (stage === 3 && index === 5)
+        width = 33;
+    if (stage === 3 && index === 7)
+        width = 34;
+    if (stage === 7 && index === 8)
+        width = 33; // Valid bees, invalid width: precedence.
+    let d = DIRECTORY[district];
+    let wrong = DIRECTORY[(district + 2) % 4];
+    let id = (stage + 1) * 100 + index + 1;
+    return { id: id, serial: "MP-" + id, type: type, recipient: RECIPIENTS[randomInt(0, RECIPIENTS.length - 1)], street: STREETS[randomInt(0, STREETS.length - 1)],
+        code: d.code + "-" + randomInt(101, 989), printedDistrict: type === "reverse" ? wrong.name : d.name,
+        printedPrefix: type === "reverse" ? wrong.code : d.code,
+        weight: weight, innerWeight: inner, width: width, length: randomInt(36, 49), height: randomInt(16, 23),
+        beePermit: type === "bees" && index % 3 !== 1,
+        age: 0, face: 0, position: 0, inspected: false, scanned: false, weighed: false, xrayed: false, measured: false,
+        weightReading: 0, weightCalibration: -1, clamped: false, fed: false, flapOpened: false, breached: false,
+        layers: type === "infinite" ? (stage === 7 ? 3 : 2) : 0, coreScanned: false,
+        labelDamaged: false, ateNeighbour: false, stampInk: "", stampRevision: -1,
+        attempts: 0, returns: 0, seen: {}, arrived: false };
+}
+function receiveParcel() {
+    if (!isWorking() || S.current || S.transit || S.toolJob)
+        return;
+    if (S.machine.jam) {
+        note("Pull the jam lever before admitting another parcel.");
+        return;
+    }
+    if (S.queue.length === 0) {
+        finishShift();
+        return;
+    }
+    S.current = S.queue.shift();
+    S.transit = { kind: "arrive", ticks: 26, total: 26, route: "", reason: "", clause: "" };
+    S.viewTool = "inspect";
+    S.toolJob = null;
+    S.machine.referenceOn = false;
+    S.incomingTicks = 0;
+    dragSerial++;
+    note("Incoming " + S.current.serial + ". Keep the inspection mat clear.");
+    playSound(S.current.weight > 10 ? "heavy" : "belt");
+}
+function simulateParcel() {
+    let p = S.current;
+    if (!p || S.transit)
+        return;
+    p.age++;
+    if (p.type === "runner" && !p.clamped)
+        p.position = Math.floor(p.age / 15) % 2;
+    if (p.type === "teleport" && !p.clamped && p.age % 70 === 0) {
+        p.position = (p.position + 1) % 3;
+        triggerFx("teleport", 10);
+        playSound("warp");
+        if (!p.seen.displaced) {
+            p.seen.displaced = true;
+            rememberIncident("A continuity complaint", "The parcel changed desks without using the space in between.", p);
+        }
+    }
+    if (p.type === "bees" && p.age % 100 === 0)
+        playSound("buzz");
+    if (p.type === "whisper" && p.age % 145 === 0)
+        playSound("whisper");
+    if (p.type === "hungry" && !p.fed && !p.ateNeighbour && p.age >= 140 && !S.machine.separator && S.queue.length) {
+        let neighbour = S.queue[0];
+        neighbour.labelDamaged = true;
+        p.ateNeighbour = true;
+        triggerFx("eaten-label", 65);
+        playSound("paper");
+        note("A tongue has borrowed the next parcel's address. Its permanent barcode is still intact.");
+        rememberIncident("An address has been eaten", p.serial + " ate " + neighbour.serial + "'s paper label. Its underside barcode remains readable.", p);
+    }
+    if (p.type === "infinite" && p.age % 180 === 0 && !p.seen.impossible) {
+        p.seen.impossible = true;
+        rememberIncident("Additional interior space", "Each smaller carton casts a larger shadow. The base carries a nested-box inspection mark.", p);
+    }
+}
+function finishTransit() {
+    let t = S.transit;
+    if (!t || !S.current)
+        return;
+    if (t.kind === "arrive") {
+        S.current.arrived = true;
+        S.transit = null;
+        note(S.completed === 0 && S.stage === 0 ? "Click the parcel to inspect its address. Stamp it, then choose a brass destination plate." : "Parcel on the mat. Read the evidence; the cages do not choose for you.");
+        playSound(S.current.weight > 10 ? "heavy" : "thump");
+    }
+    else if (t.kind === "depart") {
+        S.completed++;
+        S.current = null;
+        S.transit = null;
+        S.viewTool = "inspect";
+        if (SHIFT_DEFS[S.stage].revisionAt > 0 && S.completed === SHIFT_DEFS[S.stage].revisionAt && S.revision === 0)
+            issueNotice();
+        else if (S.queue.length === 0)
+            finishShift();
+        else
+            S.incomingTicks = 22;
+        persist();
+    }
+    else if (t.kind === "reject") {
+        S.transit = { kind: "return", ticks: 26, total: 26, route: "", reason: t.reason, clause: t.clause };
+        S.current.stampInk = "";
+        S.current.returns++;
+        playSound("tube");
+    }
+    else if (t.kind === "return") {
+        S.transit = null;
+        note("RETURNED / " + t.clause + ": " + t.reason + " Correct the evidence, stamp again and re-route.");
+        triggerFx("returned", 30);
+        playSound("thump");
+        persist();
+    }
+}
+function simulateTick() {
+    if (!isWorking() || dragActive)
+        return;
+    S.tick++;
+    if (suppressClickTicks > 0)
+        suppressClickTicks--;
+    if (fx.ticks > 0)
+        fx.ticks--;
+    if (S.ambientTicks > 0)
+        S.ambientTicks--;
+    if (S.tick % 420 === 0) {
+        S.ambient = (S.ambient + 1) % 4;
+        S.ambientTicks = 85;
+        if (S.ambient === 1)
+            playSound("tube");
+    }
+    if (S.transit) {
+        S.transit.ticks--;
+        if (S.transit.ticks <= 0)
+            finishTransit();
+    }
+    else if (S.toolJob) {
+        S.toolJob.ticks--;
+        simulateParcel();
+        if (S.toolJob.ticks <= 0)
+            finishTool();
+    }
+    else if (S.current)
+        simulateParcel();
+    else if (S.incomingTicks > 0) {
+        S.incomingTicks--;
+        if (S.incomingTicks === 0)
+            receiveParcel();
+    }
+    // A blocked automatic admission resumes after the player clears a jam.
+    else if (S.queue.length > 0 && !S.machine.jam)
+        receiveParcel();
+    saveTicks++;
+    if (saveTicks >= 100) {
+        saveTicks = 0;
+        persist();
+    }
+}
+function tick(dt) {
+    let now = Date.now();
+    let elapsed = typeof dt === "number" && isFinite(dt) ? dt : (lastClock ? (now - lastClock) / 1000 : 0.05);
+    lastClock = now;
+    if (dragActive && now - dragStartedAt > 15000) {
+        cancelDrag();
+        paused = true;
+        note("Grip released safely. Resume the desk when ready; no mail was lost.");
+        persist();
+        publish();
+    }
+    if (!isWorking() || dragActive) {
+        accumulator = 0;
+        return;
+    }
+    accumulator += clamp(elapsed, 0, 0.2);
+    let n = 0;
+    while (accumulator >= 0.049999 && n < 4) {
+        accumulator = Math.max(0, accumulator - 0.05);
+        simulateTick();
+        n++;
+    }
+    publish();
+}

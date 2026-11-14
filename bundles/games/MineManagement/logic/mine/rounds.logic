@@ -1,0 +1,324 @@
+// Optional preventive rounds: fixed on-site work, no remote completion or production credit.
+// Three condition checks a shift (the crusher, the active excavator, the haul road), each done on
+// foot with the field kit's 'survey' recipe. A recorded check gives faults on that system 60 s more
+// before a warning escalates (incidentGrace) until the shift ends. All three in a shift pay $300.
+// State: S.rounds = { shift, done: [check ids], paid, jobs }, rebuilt each shift by ensureRounds. A
+// job is shaped like an alert (kind 'inspection') so the field kit can run it, but it never goes on
+// S.alerts. Globals: roundRows and roundSummary, for the Site journal.
+// Callers: the Site journal and Field guide (markInspection, nextInspection), interactions.logic
+// (nearbyInspection, startInspection), the field kit (finishInspection, roundBlocked),
+// incidents.logic (incidentGrace) and validState (validRounds).
+// Before changing: validRounds repeats the three ids, the 0..3 step range and the world edge.
+var roundRows = [];
+
+var roundSummary = '';
+
+// ---------- Finding and marking a check ----------
+
+// The Field guide's "Find the next check" button: marks the nearest check that can be done now, or
+// radios why none can.
+function nextInspection() {
+  if (screen !== 'play' || repairJob) return;
+  ensureRounds();
+  var best = null,
+    nearest = 100000;
+  for (var spec of roundSpecs) {
+    // Skip recorded checks, systems with an open fault, and the excavator while it relocates.
+    if (
+      S.rounds.done.indexOf(spec.id) >= 0 ||
+      roundBlocked(spec.id) ||
+      (spec.id === 'loader' && S.deployment.remaining > 0)
+    )
+      continue;
+    var job = roundJob(spec.id),
+      distance = dist2(S.player, job);
+    if (distance < nearest) {
+      nearest = distance;
+      best = spec.id;
+    }
+  }
+  if (best) {
+    markInspection(best);
+    return;
+  }
+  notify(
+    'SITE ROUNDS',
+    S.rounds.done.length === 3
+      ? 'All three checks are recorded. Your handover bonus has been paid.'
+      : 'Remaining checks need fault clearance or excavator relocation to finish first.'
+  );
+  refreshUI();
+}
+
+// The three checks. id names the check and the system it covers (see roundForAlert) and is what
+// S.rounds.done records; title and detail are shown on the Site journal; x and z are only starting
+// values, because roundJob moves every job to where its system is.
+var roundSpecs = [
+  {
+    id: 'plant',
+    title: 'Crusher condition check',
+    detail: 'Read the local circuit indicators and compare the reference.',
+    x: 49,
+    z: 143
+  },
+  {
+    id: 'loader',
+    title: 'Excavator condition check',
+    detail: 'Check the boom reference and record the machine condition.',
+    x: 33,
+    z: -13
+  },
+  {
+    id: 'road',
+    title: 'Haul-road condition check',
+    detail: 'Compare the road inspection marker and record the drainage condition.',
+    x: 0,
+    z: 0
+  }
+];
+
+// Creates this shift's S.rounds and its three jobs when there are none yet or they belong to an
+// earlier shift. Called by ensureProgress, nextShift and most functions in this file.
+function ensureRounds() {
+  if (!S.rounds || S.rounds.shift !== S.shift) {
+    S.rounds = { shift: S.shift, done: [], paid: false, jobs: [] };
+    for (var spec of roundSpecs)
+      S.rounds.jobs.push({
+        key: 'round-' + S.shift + '-' + spec.id,
+        roundId: spec.id,
+        title: spec.title,
+        kind: 'inspection',
+        truckId: 0,
+        x: spec.x,
+        z: spec.z,
+        work: { step: 0 }
+      });
+  }
+}
+
+// The job for check id, first moved to where its system is now: the active excavator, the haul-road
+// spot that road faults also use (78% of the way up, in the loaded lane), or the crusher panel.
+function roundJob(id) {
+  ensureRounds();
+  for (var job of S.rounds.jobs)
+    if (job.roundId === id) {
+      var p =
+        id === 'loader'
+          ? excavatorLocation(S.activeExcavator)
+          : id === 'road'
+            ? pathPosition(0.78, 4.4)
+            : { x: 49, z: 143 };
+      job.x = p.x;
+      job.z = p.z;
+      return job;
+    }
+  return null;
+}
+
+// The check whose system alert a is on ('plant', 'loader', 'road', or '' for none), from its
+// incident's effect. Used to block that check while the fault is open, and to give the fault grace.
+// The plain 'crusher' kind branch is for alerts without an incident spec.
+function roundForAlert(a) {
+  var d = incidentSpec(a.eventId);
+  return d
+    ? d.effect === 'plant'
+      ? 'plant'
+      : d.effect === 'loader'
+        ? 'loader'
+        : d.effect === 'road'
+          ? 'road'
+          : ''
+    : a.kind === 'crusher'
+      ? 'plant'
+      : '';
+}
+
+// True while any open alert is on check id's system: repair it first, then inspect.
+function roundBlocked(id) {
+  return S.alerts.some(function (a) {
+    return roundForAlert(a) === id;
+  });
+}
+
+// Sets check id as the waypoint and closes the tablet. The waypoint's inspectionId is what lets
+// nearbyInspection offer the check: only a marked check can be started.
+function markInspection(id) {
+  if (screen !== 'play' || repairJob) return;
+  var job = roundJob(id);
+  if (!job || S.rounds.done.indexOf(id) >= 0) return;
+  setWaypoint(job.x, job.z, job.title);
+  S.waypoint.inspectionId = id;
+  tablet = false;
+  takeMouse();
+  notify('SITE ROUNDS', job.title + ' marked. Walk close and use E or Interact.');
+  refreshUI();
+}
+
+// ---------- Doing a check ----------
+
+// For nearestInteraction (interactions.logic): the marked check, if it is not yet recorded and the
+// player is within 7.5 m of it; otherwise null.
+function nearbyInspection() {
+  var w = S.waypoint;
+  if (!w || !w.inspectionId) return null;
+  var job = roundJob(w.inspectionId);
+  if (!job || S.rounds.done.indexOf(job.roundId) >= 0 || dist2(S.player, job) > 7.5) return null;
+  return { kind: 'inspection', label: job.title, x: job.x, z: job.z, id: job.roundId };
+}
+
+// Opens the field kit on check id (from interact). Returns true if a field job started. A loader
+// check half done on one excavator starts again if the active excavator has changed since.
+function startInspection(id) {
+  var job = roundJob(id);
+  if (
+    screen !== 'play' ||
+    tablet ||
+    !job ||
+    S.rounds.done.indexOf(id) >= 0 ||
+    S.player.mode !== 'foot' ||
+    dist2(S.player, job) > 8
+  )
+    return false;
+  if (id === 'loader' && S.deployment.remaining > 0) {
+    notify('SITE ROUNDS', 'Wait for excavator relocation before inspecting.');
+    return false;
+  }
+  if (roundBlocked(id)) {
+    notify('SITE ROUNDS', 'Resolve the active fault here before recording a condition check.');
+    return false;
+  }
+  if (id === 'loader') {
+    if (job.checkMachine && job.checkMachine !== S.activeExcavator) job.work.step = 0;
+    job.checkMachine = S.activeExcavator;
+  }
+  beginFieldRepair(job, true);
+  return !!repairJob;
+}
+
+// Called by finishFieldRepair when a check's third step is done: records the check, pays the $300
+// bonus once all three are recorded, clears the waypoint and closes the field kit. A job that is
+// not this shift's, not finished or already recorded just closes the kit.
+function finishInspection(job) {
+  ensureRounds();
+  if (
+    !job ||
+    S.rounds.jobs.indexOf(job) < 0 ||
+    job.work.step !== 3 ||
+    S.rounds.done.indexOf(job.roundId) >= 0
+  ) {
+    cancelField();
+    return;
+  }
+  S.rounds.done.push(job.roundId);
+  siteJournal(
+    'Condition recorded',
+    job.title + '. Warning grace increased by 60 seconds for this system until handover.'
+  );
+  if (S.rounds.done.length === 3 && !S.rounds.paid) {
+    S.rounds.paid = true;
+    S.cash += 300;
+    S.revenue += 300;
+    siteJournal('Rounds complete', '$300 handover bonus credited. All three systems inspected.');
+    notify('JUNE', 'Three checks recorded. Tomorrow-me appreciates today-you. $300 credited.', 'success');
+  } else
+    notify(
+      'SITE ROUNDS',
+      job.title + ' recorded. ' + S.rounds.done.length + ' / 3 checks complete.',
+      'success'
+    );
+  S.waypoint = null;
+  cancelField();
+  sfx('success');
+  refreshUI();
+  saveGame(true);
+}
+
+// Extra seconds before alert a escalates or starts its follow-up fault (advanceIncidents): 60 if
+// its system's check is recorded this shift, else 0.
+function incidentGrace(a) {
+  if (!S.rounds || S.rounds.shift !== S.shift) return 0;
+  return S.rounds.done.indexOf(roundForAlert(a)) >= 0 ? 60 : 0;
+}
+
+// ---------- Views and save validation ----------
+
+// Rebuilds roundRows and roundSummary for the Site journal; called by refreshUI.
+function refreshRounds() {
+  ensureRounds();
+  roundRows = roundSpecs.map(function (s) {
+    var done = S.rounds.done.indexOf(s.id) >= 0,
+      job = roundJob(s.id),
+      blocked = roundBlocked(s.id);
+    return {
+      id: s.id,
+      title: s.title,
+      detail: s.detail,
+      done: done,
+      status: done
+        ? 'RECORDED / +60 s WARNING GRACE'
+        : blocked
+          ? 'ACTIVE FAULT / REPAIR FIRST'
+          : job.work.step
+            ? 'CHECK IN PROGRESS / ' + job.work.step + ' OF 3'
+            : 'READY TO INSPECT',
+      distance: Math.round(dist2(S.player, job)) + ' m',
+      disabled: done || blocked
+    };
+  });
+  roundSummary = S.rounds.paid
+    ? '$300 handover bonus paid'
+    : S.rounds.done.length + ' / 3 recorded · $300 for the complete round';
+}
+
+// Part of validState (core/persistence.logic): false rejects the save. Checks the marked check id
+// and S.rounds: this shift's, three jobs with their fixed keys, steps 0..3 (a recorded job stays at
+// 3), positions inside the 226 m world edge, and paid exactly when all three are recorded.
+function validRounds(s) {
+  if (
+    s.waypoint &&
+    s.waypoint.inspectionId !== undefined &&
+    ['plant', 'loader', 'road'].indexOf(s.waypoint.inspectionId) < 0
+  )
+    return false;
+  if (s.rounds === undefined) return true;
+  var r = s.rounds;
+  if (
+    !r ||
+    r.shift !== s.shift ||
+    !Array.isArray(r.done) ||
+    r.done.length > 3 ||
+    !Array.isArray(r.jobs) ||
+    r.jobs.length !== 3 ||
+    typeof r.paid !== 'boolean' ||
+    r.paid !== (r.done.length === 3)
+  )
+    return false;
+  var seen = [];
+  for (var id of r.done) {
+    if (['plant', 'loader', 'road'].indexOf(id) < 0 || seen.indexOf(id) >= 0) return false;
+    seen.push(id);
+  }
+  seen = [];
+  for (var j of r.jobs) {
+    if (
+      !j ||
+      ['plant', 'loader', 'road'].indexOf(j.roundId) < 0 ||
+      seen.indexOf(j.roundId) >= 0 ||
+      j.kind !== 'inspection' ||
+      j.key !== 'round-' + r.shift + '-' + j.roundId ||
+      !j.work ||
+      !Number.isInteger(j.work.step) ||
+      j.work.step < 0 ||
+      j.work.step > 3 ||
+      !Number.isFinite(j.x) ||
+      !Number.isFinite(j.z) ||
+      Math.abs(j.x) > 226 ||
+      Math.abs(j.z) > 226
+    )
+      return false;
+    // At step 3 exactly when recorded (>= binds tighter than !==).
+    if ((j.work.step === 3) !== r.done.indexOf(j.roundId) >= 0) return false;
+    seen.push(j.roundId);
+  }
+  return true;
+}

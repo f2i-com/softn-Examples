@@ -70,9 +70,9 @@ function psEnqueue(label, step, done, fail) {
 function psJobsPending() { return PS_JOBS.length; }
 function psCancelJobs() { PS_JOBS = []; jobActive = false; jobPercent = 0; jobLabel = ""; }
 
-function pumpJobs() {
+function psPumpOneJob() {
   let job = PS_JOBS[0];
-  if (!job) { jobActive = false; jobPercent = 0; return; }
+  if (!job) { jobActive = false; jobPercent = 0; return false; }
   let result = null;
   try {
     result = job.step();
@@ -82,8 +82,7 @@ function pumpJobs() {
     if (job.fail) { try { job.fail(error); } catch (e2) { psReportError(e2); } }
     else psReportError(error);
     if (!PS_JOBS.length) { jobActive = false; jobLabel = ""; } else jobLabel = PS_JOBS[0].label;
-    psAfterJobStep();
-    return;
+    return false;
   }
   if (result === true) {
     PS_JOBS.shift();
@@ -93,6 +92,12 @@ function pumpJobs() {
     jobPercent = Math.round(psClamp(result, 0, 1) * 100);
   }
   if (!PS_JOBS.length) { jobActive = false; jobLabel = ""; jobPercent = 0; } else jobLabel = PS_JOBS[0].label;
+  return PS_JOBS.length > 0;
+}
+
+function pumpJobs() {
+  if (!PS_JOBS.length) { jobActive = false; jobPercent = 0; return; }
+  psPumpOneJob();
   psAfterJobStep();
 }
 
@@ -101,7 +106,7 @@ function pumpJobs() {
 // with a large job queued.
 function psRunJobsNow(maxSteps) {
   let n = 0;
-  while (PS_JOBS.length && n < (maxSteps || 100000)) { pumpJobs(); n++; }
+  while (PS_JOBS.length && n < (maxSteps || 100000)) { psPumpOneJob(); psAfterJobStep(); n++; }
   return PS_JOBS.length === 0;
 }
 
@@ -138,11 +143,87 @@ function psSequence(steps) {
 // ---------------------------------------------------------------------------
 // Bytes
 // ---------------------------------------------------------------------------
+let PS_B64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+let PS_B64_PAIR = null;
+let PS_B64_DEC = null;
+function psB64Pairs() {
+  if (PS_B64_PAIR) return PS_B64_PAIR;
+  let t = new Array(4096);
+  for (let i = 0; i < 64; i++) {
+    let hi = PS_B64_CHARS[i], base = i << 6;
+    for (let j = 0; j < 64; j++) t[base | j] = hi + PS_B64_CHARS[j];
+  }
+  PS_B64_PAIR = t;
+  return t;
+}
+function psB64DecTable() {
+  if (PS_B64_DEC) return PS_B64_DEC;
+  let t = new Int8Array(128);
+  t.fill(-1);
+  for (let i = 0; i < 64; i++) t[PS_B64_CHARS.charCodeAt(i)] = i;
+  t[45] = 62; t[95] = 63;
+  PS_B64_DEC = t;
+  return t;
+}
+function psToBase64(bytes) {
+  if (bytes && typeof bytes.toBase64 === "function") return bytes.toBase64();
+  let len = bytes ? bytes.length : 0;
+  if (!len) return "";
+  let pair = psB64Pairs();
+  let chunks = [];
+  let cur = "";
+  let i = 0, fastEnd = len - 11;
+  while (i < fastEnd) {
+    let n0 = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
+    let n1 = (bytes[i + 3] << 16) | (bytes[i + 4] << 8) | bytes[i + 5];
+    let n2 = (bytes[i + 6] << 16) | (bytes[i + 7] << 8) | bytes[i + 8];
+    let n3 = (bytes[i + 9] << 16) | (bytes[i + 10] << 8) | bytes[i + 11];
+    cur += pair[(n0 >> 12) & 4095] + pair[n0 & 4095] +
+           pair[(n1 >> 12) & 4095] + pair[n1 & 4095] +
+           pair[(n2 >> 12) & 4095] + pair[n2 & 4095] +
+           pair[(n3 >> 12) & 4095] + pair[n3 & 4095];
+    i += 12;
+    if (cur.length >= 1024) { chunks.push(cur); cur = ""; }
+  }
+  let end = len - 2;
+  while (i < end) {
+    let n = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
+    cur += pair[(n >> 12) & 4095] + pair[n & 4095];
+    i += 3;
+  }
+  if (i < len) {
+    let b0 = bytes[i];
+    let b1 = (i + 1 < len) ? bytes[i + 1] : 0;
+    let n = (b0 << 16) | (b1 << 8);
+    cur += pair[(n >> 12) & 4095] + ((i + 1 < len) ? PS_B64_CHARS[(n >> 6) & 63] : "=") + "=";
+  }
+  if (cur.length) chunks.push(cur);
+  return chunks.length === 1 ? chunks[0] : chunks.join("");
+}
 function psFromBase64(s) {
   s = String(s || "");
   let comma = s.indexOf("base64,");
   if (comma >= 0) s = s.slice(comma + 7);
-  return Uint8Array.fromBase64(s);
+  if (typeof Uint8Array.fromBase64 === "function") {
+    try { return Uint8Array.fromBase64(s); } catch (e) {}
+  }
+  let dec = psB64DecTable();
+  let slen = s.length;
+  let out = new Uint8Array(((slen * 3) >> 2) + 3);
+  let acc = 0, bits = 0, o = 0;
+  for (let i = 0; i < slen; i++) {
+    let code = s.charCodeAt(i);
+    if (code === 61) break;
+    let val = code < 128 ? dec[code] : -1;
+    if (val < 0) continue;
+    acc = (acc << 6) | val;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      out[o++] = (acc >>> bits) & 255;
+    }
+  }
+  return o === out.length ? out : out.subarray(0, o).slice();
 }
 function psU16BE(b, p) { return (b[p] << 8) | b[p + 1]; }
 function psI16BE(b, p) { let v = (b[p] << 8) | b[p + 1]; return v > 32767 ? v - 65536 : v; }

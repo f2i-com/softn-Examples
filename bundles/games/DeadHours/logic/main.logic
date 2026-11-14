@@ -10,7 +10,16 @@ let paused = false
 let armoryOpen = false
 let gameOver = false
 let touchMode = false
+let touchModeManual = false
 let touchSprint = false
+let touchFireHeld = false
+let lastTouchFireDownAt = 0
+let lastUiStamp = 0
+let scenePointerDownX = 0
+let scenePointerDownY = 0
+let sceneWasDragged = false
+let pauseStamp = 0
+let muted = false
 
 let wave = 0
 let waveState = "idle"
@@ -59,7 +68,9 @@ let rngState = 48271
 let playerName = ""
 let scoreSubmitted = false
 let boardStatusMsg = ""
+let boardPendingTimer = 0.0
 let leaderboard = []
+let remoteLeaderboardCache = []
 
 let sceneStatic = []
 let sceneObjects = []
@@ -81,11 +92,34 @@ function randFloat() {
 }
 
 function playSfx(relPath, vol) {
+  if (muted) { return }
   try {
     if (typeof softn !== "undefined" && softn.audio && softn.audio.play) {
       softn.audio.play(relPath, { volume: vol || 0.5 })
     }
   } catch (err) {}
+}
+
+function toggleMute() {
+  lastUiStamp = Date.now()
+  blurActiveFocus()
+  muted = !muted
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("deadhours:muted", muted ? "1" : "0")
+    }
+  } catch (err) {}
+  if (muted) {
+    try {
+      if (typeof softn !== "undefined" && softn.audio && softn.audio.stopAll) {
+        softn.audio.stopAll()
+      }
+    } catch (err) {}
+    showToast("Audio muted [M]")
+  } else {
+    playSfx("assets/sfx/click.wav", 0.35)
+    showToast("Audio unmuted [M]")
+  }
 }
 
 function showBanner(msg) {
@@ -219,6 +253,7 @@ function triggerGameOver() {
   armoryOpen = false
   paused = false
   mouseFireHeld = false
+  touchFireHeld = false
   if (typeof window !== "undefined") {
     window.__scene3dReleaseLock = true
   }
@@ -233,14 +268,80 @@ function triggerGameOver() {
   playSfx("assets/sfx/hurt.wav", 0.8)
 }
 
+function readLocalLeaderboard() {
+  try {
+    if (typeof localStorage !== "undefined") {
+      let raw = localStorage.getItem("deadhours:scores")
+      if (raw) {
+        let parsed = JSON.parse(raw)
+        if (Array.isArray(parsed)) {
+          return parsed
+        }
+      }
+    }
+  } catch (err) {}
+  return []
+}
+
+function mergeLeaderboardRows(remoteRows, localRows) {
+  let merged = []
+  let seen = {}
+  let addList = function (arr) {
+    let i = 0
+    while (arr && i < arr.length) {
+      let r = arr[i]
+      if (r && typeof r === "object") {
+        let nm = String(r.name || "Survivor")
+        let sc = Number(r.score || 0)
+        let wv = Number(r.wave || 1)
+        let kl = Number(r.kills || 0)
+        let key = nm + "|" + sc + "|" + wv + "|" + kl
+        if (!seen[key] && sc > 0) {
+          seen[key] = true
+          merged.push({ name: nm, score: sc, wave: wv, kills: kl })
+        }
+      }
+      i = i + 1
+    }
+  }
+  addList(remoteRows)
+  addList(localRows)
+  merged.sort(function (a, b) { return (b.score || 0) - (a.score || 0) })
+  if (merged.length > 10) { merged = merged.slice(0, 10) }
+  return merged
+}
+
+function saveLocalScoreEntry(entry) {
+  try {
+    if (typeof localStorage !== "undefined") {
+      let list = readLocalLeaderboard()
+      list.push(entry)
+      list.sort(function (a, b) { return (b.score || 0) - (a.score || 0) })
+      if (list.length > 20) { list = list.slice(0, 20) }
+      localStorage.setItem("deadhours:scores", JSON.stringify(list))
+    }
+  } catch (err) {}
+}
+
 function loadLeaderboard() {
+  let localRows = readLocalLeaderboard()
+  leaderboard = mergeLeaderboardRows(remoteLeaderboardCache, localRows)
   try {
     if (typeof softn !== "undefined" && softn.storage && softn.storage.query) {
-      softn.storage.query("scores", { orderBy: ["score", "desc"], limit: 10 }, function (rows) {
+      let q = softn.storage.query("scores", { orderBy: ["score", "desc"], limit: 10 }, function (rows) {
         if (Array.isArray(rows)) {
-          leaderboard = rows
+          remoteLeaderboardCache = rows
+          leaderboard = mergeLeaderboardRows(rows, readLocalLeaderboard())
         }
       })
+      if (q && typeof q.then === "function") {
+        q.then(function (rows) {
+          if (Array.isArray(rows)) {
+            remoteLeaderboardCache = rows
+            leaderboard = mergeLeaderboardRows(rows, readLocalLeaderboard())
+          }
+        }).catch(function () {})
+      }
     }
   } catch (err) {}
 }
@@ -260,21 +361,45 @@ function submitScore() {
     }
   } catch (err) {}
   scoreSubmitted = true
-  boardStatusMsg = "Recording..."
+  let entry = { name: clean, score: score, wave: wave, kills: kills }
+  saveLocalScoreEntry(entry)
+  leaderboard = mergeLeaderboardRows(remoteLeaderboardCache, readLocalLeaderboard())
   playSfx("assets/sfx/click.wav", 0.4)
   try {
     if (typeof softn !== "undefined" && softn.storage && softn.storage.insert) {
-      softn.storage.insert(
+      boardStatusMsg = "Recording..."
+      boardPendingTimer = 0.65
+      let p = softn.storage.insert(
         "scores",
-        { name: clean, score: score, wave: wave, kills: kills },
+        entry,
         function () {
+          boardPendingTimer = 0.0
           boardStatusMsg = "Saved to Graveyard Ledger"
           loadLeaderboard()
           showToast("Score recorded to graveyard board")
         }
       )
+      if (p && typeof p.then === "function") {
+        p.then(function () {
+          if (boardPendingTimer > 0.0 || boardStatusMsg === "Recording...") {
+            boardPendingTimer = 0.0
+            boardStatusMsg = "Saved to Graveyard Ledger"
+            loadLeaderboard()
+            showToast("Score recorded to graveyard board")
+          }
+        }).catch(function () {
+          boardPendingTimer = 0.0
+          boardStatusMsg = "Saved locally to Graveyard Ledger"
+          showToast("Saved locally (offline)")
+        })
+      }
+    } else {
+      boardPendingTimer = 0.0
+      boardStatusMsg = "Saved locally to Graveyard Ledger"
+      showToast("Saved locally to Graveyard Ledger")
     }
   } catch (err) {
+    boardPendingTimer = 0.0
     boardStatusMsg = "Saved locally (offline)"
     showToast("Saved locally (offline)")
   }
@@ -288,16 +413,28 @@ function blurActiveFocus() {
   } catch (err) {}
 }
 
-function selectPistol() { blurActiveFocus(); if (started && !paused && !armoryOpen && !gameOver) { selectWeapon(0) } }
-function selectShotgun() { blurActiveFocus(); if (started && !paused && !armoryOpen && !gameOver) { selectWeapon(1) } }
-function selectSmg() { blurActiveFocus(); if (started && !paused && !armoryOpen && !gameOver) { selectWeapon(2) } }
+function selectPistol() { lastUiStamp = Date.now(); blurActiveFocus(); if (started && !paused && !armoryOpen && !gameOver) { selectWeapon(0) } }
+function selectShotgun() { lastUiStamp = Date.now(); blurActiveFocus(); if (started && !paused && !armoryOpen && !gameOver) { selectWeapon(1) } }
+function selectSmg() { lastUiStamp = Date.now(); blurActiveFocus(); if (started && !paused && !armoryOpen && !gameOver) { selectWeapon(2) } }
+function triggerHudGrenade() { lastUiStamp = Date.now(); blurActiveFocus(); if (started && !paused && !armoryOpen && !gameOver) { throwFragGrenade() } }
 function togglePauseModal() {
+  lastUiStamp = Date.now()
+  blurActiveFocus()
   if (!started || gameOver) { return }
   if (armoryOpen) { closeArmoryBench(); return }
-  if (paused) { resumePlay() } else { paused = true; mouseFireHeld = false; if (typeof window !== "undefined") { window.__scene3dReleaseLock = true } }
+  if (paused) {
+    resumePlay()
+  } else {
+    paused = true
+    pauseStamp = Date.now()
+    mouseFireHeld = false
+    touchFireHeld = false
+    if (typeof window !== "undefined") { window.__scene3dReleaseLock = true }
+  }
 }
 
 function startNewRun() {
+  lastUiStamp = Date.now()
   blurActiveFocus()
   px = 0.0
   pz = 6.2
@@ -334,6 +471,8 @@ function startNewRun() {
   score = 0
   scrap = 75
   scoreSubmitted = false
+  boardStatusMsg = ""
+  boardPendingTimer = 0.0
 
   bobPhase = 0.0
   cameraShake = 0.0
@@ -341,6 +480,7 @@ function startNewRun() {
   hitMarkerTimer = 0.0
   hitMarkerCrit = false
   mouseFireHeld = false
+  touchFireHeld = false
 
   paused = false
   armoryOpen = false
@@ -350,16 +490,21 @@ function startNewRun() {
   showBanner("Hold the Courtyard · Wave 1 Incoming")
   showToast(touchMode ? "Bench ahead (-Z): Tap SHOP or Armory to upgrade" : "Bench ahead (-Z): Press E to buy upgrades")
   playSfx("assets/sfx/click.wav", 0.4)
+  buildLights()
   updateCameraFromState(0.0)
   composeSceneFrame(0.0)
 }
 
 function returnToTitle() {
+  lastUiStamp = Date.now()
   started = false
   paused = false
   armoryOpen = false
   gameOver = false
   mouseFireHeld = false
+  touchFireHeld = false
+  boardStatusMsg = ""
+  boardPendingTimer = 0.0
   if (typeof window !== "undefined") {
     window.__scene3dReleaseLock = true
   }
@@ -372,14 +517,17 @@ function returnToTitle() {
   particles = []
   bossAnchorId = ""
   initShowcaseZombies()
+  buildLights()
   loadLeaderboard()
 }
 
 function resumePlay() {
+  lastUiStamp = Date.now()
   if (!started || gameOver) { return }
   paused = false
   armoryOpen = false
   mouseFireHeld = false
+  touchFireHeld = false
   if (!touchMode && typeof window !== "undefined") {
     window.__scene3dWantLock = true
   }
@@ -387,10 +535,12 @@ function resumePlay() {
 }
 
 function openArmoryBench() {
+  lastUiStamp = Date.now()
   if (!started || gameOver) { return }
   armoryOpen = true
   paused = false
   mouseFireHeld = false
+  touchFireHeld = false
   if (typeof window !== "undefined") {
     window.__scene3dReleaseLock = true
   }
@@ -398,6 +548,7 @@ function openArmoryBench() {
 }
 
 function closeArmoryBench() {
+  lastUiStamp = Date.now()
   if (!started || gameOver) { return }
   armoryOpen = false
   if (!touchMode && typeof window !== "undefined") {
@@ -407,6 +558,7 @@ function closeArmoryBench() {
 }
 
 function toggleTorchLight() {
+  lastUiStamp = Date.now()
   blurActiveFocus()
   torchOn = !torchOn
   playSfx("assets/sfx/click.wav", 0.35)
@@ -432,8 +584,10 @@ function buyAmmo() {
   resAmmo[1] = resAmmo[1] + 18
   if (weaponUnlocked[2]) {
     resAmmo[2] = resAmmo[2] + 96
+    showToast("+18 Shells & +96 SMG Rounds")
+  } else {
+    showToast("+18 Shotgun Shells")
   }
-  showToast("+18 Shells & SMG Mags")
 }
 
 function buyMedkit() {
@@ -461,9 +615,11 @@ function buyGrenade() {
     showToast("Max 4 Frag Grenades")
     return
   }
-  if (!spendScrap(40)) { return }
-  grenadesLeft = Math.min(4, grenadesLeft + 2)
-  showToast("+2 Frag Grenades")
+  let addCount = Math.min(2, 4 - grenadesLeft)
+  let cost = addCount === 1 ? 20 : 40
+  if (!spendScrap(cost)) { return }
+  grenadesLeft = grenadesLeft + addCount
+  showToast(addCount === 1 ? "+1 Frag Grenade (4/4)" : "+2 Frag Grenades")
 }
 
 function buySmg() {
@@ -593,8 +749,8 @@ function buildLights() {
       id: "pt-fire1",
       type: "point",
       color: "#ff7b29",
-      intensity: 4.5 * f,
-      distance: 13,
+      intensity: (4.5 + (fireDrumFlares[0] || 0.0) * 4.2) * f,
+      distance: 13 + (fireDrumFlares[0] || 0.0) * 4.0,
       decay: 1.8,
       position: { x: -4.4, y: 1.5, z: -8.6 }
     },
@@ -602,10 +758,19 @@ function buildLights() {
       id: "pt-fire2",
       type: "point",
       color: "#ff7b29",
-      intensity: 4.5 * f,
-      distance: 13,
+      intensity: (4.5 + (fireDrumFlares[1] || 0.0) * 4.2) * f,
+      distance: 13 + (fireDrumFlares[1] || 0.0) * 4.0,
       decay: 1.8,
       position: { x: 4.4, y: 1.5, z: -8.6 }
+    },
+    {
+      id: "pt-fire3",
+      type: "point",
+      color: "#ff7b29",
+      intensity: (4.5 + (fireDrumFlares[2] || 0.0) * 4.2) * f,
+      distance: 13 + (fireDrumFlares[2] || 0.0) * 4.0,
+      decay: 1.8,
+      position: { x: 7.4, y: 1.5, z: 4.6 }
     }
   ]
 
@@ -617,7 +782,7 @@ function buildLights() {
       intensity: 4.4,
       distance: 16,
       decay: 1.65,
-      position: { x: -9.8, y: 4.2, z: -9.8 }
+      position: { x: -9.8, y: 4.2, z: -10.2 }
     })
   }
   if (!courtyardLamps[1].broken) {
@@ -628,7 +793,18 @@ function buildLights() {
       intensity: 4.4,
       distance: 16,
       decay: 1.65,
-      position: { x: 9.8, y: 4.2, z: 9.8 }
+      position: { x: 9.8, y: 4.2, z: 10.2 }
+    })
+  }
+  if (!courtyardLamps[2].broken) {
+    list.push({
+      id: "pt-lamp3",
+      type: "point",
+      color: "#ffbe73",
+      intensity: 4.4,
+      distance: 16,
+      decay: 1.65,
+      position: { x: -10.5, y: 4.2, z: 9.6 }
     })
   }
 
@@ -771,9 +947,19 @@ function arenaStep(rawDt) {
   let locked = typeof window !== "undefined" ? !!window.__scene3dLocked : false
   if (wasLocked && !locked && !armoryOpen && !touchMode && !gameOver) {
     paused = true
+    pauseStamp = Date.now()
     mouseFireHeld = false
+    touchFireHeld = false
   }
   wasLocked = locked
+
+  if (boardPendingTimer > 0.0) {
+    boardPendingTimer = Math.max(0.0, boardPendingTimer - dt)
+    if (boardPendingTimer <= 0.0 && boardStatusMsg === "Recording...") {
+      boardStatusMsg = "Saved locally to Graveyard Ledger"
+      showToast("Saved locally (offline)")
+    }
+  }
 
   if (bannerTimer > 0.0) {
     bannerTimer = Math.max(0.0, bannerTimer - dt)
@@ -826,7 +1012,7 @@ function arenaStep(rawDt) {
       if (reloadTimer <= 0.0) { finishReloadWeapon() }
     }
 
-    if (mouseFireHeld && WEAPONS[weaponIdx].auto && fireCooldown <= 0.0 && reloadTimer <= 0.0) {
+    if ((mouseFireHeld || touchFireHeld) && (WEAPONS[weaponIdx].auto || touchFireHeld) && fireCooldown <= 0.0 && reloadTimer <= 0.0) {
       fireCurrentWeapon()
     }
 
@@ -974,11 +1160,25 @@ function arenaStep(rawDt) {
 }
 
 function onActionPress(action) {
+  if (action === "mute") {
+    toggleMute()
+    return
+  }
   if (!started) { return }
   if (action === "pause") {
     if (armoryOpen) { closeArmoryBench(); return }
     if (!gameOver) {
-      if (paused) { resumePlay() } else { paused = true; mouseFireHeld = false }
+      if (paused) {
+        if (Date.now() - pauseStamp >= 220) {
+          resumePlay()
+        }
+      } else {
+        paused = true
+        pauseStamp = Date.now()
+        mouseFireHeld = false
+        touchFireHeld = false
+        if (typeof window !== "undefined") { window.__scene3dReleaseLock = true }
+      }
     }
     return
   }
@@ -1005,11 +1205,14 @@ function onActionPress(action) {
 
 function onSceneClick(hit) {
   if (!started || paused || armoryOpen || gameOver) { return }
+  if (Date.now() - lastUiStamp < 260) { return }
   if (hit && hit.locked) {
     if (hit.button === 0) { fireCurrentWeapon(hit) }
     else if (hit.button === 2) { startReloadWeapon() }
-  } else if (touchMode) {
-    fireCurrentWeapon(null)
+  } else if (touchMode && !sceneWasDragged && Date.now() - lastTouchFireDownAt > 320) {
+    if (!hit || hit.button === undefined || hit.button === 0) {
+      fireCurrentWeapon(null)
+    }
   }
 }
 
@@ -1021,29 +1224,57 @@ function onSceneStats(info) {
 
 function isLikelyTouch() {
   if (typeof window === "undefined") { return false }
-  let coarse = false
-  try { coarse = !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches) } catch (err) {}
-  return (typeof navigator !== "undefined" && navigator.maxTouchPoints > 0) || coarse || window.innerWidth <= 860
+  try {
+    if (window.matchMedia && window.matchMedia("(pointer: fine)").matches) {
+      return false
+    }
+    if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) {
+      return true
+    }
+  } catch (err) {}
+  return false
 }
 
-function triggerTouchFire() { fireCurrentWeapon() }
-function triggerTouchReload() { startReloadWeapon() }
-function triggerTouchMelee() { doMeleeBash() }
-function triggerTouchGrenade() { throwFragGrenade() }
-function triggerTouchSwap() { cycleWeapon() }
-function toggleTouchSprint() { touchSprint = !touchSprint }
+function onTouchFireDown() {
+  lastUiStamp = Date.now()
+  lastTouchFireDownAt = Date.now()
+  touchFireHeld = true
+  if (started && !paused && !armoryOpen && !gameOver) {
+    fireCurrentWeapon()
+  }
+}
+function onTouchFireUp() {
+  touchFireHeld = false
+}
+function triggerTouchFire() {
+  lastUiStamp = Date.now()
+  if (Date.now() - lastTouchFireDownAt < 450) { return }
+  if (started && !paused && !armoryOpen && !gameOver) {
+    fireCurrentWeapon()
+  }
+}
+function triggerTouchReload() { lastUiStamp = Date.now(); startReloadWeapon() }
+function triggerTouchMelee() { lastUiStamp = Date.now(); doMeleeBash() }
+function triggerTouchGrenade() { lastUiStamp = Date.now(); throwFragGrenade() }
+function triggerTouchSwap() { lastUiStamp = Date.now(); cycleWeapon() }
+function toggleTouchSprint() { lastUiStamp = Date.now(); touchSprint = !touchSprint }
 function toggleTouchMode() {
+  lastUiStamp = Date.now()
   blurActiveFocus()
+  touchModeManual = true
   touchMode = !touchMode
+  touchFireHeld = false
   if (touchMode && typeof window !== "undefined") {
     window.__scene3dReleaseLock = true
   }
 }
-function triggerTouchArmory() { onActionPress("armory") }
-function triggerTouchTorch() { toggleTorchLight() }
+function triggerTouchArmory() { lastUiStamp = Date.now(); onActionPress("armory") }
+function triggerTouchTorch() { lastUiStamp = Date.now(); toggleTorchLight() }
 
 function _init() {
   touchSprint = false
+  touchFireHeld = false
+  touchModeManual = false
   touchMode = isLikelyTouch()
   arenaStaticBuilt = false
   sceneStatic = buildArenaStatic()
@@ -1055,6 +1286,7 @@ function _init() {
     if (typeof localStorage !== "undefined") {
       bestScore = parseInt(localStorage.getItem("deadhours:best") || "0") || 0
       playerName = localStorage.getItem("deadhours:name") || ""
+      muted = localStorage.getItem("deadhours:muted") === "1"
       let q = localStorage.getItem("deadhours:quality") || "high"
       applyQualityPreset(q)
     } else {
@@ -1066,28 +1298,80 @@ function _init() {
 
   if (typeof window !== "undefined") {
     if (window.__dhMouseCleanup) { window.__dhMouseCleanup() }
+    function isUiEventTarget(t) {
+      if (!t || !t.closest) { return false }
+      return !!t.closest("button, input, .dh-corner, .dh-slots, .dh-touch, .dh-touch-btns, .dh-modal-bg")
+    }
     function onDown(e) {
+      if (isUiEventTarget(e.target)) {
+        lastUiStamp = Date.now()
+        return
+      }
       if (e.button === 0 && window.__scene3dLocked && started && !paused && !armoryOpen && !gameOver) {
         mouseFireHeld = true
       }
     }
     function onUp(e) {
       if (e.button === 0) { mouseFireHeld = false }
+      touchFireHeld = false
+    }
+    function onPtrDown(e) {
+      if (isUiEventTarget(e.target)) {
+        lastUiStamp = Date.now()
+        return
+      }
+      scenePointerDownX = e.clientX || 0
+      scenePointerDownY = e.clientY || 0
+      sceneWasDragged = false
+    }
+    function onPtrMove(e) {
+      if (e.buttons || e.pointerType === "touch") {
+        let dx = (e.clientX || 0) - scenePointerDownX
+        let dy = (e.clientY || 0) - scenePointerDownY
+        if (dx * dx + dy * dy > 81) {
+          sceneWasDragged = true
+        }
+      }
+    }
+    function onPtrEnd() {
+      touchFireHeld = false
     }
     function onBlurReset() {
       mouseFireHeld = false
+      touchFireHeld = false
       pad = { presses: {} }
     }
-    function onTouchSeen() { touchMode = true }
+    function onTouchSeen() {
+      if (!touchModeManual) { touchMode = true }
+    }
+    function onGlobalKey(e) {
+      if (!e || e.repeat) { return }
+      let tag = (e.target && e.target.tagName) ? String(e.target.tagName).toUpperCase() : ""
+      if (tag === "INPUT" || tag === "TEXTAREA") { return }
+      let k = String(e.key || "").toLowerCase()
+      if (k === "m" && !started) {
+        toggleMute()
+      }
+    }
     window.addEventListener("mousedown", onDown, true)
     window.addEventListener("mouseup", onUp, true)
+    window.addEventListener("pointerdown", onPtrDown, true)
+    window.addEventListener("pointermove", onPtrMove, true)
+    window.addEventListener("pointerup", onPtrEnd, true)
+    window.addEventListener("pointercancel", onPtrEnd, true)
     window.addEventListener("blur", onBlurReset)
     window.addEventListener("touchstart", onTouchSeen, { passive: true })
+    window.addEventListener("keydown", onGlobalKey)
     window.__dhMouseCleanup = function () {
       window.removeEventListener("mousedown", onDown, true)
       window.removeEventListener("mouseup", onUp, true)
+      window.removeEventListener("pointerdown", onPtrDown, true)
+      window.removeEventListener("pointermove", onPtrMove, true)
+      window.removeEventListener("pointerup", onPtrEnd, true)
+      window.removeEventListener("pointercancel", onPtrEnd, true)
       window.removeEventListener("blur", onBlurReset)
       window.removeEventListener("touchstart", onTouchSeen)
+      window.removeEventListener("keydown", onGlobalKey)
     }
   }
   composeSceneFrame(0.0)
@@ -1095,10 +1379,16 @@ function _init() {
 
 function _onHide() {
   mouseFireHeld = false
+  touchFireHeld = false
   pad = { presses: {} }
   if (started && !gameOver && !armoryOpen) {
     paused = true
   }
+  try {
+    if (typeof softn !== "undefined" && softn.audio && softn.audio.stopAll) {
+      softn.audio.stopAll()
+    }
+  } catch (err) {}
   if (typeof window !== "undefined" && window.__dhMouseCleanup) {
     window.__dhMouseCleanup()
     window.__dhMouseCleanup = null

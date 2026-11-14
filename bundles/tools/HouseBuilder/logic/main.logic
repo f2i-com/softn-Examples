@@ -40,6 +40,8 @@ let roomCount = 0;
 let itemCount = 0;
 let floorArea = "0";
 let catalogue = [];
+let catGroup = "All";
+let filteredCatalogue = [];
 // Mirrors of plan settings for the side panel.
 let wallStyle = "plaster";
 let roofStyle = "gable_x";
@@ -72,19 +74,50 @@ let mobilePanel = "";           // "" | "tools" | "inspector"
 
 function isLikelyTouch() {
   if (typeof window === "undefined") return false;
-  let hasTouch = (typeof navigator !== "undefined" && navigator.maxTouchPoints > 0) || ("ontouchstart" in window);
   let coarse = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
-  return hasTouch || coarse || window.innerWidth <= 860;
+  return !!coarse || window.innerWidth <= 760;
 }
 
 function setMobilePanel(p) {
   mobilePanel = (mobilePanel === p) ? "" : p;
 }
 
+function closeMobilePanel() {
+  mobilePanel = "";
+}
+
 function toggleTouchMode() {
   touchMode = !touchMode;
-  if (touchMode) window.__scene3dWantLock = false;
-  else if (viewMode === "walk") window.__scene3dWantLock = true;
+  if (touchMode) {
+    window.__scene3dWantLock = false;
+    window.__scene3dReleaseLock = true;
+    hint = "Walk with the pad, drag to look around. Click doors to open or close.";
+  } else if (viewMode === "walk") {
+    window.__scene3dWantLock = true;
+    hint = "Walk with W A S D, look with the mouse. Click doors to toggle. Esc returns to 3D.";
+  }
+}
+
+function setCatGroup(g) {
+  catGroup = g;
+  refreshCatalogueFilter();
+}
+
+function refreshCatalogueFilter() {
+  if (catGroup === "All") {
+    filteredCatalogue = catalogue.slice();
+    return;
+  }
+  let out = [];
+  for (let i = 0; i < catalogue.length; i = i + 1) {
+    let g = catalogue[i].group;
+    if (catGroup === "Kitchen" && g === "Kitchen") out.push(catalogue[i]);
+    else if (catGroup === "Living" && (g === "Living" || g === "Office")) out.push(catalogue[i]);
+    else if (catGroup === "Bedroom" && g === "Bedroom") out.push(catalogue[i]);
+    else if (catGroup === "Bathroom" && g === "Bathroom") out.push(catalogue[i]);
+    else if (catGroup === "Garden" && g === "Garden") out.push(catalogue[i]);
+  }
+  filteredCatalogue = out;
 }
 
 // ---------------------------------------------------------------------------
@@ -97,11 +130,12 @@ let nextId = 1;
 let selected = null;            // { kind, id }
 let hoverPt = null;             // snapped ground point under the pointer
 let hoverRaw = null;            // the same point before snapping
-let panDrag = null;             // { ax, az } while dragging the plan view
+let panDrag = null;             // { ax, az, moved } while dragging the plan view
 let hoverWall = null;           // { wall, pos } when the pointer is over a wall
 let wallStart = null;           // first click of a wall
 let roomStart = null;           // first corner of a room
 let drag = null;                // { kind, id, dx, dz } while dragging a selection
+let suppressClickUntil = 0;     // suppresses synthetic click after drag/pan
 let panX = 5.5;
 let panZ = 4;
 let keys = {};
@@ -566,19 +600,43 @@ function buildItem(list, it, ghost) {
   }
 }
 
+function roofBounds() {
+  if (plan.walls.length > 0) {
+    let minX = 1e9, maxX = -1e9, minZ = 1e9, maxZ = -1e9;
+    for (let i = 0; i < plan.walls.length; i = i + 1) {
+      let w = plan.walls[i];
+      minX = Math.min(minX, w.x1, w.x2); maxX = Math.max(maxX, w.x1, w.x2);
+      minZ = Math.min(minZ, w.z1, w.z2); maxZ = Math.max(maxZ, w.z1, w.z2);
+    }
+    return { minX: minX, maxX: maxX, minZ: minZ, maxZ: maxZ };
+  }
+  if (plan.rooms.length > 0) {
+    let minX = 1e9, maxX = -1e9, minZ = 1e9, maxZ = -1e9;
+    for (let i = 0; i < plan.rooms.length; i = i + 1) {
+      let r = plan.rooms[i];
+      minX = Math.min(minX, r.x); maxX = Math.max(maxX, r.x + r.w);
+      minZ = Math.min(minZ, r.z); maxZ = Math.max(maxZ, r.z + r.d);
+    }
+    return { minX: minX, maxX: maxX, minZ: minZ, maxZ: maxZ };
+  }
+  return null;
+}
+
 function planBounds() {
-  if (plan.walls.length === 0) return null;
+  let rb = roofBounds();
+  if (rb) return rb;
+  if (plan.items.length === 0) return null;
   let minX = 1e9, maxX = -1e9, minZ = 1e9, maxZ = -1e9;
-  for (let i = 0; i < plan.walls.length; i = i + 1) {
-    let w = plan.walls[i];
-    minX = Math.min(minX, w.x1, w.x2); maxX = Math.max(maxX, w.x1, w.x2);
-    minZ = Math.min(minZ, w.z1, w.z2); maxZ = Math.max(maxZ, w.z1, w.z2);
+  for (let i = 0; i < plan.items.length; i = i + 1) {
+    let it = plan.items[i];
+    minX = Math.min(minX, it.x - 1); maxX = Math.max(maxX, it.x + 1);
+    minZ = Math.min(minZ, it.z - 1); maxZ = Math.max(maxZ, it.z + 1);
   }
   return { minX: minX, maxX: maxX, minZ: minZ, maxZ: maxZ };
 }
 
 function buildRoof(list) {
-  let b = planBounds();
+  let b = roofBounds();
   if (!b || plan.roof.style === "none") return;
   let over = 0.45;
   let H = plan.wallHeight;
@@ -920,8 +978,9 @@ function zoomBy(factor, ax, az) {
 function zoomIn() { zoomBy(0.8, panX, panZ); }
 function zoomOut() { zoomBy(1.25, panX, panZ); }
 function onWheel(e) {
-  if (viewMode !== "plan") return;
-  if ((e.targetTag || "") !== "canvas") return;
+  if (viewMode !== "plan" || dialog !== "") return;
+  let tag = (e.targetTag || (e.target && e.target.tagName ? e.target.tagName.toLowerCase() : ""));
+  if (tag !== "canvas") return;
   let f = (e.deltaY || 0) > 0 ? 1.12 : 1 / 1.12;
   let ax = hoverRaw ? hoverRaw.x : panX;
   let az = hoverRaw ? hoverRaw.z : panZ;
@@ -952,6 +1011,7 @@ function setTool(t) {
   tool = t;
   wallStart = null;
   roomStart = null;
+  if (mobilePanel === "tools") mobilePanel = "";
   hint = toolHint();
   if (viewMode !== "plan") setView("plan");
   rebuildDynamic();
@@ -963,11 +1023,16 @@ function pickItem(kind) {
   setTool("item");
 }
 
-function setRoomFloor(f) {
+function setDefaultRoomFloor(f) {
   roomFloor = f;
+}
+
+function setRoomFloor(f) {
   if (selected && selected.kind === "room") {
     let r = roomById(selected.id);
-    if (r) { beginEdit(); r.floor = f; planChanged(); }
+    if (r && r.floor !== f) { beginEdit(); r.floor = f; planChanged(); }
+  } else {
+    roomFloor = f;
   }
 }
 
@@ -1057,7 +1122,7 @@ function onPointerDown(hit) {
   // Middle or right button, or a left drag on nothing in particular with the
   // select tool, pans the plan.
   if (hit.button === 1 || hit.button === 2 || (hit.button === 0 && tool === "select" && (!onThing || p.kind === "room"))) {
-    panDrag = { ax: g.x, az: g.z };
+    panDrag = { ax: g.x, az: g.z, moved: false };
     return;
   }
   if (tool !== "select" || hit.button !== 0) return;
@@ -1086,8 +1151,10 @@ function onPointerMove(hit) {
   if (panDrag) {
     // Shift the view so the point grabbed stays under the pointer. The
     // camera moves with the pan, so each move event corrects the residual.
-    panX = clampWorld(panX + (panDrag.ax - g.x));
-    panZ = clampWorld(panZ + (panDrag.az - g.z));
+    let dx = panDrag.ax - g.x, dz = panDrag.az - g.z;
+    if (Math.hypot(dx, dz) > 0.04) panDrag.moved = true;
+    panX = clampWorld(panX + dx);
+    panZ = clampWorld(panZ + dz);
     applyCamera();
     return;
   }
@@ -1117,13 +1184,19 @@ function onPointerMove(hit) {
     o.pos = pos;
     drag.moved = true;
     rebuildStatic();
+    refreshSelection();
   }
 }
 
 function onPointerUp(hit) {
-  if (panDrag) { panDrag = null; return; }
+  if (panDrag) {
+    if (panDrag.moved) suppressClickUntil = Date.now() + 90;
+    panDrag = null;
+    return;
+  }
   if (!drag) return;
   if (drag.moved) {
+    suppressClickUntil = Date.now() + 90;
     history.push(drag.before);
     if (history.length > 60) history.shift();
     future = [];
@@ -1138,14 +1211,15 @@ function onSceneClick(hit) {
     if (p && p.kind === "opening") {
       let op = openingById(p.id);
       if (op && op.kind === "door") {
+        beginEdit();
         op.closed = !op.closed;
-        rebuildStatic();
+        planChanged();
         statusText = op.closed ? "Closed door." : "Opened door.";
       }
     }
     return;
   }
-  if (drag && drag.moved) return;
+  if (Date.now() < suppressClickUntil || (drag && drag.moved)) return;
   if (viewMode === "3d") {
     let p = idParts(hit);
     if (p && (p.kind === "item" || p.kind === "wall" || p.kind === "room" || p.kind === "opening")) {
@@ -1283,14 +1357,19 @@ function refreshSelection() {
     if (!it) { selected = null; return; }
     let def = CATALOGUE[it.kind];
     selKind = "item";
-    selInfo = { title: def ? def.label : it.kind, icon: def ? def.icon : "", pos: it.x.toFixed(2) + ", " + it.z.toFixed(2), rot: Math.round((it.rot * 180) / Math.PI) % 360, color: it.color || (def ? def.accent : "#ffffff"), footprint: def ? def.w + " × " + def.d + " m" : "" };
+    let deg = ((Math.round((it.rot * 180) / Math.PI) % 360) + 360) % 360;
+    selInfo = { title: def ? def.label : it.kind, icon: def ? def.icon : "", pos: it.x.toFixed(2) + ", " + it.z.toFixed(2), rot: deg, color: it.color || (def ? def.accent : "#ffffff"), footprint: def ? def.w + " × " + def.d + " m" : "" };
   }
 }
 
 function setRoomName(v) {
   if (selected && selected.kind === "room") {
     let r = roomById(selected.id);
-    if (r) { r.name = v; refreshSelection(); }
+    if (r && r.name !== v) {
+      beginEdit();
+      r.name = v;
+      planChanged();
+    }
   }
 }
 
@@ -1299,8 +1378,23 @@ function setOpeningWidth(v) {
   if (isNaN(w) || !selected || selected.kind !== "opening") return;
   let o = openingById(selected.id);
   if (!o) return;
+  let wall = wallById(o.wallId);
+  let L = wall ? wallLen(wall) : 2.5;
+  let maxW = Math.min(2.4, Math.max(0.6, L - 0.12));
+  if (wall) {
+    let ops = openingsOn(wall.id);
+    for (let i = 0; i < ops.length; i = i + 1) {
+      if (ops[i].id === o.id) continue;
+      let allow = (Math.abs(ops[i].pos - o.pos) - ops[i].w / 2 - 0.05) * 2;
+      if (allow < maxW) maxW = Math.max(0.6, allow);
+    }
+  }
+  let nw = Math.max(0.6, Math.min(maxW, w));
   beginEdit();
-  o.w = Math.max(0.6, Math.min(2.4, w));
+  o.w = nw;
+  if (wall) {
+    o.pos = Math.max(nw / 2 + 0.05, Math.min(L - nw / 2 - 0.05, o.pos));
+  }
   planChanged();
 }
 
@@ -1830,8 +1924,9 @@ function _onHide() {
 // Keyboard
 // ---------------------------------------------------------------------------
 function isUiControl(e) {
-  let tag = e.targetTag || "";
-  return tag === "input" || tag === "textarea" || tag === "select" || !!e.targetEditable;
+  let tag = (e.targetTag || (e.target && e.target.tagName ? e.target.tagName.toLowerCase() : ""));
+  let editable = !!(e.targetEditable || (e.target && e.target.isContentEditable));
+  return tag === "input" || tag === "textarea" || tag === "select" || editable;
 }
 
 function _init() {
@@ -1842,8 +1937,17 @@ function _init() {
   window.__scene3dLocked = false;
   window.__scene3dWantLock = false;
   function onKeyDown(e) {
-    if (isUiControl(e)) return;
     let k = e.key || "";
+    if (dialog !== "") {
+      if (k === "Escape" && !isUiControl(e)) closeDialog();
+      return;
+    }
+    if (isUiControl(e)) return;
+    if (e.ctrlKey || e.metaKey) {
+      if (!e.repeat && (k === "z" || k === "Z")) { if (e.shiftKey) redo(); else undo(); e.preventDefault(); }
+      else if (!e.repeat && (k === "y" || k === "Y")) { redo(); e.preventDefault(); }
+      return;
+    }
     if (k.indexOf("Arrow") === 0 && e.shiftKey && selected && selected.kind === "item" && viewMode === "plan") {
       nudgeSelected(k === "ArrowLeft" ? -ITEM_GRID : (k === "ArrowRight" ? ITEM_GRID : 0), k === "ArrowUp" ? -ITEM_GRID : (k === "ArrowDown" ? ITEM_GRID : 0));
       e.preventDefault();
@@ -1855,8 +1959,6 @@ function _init() {
     if (viewMode === "walk") return;
     if (k === "Delete" || k === "Backspace") { deleteSelected(); e.preventDefault(); }
     else if (k === "r" || k === "R") rotatePreview();
-    else if (k === "z" && (e.ctrlKey || e.metaKey)) { if (e.shiftKey) redo(); else undo(); e.preventDefault(); }
-    else if (k === "y" && (e.ctrlKey || e.metaKey)) { redo(); e.preventDefault(); }
     else if (k === "1") setTool("select");
     else if (k === "2") setTool("wall");
     else if (k === "3") setTool("room");
@@ -1890,6 +1992,7 @@ function _init() {
     let k = CATALOGUE_ORDER[i];
     catalogue.push({ kind: k, label: CATALOGUE[k].label, icon: CATALOGUE[k].icon, group: CATALOGUE[k].group });
   }
+  refreshCatalogueFilter();
   refreshSlots();
 
   plan = newPlan();

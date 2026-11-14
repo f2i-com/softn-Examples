@@ -9,10 +9,10 @@
       <div className="os-row"><button className="os-btn os-tab" oson={String(inspectTab === "overview")} @click={() => selectInspectorTab("overview")}>Needs</button><button className="os-btn os-tab" oson={String(inspectTab === "gear")} @click={() => selectInspectorTab("gear")}>Gear</button><button className="os-btn os-tab" oson={String(inspectTab === "skills")} @click={() => selectInspectorTab("skills")}>Skills</button><button className="os-btn os-tab" oson={String(inspectTab === "social")} @click={() => selectInspectorTab("social")}>Social</button></div>
       #if (!selectedCard.dead)
         #if (selectedCard.rover && selectedCard.party)
-          <div className="os-card os-party-card" oson={String(selectedCard.watching)}><div className="os-item-name">On the road · {selectedCard.rations} rations</div><div className="os-item-desc">{selectedCard.party}. Carrying {selectedCard.pack}.</div><div className="os-row" style={{ marginTop: "8px", flexWrap: "wrap" }}><button className="os-btn os-tab" oson={String(selectedCard.watching)} @click={() => watchRover(selectedCard.id)}>{selectedCard.watching ? "Watching · back to colony" : "Watch"}</button><button className="os-btn os-tab" @click={() => recallParty(selectedCard.partyId)}>Bring the party home</button><button className="os-btn os-tab" @click={() => setPanel("frontier")}>Frontier chart</button></div></div>
+          <div className="os-card os-party-card" oson={String(selectedCard.watching)}><div className="os-item-name">{"On the road · " + selectedCard.rations + " rations"}</div><div className="os-item-desc">{selectedCard.party + ". Carrying " + selectedCard.pack + "."}</div><div className="os-row" style={{ marginTop: "8px", flexWrap: "wrap" }}><button className="os-btn os-tab" oson={String(selectedCard.watching)} @click={() => watchRover(selectedCard.id)}>{selectedCard.watching ? "Watching · back to colony" : "Watch"}</button><button className="os-btn os-tab" @click={() => recallParty(selectedCard.partyId)}>Bring the party home</button><button className="os-btn os-tab" @click={() => setPanel("frontier")}>Frontier chart</button></div></div>
         #end
         #if (selectedCard.rover && !selectedCard.party)
-          <div className="os-card"><div className="os-item-name">Roving · {selectedCard.rations} rations · {selectedCard.walked} tiles walked</div><div className="os-item-desc">Alone on the plane. Right-click the ground to send them on; the country is made as they reach it, and it will be the same when they come back. Carrying {selectedCard.pack}.</div><div className="os-row" style={{ marginTop: "8px", flexWrap: "wrap" }}><button className="os-btn os-tab" @click={() => roverHead(selectedCard.id, 0, -1)}>North</button><button className="os-btn os-tab" @click={() => roverHead(selectedCard.id, 0, 1)}>South</button><button className="os-btn os-tab" @click={() => roverHead(selectedCard.id, -1, 0)}>West</button><button className="os-btn os-tab" @click={() => roverHead(selectedCard.id, 1, 0)}>East</button><button className="os-btn os-tab" @click={() => roverForage(selectedCard.id)}>Forage nearby</button>#if (!selectedCard.atCamp)<button className="os-btn os-tab" @click={() => makeFarCamp(selectedCard.id)}>Make camp · 6 wood</button>#end#if (selectedCard.canSettle)<button className="os-btn os-tab os-primary" @click={() => settleHere(selectedCard.id)}>Settle here</button>#end<button className="os-btn os-tab os-primary" @click={() => roverReturn(selectedCard.id)}>Return to colony</button></div></div>
+          <div className="os-card"><div className="os-item-name">{"Roving · " + selectedCard.rations + " rations · " + selectedCard.walked + " tiles walked"}</div><div className="os-item-desc">{"Alone on the plane. Right-click the ground to send them on; the country is made as they reach it, and it will be the same when they come back. Carrying " + selectedCard.pack + "."}</div><div className="os-row" style={{ marginTop: "8px", flexWrap: "wrap" }}><button className="os-btn os-tab" @click={() => roverHead(selectedCard.id, 0, -1)}>North</button><button className="os-btn os-tab" @click={() => roverHead(selectedCard.id, 0, 1)}>South</button><button className="os-btn os-tab" @click={() => roverHead(selectedCard.id, -1, 0)}>West</button><button className="os-btn os-tab" @click={() => roverHead(selectedCard.id, 1, 0)}>East</button><button className="os-btn os-tab" @click={() => roverForage(selectedCard.id)}>Forage nearby</button>#if (!selectedCard.atCamp)<button className="os-btn os-tab" @click={() => makeFarCamp(selectedCard.id)}>Make camp · 6 wood</button>#end#if (selectedCard.canSettle)<button className="os-btn os-tab os-primary" @click={() => settleHere(selectedCard.id)}>Settle here</button>#end<button className="os-btn os-tab os-primary" @click={() => roverReturn(selectedCard.id)}>Return to colony</button></div></div>
         #end
         #if (selectedCard.canSetOut)
           <button className="os-btn os-wide" @click={() => setOutRover(selectedCard.id)}>Set out alone · takes up to 8 meals</button>
@@ -30,7 +30,7 @@
       #end
       #if (inspectTab === "overview")
         <div className="os-detail"><span>Weapon</span><b>{selectedCard.weapon}</b></div>
-        <span className="os-label">{selectedCard.mood} · {selectedCard.trait}</span>
+        <span className="os-label">{selectedCard.mood + " · " + selectedCard.trait}</span>
         <span className="os-tiny os-dim">{selectedCard.personality}</span>
         #if (selectedCard.quirks)
           <span className="os-tiny os-amber" title={selectedCard.quirkDetail}>{selectedCard.quirks}</span>
@@ -62,7 +62,7 @@
         <span className="os-label">PRACTICAL SKILLS</span>
         <div>
           #each (skill in selectedCard.skills) key={skill.name}
-            <div className="os-detail"><span>{skill.name}</span><b>{skill.value} / 10</b></div>
+            <div className="os-detail"><span>{skill.name}</span><b>{skill.value + " / 10"}</b></div>
           #end
         </div>
         <div className="os-detail"><span>Schedule</span><b>{selectedCard.schedule}</b></div>
@@ -105,7 +105,7 @@
     #end
     #if (selectedCard.type === "ruin")
       <span className="os-prose">{selectedCard.description}</span>
-      <div className="os-card"><span className="os-label">RECOVERY PROGRESS</span><div className="os-amber">{selectedCard.progress}%</div></div>
+      <div className="os-card"><span className="os-label">RECOVERY PROGRESS</span><div className="os-amber">{selectedCard.progress + "%"}</div></div>
       #if (selectedCard.studied)
         <button className="os-btn os-wide" @click={() => readArchive(selectedCard.id)}>Read recovered archive</button>
       #else

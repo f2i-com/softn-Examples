@@ -13,15 +13,37 @@
   // Counter value for the interactive page's animated number demo
   let counterValue = 0
 
-  // The four stat counters on the animations page, each with a target of its
-  // own so they do not move in lockstep.
+  // Stat counters on the animations page
   let revenueValue = 0
   let usersValue = 0
   let conversionValue = 0
   let latencyValue = 0
 
-  // Sun and moon for the theme toggles — the built-in Icon set has neither.
-  // Drawn with currentColor so the wrapper's colour decides the stroke.
+  // UI Controls showcase state
+  let demoButtonClicks = 0
+  let demoLastVariant = "none"
+  let demoInputName = "Ada Lovelace"
+  let demoRole = "engineer"
+  let demoRoleOptions = [
+    { value: "engineer", label: "Systems Engineer" },
+    { value: "designer", label: "Product Designer" },
+    { value: "researcher", label: "AI Researcher" },
+    { value: "pm", label: "Technical Lead" }
+  ]
+  let demoProgress = 68
+  let demoNotifications = true
+  let demoAutoSave = true
+  let demoTelemetry = false
+  let demoColor = "#6366f1"
+  let demoModalOpen = false
+  let demoTab = "overview"
+  let demoTabList = [
+    { id: "overview", value: "overview", label: "Overview" },
+    { id: "tokens", value: "tokens", label: "Design Tokens" },
+    { id: "a11y", value: "a11y", label: "Accessibility" }
+  ]
+
+  // Sun and moon icons
   let iconOpen = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
   let iconSun = iconOpen + '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>'
   let iconMoon = iconOpen + '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'
@@ -60,8 +82,131 @@
     try { localStorage.setItem("softn-theme-preference", darkMode ? "dark" : "light") } catch(e) {}
   }
 
+  // UI Controls handlers (defensive across direct values and DOM events)
+  function recordButtonDemo(variantName) {
+    demoButtonClicks = demoButtonClicks + 1
+    demoLastVariant = variantName
+  }
+
+  function updateDemoInputName(val) {
+    if (val && typeof val === "object" && val.target !== undefined) {
+      demoInputName = String(val.target.value || "")
+    } else {
+      demoInputName = val === undefined || val === null ? "" : String(val)
+    }
+  }
+
+  function updateDemoRole(val) {
+    if (typeof val === "string") {
+      demoRole = val
+    } else if (val && typeof val === "object") {
+      if (val.value !== undefined) demoRole = String(val.value)
+      else if (val.target && val.target.value !== undefined) demoRole = String(val.target.value)
+    }
+  }
+
+  function getDemoRoleLabel() {
+    let i = 0
+    while (i < demoRoleOptions.length) {
+      if (demoRoleOptions[i].value === demoRole) return demoRoleOptions[i].label
+      i = i + 1
+    }
+    return demoRole
+  }
+
+  function updateDemoProgress(val) {
+    let raw = val
+    if (val && typeof val === "object" && val.target !== undefined) {
+      raw = val.target.value
+    }
+    let n = Number(raw)
+    if (!isNaN(n)) {
+      if (n < 0) n = 0
+      if (n > 100) n = 100
+      demoProgress = Math.round(n)
+    }
+  }
+
+  function toggleDemoNotifications(val) {
+    if (typeof val === "boolean") {
+      demoNotifications = val
+    } else if (val && typeof val === "object" && val.target !== undefined && typeof val.target.checked === "boolean") {
+      demoNotifications = val.target.checked
+    } else {
+      demoNotifications = !demoNotifications
+    }
+  }
+
+  function toggleDemoAutoSave(val) {
+    if (typeof val === "boolean") {
+      demoAutoSave = val
+    } else if (val && typeof val === "object" && val.target !== undefined && typeof val.target.checked === "boolean") {
+      demoAutoSave = val.target.checked
+    } else {
+      demoAutoSave = !demoAutoSave
+    }
+  }
+
+  function toggleDemoTelemetry(val) {
+    if (typeof val === "boolean") {
+      demoTelemetry = val
+    } else if (val && typeof val === "object" && val.target !== undefined && typeof val.target.checked === "boolean") {
+      demoTelemetry = val.target.checked
+    } else {
+      demoTelemetry = !demoTelemetry
+    }
+  }
+
+  function updateDemoColor(val) {
+    if (typeof val === "string" && val.charAt(0) === "#") {
+      demoColor = val
+    } else if (val && typeof val === "object" && val.target && typeof val.target.value === "string") {
+      demoColor = val.target.value
+    }
+  }
+
+  function setDemoTab(val) {
+    if (typeof val === "string" && val !== "") {
+      demoTab = val
+    } else if (typeof val === "number" && demoTabList[val]) {
+      demoTab = demoTabList[val].id
+    } else if (val && typeof val === "object") {
+      if (val.id) demoTab = String(val.id)
+      else if (val.value) demoTab = String(val.value)
+      else if (val.target && val.target.value) demoTab = String(val.target.value)
+    }
+  }
+
+  function openDemoModal() {
+    demoModalOpen = true
+  }
+
+  function closeDemoModal() {
+    demoModalOpen = false
+  }
+
+  // Interactive page handlers
   function updateSortableItems(newItems) {
-    sortableItems = newItems
+    if (Array.isArray(newItems)) {
+      sortableItems = newItems
+    }
+  }
+
+  function resetSortableItems() {
+    sortableItems = [
+      { id: "1", name: "Design System", category: "Frontend" },
+      { id: "2", name: "API Integration", category: "Backend" },
+      { id: "3", name: "Database Migration", category: "DevOps" },
+      { id: "4", name: "User Testing", category: "QA" },
+      { id: "5", name: "Performance Audit", category: "Engineering" }
+    ]
+  }
+
+  function getTopSortableLabel() {
+    if (sortableItems && sortableItems.length > 0 && sortableItems[0].name) {
+      return sortableItems[0].name
+    }
+    return "Design System"
   }
 
   function randomizeCounter() {
@@ -72,6 +217,7 @@
     latencyValue = 40 + Math.floor(Math.random() * 400)
   }
 
+  // 3D & PBR scene state
   let scene3dElapsed = 0
   let scene3dRingDeg = 0
   let scene3dAnimate = true
@@ -227,7 +373,7 @@
 
   function showcase3DStep(dt) {
     let step = typeof dt === "number" && dt > 0 ? Math.min(dt, 0.2) : 0.016
-    scene3dElapsed += step
+    scene3dElapsed = scene3dElapsed + step
     scene3dRingDeg = Math.round(((scene3dElapsed * 0.45 * 180) / Math.PI) % 360)
     let next = []
     let i = 0
@@ -254,7 +400,7 @@
       } else {
         next.push(obj)
       }
-      i += 1
+      i = i + 1
     }
     scene3dObjects = next
   }
@@ -266,4 +412,9 @@
     conversionValue = 4.6
     latencyValue = 128
     initShowcase3D()
+  }
+
+  function _onHide() {
+    scene3dAnimate = false
+    demoModalOpen = false
   }

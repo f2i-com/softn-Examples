@@ -1,0 +1,23 @@
+<Box className="worktop">
+ <Box className="offering-info"><Image loading="eager" className="offering-preview" src={asset(V.selectedArt)} width="100%" height="100%" objectFit="contain" alt={V.selected.name} /><Box className="offering-copy"><Text style={TEXT_STYLE} className="eyebrow">{S.offering ? "YOU ARE HOLDING" : "ON THE COUNTER"}</Text><Text style={TEXT_STYLE} className="offering-name">{V.selected.name}</Text><Text style={TEXT_STYLE} className="offering-hint">{V.offerText}</Text></Box></Box>
+ <Box className="offering-actions"><Button variant="ghost" className="feed-button" disabled={!V.canFeed} @click={feedMoon}><Text style={TEXT_STYLE}>{V.feedLabel}</Text><Text style={TEXT_STYLE} className="key-hint">SPACE / TAP THE MOON</Text></Button><Button variant="ghost" className="put-back" @click={putBack} disabled={!S.offering}>Put it back</Button></Box>
+</Box>
+<Box className="shelf-drawer">
+ <Box className="drawer-heading"><Box className="aisle-tabs"><Button variant="ghost" className={S.aisle === 0 ? "aisle-tab active" : "aisle-tab"} @click={chooseAisle(0)}>Midnight snacks</Button><Button variant="ghost" className={S.aisle === 1 ? "aisle-tab active" : "aisle-tab"} @click={chooseAisle(1)}>Odds &amp; ends</Button><Button variant="ghost" className={S.aisle === 2 ? "aisle-tab active" : "aisle-tab"} @click={chooseAisle(2)}>{V.backroom ? "Not for sale" : "Staff cupboard ◇"}</Button></Box><Text style={TEXT_STYLE} className="drawer-instruction">SELECT SOMETHING QUESTIONABLE</Text></Box>
+ <Box className="product-shelf">
+  #each (product in V.products)
+   <Button variant="ghost" className={product.className} disabled={product.disabled} @click={selectItem(product.id)} ariaLabel={product.label}><Image loading="eager" className="product-image" src={asset(product.art)} width="100%" height="100%" objectFit="contain" alt="" /><Box className="price-ticket"><Text style={TEXT_STYLE} className="product-name">{product.name}</Text><Text style={TEXT_STYLE} className="stock-count">{product.stock + " LEFT"}</Text></Box><Box className="selection-dot" /></Button>
+  #end
+ </Box>
+ <Box className="shelf-footer"><Text style={TEXT_STYLE}>{V.selected.hint}</Text><Button variant="ghost" className="restock-link" @click={delivery}>{V.selectedStock >= 40 ? "Shelf full" : "Restock selected ↗"}</Button></Box>
+</Box>
+<Box className={V.reactionVisible ? "reaction-caption visible" : "reaction-caption"} aria-live="polite" role="status"><Text style={TEXT_STYLE} className="reaction-number">FIELD NOTE / {S.serial < 10 ? "0" + S.serial : S.serial}</Text><Box><Text style={TEXT_STYLE} className="reaction-title">{V.reactionTitle}</Text><Text style={TEXT_STYLE} className="reaction-body">{V.reactionText}</Text></Box></Box>
+
+<Box className="moon-service">
+ #each (customer in V.customers)
+  <Button variant="ghost" className="top-button" @click={serveCustomer(customer.id)}>{"Serve "+customer.name+" · "+customer.order}</Button>
+ #end
+ <Button variant="ghost" className="top-button" @click={stabilise} disabled={!V.groundReady}>Reset circuit breaker</Button>
+ <Button variant="ghost" className="top-button" @click={refuseMoon}>Follow the rule</Button>
+ <Button variant="ghost" className="top-button" @click={clockOut}>Clock out</Button>
+</Box>

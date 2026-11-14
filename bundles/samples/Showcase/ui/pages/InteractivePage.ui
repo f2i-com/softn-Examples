@@ -17,18 +17,18 @@
         </Box>
       </Stack>
       <Box style={{ position: "relative", height: "200px", background: darkMode ? "#09090b" : "#f4f4f5", borderRadius: "10px", overflow: "hidden" }}>
-        <Draggable bounds="parent" style={{ position: "absolute", top: "10px", left: "10px" }}>
-          <Box style={{ width: "100px", height: "60px", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 12px rgba(99, 102, 241, 0.3)" }}>
+        <Draggable bounds="parent" style={{ position: "absolute", top: "12px", left: "10px" }}>
+          <Box style={{ width: "84px", height: "56px", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 12px rgba(99, 102, 241, 0.3)", cursor: "grab" }}>
             <Text size=xs style={{ color: "#fff", fontWeight: 600 }}>Free</Text>
           </Box>
         </Draggable>
-        <Draggable axis="x" bounds="parent" style={{ position: "absolute", top: "70px", left: "120px" }}>
-          <Box style={{ width: "100px", height: "60px", background: "linear-gradient(135deg, #10b981, #34d399)", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 12px rgba(16, 185, 129, 0.3)" }}>
+        <Draggable axis="x" bounds="parent" style={{ position: "absolute", top: "74px", left: "102px" }}>
+          <Box style={{ width: "84px", height: "56px", background: "linear-gradient(135deg, #10b981, #34d399)", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 12px rgba(16, 185, 129, 0.3)", cursor: "grab" }}>
             <Text size=xs style={{ color: "#fff", fontWeight: 600 }}>X Only</Text>
           </Box>
         </Draggable>
-        <Draggable axis="y" bounds="parent" style={{ position: "absolute", top: "10px", left: "240px" }}>
-          <Box style={{ width: "100px", height: "60px", background: "linear-gradient(135deg, #f59e0b, #fbbf24)", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 12px rgba(245, 158, 11, 0.3)" }}>
+        <Draggable axis="y" bounds="parent" style={{ position: "absolute", top: "12px", left: "194px" }}>
+          <Box style={{ width: "84px", height: "56px", background: "linear-gradient(135deg, #f59e0b, #fbbf24)", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 12px rgba(245, 158, 11, 0.3)", cursor: "grab" }}>
             <Text size=xs style={{ color: "#fff", fontWeight: 600 }}>Y Only</Text>
           </Box>
         </Draggable>
@@ -55,6 +55,10 @@
           gap={6}
           onReorder={updateSortableItems}
         />
+        <Box style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
+          <Text size=xs style={{ color: getMutedColor(), fontFamily: "monospace" }}>{"Top priority: " + getTopSortableLabel()}</Text>
+          <Button variant="ghost" size="xs" @click={resetSortableItems}>Reset Order</Button>
+        </Box>
       </Stack>
     </Card>
 

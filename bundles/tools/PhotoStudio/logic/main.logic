@@ -100,9 +100,9 @@ let artHeight = "100%";
 let artTransform = "none";
 let smoothZoom = true;
 let cursorVisible = false;
-let cursorLeft = "0px";
-let cursorTop = "0px";
+let cursorTransform = "translate3d(0px,0px,0)";
 let cursorDiameter = "10px";
+let gestureSvg = "";
 let rulersOn = true;
 let rulerX = [];
 let rulerY = [];
@@ -152,7 +152,7 @@ let psIconPaths = {
   rectangle: '<rect x="3" y="5" width="18" height="14" rx="1"/>',
   ellipse: '<ellipse cx="12" cy="12" rx="9" ry="7"/>',
   line: '<path d="m3 21 18-18"/>',
-  hand: '<path d="M5 19c-3-9 0-9 2-4V5c0-3 3-3 3 0v7-8c0-3 3-3 3 0v8-6c0-3 3-3 3 0v7-4c0-2 3-2 3 0v7l-3 6H8Z"/>',
+  hand: '<path d="M18 11V6a1.5 1.5 0 0 0-3 0v4M15 10V4.5a1.5 1.5 0 0 0-3 0V10M12 9.5V5.5a1.5 1.5 0 0 0-3 0V12M9 11V7.5a1.5 1.5 0 0 0-3 0v7.5a6 6 0 0 0 6 6h2a6 6 0 0 0 6-6v-4a1.5 1.5 0 0 0-3 0"/>',
   zoom: '<circle cx="10" cy="10" r="7"/><path d="m15 15 7 7M7 10h6M10 7v6"/>',
 };
 let psMenus = {
@@ -169,7 +169,9 @@ let psFilterDefaults = { brightness: [0, -100, 100, 1], contrast: [0, -100, 100,
 let psFilterKind = "";
 let psGesture = null;
 let psPolygon = [];
+let psPolygonMode = "replace";
 let psSpaceHeld = false;
+let psSuppressLayerSelectUntil = 0;
 let psViewRect = null;          // { left, top, width, height } of the viewport, from pointer events
 let psZoom = 1;                 // effective zoom in "zoom" mode
 let psPanX = 0, psPanY = 0;
@@ -184,6 +186,10 @@ let psPlacePending = false;
 // then supply the pointer, recognised by the hit overlay's <article> tag.
 let psElementEvents = false;
 let psWinDown = false;
+let psThumbCache = {};
+let psLastCoordMs = 0;
+let psLastCursorMs = 0;
+let psLastNavRev = -1;
 
 // ---------------------------------------------------------------------------
 // Startup
@@ -210,6 +216,8 @@ function _init() {
   // Optional host features: an older runtime may lack some of these, and a
   // missing one must never stop the editor from starting.
   try {
+    if (window.__psCleanup) window.__psCleanup();
+    if (window.innerWidth && window.innerWidth <= 860) sidebarOpen = false;
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("blur", onWindowBlur);
@@ -219,12 +227,26 @@ function _init() {
     window.addEventListener("pointermove", winPointerMove);
     window.addEventListener("pointerup", winPointerUp);
     window.addEventListener("pointercancel", winPointerCancel);
+    window.__psCleanup = function () {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onWindowBlur);
+      window.removeEventListener("wheel", onWheel);
+      window.removeEventListener("resize", onWindowResize);
+      window.removeEventListener("pointerdown", winPointerDown);
+      window.removeEventListener("pointermove", winPointerMove);
+      window.removeEventListener("pointerup", winPointerUp);
+      window.removeEventListener("pointercancel", winPointerCancel);
+    };
   } catch (e) { console.log("PhotoStudio: window listeners unavailable: " + e.message); }
   try {
     if (typeof softn !== "undefined" && softn.input && typeof softn.input.captureKeys === "function") softn.input.captureKeys(["[", "]", "Delete", "Backspace", " ", "+", "-", "=", "Escape", "Enter"], function () {});
   } catch (e) { console.log("PhotoStudio: key capture unavailable: " + e.message); }
   uiSetTool("brush");
   buildDemoDocument();
+}
+function _onHide() {
+  try { if (window.__psCleanup) window.__psCleanup(); } catch (e) {}
 }
 function psCanPickFiles() { return typeof softn !== "undefined" && softn.files && typeof softn.files.pickFile === "function"; }
 function psIconSvg(id) {
@@ -251,29 +273,56 @@ function uiOnDocument(kind) {
   layersText = layerCount + (layerCount === 1 ? " layer" : " layers");
   docTitle = docName + (docDirty ? " *" : "") + " - " + docW + " x " + docH + " px - " + layersText;
   maskMode = PS_MASKMODE;
-  if (kind === "document") { psGesture = null; psPolygon = []; cropPending = false; polygonPending = false; setFit(); }
+  if (kind === "document") { psGesture = null; psPolygon = []; cropPending = false; polygonPending = false; gestureSvg = ""; psThumbCache = {}; setFit(); }
   if (kind !== "status" && kind !== "selection") psRefreshPanels();
   psUpdateStatus();
+}
+function psCachedThumb(l, isMask) {
+  let key = l.id + (isMask ? ":m" : ":d");
+  let buf = isMask ? l.mask : l.data;
+  let rev = isMask ? (l._maskRev || 0) : (l._rev || 0);
+  let hit = psThumbCache[key];
+  if (hit && hit.buf === buf && hit.rev === rev && hit.w === PS_W && hit.h === PS_H) return hit.thumb;
+  let thumb = psThumbnail(buf, PS_W, PS_H, isMask ? 30 : 60, isMask ? 30 : 44, isMask ? 1 : 4);
+  psThumbCache[key] = { buf: buf, rev: rev, w: PS_W, h: PS_H, thumb: thumb };
+  return thumb;
 }
 function psRefreshPanels() {
   let rows = [];
   let active = psActive();
+  let liveKeys = {};
   for (let i = PS_LAYERS.length - 1; i >= 0; i--) {
     let l = PS_LAYERS[i];
+    liveKeys[l.id + ":d"] = 1;
+    if (l.mask) liveKeys[l.id + ":m"] = 1;
     let isActive = active && l.id === active.id;
     rows.push({ id: l.id, name: l.name, visible: l.visible, locked: l.locked, active: isActive, kind: l.kind, hasMask: !!l.mask, maskEnabled: l.maskEnabled,
       maskActive: isActive && PS_MASKMODE, imageActive: isActive && !PS_MASKMODE,
       typeLabel: l.kind === "text" ? "Editable type" : l.blend === "normal" ? "Pixel layer" : psTitleCase(l.blend),
       maskLabel: l.mask ? (l.maskEnabled ? "mask" : "mask off") : "",
-      thumb: psThumbnail(l.data, PS_W, PS_H, 60, 44, 4), maskThumb: l.mask ? psThumbnail(l.mask, PS_W, PS_H, 30, 30, 1) : null,
+      thumb: psCachedThumb(l, false), maskThumb: l.mask ? psCachedThumb(l, true) : null,
       eye: l.visible ? "Hide" : "Show", lockGlyph: l.locked ? "◆" : "◇" });
+  }
+  let cachedIds = Object.keys(psThumbCache);
+  if (cachedIds.length > PS_LAYERS.length * 2 + 8) {
+    for (let i = 0; i < cachedIds.length; i++) if (!liveKeys[cachedIds[i]]) delete psThumbCache[cachedIds[i]];
   }
   layerRows = rows;
   let hist = [];
   for (let i = 0; i < PS_HISTORY.length; i++) hist.push({ index: i, number: (i + 1 < 10 ? "0" : "") + (i + 1), label: PS_HISTORY[i].label, current: i === PS_HIST_INDEX, future: i > PS_HIST_INDEX });
   historyRows = hist;
   if (active) { activeBlend = active.blend; activeOpacity = String(Math.round(active.opacity * 100)); }
-  navFrame = PS_COMP ? psThumbnail(PS_COMP, PS_W, PS_H, 180, 100, 4) : null;
+  if (PS_COMP) {
+    if (PS_DIRTY) {
+      navFrame = psCompositeThumb(180, 100);
+      psLastNavRev = -1;
+    } else if (PS_FRAME !== psLastNavRev || !navFrame) {
+      psOverlayUnapply();
+      navFrame = psThumbnail(PS_COMP, PS_W, PS_H, 180, 100, 4);
+      psOverlayApply();
+      psLastNavRev = PS_FRAME;
+    }
+  } else navFrame = null;
   warningsText = PS_WARNINGS.join("\n\n");
 }
 function psUpdateStatus() {
@@ -294,6 +343,7 @@ function uiSetTool(id) {
   if (!found) return;
   psEndGesture(true);
   psPolygon = []; polygonPending = false;
+  gestureSvg = "";
   psOverlaySet("gesture", null);
   tool = id; toolName = found[1];
   let rows = toolRows.slice();
@@ -319,25 +369,48 @@ function psOptions() {
 // View: fit / zoom / pan. Geometry comes from the viewport rectangle the
 // pointer events report; PixelCanvas centres the bitmap the same way.
 // ---------------------------------------------------------------------------
-function psViewSize() { return psViewRect ? { w: psViewRect.width, h: psViewRect.height } : { w: 1000, h: 700 }; }
+function psProbeViewport() {
+  try {
+    if (typeof document !== "undefined" && document.querySelector) {
+      let el = document.querySelector(".sp-hit");
+      if (el && el.getBoundingClientRect) {
+        let b = el.getBoundingClientRect();
+        if (b.width > 20 && b.height > 20) psViewRect = { left: b.left, top: b.top, width: b.width, height: b.height };
+      }
+    }
+  } catch (e) {}
+}
+function psViewSize() {
+  if (!psViewRect) psProbeViewport();
+  return psViewRect ? { w: psViewRect.width, h: psViewRect.height } : { w: 1000, h: 700 };
+}
 function psGeometry() {
   let v = psViewSize();
   if (viewMode === "fit") {
-    let f = Math.min(v.w / Math.max(1, docW), v.h / Math.max(1, docH));
-    let cw = Math.round(docW * f), ch = Math.round(docH * f);
-    return { f: f, x: (v.w - cw) / 2, y: (v.h - ch) / 2 };
+    let pad = Math.min(24, Math.floor(Math.min(v.w, v.h) * 0.04));
+    let availW = Math.max(16, v.w - pad * 2), availH = Math.max(16, v.h - pad * 2);
+    let f = Math.min(availW / Math.max(1, docW), availH / Math.max(1, docH));
+    let cw = Math.max(1, Math.round(docW * f)), ch = Math.max(1, Math.round(docH * f));
+    return { f: f, x: (v.w - cw) / 2, y: (v.h - ch) / 2, cw: cw, ch: ch };
   }
   return { f: psZoom, x: (v.w - docW * psZoom) / 2 + psPanX, y: (v.h - docH * psZoom) / 2 + psPanY };
 }
 function psApplyView() {
-  if (viewMode === "fit") { artWidth = "100%"; artHeight = "100%"; artTransform = "none"; }
-  else { artWidth = Math.max(1, Math.round(docW * psZoom)) + "px"; artHeight = Math.max(1, Math.round(docH * psZoom)) + "px"; artTransform = "translate(" + Math.round(psPanX) + "px," + Math.round(psPanY) + "px)"; }
   let g = psGeometry();
+  if (viewMode === "fit") {
+    if (psViewRect && g.cw && g.ch) { artWidth = g.cw + "px"; artHeight = g.ch + "px"; }
+    else { artWidth = "100%"; artHeight = "100%"; }
+    artTransform = "none";
+  } else {
+    artWidth = Math.max(1, Math.round(docW * psZoom)) + "px";
+    artHeight = Math.max(1, Math.round(docH * psZoom)) + "px";
+    artTransform = "translate(" + Math.round(psPanX) + "px," + Math.round(psPanY) + "px)";
+  }
   zoomText = Math.round(g.f * 100) + "%";
   smoothZoom = g.f < 3;
   psUpdateRulers(g);
 }
-function setFit() { viewMode = "fit"; psPanX = 0; psPanY = 0; psApplyView(); }
+function setFit() { psViewRect = null; viewMode = "fit"; psPanX = 0; psPanY = 0; psApplyView(); }
 function psZoomTo(z, sx, sy) {
   z = psClamp(z, 0.02, 32);
   let g = psGeometry(), v = psViewSize();
@@ -352,8 +425,11 @@ function zoomIn() { psZoomTo(psGeometry().f * 1.25); }
 function zoomOut() { psZoomTo(psGeometry().f * 0.8); }
 function zoomActual() { psZoomTo(1); }
 function zoomFit() { setFit(); }
-function toggleRulers() { rulersOn = !rulersOn; psApplyView(); }
-function toggleSidebar() { sidebarOpen = !sidebarOpen; }
+function toggleRulers() { rulersOn = !rulersOn; psViewRect = null; psApplyView(); }
+function toggleSidebar() { sidebarOpen = !sidebarOpen; psViewRect = null; psApplyView(); }
+function closeMobileSidebar() {
+  try { if (typeof window !== "undefined" && window.innerWidth <= 860) { sidebarOpen = false; psViewRect = null; psApplyView(); } } catch (e) {}
+}
 function psUpdateRulers(g) {
   if (!rulersOn) { rulerX = []; rulerY = []; return; }
   let v = psViewSize();
@@ -372,7 +448,14 @@ function psUpdateRulers(g) {
 // Pointer input on the viewport overlay
 // ---------------------------------------------------------------------------
 function psPoint(e) {
-  if (e && typeof e.targetWidth === "number" && e.targetWidth > 0) psViewRect = { left: e.targetLeft, top: e.targetTop, width: e.targetWidth, height: e.targetHeight };
+  let isHit = e && (e.targetTag === "article" || (e.target && e.target.tagName === "ARTICLE"));
+  if (isHit && typeof e.targetWidth === "number" && e.targetWidth > 0) {
+    let prevW = psViewRect ? psViewRect.width : 0, prevH = psViewRect ? psViewRect.height : 0;
+    psViewRect = { left: e.targetLeft, top: e.targetTop, width: e.targetWidth, height: e.targetHeight };
+    if (viewMode === "fit" && (prevW !== e.targetWidth || prevH !== e.targetHeight)) psApplyView();
+  } else if (!psViewRect) {
+    psProbeViewport();
+  }
   let r = psViewRect || { left: 0, top: 0, width: 1000, height: 700 };
   let g = psGeometry();
   let sx = e.clientX - r.left, sy = e.clientY - r.top;
@@ -398,7 +481,7 @@ function psPointerDown(e) {
     if (PS_BRUSH_TOOLS[tool]) { psBeginStroke(tool, p.x, p.y, 1, o); psGesture = { kind: "paint", start: p }; return; }
     if (tool === "fill") { psFill(p.x, p.y, o); return; }
     if (tool === "wand") { psWand(p.x, p.y, o.tolerance, o.contiguous, psModeFromEvent(e)); return; }
-    if (tool === "polygon") { psPolygon.push(p.x, p.y); polygonPending = psPolygon.length >= 6; psDrawPolygonOverlay(p); return; }
+    if (tool === "polygon") { if (!psPolygon.length) psPolygonMode = psModeFromEvent(e); psPolygon.push(p.x, p.y); polygonPending = psPolygon.length >= 6; psDrawPolygonOverlay(p); return; }
     if (tool === "text") { psTextPoint = { x: Math.round(p.x), y: Math.round(p.y) }; psEditingText = false; openTextDialog(null); return; }
     if (tool === "move") { if (psActive().locked) psFail("Unlock the active layer before moving it."); psBegin("Move layer"); psGesture = { kind: "move", start: p }; return; }
     if (tool === "lasso") { psGesture = { kind: "lasso", start: p, points: [p.x, p.y], mode: psModeFromEvent(e) }; return; }
@@ -409,12 +492,26 @@ function psPointerMove(e) {
   if (!e) return;
   let p = psPoint(e);
   psLastPointer = p;
-  coordText = "X " + Math.round(p.x) + "  Y " + Math.round(p.y);
+  let now = Date.now();
+  if (now - psLastCoordMs >= (psGesture ? 120 : 72)) {
+    psLastCoordMs = now;
+    let nextCoord = "X " + Math.round(p.x) + "  Y " + Math.round(p.y);
+    if (coordText !== nextCoord) coordText = nextCoord;
+  }
   if (PS_BRUSH_TOOLS[tool] && !psSpaceHeld && !dialog) {
-    let g = psGeometry();
-    let d = Math.max(2, brushSize * g.f);
-    cursorVisible = true; cursorLeft = (p.sx - d / 2) + "px"; cursorTop = (p.sy - d / 2) + "px"; cursorDiameter = d + "px";
-  } else cursorVisible = false;
+    if (!psGesture || now - psLastCursorMs >= 32) {
+      psLastCursorMs = now;
+      let g = psGeometry();
+      let d = Math.max(2, Math.round(brushSize * g.f));
+      let nextTx = "translate3d(" + Math.round(p.sx - d / 2) + "px," + Math.round(p.sy - d / 2) + "px,0)";
+      let nextDia = d + "px";
+      if (!cursorVisible) cursorVisible = true;
+      if (cursorTransform !== nextTx) cursorTransform = nextTx;
+      if (cursorDiameter !== nextDia) cursorDiameter = nextDia;
+    }
+  } else if (cursorVisible) {
+    cursorVisible = false;
+  }
   if (!psGesture) { if (psPolygon.length) psDrawPolygonOverlay(p); return; }
   if (psGesture.kind === "crop" && cropPending) return;
   uiGuard(function () {
@@ -435,65 +532,132 @@ function psPointerUp(e) {
   if (psGesture.kind === "crop" && cropPending) return;
   let gst = psGesture;
   uiGuard(function () {
-    if (gst.kind === "select") { psGesture = null; psOverlaySet("gesture", null); psSelectShape(tool === "marquee" ? "rect" : "ellipse", [gst.start.x, gst.start.y, gst.end.x, gst.end.y], gst.mode); return; }
-    if (gst.kind === "lasso") { psGesture = null; psOverlaySet("gesture", null); psSelectShape("polygon", gst.points, gst.mode); return; }
-    if (gst.kind === "shape") { psGesture = null; psOverlaySet("gesture", null); if (PS_MASKMODE) psFail("Use the brush or eraser to edit masks."); psDrawShape(tool, gst.start.x, gst.start.y, gst.end.x, gst.end.y, psOptions()); return; }
-    if (gst.kind === "crop") { cropPending = true; psUpdateStatus(); uiNotify("Press Enter or Apply crop to crop, Escape to cancel.", false); return; }
+    if (gst.kind === "select") { psGesture = null; gestureSvg = ""; psSelectShape(tool === "marquee" ? "rect" : "ellipse", [gst.start.x, gst.start.y, gst.end.x, gst.end.y], gst.mode); return; }
+    if (gst.kind === "lasso") { psGesture = null; gestureSvg = ""; psSelectShape("polygon", gst.points, gst.mode); return; }
+    if (gst.kind === "shape") { psGesture = null; gestureSvg = ""; if (PS_MASKMODE) psFail("Use the brush or eraser to edit masks."); psDrawShape(tool, gst.start.x, gst.start.y, gst.end.x, gst.end.y, psOptions()); return; }
+    if (gst.kind === "crop") { cropPending = true; psDrawGestureOverlay(); psUpdateStatus(); uiNotify("Press Enter or Apply crop to crop, Escape to cancel.", false); return; }
     if (gst.kind === "move") { psGesture = null; psFinishShift(null); return; }
     if (gst.kind === "paint") { psGesture = null; psEndStroke(); return; }
     psGesture = null;
   });
 }
-function onPointerLeave() { cursorVisible = false; }
-function psWinEventIsOurs(e) { return !psElementEvents && e && e.targetTag === "article"; }
+function onPointerLeave() { if (cursorVisible) cursorVisible = false; }
+function psIsHitTarget(e) { return !!(e && (e.targetTag === "article" || (e.target && e.target.tagName === "ARTICLE"))); }
+function psWinEventIsOurs(e) { return !psElementEvents && psIsHitTarget(e); }
 function winPointerDown(e) { if (!psWinEventIsOurs(e)) return; psWinDown = true; psPointerDown(e); }
-function winPointerMove(e) { if (psElementEvents || !e) return; if (e.targetTag !== "article" && !psWinDown) return; psPointerMove(e); }
-function winPointerUp(e) { if (psElementEvents || !e || !psWinDown) return; psWinDown = false; psPointerUp(e); }
-function winPointerCancel(e) { if (psElementEvents || !psWinDown) return; psWinDown = false; onPointerCancel(); }
+function winPointerMove(e) {
+  if (!e) return;
+  if (psElementEvents) { if (psGesture && !psIsHitTarget(e)) psPointerMove(e); return; }
+  if (!psWinEventIsOurs(e) && !psWinDown) return;
+  psPointerMove(e);
+}
+function winPointerUp(e) {
+  if (!e) return;
+  if (psElementEvents) { if (psGesture && !psIsHitTarget(e)) psPointerUp(e); return; }
+  if (!psWinDown) return;
+  psWinDown = false;
+  psPointerUp(e);
+}
+function winPointerCancel(e) {
+  if (psElementEvents) { if (psGesture && !psIsHitTarget(e)) onPointerCancel(); return; }
+  if (!psWinDown) return;
+  psWinDown = false;
+  onPointerCancel();
+}
 function onPointerCancel() { psEndGesture(true); }
 function onDoubleClick() { if (tool === "polygon" && psPolygon.length >= 6) closePolygon(); }
 function psEndGesture(cancel) {
   let gst = psGesture;
-  if (!gst) return;
+  if (!gst) { if (gestureSvg !== "") gestureSvg = ""; return; }
   psGesture = null;
   if (gst.kind === "paint") { if (cancel) psCancelStroke(); else psEndStroke(); }
   else if (gst.kind === "move") { if (cancel) psRollback(); else psFinishShift(null); }
+  gestureSvg = "";
   psOverlaySet("gesture", null);
   cropPending = false;
   psUpdateStatus();
 }
 function closePolygon() {
   if (psPolygon.length < 6) return;
-  let pts = psPolygon; psPolygon = []; polygonPending = false;
+  let pts = psPolygon, mode = psPolygonMode || "replace";
+  psPolygon = []; psPolygonMode = "replace"; polygonPending = false;
+  gestureSvg = "";
   psOverlaySet("gesture", null);
-  uiGuard(function () { psSelectShape("polygon", pts, "replace"); });
+  uiGuard(function () { psSelectShape("polygon", pts, mode); });
 }
 function applyCrop() {
   let gst = psGesture;
   if (!gst || gst.kind !== "crop") return;
-  psGesture = null; cropPending = false; psOverlaySet("gesture", null); psUpdateStatus();
+  psGesture = null; cropPending = false; gestureSvg = ""; psOverlaySet("gesture", null); psUpdateStatus();
   uiGuard(function () { psCrop({ x: Math.min(gst.start.x, gst.end.x), y: Math.min(gst.start.y, gst.end.y), width: Math.abs(gst.start.x - gst.end.x), height: Math.abs(gst.start.y - gst.end.y) }, null); });
 }
 function cancelCrop() { psEndGesture(true); }
+function psSvgNum(v) { return Math.round(v * 10) / 10; }
+function psWrapGestureSvg(inner) {
+  return '<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 ' + PS_W + ' ' + PS_H + '" preserveAspectRatio="none" overflow="visible">' + inner + '</svg>';
+}
 function psDrawGestureOverlay() {
   let gst = psGesture;
-  if (!gst || !gst.end) return;
-  let b = psPathBuilder(60000);
+  if (!gst || !gst.end || PS_W <= 0 || PS_H <= 0) { gestureSvg = ""; return; }
+  let g = psGeometry(), f = Math.max(0.05, g.f);
+  let sw = psSvgNum(1.4 / f), dash = psSvgNum(4.5 / f) + " " + psSvgNum(3.5 / f);
   let a = gst.start, z = gst.end;
+  let x0 = psSvgNum(Math.min(a.x, z.x)), y0 = psSvgNum(Math.min(a.y, z.y)), x1 = psSvgNum(Math.max(a.x, z.x)), y1 = psSvgNum(Math.max(a.y, z.y));
+  let rw = psSvgNum(Math.max(0.1, x1 - x0)), rh = psSvgNum(Math.max(0.1, y1 - y0));
   if (gst.kind === "crop") {
-    let x0 = Math.min(a.x, z.x), y0 = Math.min(a.y, z.y), x1 = Math.max(a.x, z.x), y1 = Math.max(a.y, z.y);
-    psPathRect(b, x0, y0, x1, y1, true);
-    for (let i = 1; i < 3; i++) { psPathLine(b, x0 + (x1 - x0) * i / 3, y0, x0 + (x1 - x0) * i / 3, y1, false); psPathLine(b, x0, y0 + (y1 - y0) * i / 3, x1, y0 + (y1 - y0) * i / 3, false); }
-  } else if (tool === "ellipse" || tool === "ellipse-select") psPathEllipse(b, a.x, a.y, z.x, z.y);
-  else if (tool === "line" || tool === "gradient") psPathLine(b, a.x, a.y, z.x, z.y, false);
-  else psPathRect(b, a.x, a.y, z.x, z.y, false);
-  psOverlaySet("gesture", psPathResult(b));
+    let cx0 = psClamp(x0, 0, PS_W), cy0 = psClamp(y0, 0, PS_H), cx1 = psClamp(x1, 0, PS_W), cy1 = psClamp(y1, 0, PS_H);
+    let cw = Math.max(0.1, cx1 - cx0), ch = Math.max(0.1, cy1 - cy0);
+    let gsw = psSvgNum(1 / f), csw = psSvgNum(1.8 / f);
+    let t1x = psSvgNum(cx0 + cw / 3), t2x = psSvgNum(cx0 + cw * 2 / 3), t1y = psSvgNum(cy0 + ch / 3), t2y = psSvgNum(cy0 + ch * 2 / 3);
+    gestureSvg = psWrapGestureSvg(
+      '<path d="M0 0H' + PS_W + 'V' + PS_H + 'H0ZM' + cx0 + ' ' + cy0 + 'V' + cy1 + 'H' + cx1 + 'V' + cy0 + 'Z" fill="rgba(8,10,16,0.52)" fill-rule="evenodd"/>' +
+      '<path d="M' + t1x + ' ' + cy0 + 'V' + cy1 + 'M' + t2x + ' ' + cy0 + 'V' + cy1 + 'M' + cx0 + ' ' + t1y + 'H' + cx1 + 'M' + cx0 + ' ' + t2y + 'H' + cx1 + '" stroke="rgba(255,255,255,0.45)" stroke-width="' + gsw + '" fill="none"/>' +
+      '<rect x="' + cx0 + '" y="' + cy0 + '" width="' + psSvgNum(cw) + '" height="' + psSvgNum(ch) + '" fill="none" stroke="#ff783c" stroke-width="' + csw + '"/>'
+    );
+    return;
+  }
+  if (tool === "ellipse" || tool === "ellipse-select") {
+    let cx = psSvgNum((a.x + z.x) / 2), cy = psSvgNum((a.y + z.y) / 2), rx = psSvgNum(rw / 2), ry = psSvgNum(rh / 2);
+    gestureSvg = psWrapGestureSvg(
+      '<ellipse cx="' + cx + '" cy="' + cy + '" rx="' + rx + '" ry="' + ry + '" fill="none" stroke="#000000" stroke-width="' + sw + '"/>' +
+      '<ellipse cx="' + cx + '" cy="' + cy + '" rx="' + rx + '" ry="' + ry + '" fill="none" stroke="#ffffff" stroke-width="' + sw + '" stroke-dasharray="' + dash + '"/>'
+    );
+    return;
+  }
+  if (tool === "line" || tool === "gradient") {
+    let ax = psSvgNum(a.x), ay = psSvgNum(a.y), zx = psSvgNum(z.x), zy = psSvgNum(z.y), r = psSvgNum(3 / f);
+    gestureSvg = psWrapGestureSvg(
+      '<line x1="' + ax + '" y1="' + ay + '" x2="' + zx + '" y2="' + zy + '" stroke="#000000" stroke-width="' + sw + '"/>' +
+      '<line x1="' + ax + '" y1="' + ay + '" x2="' + zx + '" y2="' + zy + '" stroke="#ffffff" stroke-width="' + sw + '" stroke-dasharray="' + dash + '"/>' +
+      '<circle cx="' + ax + '" cy="' + ay + '" r="' + r + '" fill="#b2a0ff" stroke="#000000" stroke-width="' + psSvgNum(1 / f) + '"/>' +
+      '<circle cx="' + zx + '" cy="' + zy + '" r="' + r + '" fill="#ffffff" stroke="#000000" stroke-width="' + psSvgNum(1 / f) + '"/>'
+    );
+    return;
+  }
+  gestureSvg = psWrapGestureSvg(
+    '<rect x="' + x0 + '" y="' + y0 + '" width="' + rw + '" height="' + rh + '" fill="none" stroke="#000000" stroke-width="' + sw + '"/>' +
+    '<rect x="' + x0 + '" y="' + y0 + '" width="' + rw + '" height="' + rh + '" fill="none" stroke="#ffffff" stroke-width="' + sw + '" stroke-dasharray="' + dash + '"/>'
+  );
 }
 function psDrawLassoOverlay(points, closeIt) {
-  let b = psPathBuilder(120000);
-  for (let i = 2; i < points.length; i += 2) psPathLine(b, points[i - 2], points[i - 1], points[i], points[i + 1], false);
-  if (closeIt && points.length >= 4) psPathLine(b, points[points.length - 2], points[points.length - 1], points[0], points[1], false);
-  psOverlaySet("gesture", psPathResult(b));
+  if (!points || points.length < 4 || PS_W <= 0 || PS_H <= 0) { gestureSvg = ""; return; }
+  let g = psGeometry(), f = Math.max(0.05, g.f);
+  let sw = psSvgNum(1.4 / f), dash = psSvgNum(4.5 / f) + " " + psSvgNum(3.5 / f);
+  let totalPts = points.length >> 1;
+  let stride = totalPts > 320 ? Math.ceil(totalPts / 320) : 1;
+  let parts = [];
+  for (let i = 0; i < totalPts; i += stride) {
+    parts.push(psSvgNum(points[i * 2]) + "," + psSvgNum(points[i * 2 + 1]));
+  }
+  if ((totalPts - 1) % stride !== 0) {
+    parts.push(psSvgNum(points[(totalPts - 1) * 2]) + "," + psSvgNum(points[(totalPts - 1) * 2 + 1]));
+  }
+  let tag = closeIt ? "polygon" : "polyline";
+  let ptsAttr = parts.join(" ");
+  gestureSvg = psWrapGestureSvg(
+    '<' + tag + ' points="' + ptsAttr + '" fill="none" stroke="#000000" stroke-width="' + sw + '"/>' +
+    '<' + tag + ' points="' + ptsAttr + '" fill="none" stroke="#ffffff" stroke-width="' + sw + '" stroke-dasharray="' + dash + '"/>'
+  );
 }
 function psDrawPolygonOverlay(p) {
   let pts = psPolygon.slice();
@@ -512,13 +676,17 @@ function psSetCloneOverlay() {
 // ---------------------------------------------------------------------------
 function onKeyDown(e) {
   if (!e) return;
-  let tag = e.targetTag || "";
-  if (e.targetEditable || tag === "input" || tag === "textarea" || tag === "select") return;
+  let tag = (e.targetTag || (e.target && e.target.tagName ? e.target.tagName.toLowerCase() : ""));
+  let editable = !!(e.targetEditable || (e.target && e.target.isContentEditable));
   let key = String(e.key || "");
   let k = key.toLowerCase();
-  if (dialog) { return; }
-  if (k === " ") { psSpaceHeld = true; return; }
-  if (k === "escape") { if (openMenu) { openMenu = ""; return; } if (cropPending || psGesture) { psEndGesture(true); return; } if (psPolygon.length) { psPolygon = []; polygonPending = false; psOverlaySet("gesture", null); return; } if (PS_SEL) { uiGuard(function () { psDeselect(); }); } return; }
+  if (dialog) {
+    if (k === "escape" && !editable && tag !== "input" && tag !== "textarea" && tag !== "select") closeDialog();
+    return;
+  }
+  if (editable || tag === "input" || tag === "textarea" || tag === "select") return;
+  if (k === " ") { psSpaceHeld = true; if (e.preventDefault) e.preventDefault(); return; }
+  if (k === "escape") { if (openMenu) { openMenu = ""; return; } if (cropPending || psGesture) { psEndGesture(true); return; } if (psPolygon.length) { psPolygon = []; polygonPending = false; gestureSvg = ""; psOverlaySet("gesture", null); return; } if (PS_SEL) { uiGuard(function () { psDeselect(); }); } return; }
   if (k === "enter") { if (cropPending) { applyCrop(); return; } if (tool === "polygon" && psPolygon.length >= 6) { closePolygon(); return; } return; }
   if (uiBusy()) return;
   let mod = e.ctrlKey || e.metaKey;
@@ -638,11 +806,25 @@ function confirmDiscard() { let next = psPendingAction; psPendingAction = null; 
 function closeDialog() { dialog = ""; psPendingAction = null; psPendingPsd = null; }
 function selectHistory(index) { /* history is display-only; undo/redo navigate it */ }
 function psNum(s, fallback) { let v = Number(s); return Number.isFinite(v) ? v : fallback; }
+function setResizeWidth(v) {
+  dlgWidth = String(v);
+  if (dlgLock && PS_W > 0) {
+    let w = Math.round(psNum(v, PS_W));
+    if (w > 0) dlgHeight = String(Math.max(1, Math.round(PS_H * w / PS_W)));
+  }
+}
+function setResizeHeight(v) {
+  dlgHeight = String(v);
+  if (dlgLock && PS_H > 0) {
+    let h = Math.round(psNum(v, PS_H));
+    if (h > 0) dlgWidth = String(Math.max(1, Math.round(PS_W * h / PS_H)));
+  }
+}
 function applyDialog() {
   let kind = dialog;
   uiGuard(function () {
     if (kind === "new") { dialog = ""; psNewDocument(Math.round(psNum(dlgWidth, 1280)), Math.round(psNum(dlgHeight, 800)), dlgName, dlgBackground); }
-    else if (kind === "resize") { dialog = ""; let w = Math.round(psNum(dlgWidth, PS_W)); let h = dlgLock ? Math.max(1, Math.round(PS_H * w / PS_W)) : Math.round(psNum(dlgHeight, PS_H)); psResize(w, h, true, "center", !!dlgNearest, null); }
+    else if (kind === "resize") { dialog = ""; let w = Math.max(1, Math.round(psNum(dlgWidth, PS_W))); let h = Math.max(1, Math.round(psNum(dlgHeight, PS_H))); psResize(w, h, true, "center", !!dlgNearest, null); }
     else if (kind === "canvas") { dialog = ""; psResize(Math.round(psNum(dlgWidth, PS_W)), Math.round(psNum(dlgHeight, PS_H)), false, dlgAnchor, false, null); }
     else if (kind === "transform") { dialog = ""; psTransform({ dx: psNum(dlgDx, 0), dy: psNum(dlgDy, 0), angle: psNum(dlgAngle, 0), scaleX: psNum(dlgScaleX, 100) / 100, scaleY: psNum(dlgScaleY, 100) / 100 }, null); }
     else if (kind === "filter") { dialog = ""; psFilter(psFilterKind, psNum(dlgAmount, 0), null); }
@@ -674,10 +856,10 @@ function applyTextDialog() {
 // ---------------------------------------------------------------------------
 // Layer panel
 // ---------------------------------------------------------------------------
-function selectLayer(id) { if (uiBusy()) return; psSetActive(id); psRefreshPanels(); psUpdateStatus(); }
-function editLayerMask(id) { if (uiBusy()) return; psSetActive(id); let l = psActive(); if (l.mask) { PS_MASKMODE = true; fgColor = "#ffffff"; bgColor = "#000000"; } uiOnDocument("change"); }
-function toggleLayerVisible(id) { if (uiBusy()) return; uiGuard(function () { psSetActive(id); psLayerAction("Layer visibility", null, null); }); }
-function toggleLayerLock(id) { if (uiBusy()) return; uiGuard(function () { psSetActive(id); psLayerAction("Layer lock", null, null); }); }
+function selectLayer(id) { if (uiBusy() || Date.now() < psSuppressLayerSelectUntil) return; psSetActive(id); psRefreshPanels(); psUpdateStatus(); }
+function editLayerMask(id) { if (uiBusy()) return; psSuppressLayerSelectUntil = Date.now() + 80; psSetActive(id); let l = psActive(); if (l.mask) { PS_MASKMODE = true; fgColor = "#ffffff"; bgColor = "#000000"; } uiOnDocument("change"); }
+function toggleLayerVisible(id) { if (uiBusy()) return; psSuppressLayerSelectUntil = Date.now() + 80; uiGuard(function () { psLayerAction("Layer visibility", id, null); }); }
+function toggleLayerLock(id) { if (uiBusy()) return; psSuppressLayerSelectUntil = Date.now() + 80; uiGuard(function () { psLayerAction("Layer lock", id, null); }); }
 function renameLayer(id) { if (uiBusy()) return; psSetActive(id); dlgLayerName = psActive().name; dialog = "rename"; }
 function layerButton(action) { runAction(action); }
 function setLayerBlend(v) { if (uiBusy()) return; uiGuard(function () { psLayerAction("Layer blend", String(v), null); }); }
@@ -749,7 +931,7 @@ function psdChoice(choice) {
   uiGuard(function () { psOpenPsdJob(pending.name, pending.psd, choice, function () { uiNotify("Opened with " + pending.psd.warnings.length + " compatibility notice(s). See Help > Compatibility.", false); }, uiError); });
 }
 function psSaveBytes(name, bytes, mime, done) {
-  softn.files.saveFile(name, bytes.toBase64(), { mime: mime, base64: true }, function (r) {
+  softn.files.saveFile(name, psToBase64(bytes), { mime: mime, base64: true }, function (r) {
     if (r && r.error) uiNotify(r.error, true); else if (done) done();
   });
 }
@@ -788,54 +970,73 @@ function saveProject() {
 function buildDemoDocument() {
   psNewDocument(1280, 800, "Something yours", "#171c34");
   let w = PS_W, h = PS_H;
-  let bg = PS_LAYERS[0].data;
+  let bgLayer = PS_LAYERS[0];
+  let bg = bgLayer.data;
   let steps = [];
-  steps.push(psRowStepper(h, psRowsFor(w, PS_STEP_HEAVY_PIXELS), function (y0, y1) { psGradientRows(bg, w, y0, y1, 0, 0, 1280, 800, false, [23, 28, 52], [50, 33, 59], 1, null); }));
+  steps.push(psRowStepper(h, psRowsFor(w, PS_STEP_PIXELS), function (y0, y1) { psGradientRows(bg, w, y0, y1, 0, 0, 1280, 800, false, [23, 28, 52], [50, 33, 59], 1, null); }));
   let shape = psAddLayer("Colour studies", null);
   let sd = shape.data;
-  steps.push(psRowStepper(h, psRowsFor(w, PS_STEP_HEAVY_PIXELS / 4), function (y0, y1) {
-    // Radial halo inside a rotated ellipse.
-    let cx = 1100, cy = 460, rx = 410, ry = 570, ang = -0.5, ca = Math.cos(ang), sa = Math.sin(ang);
-    for (let y = y0; y < y1; y++) for (let x = 0; x < w; x++) {
-      let dx = x + 0.5 - cx, dy = y + 0.5 - cy;
-      let ux = (dx * ca + dy * sa) / rx, uy = (-dx * sa + dy * ca) / ry;
-      let f = ux * ux + uy * uy;
-      if (f > 1.02) continue;
-      let edge = f > 0.96 ? (1.02 - f) / 0.06 : 1;
-      let hx = x - 1000, hy = y - 380, t = Math.sqrt(hx * hx + hy * hy) / 520;
-      let r, g, b;
-      if (t < 0.42) { let k = t / 0.42; r = 255 + (233 - 255) * k; g = 209 + (124 - 209) * k; b = 159 + (118 - 159) * k; }
-      else if (t < 0.75) { let k = (t - 0.42) / 0.33; r = 233 + (164 - 233) * k; g = 124 + (136 - 124) * k; b = 118 + (224 - 118) * k; }
-      else { let k = Math.min(1, (t - 0.75) / 0.25); r = 164 + (84 - 164) * k; g = 136 + (104 - 136) * k; b = 224 + (167 - 224) * k; }
-      let i = (y * w + x) * 4;
-      sd[i] = r; sd[i + 1] = g; sd[i + 2] = b; sd[i + 3] = (255 * edge + 0.5) | 0;
+  steps.push(psRowStepper(h, psRowsFor(w, PS_STEP_HEAVY_PIXELS), function (y0, y1) {
+    // Radial halo inside a rotated ellipse (bounded to x >= 636).
+    let cx = 1100, cy = 460, invRx = 1 / 410, invRy = 1 / 570, ang = -0.5, ca = Math.cos(ang), sa = Math.sin(ang), inv520 = 1 / 520;
+    let xStart = Math.max(0, w - 644);
+    for (let y = y0; y < y1; y++) {
+      let dy = y + 0.5 - cy, hy = y - 380, hy2 = hy * hy;
+      let row = y * w;
+      for (let x = xStart; x < w; x++) {
+        let dx = x + 0.5 - cx;
+        let ux = (dx * ca + dy * sa) * invRx, uy = (-dx * sa + dy * ca) * invRy;
+        let f = ux * ux + uy * uy;
+        if (f > 1.02) continue;
+        let edge = f > 0.96 ? (1.02 - f) / 0.06 : 1;
+        let hx = x - 1000, t = Math.sqrt(hx * hx + hy2) * inv520;
+        let r, g, b;
+        if (t < 0.42) { let k = t / 0.42; r = 255 + (233 - 255) * k; g = 209 + (124 - 209) * k; b = 159 + (118 - 159) * k; }
+        else if (t < 0.75) { let k = (t - 0.42) / 0.33; r = 233 + (164 - 233) * k; g = 124 + (136 - 124) * k; b = 118 + (224 - 118) * k; }
+        else { let k = Math.min(1, (t - 0.75) / 0.25); r = 164 + (84 - 164) * k; g = 136 + (104 - 136) * k; b = 224 + (167 - 224) * k; }
+        let i = (row + x) * 4;
+        sd[i] = r; sd[i + 1] = g; sd[i + 2] = b; sd[i + 3] = (255 * edge + 0.5) | 0;
+      }
     }
   }));
-  steps.push(psRowStepper(h, psRowsFor(w, PS_STEP_HEAVY_PIXELS / 12), function (y0, y1) {
-    // Concentric ellipse rings: twenty tests per pixel, so the slices are small and
-    // pixels well outside the outermost ring are skipped before any of them.
+  let ringInvRx2 = new Float64Array(20), ringInvRy2 = new Float64Array(20);
+  let ring4InvRx4 = new Float64Array(20), ring4InvRy4 = new Float64Array(20);
+  for (let k = 0; k < 20; k++) {
+    let rx = 240 + k * 12, ry = 370 + k * 14;
+    let irx2 = 1 / (rx * rx), iry2 = 1 / (ry * ry);
+    ringInvRx2[k] = irx2; ringInvRy2[k] = iry2;
+    ring4InvRx4[k] = 4 * irx2 * irx2; ring4InvRy4[k] = 4 * iry2 * iry2;
+  }
+  steps.push(psRowStepper(h, psRowsFor(w, PS_STEP_HEAVY_PIXELS), function (y0, y1) {
+    // Concentric ellipse rings: monotonic f(k) skips rings outside |f - 1| <= 0.02 without sqrt.
     let ang = -0.55, ca = Math.cos(ang), sa = Math.sin(ang);
     let outerRx = 240 + 19 * 12 + 4, outerRy = 370 + 19 * 14 + 4, innerRx = 240 - 4, innerRy = 370 - 4;
-    for (let y = y0; y < y1; y++) for (let x = 0; x < w; x++) {
-      let dx = x + 0.5 - 1020, dy = y + 0.5 - 440;
-      let px = dx * ca + dy * sa, py = -dx * sa + dy * ca;
-      let fo = (px * px) / (outerRx * outerRx) + (py * py) / (outerRy * outerRy);
-      if (fo > 1) continue;
-      let fi = (px * px) / (innerRx * innerRx) + (py * py) / (innerRy * innerRy);
-      if (fi < 1) continue;
-      let best = 0;
-      for (let k = 0; k < 20; k++) {
-        let rx = 240 + k * 12, ry = 370 + k * 14;
-        let f = (px * px) / (rx * rx) + (py * py) / (ry * ry);
-        let gx = 2 * px / (rx * rx), gy = 2 * py / (ry * ry), g = Math.sqrt(gx * gx + gy * gy);
-        if (g < 1e-9) continue;
-        let d = Math.abs(f - 1) / g;
-        let c = 1.2 - d; if (c > 1) c = 1;
-        if (c > best) best = c;
+    let invOutX2 = 1 / (outerRx * outerRx), invOutY2 = 1 / (outerRy * outerRy);
+    let invInX2 = 1 / (innerRx * innerRx), invInY2 = 1 / (innerRy * innerRy);
+    let xStart = Math.max(0, w - 788);
+    for (let y = y0; y < y1; y++) {
+      let dy = y + 0.5 - 440, row = y * w;
+      for (let x = xStart; x < w; x++) {
+        let dx = x + 0.5 - 1020;
+        let px = dx * ca + dy * sa, py = -dx * sa + dy * ca;
+        let px2 = px * px, py2 = py * py;
+        if (px2 * invOutX2 + py2 * invOutY2 > 1) continue;
+        if (px2 * invInX2 + py2 * invInY2 < 1) continue;
+        let best = 0;
+        for (let k = 0; k < 20; k++) {
+          let f = px2 * ringInvRx2[k] + py2 * ringInvRy2[k];
+          if (f > 1.02) continue;
+          if (f < 0.98) break;
+          let g = Math.sqrt(px2 * ring4InvRx4[k] + py2 * ring4InvRy4[k]);
+          if (g < 1e-9) continue;
+          let d = Math.abs(f - 1) / g;
+          let c = 1.2 - d; if (c > 1) c = 1;
+          if (c > best) best = c;
+        }
+        if (best <= 0) continue;
+        let a = best * 0.5, i = (row + x) * 4, da = sd[i + 3] / 255, oa = a + da * (1 - a), wS = a / oa, wD = 1 - wS;
+        sd[i] = (245 * wS + sd[i] * wD + 0.5) | 0; sd[i + 1] = (212 * wS + sd[i + 1] * wD + 0.5) | 0; sd[i + 2] = (191 * wS + sd[i + 2] * wD + 0.5) | 0; sd[i + 3] = (oa * 255 + 0.5) | 0;
       }
-      if (best <= 0) continue;
-      let a = best * 0.5, i = (y * w + x) * 4, da = sd[i + 3] / 255, oa = a + da * (1 - a), wS = a / oa, wD = 1 - wS;
-      sd[i] = (245 * wS + sd[i] * wD + 0.5) | 0; sd[i + 1] = (212 * wS + sd[i + 1] * wD + 0.5) | 0; sd[i + 2] = (191 * wS + sd[i + 2] * wD + 0.5) | 0; sd[i + 3] = (oa * 255 + 0.5) | 0;
     }
   }));
   let label = psAddLayer("Edition & details", null);
@@ -848,5 +1049,13 @@ function buildDemoDocument() {
   title.kind = "text"; title.text = { text: "Make\nsomething\nyours.", x: 73, y: 185, size: 105, color: "#f4f0eb", font: "sans", bold: true, align: "left" };
   steps.push(psTextRasterStep(title.data, w, h, title.text));
   psAddLayer("Your next idea", null);
-  psEnqueue("Preparing the welcome canvas", psSequence(steps), function () { psInvalidateAll(); psResetHistory("Welcome canvas"); psEmit("document"); }, uiError);
+  psEnqueue("Preparing the welcome canvas", psSequence(steps), function () {
+    psTouchLayer(bgLayer, false);
+    psTouchLayer(shape, false);
+    psTouchLayer(label, false);
+    psTouchLayer(title, false);
+    psInvalidateAll();
+    psResetHistory("Welcome canvas");
+    psEmit("document");
+  }, uiError);
 }

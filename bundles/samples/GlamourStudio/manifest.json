@@ -1,7 +1,8 @@
 {
   "name": "Glamour Studio",
   "version": "2.1.0",
-  "description": "A salon's front desk: appointments, clients, staff and services in a local-first database that syncs between devices",
+  "description": "A salon's front desk and beauty lookbook: appointments, clients, staff, services, live glamour lighting presets, and P2P local-first sync",
+  "author": "SoftN",
   "main": "ui/main.ui",
   "icon": "assets/icon.svg",
   "files": {
@@ -14,6 +15,7 @@
       "ui/pages/Clients.ui",
       "ui/pages/Staff.ui",
       "ui/pages/Services.ui",
+      "ui/pages/Studio.ui",
       "ui/modals/AddAppointmentModal.ui",
       "ui/modals/AddClientModal.ui",
       "ui/modals/AddStaffModal.ui",
@@ -27,6 +29,9 @@
     ],
     "logic": [
       "logic/main.logic"
+    ],
+    "server": [
+      "server/backend.logic"
     ],
     "xdb": [
       "xdb/staff.xdb",

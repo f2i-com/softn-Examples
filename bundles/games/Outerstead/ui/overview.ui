@@ -2,7 +2,7 @@
   #if (autoMode)
     <div className="os-card"><span className="os-label">AUTO STEWARD</span><span className="os-prose">{autoStatusText}</span><button className="os-btn os-link" @click={() => setPanel("work")}>Manage automation</button></div>
   #end
-  <div><div className="os-section-title">{hud.name}</div><span className="os-small os-dim">{hud.weather} · {hud.season} · Hollow-7</span></div>
+  <div><div className="os-section-title">{hud.name}</div><span className="os-small os-dim">{hud.weather + " · " + hud.season + " · Hollow-7"}</span></div>
   #each (a in alertCards) key={a.id}
     <div className="os-alert" ostype={String(a.type)}><div className="os-alert-title">{a.title}</div><div className="os-alert-body">{a.body}</div>
       #if (a.action)

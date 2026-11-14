@@ -1,0 +1,9 @@
+{
+  "app": {
+    "id": "com.softn.oddjobs.moon",
+    "name": "Please Do Not Feed the Moon",
+    "version": "0.2.2"
+  },
+  "permissions": {},
+  "version": 1
+}

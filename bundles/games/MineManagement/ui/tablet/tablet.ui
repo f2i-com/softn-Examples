@@ -1,0 +1,492 @@
+<!--
+  The PIT tablet: the mine's management software, raised with T. A frame with a header, the list of
+  workspaces and a footer; each workspace is a page of its own in this folder. The shift keeps
+  running while the tablet is open, and a memo from Head Office arrives here as a strip above the
+  workspace (the floating memo card in screens/overlays.ui steps aside while the tablet is up).
+
+  To add a workspace: write ui/tablet/<name>.ui with a root <div if={tab === '<name>'}>, import it
+  below, place it in the workspace area and add a nav button that calls openTab('<name>').
+-->
+<import Operations from="./operations.ui" />
+<import Fleet from="./fleet.ui" />
+<import Workforce from="./workforce.ui" />
+<import Workshop from="./workshop.ui" />
+<import Production from="./production.ui" />
+<import ShiftLog from="./shift-log.ui" />
+<import FieldGuide from="./field-guide.ui" />
+<import Contracts from="./contracts.ui" />
+<import Excavators from="./excavators.ui" />
+<import SiteJournal from="./site-journal.ui" />
+
+<div class="mm-tablet-shade" if={screen === 'play' && tablet}>
+  <section class="mm-tablet" aria-label="PIT tablet">
+    <header class="mm-tablet-head">
+      <div class="mm-inline">
+        <span class="mm-pit-monogram" aria-hidden="true">P</span>
+        <div>
+          <p class="mm-pit-word">PIT <span>SOFTWARE</span></p>
+          <span class="mm-tablet-caption">RED DUST / SITE OPERATIONS</span>
+        </div>
+      </div>
+      <div class="mm-inline mm-head-right">
+        <span class="mm-connection" class:mm-offline={!hud.relay}>{hud.relay ? '● LOCAL TELEMETRY' : '● TELEMETRY OFFLINE'}</span>
+        <span class="mm-sandbox-tag">OFFLINE SHIFT</span>
+        <button class="mm-close" type="button" @click={toggleTablet}>Close ×</button>
+      </div>
+    </header>
+
+    <div class="mm-tablet-main">
+      <nav class="mm-nav" aria-label="Workspaces">
+        <span class="mm-label mm-nav-label">WORKSPACES</span>
+        <button class="mm-tab" class:mm-tab-active={tab === 'operations'} type="button" @click={openTab('operations')}>01 <span>Operations</span></button>
+        <button class="mm-tab" class:mm-tab-active={tab === 'fleet'} type="button" @click={openTab('fleet')}>02 <span>Fleet & dispatch</span></button>
+        <button class="mm-tab" class:mm-tab-active={tab === 'workforce'} type="button" @click={openTab('workforce')}>03 <span>Workforce</span></button>
+        <button class="mm-tab" class:mm-tab-active={tab === 'workshop'} type="button" @click={openTab('workshop')}>04 <span>Workshop</span></button>
+        <button class="mm-tab" class:mm-tab-active={tab === 'ledger'} type="button" @click={openTab('ledger')}>05 <span>Production</span></button>
+        <button class="mm-tab" class:mm-tab-active={tab === 'log'} type="button" @click={openTab('log')}>06 <span>Shift log</span></button>
+        <button class="mm-tab" class:mm-tab-active={tab === 'guide'} type="button" @click={openTab('guide')}>07 <span>Field guide</span></button>
+        <button class="mm-tab" class:mm-tab-active={tab === 'contracts'} type="button" @click={openTab('contracts')}>08 <span>Contracts & career</span></button>
+        <button class="mm-tab" class:mm-tab-active={tab === 'excavators'} type="button" @click={openTab('excavators')}>09 <span>Excavators</span></button>
+        <button class="mm-tab" class:mm-tab-active={tab === 'site'} type="button" @click={openTab('site')}>10 <span>Site journal</span></button>
+        <div class="mm-nav-footer">
+          <span class="mm-label">SHIFT {hud.shift}</span>
+          <span class="mm-nav-clock">{hud.clock}</span>
+          <span class="mm-small">The mine keeps running<br>while your tablet is open.</span>
+          <button class="mm-nav-save" type="button" @click={saveGame(false)}>Save shift</button>
+        </div>
+      </nav>
+
+      <div class="mm-workspace-column">
+        <!-- A memo from Clive, with the same answers and countdown as the floating card. -->
+        <aside class="mm-tablet-memo" if={memoView.visible} aria-live="assertive">
+          <div>
+            <span class="mm-tablet-memo-from">MEMO FROM CLIVE / {memoView.tag} / {memoView.left}</span>
+            <strong>{memoView.title}</strong>
+            <p>{memoView.body}</p>
+          </div>
+          <div class="mm-tablet-memo-answers">
+            <button class="mm-primary" type="button" @click={answerMemo('a')}><kbd>1</kbd>{memoView.a}</button>
+            <button class="mm-secondary" type="button" @click={answerMemo('b')}><kbd>2</kbd>{memoView.b}</button>
+          </div>
+        </aside>
+
+        <div class="mm-workspace" key={tab}>
+          <Operations />
+          <Fleet />
+          <Workforce />
+          <Workshop />
+          <Production />
+          <ShiftLog />
+          <FieldGuide />
+          <Contracts />
+          <Excavators />
+          <SiteJournal />
+        </div>
+      </div>
+    </div>
+
+    <footer class="mm-tablet-foot">
+      <span>PIT SIMULATION ADAPTER / LOCAL ONLY</span>
+      <span>{saveNote}</span>
+      <span class="mm-foot-time">{hud.clock} / SHIFT {hud.shift}</span>
+    </footer>
+  </section>
+</div>
+
+<style>
+  .mm-tablet-shade {
+    position: absolute;
+    inset: 90px 0 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 15px 35px 25px;
+    background: #0b16223b;
+  }
+  .mm-tablet {
+    display: flex;
+    flex-direction: column;
+    width: 1380px;
+    max-width: 100%;
+    height: 100%;
+    max-height: 880px;
+    overflow: hidden;
+    background: #19262d;
+    border: 7px solid #34434b;
+    border-radius: 18px;
+    outline: 1px solid #718088;
+    box-shadow: 0 25px 90px #0009;
+  }
+
+  /* ---------- Header ---------- */
+  .mm-tablet-head {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: space-between;
+    height: 74px;
+    padding: 0 24px;
+    background: #1b2a32;
+    border-bottom: 1px solid #435158;
+  }
+  .mm-pit-monogram {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 39px;
+    clip-path: polygon(25% 0, 75% 0, 100% 25%, 100% 75%, 75% 100%, 25% 100%, 0 75%, 0 25%);
+    background: var(--gold);
+    font-size: 24px;
+    font-weight: 800;
+    color: #17242b;
+  }
+  /* Also used on the title screen; repeated here so the tablet stands alone. */
+  .mm-tablet .mm-pit-word {
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    line-height: 1.1;
+  }
+  .mm-tablet .mm-pit-word span {
+    margin-left: 5px;
+    font-size: 10px;
+    font-weight: 450;
+    letter-spacing: 2.2px;
+  }
+  .mm-tablet-caption {
+    display: block;
+    margin-top: 6px;
+    font-size: 8px;
+    letter-spacing: 1.5px;
+    color: #a3b9c0;
+  }
+  .mm-connection {
+    font-size: 9px;
+    letter-spacing: 1.2px;
+    color: #81d2bf;
+  }
+  .mm-offline {
+    color: #ee9c73;
+  }
+  .mm-sandbox-tag {
+    padding: 4px 7px;
+    border: 1px solid #5b6346;
+    border-radius: 4px;
+    font-size: 8px;
+    letter-spacing: 0.8px;
+    color: #bfc492;
+  }
+
+  /* ---------- Navigation ---------- */
+  .mm-tablet-main {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+  .mm-nav {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    width: 196px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 25px 15px 15px;
+    background: #16232a;
+    border-right: 1px solid #3c4a51;
+  }
+  .mm-nav .mm-nav-label {
+    margin-bottom: 14px;
+    padding-left: 12px;
+    font-size: 8px;
+  }
+  .mm-tab {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    margin-bottom: 4px;
+    padding: 10px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    font-size: 10px;
+    line-height: 1.4;
+    text-align: left;
+    color: #a1b4bc;
+  }
+  .mm-tab span {
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .mm-tab:hover {
+    background: #233640;
+  }
+  .mm-tab-active {
+    background: #2f4149;
+    border-color: #5d5a36;
+    border-left-color: var(--gold);
+    color: #f2d199;
+  }
+  .mm-nav-footer {
+    margin-top: auto;
+    padding: 14px 11px 0;
+  }
+  .mm-nav-clock {
+    display: block;
+    margin: 4px 0 7px;
+    font-size: 29px;
+    font-weight: 350;
+    letter-spacing: -1px;
+    color: #d9dec9;
+  }
+  .mm-nav-footer .mm-small {
+    font-size: 9px;
+  }
+  .mm-nav-save {
+    margin-top: 15px;
+    padding: 7px 12px;
+    background: transparent;
+    border: 1px solid #43583f;
+    border-radius: 4px;
+    font-size: 10px;
+    color: #e6bd78;
+  }
+
+  /* ---------- Workspace, memo strip and footer ---------- */
+  .mm-workspace-column {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+  }
+  .mm-tablet-memo {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 20px;
+    padding: 12px 24px;
+    background: linear-gradient(160deg, #fbf3df, #efe2c2);
+    border-bottom: 2px dashed #c9b07a;
+    color: #2b2a24;
+  }
+  .mm-tablet-memo > div:first-child {
+    flex: 1;
+    min-width: 0;
+  }
+  .mm-tablet-memo-from {
+    display: block;
+    font: 700 9px monospace;
+    letter-spacing: 1px;
+    color: #9b3b20;
+  }
+  .mm-tablet-memo strong {
+    display: block;
+    margin: 3px 0 2px;
+    font-size: 15px;
+  }
+  .mm-tablet-memo p {
+    font-size: 11px;
+    line-height: 1.5;
+    color: #3c3a30;
+  }
+  .mm-tablet-memo-answers {
+    display: flex;
+    flex-shrink: 0;
+    gap: 8px;
+  }
+  .mm-tablet-memo .mm-secondary {
+    background: #fffaf0;
+    border-color: #b9a578;
+    color: #2b2a24;
+  }
+  .mm-tablet-memo kbd {
+    display: inline-grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    margin-right: 8px;
+    border: 1px solid currentColor;
+    border-radius: 3px;
+    font: 700 10px monospace;
+    opacity: 0.7;
+  }
+  .mm-workspace {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 28px 32px 36px;
+    background: var(--surface);
+    scrollbar-width: thin;
+    scrollbar-color: #617259 #182b21;
+  }
+  .mm-workspace .mm-muted {
+    max-width: 670px;
+  }
+  .mm-tablet-foot {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    height: 30px;
+    padding: 0 18px;
+    background: #14232b;
+    border-top: 1px solid var(--line);
+    font: 8px monospace;
+    letter-spacing: 0.5px;
+    color: #a1b5bc;
+  }
+
+  @media (max-width: 1180px) {
+    .mm-tablet-shade {
+      padding: 12px 18px 18px;
+    }
+    .mm-nav {
+      width: 160px;
+      padding: 20px 10px;
+    }
+    .mm-tab {
+      gap: 10px;
+      padding: 11px 8px;
+    }
+    .mm-tab span {
+      font-size: 11px;
+    }
+    .mm-workspace {
+      padding: 22px;
+    }
+  }
+  /* Narrow screens: the workspace list becomes a strip of tabs across the top. */
+  @media (max-width: 900px) {
+    .mm-tablet-shade {
+      inset: 78px 0 0;
+      padding: 6px;
+    }
+    .mm-tablet {
+      border-width: 5px;
+      border-radius: 12px;
+    }
+    .mm-tablet-head {
+      height: 65px;
+      padding: 0 16px;
+    }
+    .mm-tablet-head .mm-head-right {
+      gap: 8px;
+    }
+    .mm-connection {
+      display: none;
+    }
+    .mm-tablet-main {
+      flex-direction: column;
+    }
+    .mm-nav {
+      flex-direction: row;
+      width: 100%;
+      overflow-x: auto;
+      padding: 8px 10px;
+      border-right: 0;
+      border-bottom: 1px solid #334737;
+    }
+    .mm-nav .mm-nav-label,
+    .mm-nav-footer {
+      display: none;
+    }
+    .mm-tab {
+      flex-shrink: 0;
+      gap: 8px;
+      width: auto;
+      margin-bottom: 0;
+      padding: 9px 10px;
+      white-space: nowrap;
+    }
+    .mm-workspace {
+      padding: 20px;
+    }
+  }
+  @media (max-width: 700px) {
+    .mm-tablet-shade {
+      inset: 68px 0 0;
+      padding: 4px 4px max(4px, env(safe-area-inset-bottom));
+    }
+    .mm-tablet-head {
+      height: 57px;
+      padding: 0 10px;
+    }
+    .mm-tablet-caption {
+      font-size: 7px;
+    }
+    .mm-pit-monogram {
+      width: 30px;
+      height: 32px;
+    }
+    .mm-nav {
+      overflow-y: hidden;
+      padding: 5px;
+    }
+    .mm-tab {
+      min-height: 44px;
+      padding: 10px;
+    }
+    .mm-workspace {
+      padding: 18px 12px;
+    }
+    .mm-tablet-memo {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 10px;
+      padding: 10px 12px;
+    }
+    .mm-tablet-memo-answers button {
+      flex: 1;
+      white-space: normal;
+    }
+    .mm-tablet-foot {
+      height: 26px;
+      font-size: 6px;
+    }
+  }
+  @media (max-width: 620px) {
+    .mm-sandbox-tag,
+    .mm-foot-time {
+      display: none;
+    }
+  }
+  /* Short screens: the clock and Save are also in the HUD and the pause menu, so the nav drops them. */
+  @media (max-height: 1000px) {
+    .mm-nav-footer {
+      display: none;
+    }
+  }
+  @media (max-height: 680px) and (min-width: 621px) {
+    .mm-tablet-shade {
+      inset: 74px 0 0;
+    }
+    .mm-tablet-head {
+      height: 60px;
+    }
+  }
+  @media (max-height: 620px) {
+    .mm-tablet-shade {
+      inset: 64px 0 0;
+    }
+    .mm-tablet-head {
+      height: 48px;
+    }
+    .mm-tablet-caption {
+      display: none;
+    }
+    .mm-tablet-foot {
+      height: 22px;
+    }
+    .mm-nav {
+      padding: 3px 6px;
+    }
+    .mm-workspace {
+      padding: 14px;
+    }
+  }
+</style>

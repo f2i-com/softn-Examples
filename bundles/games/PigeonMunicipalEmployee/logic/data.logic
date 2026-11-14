@@ -1,0 +1,142 @@
+// Pigeon: Municipal Employee — Littleborough edition.
+// Plain sandbox JavaScript. Composed in manifest order; no browser DOM required.
+let GAME_ID = "pigeon";
+let TITLE = "PIGEON: MUNICIPAL EMPLOYEE";
+let VERSION = 2;
+let WORLD_W = 1600;
+let WORLD_H = 1180;
+let SAVE_KEY = "oddjobs:pigeon:v2";
+let LEGACY_KEY = "oddjobs:pigeon:v1";
+let RANKS = [
+ {name:"Temporary bird",kit:"No equipment. Entirely qualified.",colour:"#93aaa4"},
+ {name:"Junior kerb inspector",kit:"Official vest issued",colour:"#edd15b"},
+ {name:"Acting deputy pigeon",kit:"Official-er badge issued",colour:"#e6bc6e"},
+ {name:"Assistant to the assistant",kit:"Clipboard issued",colour:"#76bab5"},
+ {name:"Senior municipal pigeon",kit:"Archive access card issued",colour:"#859dbf"},
+ {name:"Head of airborne compliance",kit:"Tiny radio issued",colour:"#ad9ec9"},
+ {name:"Director of essentially everything",kit:"Senior municipal authority",colour:"#cda970"}
+];
+let UPGRADES = [
+ {id:"wings",name:"Council-funded wings",cost:40,max:3,detail:"Extra flight stamina"},
+ {id:"badge",name:"Official-er badge",cost:35,max:3,detail:"Slightly more allowance"},
+ {id:"bag",name:"Tiny briefcase",cost:35,max:3,detail:"A paper clip that defeats gusts"}
+];
+// The original four-record election gate is retained. Records now have stable,
+// distinct descriptions rather than selecting unrelated text by array length.
+let EVIDENCE = [
+ {id:"duck1",title:"A statistically ambitious duck",source:"Pond census",text:"The pond contains four ducks. The municipal register funds seven ducks and three imaginary benches."},
+ {id:"duck2",title:"A signature with webbed feet",source:"Archive roof survey",text:"The rooftop permit bears the same webbed signature as the nonexistent-bench invoices."},
+ {id:"duck3",title:"Bread is not a road",source:"Bakery & fountain audit",text:"Four hundred ceremonial bread rolls were charged to road infrastructure. The moat is real; its planning permission is not."},
+ {id:"duck4",title:"The missing minutes",source:"Recovered archive original",text:"The damp minutes approve the bread diversion. All four records establish the chain from census to payment."}
+];
+let MISSIONS = [
+ {id:"bench",title:"The seat of government",form:"17B / STREET FURNITURE",rank:0,req:["bench","pothole"],intro:"Welcome aboard. Inspect a bench and a pothole. Neither is your line manager.",reward:34},
+ {id:"census",title:"Three bins. Four invoices.",form:"04D / PARKS CENSUS",rank:1,req:["bin1","bin2","bin3","ducks"],intro:"Count each bin once. The ducks have already submitted their own numbers.",reward:38},
+ {id:"parking",title:"Due process, from above",form:"PC17 / PARKING NOTICE",rank:2,req:["meter","sign"],delivery:"parked",intro:"Read the meter AND the sign. Then serve a stamped notice from above. This is not a suggestion to guess.",reward:44},
+ {id:"dumping",title:"The sofa has no permit",form:"81A / UNAUTHORISED SOFA",rank:3,req:["dumpPhoto","roofPhoto"],intro:"Photograph the dumping, then take a second record from the archive roof. The sofa denies everything.",reward:48},
+ {id:"awning",title:"Gone with the form",form:"12W / DOCUMENT RECOVERY",rank:3,req:["awningPage"],intro:"A planning application is on the bakery awning. Bring the loose page to the archive window. File your own report afterwards.",reward:42},
+ {id:"planning",title:"Bread is not infrastructure",form:"09P / PLANNING REVIEW",rank:4,req:["bakery","fountain"],intro:"Inspect the bakery account and the fountain outlet. Someone has budgeted for a bread-shop moat.",reward:50},
+ {id:"serve",title:"Notice to a responsible adult",form:"S22 / WORKS NOTICE",rank:4,req:["worker","dumpCheck"],delivery:"worker",intro:"Speak to the foreperson, inspect the waste, and deliver their notice. Preferably not to a bin.",reward:46},
+ {id:"committee",title:"A quorum of one pigeon",form:"CM1 / ATTENDANCE RECORD",rank:5,req:["meeting","meetingPhoto"],intro:"Perch on the empty committee chair, coo, and remain for four seconds. Take a record of the minutes.",reward:52},
+ {id:"minutes",title:"The missing minutes",form:"A04 / CHAIN OF CUSTODY",rank:5,req:["minutes","archiveAccount"],intro:"Use your access card at the archive. Recover the damp minutes from its roof and hand them to the archive clerk.",reward:60},
+ {id:"election",title:"The competent candidate",form:"M01 / MAYORAL NOMINATION",rank:6,req:["residents","delegation"],intro:"Hear the residents and the duck delegation. File your nomination, then peck a brass ballot tile outside council.",reward:70}
+];
+let REQUIREMENTS = {
+ bench:{at:"bench",verb:"inspect",text:"Peck the bench inspection plate"},
+ pothole:{at:"pothole",verb:"inspect",text:"Inspect the pothole on the road"},
+ bin1:{at:"bin1",verb:"inspect",text:"Count the green bin"},
+ bin2:{at:"bin2",verb:"inspect",text:"Count the blue bin"},
+ bin3:{at:"bin3",verb:"inspect",text:"Count the suspicious purple bin"},
+ ducks:{at:"pond",verb:"inspect",text:"Count the ducks from the pond edge"},
+ meter:{at:"meter",verb:"inspect",text:"Read the parking meter"},
+ sign:{at:"sign",verb:"inspect",text:"Check the parking restrictions"},
+ dumpPhoto:{at:"dump",verb:"photo",text:"Photograph the illegal dumping [R]"},
+ roofPhoto:{at:"survey",verb:"photo",text:"Land on the archive roof; photograph the permit [R]"},
+ awningPage:{at:"awningpage",verb:"deliver",text:"Carry the awning page to the archive window [C, E]"},
+ bakery:{at:"bakery",verb:"inspect",text:"Peck the bakery invoice book"},
+ fountain:{at:"fountain",verb:"inspect",text:"Inspect the fountain outlet"},
+ worker:{at:"worker",verb:"inspect",text:"Speak to the foreperson"},
+ dumpCheck:{at:"dump",verb:"inspect",text:"Inspect the dumped waste"},
+ meeting:{at:"chair",verb:"attend",text:"Perch on the committee chair, coo, stay four seconds"},
+ meetingPhoto:{at:"meeting",verb:"photo",text:"Photograph the meeting minutes [R]"},
+ minutes:{at:"minutes",verb:"deliver",text:"Unlock archive; carry rooftop minutes to its window"},
+ archiveAccount:{at:"archive",verb:"inspect",text:"Check the archive account with your access card"},
+ residents:{at:"bench",verb:"inspect",text:"Hear the park residents"},
+ delegation:{at:"pond",verb:"inspect",text:"Hear the duck delegation"}
+};
+let PLACES = [
+ {id:"desk",name:"Council returns desk",x:177,y:380,z:0,kind:"desk"},
+ {id:"rack",name:"Blank forms",x:175,y:260,z:0,kind:"rack"},
+ {id:"board",name:"Inspection clipboard",x:310,y:320,z:0,kind:"board"},
+ {id:"check0",name:"Observed personally",x:273,y:322,z:0,kind:"check",index:0},
+ {id:"check1",name:"Evidence attached",x:310,y:322,z:0,kind:"check",index:1},
+ {id:"check2",name:"Applicant is a bird",x:347,y:322,z:0,kind:"check",index:2},
+ {id:"stamp",name:"Municipal stamp press",x:441,y:330,z:0,kind:"stamp"},
+ {id:"upgrade0",name:"Wing conditioning",x:505,y:204,z:0,kind:"upgrade",index:0},
+ {id:"upgrade1",name:"Badge polishing",x:505,y:246,z:0,kind:"upgrade",index:1},
+ {id:"upgrade2",name:"Paper clip procurement",x:505,y:288,z:0,kind:"upgrade",index:2},
+ {id:"bench",name:"Park bench",x:886,y:403,z:0,kind:"inspect"},
+ {id:"pothole",name:"Pothole",x:550,y:841,z:0,kind:"inspect"},
+ {id:"bin1",name:"Green bin",x:1000,y:234,z:0,kind:"inspect"},
+ {id:"bin2",name:"Blue bin",x:1437,y:527,z:0,kind:"inspect"},
+ {id:"bin3",name:"Purple bin",x:1105,y:466,z:0,kind:"inspect"},
+ {id:"pond",name:"Duck pond",x:1110,y:355,z:0,kind:"inspect"},
+ {id:"meter",name:"Expired parking meter",x:390,y:746,z:0,kind:"inspect"},
+ {id:"sign",name:"Parking sign",x:468,y:746,z:0,kind:"inspect"},
+ {id:"parked",name:"Expired-meter car",x:420,y:884,z:32,kind:"recipient"},
+ {id:"dump",name:"Unlicensed sofa",x:1380,y:1040,z:0,kind:"inspect"},
+ {id:"survey",name:"Archive roof permit",x:1298,y:607,z:96,kind:"inspect"},
+ {id:"archive",name:"Archive service window",x:1170,y:690,z:0,kind:"archive"},
+ {id:"bakery",name:"Bakery accounts",x:230,y:1118,z:0,kind:"inspect"},
+ {id:"fountain",name:"Fountain outlet",x:799,y:637,z:0,kind:"inspect"},
+ {id:"worker",name:"Works foreperson",x:1190,y:1030,z:0,kind:"worker"},
+ {id:"chair",name:"Vacant committee chair",x:987,y:576,z:25,kind:"chair"},
+ {id:"meeting",name:"Committee minutes",x:1040,y:563,z:0,kind:"meeting"},
+ {id:"statue",name:"Previous mayor",x:764,y:293,z:70,kind:"perch"},
+ {id:"traffic",name:"Pedestrian crossing button",x:715,y:743,z:0,kind:"traffic"},
+ {id:"chips",name:"A citizen's chips",x:818,y:452,z:0,kind:"chips"},
+ {id:"papers",name:"Loose committee papers",x:1053,y:584,z:0,kind:"papers"},
+ {id:"ballot0",name:"A feathered coalition",x:630,y:294,z:0,kind:"ballot",choice:"coalition"},
+ {id:"ballot1",name:"Expose the scheme",x:630,y:345,z:0,kind:"ballot",choice:"expose"},
+ {id:"ballot2",name:"Bread for everyone",x:630,y:396,z:0,kind:"ballot",choice:"bread"}
+];
+let SURFACES = [
+ {id:"bakeryroof",x:327,y:1034,w:240,h:100,z:90,solid:true},
+ {id:"awning",x:326,y:1110,w:238,h:42,z:54,solid:false},
+ {id:"archiveroof",x:1284,y:626,w:228,h:96,z:96,solid:true},
+ {id:"statue",x:764,y:293,w:40,h:32,z:70,solid:true},
+ {id:"bench",x:886,y:385,w:104,h:26,z:26,solid:false},
+ {id:"chair",x:987,y:576,w:48,h:42,z:25,solid:false},
+ {id:"fountain",x:800,y:581,w:48,h:34,z:48,solid:true},
+ {id:"parked",x:420,y:884,w:98,h:50,z:32,solid:false}
+];
+let DECOR = [
+ {id:"office",art:"office",x:316,y:300,w:520,h:290,depth:90},
+ {id:"bakerybuilding",art:"bakery",x:327,y:1014,w:282,h:252,depth:1132},
+ {id:"archivebuilding",art:"archive",x:1284,y:588,w:282,h:224,depth:674},
+ {id:"benchprop",art:"bench",x:886,y:389,w:110,h:60,depth:389},
+ {id:"fountainprop",art:"fountain",x:800,y:582,w:145,h:118,depth:590},
+ {id:"statueprop",art:"statue",x:764,y:293,w:82,h:122,depth:300},
+ {id:"binprop1",art:"bin-green",x:1000,y:218,w:44,h:64,depth:237},
+ {id:"binprop2",art:"bin-blue",x:1437,y:511,w:44,h:64,depth:530},
+ {id:"binprop3",art:"bin-purple",x:1105,y:450,w:44,h:64,depth:469},
+ {id:"meterprop",art:"meter",x:390,y:719,w:39,h:91,depth:730},
+ {id:"signprop",art:"parking-sign",x:468,y:714,w:62,h:106,depth:730},
+ {id:"carpark",art:"car-yellow",x:420,y:863,w:114,h:73,depth:888},
+ {id:"sofa",art:"sofa",x:1380,y:1023,w:138,h:88,depth:1055},
+ {id:"table",art:"committee",x:1044,y:548,w:135,h:110,depth:566},
+ {id:"emptychair",art:"chair",x:987,y:565,w:54,h:61,depth:580},
+ {id:"light",art:"traffic",x:715,y:704,w:54,h:123,depth:741},
+ {id:"cafe",art:"cafe",x:218,y:586,w:228,h:144,depth:580},
+ {id:"postbox",art:"postbox",x:622,y:560,w:54,h:77,depth:587}
+];
+let TREES = [{x:111,y:493,s:1},{x:627,y:149,s:1.1},{x:873,y:164,s:1.2},{x:1460,y:175,s:1.2},{x:1510,y:694,s:1},{x:935,y:699,s:0.8},{x:111,y:977,s:1},{x:816,y:1090,s:1.25},{x:1090,y:1100,s:1},{x:591,y:1038,s:0.8}];
+let BADGES = [
+ {id:"first",name:"Employed, technically"},{id:"careful",name:"Surprisingly competent"},
+ {id:"legal",name:"Due process"},{id:"evidence",name:"Duckumentary evidence"},
+ {id:"bread",name:"Expense approved"},{id:"finish",name:"Shift happens"},
+ {id:"chip",name:"Unapproved lunch"},{id:"statue",name:"Above management"},
+ {id:"meeting",name:"Motion to coo"},{id:"traffic",name:"Crossing authority"},
+ {id:"bus",name:"Council travel allowance"},{id:"papers",name:"Distributed administration"},
+ {id:"flock",name:"Union representative"},{id:"annoy",name:"Public consultation"}
+];

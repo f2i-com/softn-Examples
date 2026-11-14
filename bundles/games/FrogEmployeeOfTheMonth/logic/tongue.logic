@@ -1,0 +1,107 @@
+// One tongue, four uses: capture, pendulum, object pull, sustained mechanism pull.
+// State machine: idle -> extend -> latched/pulling -> retract -> idle.
+function mouthPoint() {return {x:G.p.x+G.p.face*13,y:G.p.y-G.p.h*0.64};}
+function segmentBox(ax,ay,bx,by,r) {
+    let dx=bx-ax,dy=by-ay,lo=0,hi=1;
+    let origins=[ax,ay],deltas=[dx,dy],mins=[r.x,r.y],maxs=[r.x+r.w,r.y+r.h];
+    for(let a=0;a<2;a++) {
+        if(Math.abs(deltas[a])<0.00001) {if(origins[a]<mins[a] || origins[a]>maxs[a])return false;}
+        else {let t1=(mins[a]-origins[a])/deltas[a],t2=(maxs[a]-origins[a])/deltas[a];
+            if(t1>t2){let swap=t1;t1=t2;t2=swap;}lo=Math.max(lo,t1);hi=Math.min(hi,t2);if(lo>hi)return false;}
+    }return hi>0.015 && lo<0.985;
+}
+function lineClear(a,b) {
+    for(let i=0;i<G.world.platforms.length;i++) {let p=G.world.platforms[i];
+        if(p.solid && segmentBox(a.x,a.y,b.x,b.y,{x:p.x+1,y:p.y+1,w:p.w-2,h:p.h-2}))return false;
+    }return true;
+}
+function tongueEligible(t) {return t && t.active && ["anchor","report","memo","fly","plug","switch","brake","jam"].indexOf(t.kind)>=0;}
+function reachableTargets() {
+    let m=mouthPoint(),out=[];
+    for(let i=0;i<G.world.targets.length;i++) {let t=G.world.targets[i];
+        if(!tongueEligible(t))continue;let d=dist(m,t);
+        if(d<=CFG.tongueRange && d>8 && lineClear(m,t))out.push(t);
+    }return out;
+}
+function findBestTarget() {
+    let list=reachableTargets(),best=null,score=Infinity,m=mouthPoint();
+    for(let i=0;i<list.length;i++) {let t=list[i];
+        if(t.id===G.selectedTarget && G.targetLock>0)return t;
+        let s=dist(m,t)+(t.kind==="anchor"?45:0)+(t.kind==="fly"?140:-35);
+        if((t.x-m.x)*G.p.face<-30)s+=150;
+        if(keys.up && t.kind==="anchor")s-=100;
+        if(s<score){score=s;best=t;}
+    }return best;
+}
+function chooseTarget(id) {if(!G || screen!=="play")return;G.selectedTarget=id;G.targetLock=8;let t=findTarget(id);if(t)tell("Aim: "+t.label+". Hold X / tongue to connect.",2.5);publish();}
+function cycleTarget() {
+    let list=reachableTargets();if(!list.length){tell("No target in reach. Jump closer.",2);return;}
+    let at=-1;for(let i=0;i<list.length;i++)if(list[i].id===G.targetId)at=i;
+    chooseTarget(list[(at+1)%list.length].id);
+}
+function tongueStart(id) {
+    if(!G || screen!=="play" || G.mission.done || G.tongue.cooldown>0)return false;
+    if(G.tongue.state!=="idle"){releaseTongue();return false;}
+    let t=id?findTarget(id):findBestTarget();let m=mouthPoint();
+    if(!tongueEligible(t) || dist(m,t)>CFG.tongueRange || !lineClear(m,t)) {tell("Nothing tongue-able in reach. Try a jump or aim up.",2);sound("croak",0.20);return false;}
+    G.tongue={state:"extend",target:t.id,x:m.x,y:m.y,originX:m.x,originY:m.y,length:0,time:0,pull:0,cooldown:0,cargo:""};
+    G.targetId=t.id;sound("tongue");return true;
+}
+function releaseTongue() {
+    if(!G || G.tongue.state==="idle")return;
+    let t=findTarget(G.tongue.target);
+    if(t && t.kind==="plug")t.pulled=false;
+    G.tongue.state="retract";G.tongue.pull=0;G.tongue.cooldown=0.12;
+}
+function bodyInsideSolid(x,y) {
+    let p=G.p;
+    for(let i=0;i<G.world.platforms.length;i++){let b=G.world.platforms[i];
+        if(b.solid && x+p.w/2>b.x+2 && x-p.w/2<b.x+b.w-2 && y>b.y+2 && y-p.h<b.y+b.h-2)return true;
+    }return false;
+}
+function tongueStep(dt) {
+    let v=G.tongue,p=G.p,m=mouthPoint();v.cooldown=Math.max(0,v.cooldown-dt);
+    G.targetLock=Math.max(0,G.targetLock-dt);
+    if(v.state==="idle") {let target=findBestTarget();G.targetId=target?target.id:"";return;}
+    v.time+=dt;let t=findTarget(v.target);
+    if(v.state!=="retract" && (!t || !t.active || !keys.tongue))releaseTongue();
+    if(v.state==="retract") {
+        let d=dist(v,m);if(d<20){G.tongue=makeTongue();G.tongue.cooldown=0.08;return;}
+        let speed=Math.min(1,CFG.tongueSpeed*dt/d);v.x+=(m.x-v.x)*speed;v.y+=(m.y-v.y)*speed;return;
+    }
+    if(!t)return;
+    if(dist(m,t)>CFG.tongueRange+24 || !lineClear(m,t)){releaseTongue();return;}
+    if(v.state==="extend") {
+        let d=dist(v,t);let amount=Math.min(1,CFG.tongueSpeed*dt/Math.max(0.001,d));
+        v.x+=(t.x-v.x)*amount;v.y+=(t.y-v.y)*amount;
+        if(d<CFG.tongueSpeed*dt+5) {
+            v.x=t.x;v.y=t.y;
+            if(t.kind==="report" || t.kind==="memo" || t.kind==="fly") {v.cargo=t.kind;captureTarget(t);releaseTongue();}
+            else {v.state=t.kind==="plug"?"pulling":"latched";if(t.kind==="plug")t.wasTongued=true;v.length=dist({x:p.x,y:p.y-p.h/2},t);v.pull=0;sound("latch");}
+        }return;
+    }
+    v.x=t.x;v.y=t.y;
+    if(t.kind==="anchor") {
+        v.length=clamp(v.length+((keys.down?1:0)-(keys.up?1:0))*155*dt,48,CFG.tongueRange);
+        let ox=p.x,oy=p.y,cy=p.y-p.h/2,dx=p.x-t.x,dy=cy-t.y,d=Math.sqrt(dx*dx+dy*dy);
+        if(d>v.length && d>0) {
+            let nx=dx/d,ny=dy/d;
+            let proposedX=t.x+nx*v.length,proposedY=t.y+ny*v.length+p.h/2;
+            if(bodyInsideSolid(proposedX,proposedY)) {releaseTongue();return;}
+            p.x=clamp(proposedX,p.w/2,G.world.width-p.w/2);p.y=proposedY;
+            let outward=p.vx*nx+p.vy*ny;
+            if(outward>0){p.vx-=outward*nx;p.vy-=outward*ny;}
+            if(Math.abs(p.y-oy)>2){p.grounded=false;p.support="";p.mode="swing";}
+            // A little controllable tangential pumping, not a teleport towards the ring.
+            p.vx+=inputAxis()*370*dt;
+            if(Math.abs(p.x-ox)>3 || Math.abs(p.vx)>120)p.mode="swing";
+        }
+    } else if(t.kind==="plug") {
+        t.pulled=true;let desired={x:m.x+p.face*35,y:m.y+5};let d=dist(t,desired);
+        t.vx=clamp((desired.x-t.x)*7,-440,440);t.vy=clamp((desired.y-t.y)*7,-440,440);
+        if(d<4){t.vx=0;t.vy=0;}
+    } else {
+        v.pull+=dt;
+        if(v.pull>=(t.holdTime||0.6)) {if(activateTongueTarget(t))releaseTongue();else v.pull=0;}
+    }
+}

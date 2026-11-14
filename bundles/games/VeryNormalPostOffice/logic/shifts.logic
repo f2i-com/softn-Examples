@@ -1,0 +1,87 @@
+// Eight authored shifts. New systems, not an ever-shorter countdown.
+function newCampaign(seed) {
+    resetTransient();
+    S = { id: GAME_ID, version: GAME_VERSION, seed: seed || 9041968, stage: 0, revision: 0, phase: "briefing", tick: 0,
+        queue: [], current: null, transit: null, toolJob: null, incomingTicks: 0, viewTool: "inspect", ink: "red",
+        score: 0, totalSorted: 0, totalMistakes: 0, safetyBreaches: 0, completed: 0, shiftScore: 0, shiftMistakes: 0, cleanCases: 0, integrity: 100,
+        machine: { bias: 0, calibrated: true, calibration: 0, referenceOn: false, jam: false, separator: false },
+        incidents: [], lastReceipt: null, message: "", reportTitle: "", reportBody: "", ambient: 0, ambientTicks: 0,
+        stageStart: { seed: seed || 9041968, score: 0, totalSorted: 0, totalMistakes: 0, safetyBreaches: 0, incidentCount: 0 } };
+    setupShift();
+    persist();
+    publish();
+}
+function setupShift() {
+    let def = SHIFT_DEFS[S.stage];
+    S.stageStart = { seed: S.seed, score: S.score, totalSorted: S.totalSorted, totalMistakes: S.totalMistakes, safetyBreaches: S.safetyBreaches, incidentCount: S.incidents.length };
+    S.queue = [];
+    S.current = null;
+    S.transit = null;
+    S.toolJob = null;
+    S.incomingTicks = 0;
+    S.completed = 0;
+    S.cleanCases = 0;
+    S.shiftScore = 0;
+    S.shiftMistakes = 0;
+    S.revision = 0;
+    S.integrity = 100;
+    S.ink = S.stage === 7 ? "black" : "red";
+    S.viewTool = "inspect";
+    S.lastReceipt = null;
+    S.machine = { bias: S.stage === 5 || S.stage === 7 ? 4 : 0, calibrated: S.stage !== 5 && S.stage !== 7, calibration: 0, referenceOn: false, jam: false, separator: false };
+    for (let i = 0; i < def.types.length; i++)
+        S.queue.push(makeParcel(def.types[i], i, S.stage));
+    S.phase = "briefing";
+    note(def.lesson);
+    resetTransient();
+}
+function beginShift() {
+    if (!S || S.phase !== "briefing" || helpOpen || confirmReset)
+        return;
+    S.phase = "work";
+    paused = false;
+    lastClock = 0;
+    playSound("bell");
+    receiveParcel();
+    persist();
+}
+function issueNotice() {
+    S.phase = "notice";
+    S.toolJob = null;
+    S.transit = null;
+    S.incomingTicks = 0;
+    playSound("tube");
+    triggerFx("notice", 60);
+    persist();
+}
+function acknowledgeNotice() {
+    if (!S || S.phase !== "notice" || helpOpen || confirmReset)
+        return;
+    S.revision = 1;
+    S.phase = "work";
+    S.incomingTicks = 20;
+    rememberIncident("Circular acknowledged", S.stage === 7 ? "FAR service suspended. The next parcel is the first affected." : "Red ink and widths of exactly 33 cm suspended. No in-flight parcel was affected.", null);
+    note("AMENDMENT IN FORCE for the next consignment. Read the pinned circular at any time.");
+    playSound("stamp");
+    persist();
+}
+function advanceShift() {
+    if (!S || S.phase !== "report" || S.stage >= SHIFT_DEFS.length - 1)
+        return;
+    S.stage++;
+    setupShift();
+    persist();
+}
+function retryShift() {
+    if (!S || S.phase !== "suspended")
+        return;
+    let start = copy(S.stageStart);
+    S.seed = start.seed;
+    S.score = start.score;
+    S.totalSorted = start.totalSorted;
+    S.totalMistakes = start.totalMistakes;
+    S.safetyBreaches = start.safetyBreaches;
+    // The journal records real incidents, but score and consignments rewind atomically.
+    setupShift();
+    persist();
+}

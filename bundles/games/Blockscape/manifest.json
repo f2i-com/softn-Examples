@@ -1,6 +1,6 @@
 {
   "name": "Blockscape",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "First-person voxel island sandbox with voxel diamond pickaxe, Blender PBR treasure chest, dynamic sun shadows, glowing torches, soft debris particles, and day-night atmospheric sky.",
   "author": "SoftN",
   "main": "ui/main.ui",

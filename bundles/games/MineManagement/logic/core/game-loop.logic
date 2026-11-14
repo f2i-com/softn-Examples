@@ -1,0 +1,88 @@
+// The game loop. boot() runs once, from the last line of main.logic, after every file has loaded;
+// tick() runs about 30 times a second from the <Loop> in ui/main.ui.
+// Each tick, while playing: the simulation in fixed 0.05 s steps (20 Hz; stepSimulation in
+// mine/simulation.logic), the radio line's timeout and the autosave. On every screen: the UI
+// view-model every 0.25 s (refreshUI, core/ui-state.logic). On the play and title screens: the 3D
+// frame (buildWorldFrame, world/scene.logic); paused or on the report, the scene keeps the last.
+// State (globals in core/state.logic): frameNumber, lastFrameTime, accumulator, uiClock, radioTimer
+// and lastAutosave; renderAlpha is in world/interpolation.logic.
+
+// Start-up. Builds a stand-in S from the default seed so the title screen has a mine to orbit;
+// nothing is simulated until newGame or continueGame (core/session.logic) replaces it. Then looks
+// for a save and hooks up the window's events.
+function boot() {
+  S = newState(seedText);
+  initRoute();
+  for (var i = 0; i < S.trucks.length; i++) setTruckPosition(S.trucks[i]);
+  initWorld();
+  refreshUI();
+  checkSave();
+  // Development builds only (dev/debug.logic); release builds don't have it.
+  if (typeof debugInit === 'function') debugInit();
+  try {
+    // The flag Scene3D sets while it holds the pointer lock; checkPointerLock reads it
+    // (player/camera-look.logic).
+    window.__scene3dLocked = false;
+    window.addEventListener('keydown', keyDown);
+    window.addEventListener('keyup', keyUp);
+    // A resize drops held keys and pads; losing focus pauses (focusLost, player/input.logic); the
+    // first touch turns the touch pads on unless the player has chosen (touchInput).
+    window.addEventListener('resize', resetInputs);
+    window.addEventListener('blur', focusLost);
+    window.addEventListener('touchstart', touchInput);
+    // Asks the host to keep the arrow keys, Space and Tab for the game.
+    if (typeof softn !== 'undefined' && softn.input)
+      softn.input.captureKeys(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'Tab']);
+  } catch (e) {}
+}
+
+// One frame (see the header for what runs when).
+function tick() {
+  checkPointerLock();
+  keepLookThroughRemount();
+  keepPointerFree();
+  if (typeof debugTick === 'function') debugTick();
+  // Real seconds since the last tick, capped at 0.2 s. A nominal 1/30 s when lastFrameTime is 0:
+  // on the first tick, and after a new game, a load, a resume or a new shift resets it.
+  var now = Date.now(),
+    dt = lastFrameTime ? clamp((now - lastFrameTime) / 1000, 0, 0.2) : 1 / 30;
+  lastFrameTime = now;
+  frameNumber++;
+  if (screen === 'play') {
+    accumulator += dt;
+    var steps = 0;
+    // Fixed 0.05 s steps, at most 4 a tick (the 0.2 s cap), so after a stall the simulation drops
+    // the lost time rather than racing to catch up.
+    while (accumulator >= 0.05 && steps < 4) {
+      stepSimulation(0.05);
+      accumulator -= 0.05;
+      steps++;
+    }
+    // notify() shows a radio line for 8 s.
+    radioTimer = Math.max(0, radioTimer - dt);
+    if (radioTimer <= 0) {
+      hud.radio = '';
+      hud.speaker = '';
+    }
+    // Autosave every 30 s of shift time. The clock restarts on every attempt, so with storage
+    // unavailable the game tries again in 30 s rather than on every frame.
+    if (S.time - lastAutosave >= 30) {
+      lastAutosave = S.time;
+      saveGame(true);
+    }
+  }
+  uiClock += dt;
+  if (uiClock >= 0.25) {
+    uiClock = 0;
+    refreshUI();
+  }
+  if (screen === 'play' || screen === 'title') {
+    // How far the clock has run into the next step, 0 to 1. The world/interpolation.logic helpers
+    // draw moving things that far from the previous step towards the latest one, so motion looks
+    // smooth although the simulation steps at 20 Hz. Back to 1 afterwards, so code outside the
+    // frame sees the live state.
+    renderAlpha = screen === 'play' ? clamp(accumulator / 0.05, 0, 1) : 1;
+    buildWorldFrame();
+    renderAlpha = 1;
+  }
+}

@@ -1,0 +1,94 @@
+// Waypoints: the one marker the HUD points to, and the tablet buttons that place it.
+// State: S.waypoint, { x, z, label } in metres, or null. setWaypoint replaces the whole object,
+// so a tag another module added to the old marker goes with it: haulTruck (haul-assist.logic),
+// inspectionId (mine/rounds.logic), target, id and at (unit tracking, mine/workforce.logic).
+// validState (core/persistence.logic) and validRounds check the marker and those tags when a
+// save loads (|x| and |z| up to 500, a label of 160 characters at most); a new tag wants a check
+// there too. refreshUI shows waypointBearing() on the HUD; the field kit uses it for the cone.
+
+// ---------- The marker ----------
+
+function setWaypoint(x, z, label) {
+  if (!S) return;
+  S.waypoint = { x: x, z: z, label: label };
+}
+
+// Mark an alert and head outside: closes the tablet and asks for the mouse again. From the
+// tablet's Operations and Site journal pages, and focusObjective.
+function goAlert(key) {
+  for (var i = 0; i < S.alerts.length; i++) {
+    var a = S.alerts[i];
+    if (a.key === key) {
+      setWaypoint(a.x, a.z, a.title);
+      tablet = false;
+      takeMouse();
+      refreshUI();
+      return;
+    }
+  }
+}
+
+// Mark a named place: buttons on the tablet's Operations, Field guide, Workforce and Workshop
+// pages, and guideService. The table is x (east) and z (south) in metres. The service points
+// match nearestInteraction (interactions.logic) and incidentPosition (mine/incidents.logic).
+// 'pit' is the Bench 1 loading bay of haul-assist.logic and mine/bays.logic; 'crusher' is the
+// crusher's service panel, not the tip bay (72, 138); 'ramp' is the north end of Bazza's ramp,
+// JUMPS in world/terrain.logic.
+function markPlace(id) {
+  var places = {
+    pit: { x: 17, z: -14, label: 'Bench 1 / excavator' },
+    crusher: { x: 49, z: 143, label: 'Crusher service panel' },
+    office: { x: -35, z: 150, label: 'Site office' },
+    fuel: { x: 9, z: 157, label: 'Fuel farm' },
+    workshop: { x: -65, z: 129, label: 'Workshop' },
+    charger: { x: 31, z: 163, label: 'Robot charging' },
+    relay: { x: 115, z: 105, label: 'Telemetry repeater' },
+    ramp: { x: -22, z: 186, label: "Bazza's ramp (not approved)" }
+  };
+  var p = places[id];
+  if (p) {
+    setWaypoint(p.x, p.z, p.label);
+    notify('PIT', p.label + ' marked. Close tablet to navigate.');
+    refreshUI();
+  }
+}
+
+// The HUD's arrow to the marker, against the way the player is looking: ARRIVED within 8 m,
+// AHEAD within 0.3 rad (about 17°) either side, BEHIND beyond 2.65 rad (about 152°), otherwise
+// LEFT or RIGHT (a positive angle is to the left).
+function waypointBearing() {
+  if (!S.waypoint) return '';
+  var p = S.player,
+    w = S.waypoint;
+  if (dist2(p, w) < 8) return 'ARRIVED';
+  var delta = Math.atan2(w.x - p.x, w.z - p.z) - p.yaw;
+  // Wrapped into -π..π.
+  delta = Math.atan2(Math.sin(delta), Math.cos(delta));
+  return Math.abs(delta) < 0.3
+    ? '↑ AHEAD'
+    : Math.abs(delta) > 2.65
+      ? '↓ BEHIND'
+      : delta > 0
+        ? '← LEFT'
+        : '→ RIGHT';
+}
+
+function clearWaypoint() {
+  if (!S) return;
+  S.waypoint = null;
+  refreshUI();
+}
+
+// ---------- Field guide shortcuts ----------
+
+function markUte() {
+  setWaypoint(S.ute.x, S.ute.z, 'Site ute');
+  notify('PIT', 'Ute marked. Close the tablet to head outside.');
+  refreshUI();
+}
+
+// The Field guide's "Find field service": the first alert, or the workshop when there is none.
+function guideService() {
+  if (S.alerts.length) goAlert(S.alerts[0].key);
+  else markPlace('workshop');
+}

@@ -1129,9 +1129,33 @@ function gbPpu_writeReg(addr, v) {
 // must call this after gbState_reset and before gbCpu_reset.
 // ===========================================================================
 
+function gbPpu_syncOut() {
+  if ((GB_IO[0x40] & 0x80) === 0) {
+    GB_CTR[GB_C_PPU_DOT] = 0
+  } else {
+    GB_CTR[GB_C_PPU_DOT] = GB_PPU_DOTS
+  }
+  GB_CTR[GB_C_STAT_DELAY] = GB_PPU_STATD
+}
+
+function gbPpu_syncIn() {
+  if ((GB_IO[0x40] & 0x80) === 0) {
+    GB_PPU_DOTS = 0x40000000
+  } else {
+    GB_PPU_DOTS = GB_CTR[GB_C_PPU_DOT]
+    if (GB_PPU_DOTS <= 0) { GB_PPU_DOTS = 1 }
+  }
+  GB_PPU_STATD = GB_CTR[GB_C_STAT_DELAY]
+  GB_PPU_FRAME = GB_CTR[GB_C_FRAME]
+  GB_PPU_SKIP = 0
+  gbPpu_skipped = 0
+}
+
 function gbPpu_reset() {
   GB_PPU_SKIP = 0
   gbPpu_skipped = 0
+  GB_PPU_FRAME = 0
+  GB_CTR[GB_C_FRAME] = 0
   GB_IO[0x40] = 0x91
   GB_IO[0x41] = 0x85
   GB_IO[0x42] = 0
@@ -1165,5 +1189,9 @@ function gbPpu_reset() {
   GB_CTR[GB_C_PPU_DOT] = GB_PPU_DOTS
 
   GB_IO[0x41] = (GB_IO[0x41] & 0xfc) | GB_MODE_OAM
+  let revBefore = GB_CTR[GB_C_PAL_REV]
   gbPpu_buildPalette()
+  if (GB_CTR[GB_C_PAL_REV] === revBefore) {
+    GB_CTR[GB_C_PAL_REV] = revBefore + 1
+  }
 }

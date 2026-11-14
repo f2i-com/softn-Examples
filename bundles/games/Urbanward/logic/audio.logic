@@ -1,0 +1,45 @@
+// Original bundled synthesis. Audio is opt-in and starts from a user gesture.
+function uwStartMusic() {
+    if (!soundEnabled || uwAudioHandle !== null)
+        return;
+    try {
+        softn.audio.play("assets/audio/civic-dawn.wav", { volume: 0.18, loop: true }, function (result) {
+            if (result && result.handle) {
+                if (soundEnabled)
+                    uwAudioHandle = result.handle;
+                else {
+                    try {
+                        softn.audio.stop(result.handle);
+                    }
+                    catch (e) { }
+                }
+            }
+        });
+    }
+    catch (e) {
+        uwNotify("Audio is unavailable in this runtime. The city can still play silently.", "info");
+    }
+}
+function uwToggleSound() {
+    soundEnabled = !soundEnabled;
+    if (soundEnabled)
+        uwStartMusic();
+    else {
+        if (uwAudioHandle !== null) {
+            try {
+                softn.audio.stop(uwAudioHandle);
+            }
+            catch (e) { }
+        }
+        uwAudioHandle = null;
+    }
+}
+function uwSfx(kind) {
+    if (!soundEnabled)
+        return;
+    let path = kind === "milestone" ? "milestone" : kind === "error" ? "unavailable" : "build";
+    try {
+        softn.audio.play("assets/audio/" + path + ".wav", { volume: 0.18, loop: false }, function (result) { });
+    }
+    catch (e) { }
+}

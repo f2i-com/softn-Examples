@@ -1,0 +1,31 @@
+// Each shift is a authored roster, ordinary care, and one impossible event. There are no timed quotas.
+function setupShift(stage){
+ S.stage=stage;S.phase="shift";S.shift={roster:clone(SHIFTS[stage].roster),spawned:0,served:0,clock:0,spawnIn:1.8,routine:false,eventReady:false,eventDone:false,eventChoice:"",settledIds:[]};
+ S.customers=[];S.dialog=null;S.inspection=false;resetCheckout();S.store.job="";S.store.jobTime=0;S.store.jobTotal=0;
+ S.store.carryingCrate=false;S.store.mop=false;S.store.spill=SHIFTS[stage].routine==="clean"?3:0;
+ // Wholesaler stock is finite within a shift, but story access never depends on a depleted budget.
+ if(stage===4){for(let i=0;i<6;i++)S.store.reserve[i]+=4;}
+ if(stage===6){for(let i=0;i<6;i++){S.store.stock[i]=Math.max(2,S.store.stock[i]);S.store.reserve[i]=Math.max(2,S.store.reserve[i]);}}
+ S.store.coffee=0;S.store.noodles=0;S.cosmic.echo=0;S.cosmic.stasis=0;updateCosmic();
+ journal(SHIFTS[stage].note);tell(SHIFTS[stage].note);
+}
+function canCloseShift(){return S.phase==="shift" && S.shift.served>=S.shift.roster.length && S.shift.routine && S.shift.eventDone && !S.dialog && !S.inspection && S.store.hand<0;}
+function useDoor(){
+ if(canCloseShift()){closeShift();return;}
+ if(S.shift.spawned<S.shift.roster.length){
+  if(scheduledSpawn())tell("You turn the sign towards the road. There is still someone on their way.");
+  else tell("A few people are already browsing. There is no need to hurry them.");
+ }else if(S.shift.served<S.shift.roster.length)tell("Everyone expected tonight is inside. The kettle is in no hurry.");
+ else if(!S.shift.routine)tell("Before closing: "+SHIFTS[S.stage].routineLabel.toLowerCase()+".");
+ else if(!S.shift.eventDone)tell(SHIFTS[S.stage].eventLabel+". Click the glowing object to see to it.");
+}
+function closeShift(){
+ if(!canCloseShift())return;
+ if(S.stage===6){S.phase="finale";journal("All the usuals have been served. The future of the shop is yours to choose.");}
+ else{S.phase="interlude";journal(SHIFTS[S.stage].close);}
+ S.dialog=null;S.inspection=false;persist();publish();
+}
+function nextShift(){
+ if(S.phase!=="interlude" || S.stage>=6)return;
+ setupShift(S.stage+1);lastClock=Date.now();refreshAudio();persist();publish();
+}

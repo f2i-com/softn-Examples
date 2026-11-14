@@ -1,0 +1,235 @@
+// The player's own loading and tipping: what L (and the touch Discharge and Dig buttons) does in a
+// truck or an excavator, and the timers that finish those jobs each simulation step. Robot trucks
+// load and tip in simulation.logic; this is the hands-on version, and it shares the bays with
+// them: bayOwner says who holds a bay, and pitBays (fleet.logic) treats a running manual timer or a
+// player truck standing in a bay as an occupied bay.
+// State: per truck, t.manualLoad and t.manualTip (seconds into the current bucket pass or tip, 0
+// when idle; validState accepts up to 4.6 s for a tip, which takes 4.5 s, and up to
+// LONGEST_PASS_SECONDS for a pass, see excavators.logic) and t.fillRequested (Fill tray, see
+// player/haul-assist.logic); S.manualExcavator's dig and dump timers, bucket, target and yaw (see
+// excavators.logic).
+// Places: Bench 1 is within 23 m of (17, -14) and the tip bay within 25 m of (72, 138), the two
+// ends of the haul road; dist2 is the ground distance in metres.
+// Note that manualLoad is both the L-key function here and the truck's timer field.
+
+// ---------- Player commands ----------
+
+// L, or the touch Discharge button (also haulAction in player/haul-assist.logic). In an excavator:
+// discharge the bucket into the truck below (transferBucket). In a truck stopped at Bench 1: start
+// one bucket pass from the loader. In a truck stopped at the crusher: start the 4.5 s hydraulic
+// tip. Each refuses, with a radio line, if the bay is taken, the loader or crusher is unavailable,
+// or there is nothing to load or tip.
+function manualLoad() {
+  if (tablet || screen !== 'play') return;
+  if (S.player.mode === 'excavator') {
+    transferBucket();
+    return;
+  }
+  if (S.player.mode !== 'truck') return;
+  var t = getTruck(S.player.vehicle);
+  if (t.fault) {
+    notify('PIT', 'The truck is secured for a field fault. Resolve it before loading or tipping.');
+    return;
+  }
+  if (Math.abs(t.speed) > 1) {
+    notify('PIT', 'Stop the truck before loading or tipping.');
+    return;
+  }
+  if (dist2(t, { x: 17, z: -14 }) < 23) {
+    // A pass is already running, or Fill tray is running them.
+    if (t.manualLoad || t.fillRequested) return;
+    // The manual excavator's bucket must be empty: its ore goes into a truck first.
+    if (!loaderAvailable() || S.manualExcavator.bucket > 0) {
+      notify('LOADING', 'Loader unavailable. Check Excavators in PIT or empty its bucket.');
+      return;
+    }
+    if (bayOwner('loading', t.id)) {
+      notify('DISPATCH', 'Loading bay occupied. Wait for the current truck to clear.');
+      return;
+    }
+    if (t.payload >= t.capacity || S.extraction <= 0) {
+      notify(
+        'MEL',
+        S.extraction <= 0 ? 'No exposed ore remaining this shift.' : 'That tray is already full.'
+      );
+      return;
+    }
+    // Starts the timer (a tiny non-zero value reads as running); advanceManualLoading counts it up.
+    t.manualLoad = 0.001;
+    t.speed = 0;
+    notify('MEL', 'Bucket pass started. Hold position; L requests the next pass when complete.');
+  } else if (dist2(t, { x: 72, z: 138 }) < 25) {
+    if (!S.crusher) {
+      notify('PIT', 'Crusher offline. Reset the interlock beside the conveyor.', 'warning');
+      return;
+    }
+    if (bayOwner('dumping', t.id)) {
+      notify('DISPATCH', 'Tip bay occupied. Wait for clearance before raising the tray.');
+      return;
+    }
+    // The whole payload must fit: completeDump never tips part of a load.
+    if (hopperSpace() + 0.001 < t.payload) {
+      notify('CRUSHER', 'Receiving hopper full. Wait for the conveyor to clear capacity.');
+      return;
+    }
+    if (t.payload <= 0) {
+      notify('PIT', 'Tray empty. No tonnes to tip.');
+      return;
+    }
+    if (t.manualTip) return;
+    // Starts the timer; advanceManualTip counts it up to 4.5 s.
+    t.manualTip = 0.001;
+    notify('HYDRAULICS', 'Tray raising. Hold position for the 4.5 second tip cycle.');
+    sfx('repair');
+  } else notify('PIT', 'Load at Bench 1; tip at the crusher. Both are marked on your tablet.');
+  refreshUI();
+}
+
+// Space in an excavator, or the touch Dig button: starts the 2 s dig (advanceExcavators fills the
+// bucket with up to 20 t). Only the deployed, released excavator digs, with an empty bucket, swung
+// round to the ore face (yaw -0.95 or less; 0 is over the loading bay).
+function scoopBucket() {
+  if (S.player.mode !== 'excavator' || tablet) return;
+  var m = S.manualExcavator;
+  if (!manualLoader() || !loaderAvailable()) {
+    notify('LOADING', 'Deploy and release this excavator in PIT before digging.');
+    return;
+  }
+  if (m.bucket > 0 || m.dig || m.dump) {
+    notify('BUCKET', 'Finish this bucket cycle first.');
+    return;
+  }
+  if (m.yaw > -0.95) {
+    notify('SPOTTING', 'Swing D toward the ore face before digging.');
+    return;
+  }
+  if (S.extraction <= 0) {
+    notify('ORE FACE', 'No exposed ore remaining.');
+    return;
+  }
+  m.dig = 0.001;
+  m.anim = 0.5;
+  notify('EXCAVATOR', 'Digging. Hold position for the two-second bucket fill.');
+}
+
+// Starts the 1 s discharge of the manual bucket (advanceExcavators finishes it). The arm must be
+// swung back over the loading bay (yaw within 0.35 of 0) and a truck stopped under the bucket:
+// within 12 m of (19, -13), not full, and parked, queued, loading or player-driven. The nearest
+// such truck becomes the target (m.target).
+function transferBucket() {
+  var m = S.manualExcavator;
+  if (m.bucket <= 0 || m.dig || m.dump) return;
+  if (!manualLoader() || !loaderAvailable()) return;
+  if (Math.abs(m.yaw) > 0.35) {
+    notify('SPOTTING', 'Swing A back toward the loading bay. Align over the tray before discharge.');
+    return;
+  }
+  var best = null;
+  for (var i = 0; i < S.trucks.length; i++) {
+    var t = S.trucks[i];
+    if (
+      dist2(t, { x: 19, z: -13 }) <= 12 &&
+      Math.abs(t.speed) <= 1 &&
+      t.payload < t.capacity &&
+      (t.phase === 'queued' || t.phase === 'loading' || t.phase === 'standby' || t.phase === 'manual')
+    ) {
+      if (!best || dist2(t, { x: 19, z: -13 }) < dist2(best, { x: 19, z: -13 })) best = t;
+    }
+  }
+  if (!best) {
+    notify('SPOTTING', 'No stopped truck spotted beneath the bucket. Dispatch a truck to Bench 1.');
+    return;
+  }
+  m.dump = 0.001;
+  m.target = best.id;
+  m.anim = -0.1;
+  notify('EXCAVATOR', 'Discharging into ' + best.external_id + '.');
+}
+
+// ---------- Manual tip and load timers (every simulation step) ----------
+
+// Runs the player's tip timers. A tip is cancelled if the truck faults, the player leaves the cab,
+// the crusher trips or the truck leaves the tip bay; at 4.5 s the load is credited (completeDump).
+function advanceManualTip(dt) {
+  for (var i = 0; i < S.trucks.length; i++) {
+    var t = S.trucks[i];
+    if (!t.manualTip) continue;
+    if (
+      t.fault ||
+      t.phase !== 'manual' ||
+      S.player.mode !== 'truck' ||
+      S.player.vehicle !== t.id ||
+      !S.crusher ||
+      dist2(t, { x: 72, z: 138 }) >= 25
+    ) {
+      t.manualTip = 0;
+      continue;
+    }
+    t.speed = 0;
+    t.manualTip += dt;
+    if (t.manualTip >= 4.5) {
+      completeDump(t);
+      t.manualTip = 0;
+    }
+  }
+}
+
+// Who holds a bay. kind is 'loading' or 'dumping'. Returns the external id of a truck in that
+// phase or running the matching manual timer, skipping truck exceptId (0 skips none), or '' when
+// the bay is free. A narrower test than pitBays: it ignores trucks just leaving the bay and
+// parked ones. Used for the player's loading and tipping, deployExcavator and the bay status on
+// the Operations tab (core/ui-state.logic).
+function bayOwner(kind, exceptId) {
+  for (var i = 0; i < S.trucks.length; i++) {
+    var t = S.trucks[i];
+    if (t.id === exceptId) continue;
+    if (t.phase === kind || (kind === 'loading' ? t.manualLoad : t.manualTip)) return t.external_id;
+  }
+  return '';
+}
+
+// Runs the player's bucket-pass timers. A pass is cancelled, with any Fill tray request, if the
+// truck faults, the player leaves the cab or the truck leaves Bench 1; it pauses while the loader
+// is unavailable or the manual bucket holds ore. A finished pass adds up to 20 t from the face.
+function advanceManualLoading(dt) {
+  for (var i = 0; i < S.trucks.length; i++) {
+    var t = S.trucks[i];
+    if (!t.manualLoad) continue;
+    if (
+      t.fault ||
+      t.phase !== 'manual' ||
+      S.player.mode !== 'truck' ||
+      S.player.vehicle !== t.id ||
+      dist2(t, { x: 17, z: -14 }) >= 23
+    ) {
+      t.manualLoad = 0;
+      t.fillRequested = false;
+      continue;
+    }
+    t.speed = 0;
+    if (!loaderAvailable() || S.manualExcavator.bucket > 0) continue;
+    t.manualLoad += dt;
+    if (t.manualLoad >= loaderPassDuration()) {
+      var add = Math.min(20, t.capacity - t.payload, S.extraction);
+      t.payload += add;
+      S.extraction -= add;
+      t.loadedAt = S.time;
+      t.manualLoad = 0;
+      recordPass(add);
+      S.manualExcavator.anim = 0.3;
+      sfx('dump');
+      notify(
+        'MEL',
+        Math.round(t.payload) +
+          ' / ' +
+          t.capacity +
+          ' t. ' +
+          (t.payload >= t.capacity
+            ? 'Full payload. Proceed to the crusher.'
+            : t.fillRequested
+              ? 'Next bucket follows automatically.'
+              : 'L for the next bucket pass.')
+      );
+    }
+  }
+}

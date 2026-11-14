@@ -1,0 +1,110 @@
+// Host boundary only: semantic input, fixed-step clock, lifecycle and camera.
+// All rules live in the other .logic modules and run unchanged in the test host.
+function keyAction(key) {
+    let k=String(key||"").toLowerCase();
+    if(k==="arrowleft"||k==="a")return "left";
+    if(k==="arrowright"||k==="d")return "right";
+    if(k==="arrowup"||k==="w")return "up";
+    if(k==="arrowdown"||k==="s")return "down";
+    if(k===" "||k==="space"||k==="spacebar"||k==="z")return "jump";
+    if(k==="x"||k==="q")return "tongue";
+    if(k==="e")return "use";if(k==="c")return "cycle";
+    if(k==="r")return "rescue";if(k==="f")return "croak";
+    return "";
+}
+function heldAction(action) {return keyboardKeys[action]===true || touchKeys[action]===true;}
+function pressAction(action,source) {
+    if(screen!=="play" || !G || G.mission.done)return;
+    let before=heldAction(action);if(source==="touch")touchKeys[action]=true;else keyboardKeys[action]=true;
+    keys[action]=true;if(before)return;
+    startAudio();
+    if(action==="jump")jumpPress();
+    if(action==="tongue")tongueStart();
+    if(action==="use")interact();
+    if(action==="cycle")cycleTarget();
+    if(action==="rescue")respawn();
+    if(action==="croak"){sound("croak");speak(profile.done>=4?"Ribbit. (Duly recorded in the minutes.)":"Ribbit. (Your manager pretends to understand.)");}
+}
+function releaseAction(action,source) {
+    let before=heldAction(action);if(source==="touch")touchKeys[action]=false;else keyboardKeys[action]=false;
+    keys[action]=heldAction(action);if(!before || keys[action] || screen!=="play" || !G)return;
+    if(action==="jump")jumpRelease();if(action==="tongue")releaseTongue();
+}
+function padDown(action) {pressAction(action,"touch");}
+function padUp(action) {releaseAction(action,"touch");}
+function padCancel(action) {
+    touchKeys[action]=false;keys[action]=heldAction(action);
+    if(!G || keys[action])return;
+    // Cancelling a touch is never interpreted as an intentional jump release.
+    if(action==="jump"){G.p.charging=false;G.p.charge=0;G.p.buffer=0;}
+    if(action==="tongue")releaseTongue();
+}
+function clearInput() {
+    keys={};keyboardKeys={};touchKeys={};
+    if(!G)return;G.p.charging=false;G.p.charge=0;G.p.buffer=0;
+    let t=findTarget(G.tongue.target);if(t && t.kind==="plug")t.pulled=false;
+    G.tongue=makeTongue();
+}
+function keyDown(e) {
+    if(!e)return;let k=String(e.key||"").toLowerCase();
+    let tag=e.targetTag || (e.target?e.target.tagName:"") || "";tag=String(tag).toLowerCase();
+    if(tag==="input"||tag==="textarea"||tag==="select"|| (e.target&&e.target.isContentEditable))return;
+    if(tag==="button" && (k===" "||k==="enter"))return;
+    if(k==="escape"||k==="p") {if(!e.repeat && (screen==="play"||screen==="pause"||screen==="board"))pauseGame();return;}
+    if(k==="m"){if(!e.repeat)toggleSound();return;}
+    let a=keyAction(k);if(!a)return;
+    if(screen==="play" && typeof e.preventDefault==="function")e.preventDefault();
+    if(!e.repeat)pressAction(a,"keyboard");
+}
+function keyUp(e) {let a=keyAction(e?e.key:"");if(a)releaseAction(a,"keyboard");}
+function loseFocus() {clearInput();if(screen==="play"){screen="pause";stopAudio();saveProgress();publish();}}
+function cameraStep(dt) {
+    let p=G.p,c=G.camera;
+    let tx=clamp(p.x-VW*.42+p.face*62+p.vx*.13,0,G.world.width-VW);
+    let ty=c.y;if(p.y-c.y<200)ty=p.y-200;else if(p.y-c.y>570)ty=p.y-570;
+    ty=clamp(ty,0,G.world.height-VH);
+    let smooth=1-Math.exp(-dt*(settings.reducedMotion?10:7));
+    c.x+= (tx-c.x)*smooth;c.y+=(ty-c.y)*smooth;
+}
+function fixedStep(dt) {
+    if(screen!=="play" || !G)return;
+    G.time+=dt;G.frame++;
+    if(G.mission.done){
+        effectsStep(dt);G.completePending=Math.max(0,G.completePending-dt);
+        if(G.completePending===0){screen="report";stopAudio();saveProgress();}
+    }else{
+        worldStep(dt);frogStep(dt);tongueStep(dt);
+        if(!G.mission.done && G.boss)bossStep(dt);
+        if(!G.mission.done)missionStep(dt);
+        effectsStep(dt);audioStep(dt);cameraStep(dt);
+        G.saveAge+=dt;if(G.saveAge>=5){G.saveAge=0;saveProgress();}
+    }
+}
+function advanceSimulation(delta) {
+    if(!finite(delta)||delta<0||screen!=="play")return;
+    accumulator+=Math.min(delta,.1);let steps=0;
+    while(accumulator+1e-9>=STEP && steps<6 && screen==="play") {fixedStep(STEP);accumulator-=STEP;steps++;}
+    if(accumulator<0)accumulator=0;if(accumulator>STEP*6)accumulator=0;
+}
+function tick(delta) {
+    let now=Date.now();let dt=finite(delta)?delta:(frameClock?Math.max(0,(now-frameClock)/1000):1/30);
+    frameClock=now;advanceSimulation(dt);publish();
+}
+// Camera framing is presentation-only. Rotation or view changes retain physics and progress.
+function closeCamera() {VW=660;publish();}
+function toggleCamera() {VW=VW===1100?660:1100;publish();}
+function beginMobileGame() {VW=660;beginGame();}
+function rescueButton() {if(screen==="play")respawn();}
+function _init() {
+    let data=readProgress();
+    if(data)applyProgress(data);else{migrateLegacyProfile();setupStage(0);}
+    screen="welcome";clearInput();
+    if(!inputInstalled){
+        window.addEventListener("keydown",keyDown);window.addEventListener("keyup",keyUp);window.addEventListener("blur",loseFocus);inputInstalled=true;
+    }
+    publish();
+}
+function _destroy() {
+    clearInput();saveProgress();stopAudio();
+    if(inputInstalled){window.removeEventListener("keydown",keyDown);window.removeEventListener("keyup",keyUp);window.removeEventListener("blur",loseFocus);inputInstalled=false;}
+}

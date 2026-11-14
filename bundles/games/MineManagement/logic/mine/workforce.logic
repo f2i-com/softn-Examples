@@ -1,0 +1,253 @@
+// The robot crew out of the cab, and where everyone is. Idle robots walk back to the charging
+// compound and recharge (updateCrew). The site repeater's position reports feed Locate, the
+// Operations map and waypoints that follow a unit (refreshTracking, trackUnit). refreshWorkforce
+// builds the Workforce tab (robotRows) and the crew counts in hud.
+// Assignment: robot.assigned is a truck id, 0 for an unassigned (reserve) robot, or -1 for loader
+// duty at the excavator (Mel, from the start); truck.operator_id is that robot's id, or 0.
+// pitDispatch (fleet.logic) pairs them; validState checks that both ends exist.
+// State: locationTelemetry (not saved); each robot's x and z on foot, battery and walk animation
+// fields; S.waypoint's target, id and at while it follows a unit.
+// Callers: updateCrew from stepSimulation; refreshTracking and refreshWorkforce from refreshUI;
+// locateRobot and recallOperator from tablet/workforce.ui; trackUnit also from selectTruck.
+
+// ---------- Idle robots ----------
+
+// Every simulation step: each robot that is not driving an active truck and not on loader duty
+// walks (2.2 m/s) to its spot at the charging compound (x 25, 31 or 37, z 163) and charges 0.18% a
+// second on the way and once there, unless a battery incident has knocked out charging. A robot
+// whose truck is parked at the crusher end also charges in stepSimulation.
+function updateCrew(dt) {
+  for (var i = 0; i < S.robots.length; i++) {
+    var b = S.robots[i];
+    if (b.assigned > 0) {
+      var t = getTruck(b.assigned);
+      if (t && t.active) continue;
+    }
+    if (b.assigned === -1) continue;
+    var oldX = b.x,
+      oldZ = b.z,
+      target = { x: 25 + (i % 3) * 6, z: 163 },
+      distance = dist2(b, target),
+      f = distance > 0.01 ? Math.min(1, (dt * 2.2) / distance) : 1;
+    b.x = lerp(b.x, target.x, f);
+    b.z = lerp(b.z, target.z, f);
+    // Walk animation for world/actors.logic: stride phase, a 0 to 1 blend into walking, and facing.
+    var moved = Math.hypot(b.x - oldX, b.z - oldZ);
+    b.walkPhase = (b.walkPhase || 0) + moved * 5;
+    b.walkBlend = lerp(b.walkBlend || 0, moved > 0.001 ? 1 : 0, Math.min(1, dt * 8));
+    if (moved > 0.001) b.walkHeading = Math.atan2(b.x - oldX, b.z - oldZ);
+    if (incidentMods.battery) b.battery = Math.min(100, b.battery + dt * 0.18);
+  }
+}
+
+// ---------- Position reports and tracking ----------
+
+// Small location snapshots at the existing UI cadence; no additional render loop.
+// The latest reported position of every truck and robot, as { kind, id, x, z, at }. refreshTracking
+// replaces it only while the site repeater works (S.relay); while the repeater is down the last
+// snapshot stays, so Locate and following waypoints show last known positions.
+var locationTelemetry = [];
+
+// Clears the snapshot and the map's truck markers, for a new or reloaded game (core/session.logic).
+function resetTelemetry() {
+  locationTelemetry = [];
+  mapRows = [];
+}
+
+// Where a robot really is: at the deployed excavator on loader duty, in its truck while the truck
+// is active, otherwise on foot.
+function robotLocation(b) {
+  if (b.assigned === -1) return excavatorLocation(S.activeExcavator);
+  var t = b.assigned > 0 ? getTruck(b.assigned) : null;
+  return t && t.active ? { x: t.x, z: t.z } : { x: b.x, z: b.z };
+}
+
+// The latest report for a unit (kind 'truck' or 'robot'), or null if there is none.
+function reportedLocation(kind, id) {
+  for (var i = 0; i < locationTelemetry.length; i++) {
+    var p = locationTelemetry[i];
+    if (p.kind === kind && p.id === id) return p;
+  }
+  return null;
+}
+
+// Takes a new snapshot while the repeater is up, moves a following waypoint to its unit's latest
+// report, and sets hud.tracking: live, or how old the last report is.
+function refreshTracking() {
+  if (S.relay) {
+    var a = [];
+    for (var i = 0; i < S.trucks.length; i++) {
+      var t = S.trucks[i];
+      a.push({ kind: 'truck', id: t.id, x: t.x, z: t.z, at: S.time });
+    }
+    for (var j = 0; j < S.robots.length; j++) {
+      var b = S.robots[j],
+        p = robotLocation(b);
+      a.push({ kind: 'robot', id: b.id, x: p.x, z: p.z, at: S.time });
+    }
+    locationTelemetry = a;
+  }
+  var w = S.waypoint;
+  if (w && w.target && S.relay) {
+    var p = reportedLocation(w.target, w.id);
+    if (p) {
+      w.x = p.x;
+      w.z = p.z;
+      w.at = p.at;
+    }
+  }
+  hud.tracking =
+    w && w.target
+      ? S.relay
+        ? 'LIVE TRACKING'
+        : 'LAST KNOWN / ' + Math.max(0, Math.round(S.time - (w.at || 0))) + ' s ago'
+      : '';
+}
+
+// Puts a waypoint on a truck or robot that follows its reports (S.waypoint.target, id and at).
+// Returns false, with a radio warning, if the unit has never been reported. Used by selectTruck
+// (fleet.logic) and locateRobot.
+function trackUnit(kind, id, label) {
+  if (screen !== 'play') return false;
+  refreshTracking();
+  var p = reportedLocation(kind, id);
+  if (!p) {
+    notify(
+      'PIT',
+      'No position report available. Repair the telemetry repeater to locate this unit.',
+      'warning'
+    );
+    return false;
+  }
+  setWaypoint(p.x, p.z, label);
+  S.waypoint.target = kind;
+  S.waypoint.id = id;
+  S.waypoint.at = p.at;
+  notify(
+    'PIT',
+    label +
+      (S.relay
+        ? ' marked. The waypoint follows its reported position.'
+        : ' marked at its last reported position. Repair the repeater for updates.')
+  );
+  return true;
+}
+
+// "Locate operator" (Workforce tab): follows the robot with a waypoint and lowers the tablet so the
+// player can go there.
+function locateRobot(id) {
+  var b = getBot(id);
+  if (!b) return;
+  if (trackUnit('robot', id, b.name + ' / operator')) {
+    tablet = false;
+    takeMouse();
+  }
+  refreshUI();
+}
+
+// ---------- Workforce tab ----------
+
+// "Return & charge" (Workforce tab): recalls the robot's truck (recallTruck), which parks after its
+// next tip so the robot can charge.
+function recallOperator(id) {
+  if (screen !== 'play') return;
+  var b = getBot(id),
+    t = b && b.assigned > 0 ? getTruck(b.assigned) : null;
+  if (!t || !t.active || t.phase === 'manual' || t.recall) return;
+  recallTruck(t.id);
+}
+
+// Builds robotRows for the Workforce tab: each robot's job, status, note and colour, with its
+// profile and rapport from crew.logic; and the crew counts, recruit button and repeater note in
+// hud. Called by refreshUI.
+function refreshWorkforce() {
+  var bots = [],
+    working = 0,
+    charging = 0,
+    available = 0;
+  for (var i = 0; i < S.robots.length; i++) {
+    var b = S.robots[i],
+      t = b.assigned > 0 ? getTruck(b.assigned) : null,
+      exc = b.assigned === -1;
+    var status = 'READY',
+      note = 'Charged and available for dispatch.',
+      color = '#8bd8c2';
+    if (exc) {
+      status = manualLoader()
+        ? 'PLAYER AT CONTROLS'
+        : S.deployment.remaining
+          ? 'RELOCATING'
+          : !loaderAvailable()
+            ? 'LOADER HELD'
+            : 'LOADER DUTY';
+      note = 'Dedicated to the deployed excavator.';
+      working++;
+    } else if (t && t.active) {
+      status = phaseLabel(t);
+      note = t.recall
+        ? 'Returning after this load; charging starts once parked.'
+        : t.fault
+          ? 'Open the field alert to service the stopped truck.'
+          : b.battery < 20
+            ? 'Recall after this load, or visit the charging bay.'
+            : 'Assigned to the haul cycle.';
+      if (t.fault || t.stopped || b.battery < 20) color = '#edb780';
+      working++;
+    } else if (b.battery < 99.95) {
+      status = 'CHARGING';
+      note = 'Recharging at the compound.';
+      charging++;
+    } else {
+      available++;
+      note = t
+        ? 'Ready for ' + t.external_id + '. Start fleet to dispatch.'
+        : 'Start fleet to assign an uncrewed truck.';
+    }
+    // Below 8% a driver cannot be dispatched (pitDispatch), so say so whatever the status.
+    if (!exc && b.battery < 8) {
+      status = 'CHARGE REQUIRED';
+      color = '#f0a18a';
+      note =
+        t && t.active
+          ? 'Battery exhausted or too low. Use the charging bay or field service.'
+          : 'Charge to at least 8% before dispatch.';
+    }
+    var profile = crewProfiles[b.id - 1],
+      memory = crewMemory(b.id);
+    bots.push({
+      id: b.id,
+      name: b.name,
+      trait: b.trait,
+      history: profile.history,
+      preference: profile.preference,
+      specialty: profile.specialty,
+      quirk: profile.quirks[memory ? memory.quirk : 0],
+      rapport: memory ? memory.rapport : 20,
+      battery: Math.round(b.battery),
+      job: exc
+        ? 'EXC-0' + S.activeExcavator + ' / excavator'
+        : t
+          ? t.external_id + ' / haul operator'
+          : 'Unassigned / reserve',
+      color: b.color,
+      style: { width: clamp(b.battery, 0, 100) + '%', background: b.battery < 20 ? '#edb780' : '#8bd8c2' },
+      skill: Math.round(b.skill * 100) + '%',
+      status: status,
+      statusStyle: { color: color },
+      note: note,
+      locatable: !!reportedLocation('robot', b.id),
+      canRecall: !!(t && t.active && t.phase !== 'manual' && !t.recall),
+      recall: t && t.recall ? 'Return requested' : 'Return & charge'
+    });
+  }
+  robotRows = bots;
+  hud.crewWorking = working;
+  hud.crewCharging = charging;
+  hud.crewReady = available;
+  hud.recruitment =
+    S.robots.length >= 6 ? 'Roster complete / 6 operators' : 'Recruit / ' + money(recruitmentPrice());
+  hud.recruitDisabled = S.robots.length >= 6 || S.cash < recruitmentPrice();
+  hud.crewPositionNote = S.relay
+    ? 'Operator locations update with the site repeater.'
+    : 'Repeater offline. Locate uses last reported positions.';
+}

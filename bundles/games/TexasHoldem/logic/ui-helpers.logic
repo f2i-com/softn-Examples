@@ -246,6 +246,28 @@
     return "Next hand in " + secs + "s..."
   }
 
+  function turnCountdownSeconds() {
+    if (typeof authorityMode === "undefined" || !authorityMode) return 0
+    if (!TableStateClass.isLiveHandPhase(gamePhase)) return 0
+    if (currentTurnSeat < 0) return 0
+    if (typeof authorityTurnDeadlineMs === "undefined" || authorityTurnDeadlineMs <= 0) return 0
+    let rem = Math.ceil((authorityTurnDeadlineMs - Date.now()) / 1000)
+    if (rem < 0) rem = 0
+    if (rem > 99) rem = 99
+    return rem
+  }
+
+  function turnCountdownText() {
+    let secs = turnCountdownSeconds()
+    if (secs <= 0) return ""
+    return secs + "s"
+  }
+
+  function turnCountdownUrgent() {
+    let secs = turnCountdownSeconds()
+    return secs > 0 && secs <= 10
+  }
+
   function topStatusMain() {
     let turn = turnIndicator()
     if (turn) return turn
@@ -257,15 +279,98 @@
     let cd = showdownCountdown()
     if (cd) return cd
     if (gamePhase === TableStateClass.phaseWaiting()) return "Take a seat and deal when ready"
+    let tcd = turnCountdownText()
+    if (tcd) return "Pot $" + pot + " · " + tcd + " left"
     return "Pot $" + pot
   }
 
+  function rankPluralName(r) {
+    if (r === 14) return "Aces"
+    if (r === 13) return "Kings"
+    if (r === 12) return "Queens"
+    if (r === 11) return "Jacks"
+    if (r === 10) return "Tens"
+    if (r === 6) return "Sixes"
+    return r + "s"
+  }
+
+  function heroHandPill() {
+    if (mySeat < 0 || gamePhase === TableStateClass.phaseWaiting()) return ""
+    if (myStatus === TableStateClass.statusFolded() || myStatus === TableStateClass.statusSittingOut()) return ""
+    if (!myHoleCards || myHoleCards.length !== 2) return ""
+    if (myHoleCards[0] < 0 || myHoleCards[1] < 0) return ""
+    if (myHandName) return myHandName
+    let r1 = cardRank(myHoleCards[0])
+    let r2 = cardRank(myHoleCards[1])
+    if (r1 === r2) return "Pocket " + rankPluralName(r1)
+    let hi = r1 >= r2 ? r1 : r2
+    let lo = r1 >= r2 ? r2 : r1
+    let suited = cardSuit(myHoleCards[0]) === cardSuit(myHoleCards[1])
+    return rankName(hi) + "-" + rankName(lo) + (suited ? " Suited" : " Offsuit")
+  }
+
+  function syncTopbarStatusText() {
+    if (typeof authorityMode !== "undefined" && authorityMode) {
+      if (syncConnected) return "server · " + (syncPeers + 1) + " seated"
+      if (syncConnecting) return "reconnecting..."
+      return "server offline"
+    }
+    if (syncConnected) return syncPeers + " peers"
+    if (syncConnecting) return "connecting..."
+    if (botSeats && botSeats.length > 0) return "solo · " + botSeats.length + " bots"
+    return "local"
+  }
+
+  function syncModalStatusTitle() {
+    if (typeof authorityMode !== "undefined" && authorityMode) {
+      if (syncConnected) return "Connected to Online Table Server"
+      if (syncConnecting) return "Reconnecting to Table Server..."
+      return "Disconnected from Table Server"
+    }
+    if (syncConnected) return "Connected (Peer Sync)"
+    if (syncConnecting) return "Connecting..."
+    if (botSeats && botSeats.length > 0) return "Local Solo Table (vs Bots)"
+    return "Local Table (Offline)"
+  }
+
+  function syncModalStatusDetail() {
+    if (typeof authorityMode !== "undefined" && authorityMode) {
+      if (syncConnected) return (syncPeers + 1) + " player(s) online · deck & cards stay on " + authorityUrl
+      if (syncConnecting) return "Polling HTTP authority at " + authorityUrl + "..."
+      return "No response from " + authorityUrl
+    }
+    if (syncConnected) return syncPeers + " peer(s) synced via WebRTC"
+    if (syncConnecting) return "Establishing WebRTC peer connection..."
+    if (botSeats && botSeats.length > 0) return "Playing locally with " + botSeats.length + " bot(s). Share the room code to sync with friends."
+    return "Not connected to remote peers"
+  }
+
   function statusBadgeColor(status) {
-    if (status === TableStateClass.statusActive()) return "#22c55e"
+    if (status === TableStateClass.statusActive()) return "#059669"
     if (status === TableStateClass.statusAllIn()) return "#f59e0b"
     if (status === TableStateClass.statusFolded()) return "#6b7280"
     if (status === TableStateClass.statusSittingOut()) return "#6b7280"
     return "#a1a1aa"
+  }
+
+  function seatActionBadgeText(n) {
+    let p = getPlayerAtSeat(n)
+    if (!p || !p.data) return ""
+    let s = p.data.status || ""
+    if (s === TableStateClass.statusFolded()) return "FOLD"
+    if (s === TableStateClass.statusAllIn()) return "ALL-IN"
+    if (s === TableStateClass.statusSittingOut()) return "SIT OUT"
+    if (TableStateClass.isLiveHandPhase(gamePhase) && s === TableStateClass.statusActive() && p.data.hasActed && (p.data.bet || 0) === 0) {
+      return "CHECK"
+    }
+    return ""
+  }
+
+  function seatActionBadgeBg(n) {
+    let label = seatActionBadgeText(n)
+    if (label === "ALL-IN") return "#d97706"
+    if (label === "CHECK") return "#059669"
+    return "#4b5563"
   }
 
   // --- Per-Seat Display Helpers (for inline rendering) ---

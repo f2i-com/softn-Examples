@@ -29,7 +29,7 @@
       <span>{footerText}</span>
       <span className="os-credits">
         <a className="os-credit-link" href="https://www.formlogic.com" target="_blank" rel="noopener">Powered by FormLogic</a>
-        <span className="os-dim">· </span>
+        <span className="os-dim">{" · "}</span>
         <a className="os-credit-link" href="https://www.lance.name" target="_blank" rel="noopener">Created by Lance</a>
       </span>
       <span className="os-dim os-performance">{fpsLabel}</span>

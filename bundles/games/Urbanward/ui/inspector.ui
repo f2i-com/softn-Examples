@@ -1,0 +1,79 @@
+<div className="uw-inspector">
+  <div className="uw-inspector-header">
+    <div className="uw-between"><span className="uw-eyebrow">THE MAYOR'S DESK</span><button className="uw-small-button" title="Hide inspector" @click={uwToggleInspector}>×</button></div>
+    <div className="uw-inspector-tabs">
+      <button className={panel === "overview" ? "uw-small-button uw-active" : "uw-small-button"} @click={() => uwSetPanel("overview")}>City</button>
+      <button className={panel === "lot" ? "uw-small-button uw-active" : "uw-small-button"} @click={() => uwSetPanel("lot")}>Lot</button>
+      <button className={panel === "district" ? "uw-small-button uw-active" : "uw-small-button"} @click={() => uwSetPanel("district")}>Ward</button>
+      <button className={panel === "advisors" ? "uw-small-button uw-active" : "uw-small-button"} @click={() => uwSetPanel("advisors")}>Advice</button>
+    </div>
+  </div>
+  <div className="uw-inspector-scroll">
+    #if (panel === "overview")
+      <div className="uw-wellbeing-card">
+        <span className="uw-eyebrow">CITY WELLBEING</span>
+        <div className="uw-wellbeing-heading"><div className="uw-score-ring" style={{background:cityWellbeing.ring}}><span>{cityWellbeing.score}<small>/ 100</small></span></div><div><span className="uw-section-title">{cityWellbeing.label}</span><span className="uw-muted">{cityWellbeing.trend}</span></div></div>
+        <button className="uw-small-button uw-gap" @click={() => uwOpenModal("ratings")}>Explore city ratings ↗</button>
+      </div>
+      <div className="uw-compact-ratings">
+        #each (rating in cityRatings)
+          <div className="uw-compact-rating" title={rating.detail}><div className="uw-between"><span>{rating.label}</span><strong style={{color:rating.color}}>{rating.score}</strong></div><div className="uw-rating-track"><span style={{width:rating.width,background:rating.color}} /></div></div>
+        #end
+      </div>
+      <span className="uw-section-title">Room to grow</span>
+      <div className="uw-demand">
+        <div className="uw-demand-cell"><span className="uw-demand-value">{hud.demandR}</span><span className="uw-demand-label">HOMES</span></div>
+        <div className="uw-demand-cell uw-demand-c"><span className="uw-demand-value">{hud.demandC}</span><span className="uw-demand-label">COMMERCE</span></div>
+        <div className="uw-demand-cell uw-demand-i"><span className="uw-demand-value">{hud.demandI}</span><span className="uw-demand-label">INDUSTRY</span></div>
+      </div>
+      <span className="uw-muted">Demand runs from −100 to +100. Positive values encourage new construction.</span>
+      #each (metric in metrics)
+        <div className="uw-metric"><span className="uw-micro">{metric.label}</span><div><span className="uw-metric-value">{metric.value}</span></div><span className="uw-metric-detail">{metric.detail}</span></div>
+      #end
+      <div className="uw-minimap-wrap">
+        <div className="uw-minimap">
+          #each (cell in minimapCells)
+            <button className="uw-mini-cell" style={{background:cell.colour}} title={cell.title} tabIndex={-1} @click={() => uwMapJump(cell.id)} />
+          #end
+        </div>
+        <span className="uw-minimap-text">REGIONAL MAP<br />Click to navigate.<br /><br />{settings.map} lots<br />{settings.scenario}</span>
+      </div>
+    #end
+    #if (panel === "lot")
+      <span className="uw-eyebrow">{selected.subtitle}</span><span className="uw-title">{selected.title}</span>
+      <div className="uw-gap"><span className="uw-muted">{selected.description}</span></div>
+      #each (row in selected.rows)
+        <div className="uw-key-value"><span>{row.label}</span><span>{row.value}</span></div>
+      #end
+      #if (selected.exists)
+        <button className="uw-button uw-gap" @click={uwShowDistrict}>Explore this district ↗</button>
+      #end
+      <div className="uw-divider" />
+      <span className="uw-micro">Precise grid placement</span>
+      <div className="uw-coordinates"><span>X</span><input type="number" :bind={cursorX} aria-label="Grid X coordinate" /><span>Z</span><input type="number" :bind={cursorZ} aria-label="Grid Z coordinate" /></div>
+      <div className="uw-row uw-gap"><button className="uw-small-button" @click={() => uwSelectByCoordinates(false)}>Inspect here</button><button className="uw-small-button" disabled={activeTool === "inspect"} @click={() => uwSelectByCoordinates(true)}>Place tool here</button></div>
+    #end
+    #if (panel === "district")
+      <span className="uw-eyebrow">{selectedDistrict.identity}</span><span className="uw-title">{selectedDistrict.name}</span>
+      <div className="uw-gap"><span className="uw-muted">{selectedDistrict.description}</span></div>
+      <div className="uw-key-value"><span>Residents</span><span>{selectedDistrict.population}</span></div>
+      <div className="uw-key-value"><span>Land value</span><span>{selectedDistrict.value}</span></div>
+      <div className="uw-gap"><span className="uw-form-label">District name</span><input :bind={renameText} maxLength={36} aria-label="District name" /><button className="uw-small-button uw-gap" @click={uwRenameDistrict}>Rename district</button></div>
+      <div className="uw-divider" />
+      <span className="uw-section-title">Planning focus</span>
+      <div className="uw-stack">
+        <button className={selectedDistrict.focus === "balanced" ? "uw-button uw-active" : "uw-button"} @click={() => uwDistrictFocus("balanced")}>Balanced development</button>
+        <button className={selectedDistrict.focus === "green" ? "uw-button uw-active" : "uw-button"} @click={() => uwDistrictFocus("green")}>Green neighbourhood</button>
+        <button className={selectedDistrict.focus === "employment" ? "uw-button uw-active" : "uw-button"} @click={() => uwDistrictFocus("employment")}>Local employment</button>
+        <button className={selectedDistrict.focus === "heritage" ? "uw-button uw-active" : "uw-button"} @click={() => uwDistrictFocus("heritage")}>Heritage conservation</button>
+      </div>
+      <div className="uw-gap"><span className="uw-muted">Green focus improves amenity but discourages industry. Employment encourages business growth. Heritage caps future development at two levels.</span></div>
+    #end
+    #if (panel === "advisors")
+      <span className="uw-section-title">What the city is telling you</span>
+      #each (advice in advisorRows)
+        <div className="uw-adviser"><span className="uw-adviser-title">{advice.title}</span><span className="uw-adviser-text">{advice.text}</span><button className="uw-small-button" @click={() => uwAdvisorAction(advice.action)}>Take a look ↗</button></div>
+      #end
+    #end
+  </div>
+</div>

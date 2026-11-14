@@ -1,7 +1,7 @@
 {
   "name": "AI Chat",
-  "version": "1.1.0",
-  "description": "A chat with a small language model that downloads once and runs entirely in your browser; nothing you type leaves the machine",
+  "version": "1.2.0",
+  "description": "Private on-device LLM chat with Qwen3-0.6B, conversation history, reasoning mode toggle, system prompt tuning, and starter prompts",
   "main": "ui/main.ui",
   "icon": "assets/icon.svg",
   "files": {
@@ -22,8 +22,8 @@
   "config": {
     "window": {
       "title": "AI Chat",
-      "width": 1000,
-      "height": 700
+      "width": 1040,
+      "height": 720
     },
     "theme": {
       "primary": "#10b981",

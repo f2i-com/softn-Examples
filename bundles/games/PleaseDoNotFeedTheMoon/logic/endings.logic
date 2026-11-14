@@ -1,0 +1,30 @@
+// Ending precedence is intentional: cosmic > union > excess mass > refusal > repair > friendship.
+let ENDINGS = [
+ {id:"friend",title:"A light left on for you",stamp:"A VERY GOOD NEIGHBOUR",text:"One snack after closing. That is the agreement. The moon lights the road for the last customer, carries the bins without being asked, and waits while you lock up. Tomorrow it will be here. Not because it is hungry.",art:"tender"},
+ {id:"overfed",title:"Mostly moon",stamp:"PREMISES RECLASSIFIED",text:"The shop occupies the last non-lunar square metre of town. Your stockroom is a crater. There is only one customer, but it is very loyal. The franchise inspector has requested a much longer ladder.",art:"surprised"},
+ {id:"stable",title:"The night stays where it belongs",stamp:"ORBITS WITHIN TOLERANCE",text:"You find a balance between appetite and atmosphere. The bottles settle. The frost melts. Nothing catches fire. The moon leaves a small, luminous tip on the counter. For once, the morning shift has no questions.",art:"sleepy"},
+ {id:"refusal",title:"Employee of the actual month",stamp:"ZERO UNAUTHORISED SNACKS",text:"Seven nights. You never feed it. The certificate is printed on perfectly ordinary paper. Outside, the moon gives the closed sign a very long look. It is not angry. It has simply never met anyone like you.",art:"suspicious"},
+ {id:"union",title:"Under collective moonagement",stamp:"CELESTIAL OVERTIME APPROVED",text:"The moon, the fluorescent lights and the refrigerator form a union. You become its first terrestrial member. Everyone gets breaks. Night shifts are paid properly. Head office is less worried about gravity than this precedent.",art:"listening"},
+ {id:"cosmic",title:"Please do not feed the employee",stamp:"ADDRESS NO LONGER APPLICABLE",text:"Beyond the window is another convenience store. Someone behind its counter is holding a little packet of cheese toward you. For the first time, you understand the moon's expression. The door chime rings on both sides.",art:"confused"},
+ {id:"manager",title:"Under new moonagement",stamp:"INTERNAL APPOINTMENT",text:"The moon buys the shop. It watches every shift, approves an extravagant snack budget, and insists that the staff room have a window. It is not a normal ending. You stopped expecting one several nights ago.",art:"watching"}
+];
+function resolveEnding(s) {
+ if(s.flags.cosmic)return "cosmic";
+ if(s.flags.union)return "union";
+ if(s.mass>=90&&s.gravity>=62)return "overfed";
+ if(s.totalFeeds===0&&s.stage>=6)return "refusal";
+ if(s.totalFeeds>=6&&(s.flags.truce||s.flags.tides||s.groundings>=3)&&s.heat>=7&&s.heat<=34&&s.gravity<=26&&s.mass<90)return "stable";
+ if(s.bond>=65)return "friend";
+ return "manager";
+}
+function endingData(id){for(let i=0;i<ENDINGS.length;i++)if(ENDINGS[i].id===id)return ENDINGS[i];return ENDINGS[6];}
+function closeReady(s) { return !s.shot && (s.served>=3||s.nightFeeds>=5||s.night>=s.duration); }
+function shouldEnd(s) { return s.stage>=6||s.flags.cosmic||s.flags.union||(s.mass>=90&&s.gravity>=62); }
+function nextNight(s) {
+ s.stage=Math.min(6,s.stage+1);s.night=0;s.served=0;s.nightFeeds=0;s.duration=110+s.stage*5;s.queueClock=2;
+ s.customers=[];s.phase="play";s.refusedThisNight=false;s.awaitingClose=false;s.offering=false;
+ s.coins+=18;s.health=Math.max(80,s.health);
+ for(let i=0;i<s.stock.length;i++)s.stock[i]=Math.min(40,s.stock[i]+(ITEMS[i].aisle<2?3:1));
+ message(s,NIGHT_NOTES[s.stage]);
+ s.serial++;s.reaction={id:s.serial,kind:"quiet",title:"Night "+(s.stage+1)+" / "+NIGHT_NAMES[s.stage],text:NIGHT_NOTES[s.stage],time:7,item:-1};
+}

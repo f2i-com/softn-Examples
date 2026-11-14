@@ -1,0 +1,59 @@
+// The pause screen's settings buttons (ui/screens/pause.ui): sound, graphics quality, reduced
+// motion, touch pads and look sensitivity. Music and the radio voice are in core/audio.logic.
+// The settings are globals (core/state.logic, controlsEnabled and controlsChosen in
+// player/touch-controls.logic, lookSensitivity here). saveGame() (core/persistence.logic) copies
+// them into S.settings and continueGame() (core/session.logic) restores them, so a new setting
+// needs a line in both. Some buttons save at once; the others ride along with the next save.
+
+// Mutes everything: the host's master volume goes to 0 (0.65 is the normal level, as in
+// startAudio), and sfx() and radioCue() stop playing anything. Stored with the next save.
+function toggleMute() {
+  muted = !muted;
+  try {
+    softn.audio.setVolume(muted ? 0 : 0.65);
+  } catch (e) {}
+  if (S) S.settings.muted = muted;
+}
+
+// Cycles graphics quality: low, balanced, high. ui/main.ui keys Scene3D on quality, so the scene
+// remounts: the asset state is cleared here, and `ready` comes back once the new scene has drawn
+// and its models have loaded (refreshAssetStatus in world/scene.logic). Stored with the next save.
+function cycleQuality() {
+  quality = quality === 'low' ? 'balanced' : quality === 'balanced' ? 'high' : 'low';
+  modelStatuses = {};
+  renderReady = false;
+  ready = false;
+  refreshLighting();
+  buildWorldFrame();
+  sfx('click');
+}
+
+// Reduced motion. With motion off, camera shake and much of the cosmetic movement are skipped
+// (grep for `motion`). Stored with the next save.
+function toggleMotion() {
+  motion = !motion;
+  sfx('click');
+}
+
+// Shows or hides the on-screen touch pads (also the HUD's Touch pads button). Once the player has
+// chosen, touchInput (player/camera-look.logic) stops switching them on by itself. The mouse is
+// released and taken again, so the look mode (pointer lock or drag) matches the new setting.
+function toggleScreenControls() {
+  controlsEnabled = !controlsEnabled;
+  controlsChosen = true;
+  releaseMouse();
+  if (screen === 'play' && !tablet) takeMouse();
+  refreshUI();
+  saveGame(true);
+}
+
+// Look sensitivity: 0.7 (gentle), 1 (standard) or 1.4 (fast). It scales Scene3D's mouse look
+// (ui/main.ui) and the touch look (player/touch-controls.logic). continueGame accepts only these
+// three values from a save.
+var lookSensitivity = 1;
+
+function cycleSensitivity() {
+  lookSensitivity = lookSensitivity < 1 ? 1 : lookSensitivity === 1 ? 1.4 : 0.7;
+  resetInputs();
+  saveGame(true);
+}

@@ -1,0 +1,754 @@
+<!--
+  The heads-up display while playing: the top bar (tonnes, clock, cash, buttons), the current
+  objective, radio messages, the manual-haul panel, the interaction prompt and the vehicle readout.
+  Values come from the `hud` snapshot that refreshUI() (logic/core/ui-state.logic) writes four times
+  a second. The on-screen touch pads are a page of their own, placed at the end.
+
+  Modifier classes on the root:
+    mm-hud-controls  on-screen pads are showing (touch), so panels move out of their way
+    mm-hud-truck     the player is driving a haul truck, so the haul panel takes the top left
+-->
+<import TouchControls from="./touch-controls.ui" />
+
+<section class="mm-hud" class:mm-hud-controls={controlsEnabled} class:mm-hud-truck={hud.haulVisible} if={screen === 'play'}>
+  <header class="mm-topbar">
+    <div class="mm-hud-brand">
+      <img src="assets/icon.svg" width="34" height="34" alt="">
+      <div>
+        <span class="mm-hud-title">MINE MANAGEMENT</span>
+        <span class="mm-hud-sub">{hud.heading} / {hud.location}</span>
+      </div>
+    </div>
+    <div class="mm-production">
+      <div class="mm-inline">
+        <span class="mm-label">SHIFT {hud.shift}</span>
+        <span class="mm-production-value">{hud.tonnes}<span>/ {hud.target} t</span></span>
+      </div>
+      <div class="mm-meter"><div style:width={totalProgress + '%'}></div></div>
+    </div>
+    <div class="mm-hud-finance">
+      <span class="mm-clock">{hud.clock}</span>
+      <span class="mm-funds">{hud.money}</span>
+    </div>
+    <button class="mm-hud-button" type="button" @click={toggleTablet}>PIT tablet <kbd>T</kbd></button>
+    <button class="mm-hud-button mm-controls-toggle" type="button" @click={toggleScreenControls}>{controlsEnabled ? 'Hide pads' : 'Touch pads'}</button>
+    <button class="mm-hud-button mm-pause-button" type="button" @click={pauseGame} aria-label="Pause">Ⅱ</button>
+  </header>
+
+  #if (!tablet)
+    <span class="mm-crosshair" aria-hidden="true">+</span>
+    <p class="mm-compact-navigation" if={hud.waypoint !== ''}>◎ {hud.waypoint}</p>
+
+    <!-- What to do next. Hidden while repairing (the field kit says it) or hauling (the haul panel does). -->
+    <aside class="mm-objective" if={!isRepairing && !hud.haulVisible}>
+      <span class="mm-label">{hud.goal}</span>
+      <p class="mm-objective-text">{hud.goalDetail}</p>
+      <span class="mm-small">{hud.checklist}</span>
+      <button class="mm-objective-button" type="button" @click={focusObjective}>Show next step →</button>
+      <span class="mm-waypoint-text" if={hud.waypoint !== ''}>◎ {hud.waypoint}</span>
+      <span class="mm-tracking-note" if={hud.tracking !== ''}>{hud.tracking}</span>
+      <button class="mm-clear-marker" type="button" if={hud.waypoint !== ''} @click={clearWaypoint}>Clear marker ×</button>
+    </aside>
+
+    <!-- The latest radio message, for eight seconds. The Shift log keeps them all. -->
+    <aside class="mm-radio" if={!isRepairing && hud.radio !== ''} aria-live="polite">
+      <span class="mm-radio-mark" aria-hidden="true">▥</span>
+      <div>
+        <span class="mm-radio-name">{hud.speaker}</span>
+        <p>{hud.radio}</p>
+      </div>
+    </aside>
+
+    <!-- Driving a haul truck yourself: where to go and what the bay is doing. -->
+    <aside class="mm-haul-panel" if={hud.haulVisible}>
+      <span class="mm-label">MANUAL HAUL / {hud.driveState}</span>
+      <h3>{hud.haulTitle}</h3>
+      <p class="mm-haul-detail">{hud.haulDetail}</p>
+      <div class="mm-meter"><div style={hud.haulFill}></div></div>
+      <div class="mm-haul-links">
+        <button class="mm-small-button" type="button" @click={guideHaul}>Guide haul →</button>
+        <span>{hud.payload}</span>
+      </div>
+      <span class="mm-waypoint-text" if={hud.waypoint !== ''}>◎ {hud.waypoint}</span>
+    </aside>
+
+    <!-- The prompt for whatever is in reach: "E  Enter site ute". -->
+    <div class="mm-interaction" if={!isRepairing}>
+      <span class="mm-action-text">{hud.action}</span>
+      <span class="mm-small">{hud.actionDetail}</span>
+    </div>
+
+    <aside class="mm-vehicle-hud">
+      <span class="mm-label">{hud.mode}</span>
+      <div class="mm-speed"><span>{hud.speed}</span><span class="mm-label">KM/H</span></div>
+      <span class="mm-drive-state" if={hud.driveState !== ''}>{hud.driveState}</span>
+      <span class="mm-small" if={hud.mode !== 'ON FOOT'}>FUEL {hud.fuel}%</span>
+      <span class="mm-payload" if={hud.payload !== ''}>{hud.payload}</span>
+      <span class="mm-small" if={hud.roadGrade !== ''}>{hud.roadGrade}</span>
+      <span class="mm-condition">{hud.condition}</span>
+      <span class="mm-pace">{hud.pace} / {hud.remaining}</span>
+    </aside>
+
+    <p class="mm-control-strip">
+      <span>WASD move</span><span>E interact</span><span>T tablet</span><span>H horn</span><span>F lamp</span><span>Esc pause</span>
+    </p>
+
+    <TouchControls />
+  #end
+</section>
+
+<style>
+  .mm-hud {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+  }
+  .mm-hud button {
+    pointer-events: auto;
+  }
+  .mm-hud .mm-label {
+    color: #d7d4b9;
+  }
+
+  /* ---------- Top bar ---------- */
+  .mm-topbar {
+    display: flex;
+    align-items: center;
+    gap: 25px;
+    padding: 19px 28px 24px;
+    background: linear-gradient(#101d26e8, #101d2680, transparent);
+  }
+  .mm-hud-brand {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    min-width: 210px;
+  }
+  .mm-hud-title {
+    display: block;
+    font-size: 11px;
+    font-weight: 750;
+    letter-spacing: 1.2px;
+  }
+  .mm-hud-sub {
+    display: block;
+    margin-top: 3px;
+    font-size: 9px;
+    letter-spacing: 1.3px;
+    color: #d0d5bb;
+  }
+  .mm-production {
+    width: 260px;
+    max-width: 30vw;
+    margin-left: auto;
+  }
+  .mm-production .mm-inline {
+    justify-content: space-between;
+    margin-bottom: 7px;
+  }
+  .mm-production-value {
+    font-size: 20px;
+    font-weight: 600;
+    color: #fff5df;
+    white-space: nowrap;
+  }
+  .mm-production-value span {
+    margin-left: 0.22em;
+    font-size: 12px;
+    font-weight: 400;
+    color: #d4d3be;
+  }
+  .mm-hud-finance {
+    min-width: 85px;
+    text-align: right;
+  }
+  .mm-clock {
+    display: block;
+    font-size: 22px;
+    line-height: 1;
+    letter-spacing: -0.5px;
+    font-variant-numeric: tabular-nums;
+  }
+  .mm-funds {
+    display: block;
+    margin-top: 5px;
+    font-size: 12px;
+    color: #e5c791;
+  }
+  .mm-hud-button {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 10px 13px;
+    background: #1d303bd9;
+    border: 1px solid #8da9b14d;
+    border-radius: 7px;
+    box-shadow: 0 2px 8px #0001;
+    color: #eceddc;
+    font-size: 11px;
+  }
+  .mm-hud-button kbd {
+    display: inline-block;
+    margin-left: 10px;
+    padding: 0 4px;
+    border: 1px solid #ffffff4a;
+    font: inherit;
+    font-size: 10px;
+    opacity: 0.8;
+  }
+  .mm-controls-toggle {
+    font-size: 10px;
+  }
+
+  /* ---------- Crosshair and the compact waypoint line ---------- */
+  .mm-crosshair {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    font: 17px/1 monospace;
+    color: #ffffffbd;
+    text-shadow: 0 1px 3px #000;
+  }
+  .mm-compact-navigation {
+    display: none;
+  }
+
+  /* ---------- Objective card (bottom left) ---------- */
+  .mm-objective {
+    position: absolute;
+    left: 28px;
+    bottom: 90px;
+    width: 295px;
+    padding: 16px 18px;
+    background: linear-gradient(110deg, #12232be8, #182a32bb);
+    border: 1px solid #ffffff1c;
+    border-left: 3px solid var(--gold);
+    border-radius: 0 9px 9px 0;
+    box-shadow: var(--shadow);
+    text-shadow: 0 1px 5px #132418;
+  }
+  .mm-objective-text {
+    margin-top: 5px;
+    font-size: 12px;
+    line-height: 1.65;
+    color: #fff4db;
+  }
+  .mm-objective .mm-small {
+    margin-top: 8px;
+    font-size: 10px;
+    color: #b8c8cc;
+  }
+  .mm-objective-button,
+  .mm-clear-marker {
+    display: block;
+    padding: 5px 0;
+    background: transparent;
+    border: 0;
+    text-align: left;
+  }
+  .mm-objective-button {
+    margin-top: 12px;
+    font-size: 11px;
+    color: #f4c77c;
+  }
+  .mm-clear-marker {
+    margin-top: 4px;
+    font-size: 10px;
+    color: #9ebbbb;
+  }
+  .mm-waypoint-text {
+    display: block;
+    margin-top: 11px;
+    font-size: 11px;
+    color: #a3edda;
+  }
+  .mm-tracking-note {
+    display: block;
+    margin-top: 6px;
+    font-size: 9px;
+    letter-spacing: 0.6px;
+    color: #b7ccc9;
+  }
+
+  /* ---------- Radio message (top left) ---------- */
+  .mm-radio {
+    position: absolute;
+    left: 28px;
+    top: 112px;
+    display: flex;
+    gap: 10px;
+    width: 350px;
+    padding: 13px 16px;
+    background: #162a34e8;
+    border: 1px solid #6d969a55;
+    border-left: 3px solid #80c6b9;
+    border-radius: 9px;
+    font-size: 12px;
+    line-height: 1.55;
+    color: #e9ecdb;
+  }
+  .mm-radio-name {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    color: #91d9cd;
+  }
+  .mm-radio-mark {
+    font-size: 21px;
+    color: #8ad6c7;
+  }
+
+  /* ---------- Manual haul panel (top left, while driving a truck) ---------- */
+  .mm-haul-panel {
+    position: absolute;
+    left: 28px;
+    top: 104px;
+    width: 310px;
+    padding: 17px 18px;
+    background: linear-gradient(130deg, #213a43f5, #172e38ed);
+    border: 1px solid #759a9866;
+    border-top: 3px solid #e1b16c;
+    border-radius: 9px;
+    box-shadow: 0 8px 24px #0002;
+    pointer-events: auto;
+  }
+  .mm-haul-panel .mm-label {
+    font-size: 9px;
+  }
+  .mm-haul-panel h3 {
+    margin: 8px 0;
+    font-size: 19px;
+  }
+  .mm-haul-detail {
+    min-height: 36px;
+    font-size: 11px;
+    line-height: 1.65;
+    color: #bdcfd0;
+  }
+  .mm-haul-panel .mm-meter {
+    height: 5px;
+    margin: 14px 0 10px;
+  }
+  .mm-haul-links {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .mm-haul-links > span {
+    font-size: 9px;
+    color: #e5c68d;
+  }
+  /* The haul panel owns the top left, so the radio moves to the right. */
+  .mm-hud-truck .mm-radio {
+    left: auto;
+    right: 28px;
+    top: 104px;
+  }
+
+  /* ---------- Interaction prompt (bottom centre) ---------- */
+  .mm-interaction {
+    position: absolute;
+    left: 50%;
+    bottom: 68px;
+    max-width: 45vw;
+    transform: translateX(-50%);
+    text-align: center;
+    text-shadow: 0 2px 5px #122118;
+  }
+  .mm-action-text {
+    display: block;
+    margin-bottom: 5px;
+    padding: 9px 15px;
+    background: #152a35e8;
+    border: 1px solid #9bb6be33;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    color: #fff2d6;
+  }
+  .mm-action-text:empty {
+    display: none;
+  }
+  .mm-interaction .mm-small {
+    font-size: 10px;
+    color: #ececd2;
+  }
+
+  /* ---------- Vehicle readout (bottom right) ---------- */
+  .mm-vehicle-hud {
+    position: absolute;
+    right: 28px;
+    bottom: 90px;
+    min-width: 150px;
+    padding: 15px 18px;
+    background: linear-gradient(110deg, #15283299, #13242bdc);
+    border: 1px solid #ffffff19;
+    border-radius: 9px;
+    text-align: right;
+    text-shadow: 0 2px 5px #183222;
+  }
+  .mm-speed {
+    display: flex;
+    align-items: baseline;
+    justify-content: flex-end;
+    gap: 7px;
+  }
+  .mm-speed > span:first-child {
+    font-size: 47px;
+    font-weight: 350;
+    letter-spacing: -3px;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+  .mm-drive-state {
+    display: block;
+    margin: 7px 0;
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: #f2c580;
+  }
+  .mm-payload {
+    display: block;
+    margin: 7px 0 4px;
+    font-size: 11px;
+    color: #f0c57d;
+    font-variant-numeric: tabular-nums;
+  }
+  .mm-condition {
+    display: block;
+    margin-top: 7px;
+    font-size: 10px;
+    color: #e3dfbc;
+  }
+  .mm-pace {
+    display: block;
+    margin-top: 12px;
+    font-size: 9px;
+    letter-spacing: 1px;
+    color: #eec884;
+  }
+
+  /* ---------- Keyboard reminder (bottom left) ---------- */
+  .mm-control-strip {
+    position: absolute;
+    left: 28px;
+    bottom: 22px;
+    display: flex;
+    gap: 18px;
+    padding: 8px 12px;
+    background: #11232bc9;
+    border: 1px solid #ffffff15;
+    border-radius: 6px;
+    font-size: 10px;
+    color: #c5d4d6;
+    text-shadow: 0 1px 4px #132415;
+  }
+
+  /* ---------- With the touch pads showing, panels make room for them ---------- */
+  .mm-hud-controls .mm-control-strip {
+    display: none;
+  }
+  .mm-hud-controls .mm-objective {
+    top: 104px;
+    bottom: auto;
+  }
+  .mm-hud-controls .mm-radio {
+    left: auto;
+    right: 24px;
+    top: 104px;
+    width: 300px;
+  }
+  .mm-hud-controls .mm-vehicle-hud {
+    right: 24px;
+    bottom: 356px;
+  }
+  .mm-hud-controls .mm-interaction {
+    bottom: 92px;
+    max-width: calc(100vw - 550px);
+  }
+
+  /* ---------- Smaller screens ---------- */
+  @media (max-width: 1050px) {
+    .mm-hud-brand > div {
+      display: none;
+    }
+    .mm-hud-brand {
+      min-width: 0;
+    }
+    .mm-topbar {
+      gap: 16px;
+    }
+    .mm-hud-controls .mm-interaction {
+      max-width: calc(100vw - 455px);
+    }
+    .mm-hud-controls .mm-radio {
+      width: 270px;
+    }
+  }
+  @media (max-width: 900px) {
+    .mm-topbar {
+      gap: 12px;
+      padding: 17px;
+    }
+    .mm-production {
+      width: 200px;
+    }
+    .mm-clock {
+      font-size: 18px;
+    }
+    .mm-objective {
+      left: 20px;
+      bottom: 100px;
+      width: 240px;
+      padding: 12px;
+    }
+    .mm-radio {
+      left: 20px;
+      top: 100px;
+      width: 290px;
+      font-size: 11px;
+    }
+    .mm-vehicle-hud {
+      right: 20px;
+      bottom: 100px;
+      padding: 12px;
+    }
+    .mm-control-strip {
+      left: 20px;
+      gap: 12px;
+      font-size: 9px;
+    }
+  }
+  @media (max-width: 700px) {
+    .mm-topbar {
+      gap: 6px;
+      padding: max(8px, env(safe-area-inset-top)) 10px 8px;
+    }
+    .mm-hud-brand {
+      display: none;
+    }
+    .mm-production {
+      flex: 1;
+      width: auto;
+      min-width: 0;
+      max-width: none;
+    }
+    .mm-production .mm-label {
+      font-size: 8px;
+    }
+    .mm-production-value {
+      font-size: 18px;
+    }
+    .mm-hud-finance {
+      min-width: 52px;
+    }
+    .mm-clock {
+      font-size: 15px;
+    }
+    .mm-funds {
+      font-size: 10px;
+    }
+    .mm-hud-button {
+      padding: 7px;
+      font-size: 9px;
+    }
+    .mm-hud-button kbd {
+      display: none;
+    }
+    .mm-controls-toggle {
+      max-width: 57px;
+      line-height: 1.2;
+      white-space: normal;
+    }
+    .mm-control-strip {
+      display: none;
+    }
+    .mm-action-text {
+      padding: 7px;
+      font-size: 11px;
+    }
+    /* Without touch pads (a narrow desktop window): the objective and radio move to the top as
+       in the touch layout below, and the prompt and the vehicle readout share the bottom row. */
+    .mm-hud:not(.mm-hud-controls) .mm-objective {
+      top: 80px;
+      bottom: auto;
+      left: 12px;
+      width: calc(100% - 24px);
+      padding: 10px 12px;
+    }
+    .mm-hud:not(.mm-hud-controls) .mm-objective .mm-small {
+      display: none;
+    }
+    .mm-hud:not(.mm-hud-controls) .mm-radio {
+      top: 235px;
+      left: 12px;
+      width: calc(100% - 24px);
+      max-height: 64px;
+      overflow: hidden;
+      padding: 8px 10px;
+      font-size: 10px;
+    }
+    .mm-hud:not(.mm-hud-controls) .mm-vehicle-hud {
+      right: 12px;
+      bottom: 16px;
+      min-width: 0;
+      padding: 10px 12px;
+    }
+    .mm-hud:not(.mm-hud-controls) .mm-interaction {
+      left: 12px;
+      bottom: 16px;
+      max-width: calc(100% - 150px);
+      transform: none;
+      text-align: left;
+    }
+
+    /* The objective card drops its waypoint rows to stay short; the waypoint shows instead as one
+       line under the crosshair. (Clear marker is still on the tablet's Operations map.) */
+    .mm-objective .mm-waypoint-text,
+    .mm-objective .mm-tracking-note,
+    .mm-objective .mm-clear-marker {
+      display: none;
+    }
+    .mm-compact-navigation {
+      position: absolute;
+      top: calc(50% + 20px);
+      left: 50%;
+      display: block;
+      max-width: calc(100% - 32px);
+      overflow: hidden;
+      padding: 5px 9px;
+      transform: translateX(-50%);
+      background: #16323dcc;
+      border: 1px solid #85bdb266;
+      border-radius: 6px;
+      font-size: 10px;
+      color: #c7e2d4;
+      text-align: center;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* With touch pads: the pads take the bottom of the screen, so everything else moves up. */
+    .mm-hud-controls .mm-objective {
+      top: 80px;
+      left: 12px;
+      width: calc(100% - 24px);
+      padding: 10px 12px;
+    }
+    .mm-hud-controls .mm-objective .mm-small {
+      display: none;
+    }
+    .mm-hud-controls .mm-radio {
+      top: 235px;
+      right: 12px;
+      width: calc(100% - 24px);
+      max-height: 64px;
+      overflow: hidden;
+      padding: 8px 10px;
+      font-size: 10px;
+    }
+    .mm-hud-controls .mm-vehicle-hud {
+      left: 12px;
+      right: auto;
+      bottom: 202px;
+      min-width: 0;
+      max-width: 145px;
+      padding: 8px 10px;
+      text-align: left;
+    }
+    .mm-hud-controls .mm-speed {
+      justify-content: flex-start;
+    }
+    .mm-hud-controls .mm-speed > span:first-child {
+      font-size: 29px;
+    }
+    .mm-hud-controls .mm-vehicle-hud .mm-pace,
+    .mm-hud-controls .mm-vehicle-hud .mm-condition {
+      display: none;
+    }
+    .mm-hud-controls .mm-interaction {
+      bottom: 330px;
+      width: calc(100% - 24px);
+      max-width: calc(100% - 24px);
+    }
+    .mm-haul-panel {
+      top: 80px;
+      left: 12px;
+      width: calc(100% - 24px);
+      padding: 11px 13px;
+    }
+    .mm-haul-panel h3 {
+      margin: 5px 0;
+      font-size: 17px;
+    }
+    .mm-haul-detail {
+      min-height: 0;
+      font-size: 10px;
+    }
+    .mm-hud-truck .mm-radio,
+    .mm-hud-truck .mm-interaction {
+      display: none;
+    }
+  }
+  /* Phones on their side: little height, so keep only what driving needs. */
+  @media (max-height: 620px) {
+    .mm-objective,
+    .mm-vehicle-hud {
+      bottom: 68px;
+    }
+    .mm-hud-controls .mm-objective,
+    .mm-hud-controls .mm-radio,
+    .mm-hud-truck .mm-interaction {
+      display: none;
+    }
+    .mm-hud-controls .mm-vehicle-hud {
+      left: 185px;
+      right: auto;
+      bottom: 22px;
+      min-width: 90px;
+      padding: 8px;
+    }
+    .mm-hud-controls .mm-vehicle-hud .mm-pace,
+    .mm-hud-controls .mm-vehicle-hud .mm-condition,
+    .mm-hud-controls .mm-interaction .mm-small {
+      display: none;
+    }
+    .mm-hud-controls .mm-interaction {
+      top: 80px;
+      bottom: auto;
+      width: calc(100% - 390px);
+      max-width: calc(100% - 390px);
+    }
+    .mm-hud-controls .mm-compact-navigation {
+      position: absolute;
+      top: 126px;
+      left: 50%;
+      display: block;
+      max-width: calc(100% - 32px);
+      padding: 6px 10px;
+      transform: translateX(-50%);
+      background: #16323de6;
+      border: 1px solid #85bdb266;
+      border-radius: 6px;
+      font-size: 10px;
+      color: #c7e2d4;
+      text-align: center;
+    }
+    .mm-haul-panel {
+      top: 80px;
+      left: 190px;
+      width: calc(100% - 430px);
+      max-width: 390px;
+      padding: 9px 12px;
+    }
+    .mm-haul-panel h3 {
+      margin: 4px 0;
+      font-size: 14px;
+    }
+  }
+</style>

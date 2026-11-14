@@ -1,0 +1,247 @@
+// Adapted from PIT Software v0.11.1 app/logic/simulation.logic.
+// Reused principles: deterministic FIFO bays; production recognised at dump;
+// independent route geometry; immutable, explicitly simulated exports.
+// This adapter has NO network, vehicle-bus, credential or production-write API.
+//
+// The haul road, and where each robot truck stands on it. A truck's place along the road is
+// t.progress, a fraction of the route's length: 0 is the loading bay at Bench 1 (HAUL_PATH[0]) and
+// 1 the crusher's tip bay (the last point). The simulation plans in progress; truckRoutePose turns
+// progress, phase and lane into a world pose, and setTruckPosition drives the truck's real x, z and
+// heading towards that pose each step.
+// Lanes: pathPosition offsets a pose sideways from the centre line. +4.4 m is the loaded lane (up
+// to the crusher) and -4.4 m the empty lane (back down to the pit): both keep left, 8.8 m apart.
+// Queues: queued and dump_queue trucks wait in slots 15 m apart, counted back from their bay.
+// Headings are radians: 0 faces south (+z), PI / 2 east (+x).
+// State: routeLengths and routeTotal, built by initRoute, which must run before any truck is
+// positioned (boot, newGame and continueGame call it). On each truck, setTruckPosition and
+// routeSafeSpeed own the pose and motion fields: x, y, z, heading, wheel, odometer,
+// trafficBlocked, positioning, routeHeld, and departureStage once a departure is under way.
+// Callers: stepSimulation (setTruckPosition, routeSafeSpeed); setTruckPosition without dt snaps
+// trucks into place (boot, newGame, buyTruck, nextShift, fleetWatchdog, and migrateSiteClearance
+// for older saves); pathPosition also places road incidents, site rounds and Kevin.
+
+// ---------- Route geometry ----------
+
+// Distance in metres from the start of HAUL_PATH to each of its points.
+var routeLengths = [];
+
+// The route's length in metres (about 756 m with the current HAUL_PATH).
+var routeTotal = 0;
+
+// Straight-line distance between two [x, y, z] points, so the climb counts too.
+function distance3(a, b) {
+  var x = a[0] - b[0],
+    y = a[1] - b[1],
+    z = (a[2] || 0) - (b[2] || 0);
+  return Math.sqrt(x * x + y * y + z * z);
+}
+
+// Retained PIT queue comparator. Arrival first, stable equipment id second.
+// Orders both bay queues (pitBays) and the slots their trucks wait in (truckRoutePose).
+function simQueueOrder(a, b) {
+  return a.queueAt - b.queueAt || a.id - b.id;
+}
+
+// Measures HAUL_PATH into routeLengths and routeTotal.
+function initRoute() {
+  routeLengths = [0];
+  routeTotal = 0;
+  for (var i = 1; i < HAUL_PATH.length; i++) {
+    routeTotal += distance3(HAUL_PATH[i - 1], HAUL_PATH[i]);
+    routeLengths.push(routeTotal);
+  }
+}
+
+// The pose at a fraction of the route (0 = loading bay, 1 = tip bay), offset `lane` metres to the
+// left of a truck driving towards the crusher (negative is to its right). Returns
+// { x, y, z, heading }: y just above the ground, heading towards the crusher (add PI for the way
+// back down).
+function pathPosition(progress, lane) {
+  var wanted = clamp(progress, 0, 1) * routeTotal;
+  for (var i = 1; i < HAUL_PATH.length; i++) {
+    if (wanted <= routeLengths[i] || i === HAUL_PATH.length - 1) {
+      var a = HAUL_PATH[i - 1],
+        b = HAUL_PATH[i],
+        len = routeLengths[i] - routeLengths[i - 1],
+        f = len ? clamp((wanted - routeLengths[i - 1]) / len, 0, 1) : 0;
+      var dx = b[0] - a[0],
+        dz = b[2] - a[2],
+        d = Math.sqrt(dx * dx + dz * dz) || 1;
+      // (dz, -dx) / d is the unit vector to the left of the segment's direction.
+      var x = lerp(a[0], b[0], f) + (dz / d) * (lane || 0),
+        z = lerp(a[2], b[2], f) - (dx / d) * (lane || 0);
+      return { x: x, y: heightAt(x, z) + 0.18, z: z, heading: Math.atan2(dx, dz) };
+    }
+  }
+  // Only reached if HAUL_PATH has fewer than two points: the loading bay.
+  return { x: 17, y: -22, z: -14, heading: 0 };
+}
+
+// ---------- Truck poses and movement ----------
+
+// Where a truck should be for its phase, as { x, y, z, heading }. A truck the player drives or has
+// parked stays where it is. Queued trucks wait on the empty lane facing the bay, tip-queue trucks
+// on the loaded lane, each in a 15 m slot by rank; held trucks keep their slots. Hauling and
+// returning trucks follow t.progress on their lane (returning ones face back down); loading and
+// dumping trucks sit at the route's ends (pitBays sets progress 0 or 1). An empty parked truck at
+// the crusher end has a space in the car park.
+function truckRoutePose(t) {
+  if (t.phase === 'manual' || (t.phase === 'standby' && t.parkedManual))
+    return { x: t.x, y: t.y, z: t.z, heading: t.heading };
+  // A parked truck still holding ore waits in its tip-queue slot (see nextShift), ordered by id.
+  if (t.phase === 'standby' && t.payload > 0 && t.progress > 0.9) {
+    var slot = 0;
+    for (var o of S.trucks)
+      if (o.phase === 'standby' && o.payload > 0 && o.progress > 0.9 && !o.parkedManual && o.id < t.id)
+        slot++;
+    return pathPosition(Math.max(0, 1 - ((slot + 1) * 15) / routeTotal), 4.4);
+  }
+  var progress = t.progress,
+    lane = 4.4;
+  if (t.phase === 'returning' || t.phase === 'queued') lane = -4.4;
+  // Load queue: the first slot is 15 m from the loading bay, the next 30 m, and so on.
+  if (t.phase === 'queued') {
+    var rank = 0;
+    for (var i = 0; i < S.trucks.length; i++) {
+      var q = S.trucks[i];
+      if (q.phase === 'queued' && simQueueOrder(q, t) < 0) rank++;
+    }
+    progress = Math.min(1, ((rank + 1) * 15) / routeTotal);
+  }
+  // Tip queue: 15 m, 30 m, ... short of the tip bay.
+  if (t.phase === 'dump_queue') {
+    var rankD = 0;
+    for (var k = 0; k < S.trucks.length; k++) {
+      var d = S.trucks[k];
+      if (d.phase === 'dump_queue' && simQueueOrder(d, t) < 0) rankD++;
+    }
+    progress = Math.max(0, 1 - ((rankD + 1) * 15) / routeTotal);
+  }
+  var p = pathPosition(progress, lane);
+  p.heading = p.heading + (t.phase === 'returning' || t.phase === 'queued' ? Math.PI : 0);
+  // The car park by the crusher: a space per truck, 10 m apart (HT-01 at x 73 to HT-04 at x 103),
+  // facing north.
+  if (t.phase === 'standby' && t.progress > 0.9) {
+    p.x = 83 + (t.id - 2) * 10;
+    p.z = 104;
+    p.y = heightAt(p.x, p.z);
+    p.heading = Math.PI;
+  }
+  return p;
+}
+
+// Moves a truck towards its route pose. With dt (every simulation step) it drives there: it keeps
+// up with the pose when within 1 m of it, and otherwise manoeuvres at up to 5 m/s, turning at up
+// to 1.2 rad/s. The move is swept through clearanceScore (world/collision.logic), so the truck
+// stops at obstacles (t.trafficBlocked). Robot trucks do not collide with each other, only with
+// people, the ute, excavators, idle robots, Kevin, and trucks the player drives or has parked.
+// t.positioning is set while the truck is more than 0.12 m or 0.35 rad off its pose, and
+// stepSimulation pauses the truck's phase until it is in place.
+// Without dt the truck snaps straight onto its pose (see the callers in the header).
+// Trucks the player drives or has parked are never moved; held or faulted ones only by a snap.
+function setTruckPosition(t, dt) {
+  if (t.phase === 'manual' || (t.phase === 'standby' && t.parkedManual) || (dt && (t.stopped || t.fault)))
+    return;
+  var p = truckRoutePose(t);
+  if (dt && t.departureStage) {
+    // Leave the car park one at a time, and only once nobody is queued or tipping at the crusher.
+    // A lower-id truck that is also leaving, or is returning but still near the crusher (progress
+    // > 0.9), goes first. The departing truck is already 'returning' at progress 1, but pitBays
+    // (fleet.logic) doesn't count it as being in the tip bay, so a loaded truck in the tip queue
+    // tips while this one waits in the car park.
+    for (var other of S.trucks)
+      if (
+        other !== t &&
+        other.active &&
+        other.phase !== 'manual' &&
+        ((other.id < t.id &&
+          (other.departureStage || (other.phase === 'returning' && other.progress > 0.9))) ||
+          other.phase === 'dump_queue' ||
+          other.phase === 'dumping')
+      ) {
+        t.trafficBlocked = true;
+        t.positioning = true;
+        t.speed = 0;
+        return;
+      }
+    // Stage 1: back straight out of the space, still facing north, to departureX/Z. Stage 2: drive
+    // onto the route pose; the departure ends once the truck is on it.
+    if (t.departureStage === 1) {
+      p = { x: t.departureX, z: t.departureZ, heading: Math.PI };
+      if (dist2(t, p) < 0.12) {
+        t.departureStage = 2;
+        p = truckRoutePose(t);
+      }
+    } else if (dist2(t, p) < 0.12 && Math.abs(wrapAngle(p.heading - t.heading)) < 0.35) t.departureStage = 0;
+  }
+  if (!dt) {
+    t.x = p.x;
+    t.y = heightAt(p.x, p.z);
+    t.z = p.z;
+    t.heading = p.heading;
+    return;
+  }
+  // dist2 is the ground distance in metres (not squared).
+  var gap = dist2(t, p),
+    angle = wrapAngle(p.heading - t.heading),
+    step = gap <= 1 ? gap : Math.min(gap, 5 * dt);
+  var desired = t.heading + clamp(angle, -dt * 1.2, dt * 1.2);
+  var oldX = t.x,
+    oldZ = t.z,
+    hit = sweepVehicle(
+      t,
+      'truck',
+      gap > 0.001 ? ((p.x - t.x) * step) / gap : 0,
+      gap > 0.001 ? ((p.z - t.z) * step) / gap : 0,
+      desired
+    );
+  var traveled = Math.hypot(t.x - oldX, t.z - oldZ);
+  // Wheel rotation for the renderer: distance over the 1.7 m wheel radius, negative in reverse.
+  t.wheel +=
+    (traveled / 1.7) * ((t.x - oldX) * Math.sin(t.heading) + (t.z - oldZ) * Math.cos(t.heading) < 0 ? -1 : 1);
+  t.odometer += traveled;
+  t.trafficBlocked = hit || !!t.routeHeld;
+  t.positioning = dist2(t, p) > 0.12 || Math.abs(wrapAngle(p.heading - t.heading)) > 0.35;
+  // While manoeuvring the speed shown is the manoeuvre's; on the route it is the simulation's.
+  if (t.positioning || hit) t.speed = hit ? 0 : step / dt;
+  settleVehicle(t, 'truck', clamp(angle * 2, -1, 1), dt);
+}
+
+// ---------- Route queries ----------
+
+// The progress (0 to 1) of the HAUL_PATH point nearest to (x, z). Used when the player leaves a
+// truck (exitVehicle), so a later dispatch knows roughly where on the route it is.
+function nearestRouteProgress(x, z) {
+  var idx = 0,
+    best = 1e20;
+  for (var i = 0; i < HAUL_PATH.length; i++) {
+    var q = HAUL_PATH[i],
+      d = (q[0] - x) * (q[0] - x) + (q[2] - z) * (q[2] - z);
+    if (d < best) {
+      best = d;
+      idx = i;
+    }
+  }
+  return routeLengths[idx] / routeTotal;
+}
+
+// Caps a hauling (loaded) or returning truck's speed in m/s so it can stop before anything in its
+// own lane ahead. It probes every 2 m out to 5 m beyond its braking distance at 5 m/s^2
+// (5 + v^2 / 10), and allows at most sqrt(8 x (clear distance - 1)), the speed that stops at
+// 4 m/s^2 with a metre to spare. Other robot trucks are not obstacles here (stepSimulation's
+// same-lane spacing keeps them apart). Sets t.routeHeld when anything is within the horizon.
+function routeSafeSpeed(t, speed, loaded) {
+  // Stop within the surveyed lane. Never swerve into oncoming heavy traffic.
+  var horizon = 5 + (speed * speed) / 10,
+    clear = horizon;
+  for (var d = 1; d <= horizon; d += 2) {
+    var p = pathPosition(clamp(t.progress + ((loaded ? 1 : -1) * d) / routeTotal, 0, 1), loaded ? 4.4 : -4.4),
+      a = p.heading + (loaded ? 0 : Math.PI);
+    if (clearanceScore(t, 'truck', p.x, p.z, a, true) > 0.001) {
+      clear = Math.max(0, d - 2); // the last probe that was still clear
+      break;
+    }
+  }
+  t.routeHeld = clear < horizon;
+  return Math.min(speed, Math.sqrt(Math.max(0, clear - 1) * 8));
+}

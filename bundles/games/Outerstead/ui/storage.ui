@@ -4,7 +4,7 @@
   #each (r in storageCards) key={r.id}
     <div className="os-card"><div className="os-between"><span>{r.name}</span><b className="os-amber">{r.amount}</b></div>
       #if (r.hasTarget)
-        <div className="os-between" style={{ marginTop: "7px" }}><span className="os-tiny os-dim">Make until {r.target}</span><div className="os-row"><button className="os-btn os-time-button" @click={() => adjustPolicy(r.id, -5)}>−5</button><button className="os-btn os-time-button" @click={() => adjustPolicy(r.id, 5)}>+5</button></div></div>
+        <div className="os-between" style={{ marginTop: "7px" }}><span className="os-tiny os-dim">{"Make until " + r.target}</span><div className="os-row"><button className="os-btn os-time-button" @click={() => adjustPolicy(r.id, -5)}>−5</button><button className="os-btn os-time-button" @click={() => adjustPolicy(r.id, 5)}>+5</button></div></div>
       #end
     </div>
   #end

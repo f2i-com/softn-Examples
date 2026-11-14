@@ -1,0 +1,104 @@
+// Shared state and small pure helpers. Other modules own their state transitions.
+let S = null;
+let profile = {best:0,completed:0,achievements:[]};
+let settings = {muted:false,reducedMotion:false,assist:false,gentle:false};
+let paused = false;
+let overlay = "welcome";
+let keys = {};
+let commands = [];
+let sessionReady = false;
+let lastClock = 0;
+let saveClock = 0;
+let accumulator = 0;
+let cam = {x:320,y:365};
+let inputCleanup = null;
+let saveStatus = "Local save ready";
+let toastText = "";
+let toastTime = 0;
+let soundTimes = {};
+let ambientStarted = false;
+let cameraFlash = 0;
+let shake = 0;
+let confirmReset = false;
+let actors = [];
+let bubbles = [];
+let staticActors = [];
+let worldStyle = {};
+let playerStyle = {};
+let playerArt = "assets/art/pigeon-0-idle.svg";
+let shadowStyle = {};
+let carryStyle = {};
+let carryArt = "assets/art/form.svg";
+let formView = {};
+let markerStyle = {};
+let markerVisible = false;
+let hud = {rank:"",objective:"",detail:"",context:"",mode:"",stamina:100,progress:0,carry:"Empty beak",form:"",target:"",bearing:"",promotion:"",evidence:0};
+let journalRows = [];
+let evidenceRows = [];
+let badgeRows = [];
+let mapDots = [];
+function clamp(n,lo,hi) { return Math.max(lo,Math.min(hi,n)); }
+function distance(a,b) { let dx=a.x-b.x;let dy=a.y-b.y;return Math.sqrt(dx*dx+dy*dy); }
+function copy(v) { return JSON.parse(JSON.stringify(v)); }
+function rng() { S.seed=(S.seed*48271)%2147483647;return S.seed/2147483647; }
+function pick(list) { return list[Math.floor(rng()*list.length)]; }
+function has(list,id) { return list.indexOf(id)>=0; }
+function currentMission() { return MISSIONS[S.mission]; }
+function upgradeLevel(id) { return S.upgrades[id] || 0; }
+function maxStamina() { return 100+upgradeLevel("wings")*18; }
+function rankIndex() { return currentMission().rank; }
+function isPlaying() { return S && sessionReady && !paused && !overlay; }
+function money(n) { return "$"+Math.floor(n); }
+function say(text) {
+ if (!S) return;
+ toastText=text;toastTime=5.5;
+ if (!S.log.length || S.log[0].text!==text) S.log.unshift({text:text,time:Math.floor(S.time)});
+ if(S.log.length>10)S.log.length=10;
+}
+function award(id) {
+ if(has(profile.achievements,id))return false;
+ profile.achievements.push(id);
+ return true;
+}
+function earn(n) { S.coins+=n;S.score+=n*5;profile.best=Math.max(profile.best,S.score); }
+function markFun(id,text) {
+ if(!S.fun[id]) { S.fun[id]=1;award(id);earn(3);say(text);sound("success",0.24); }
+}
+function placeById(id) {
+ if(id==="worker")return workerPlace();
+ for(let i=0;i<PLACES.length;i++)if(PLACES[i].id===id)return PLACES[i];
+ for(let j=0;j<S.items.length;j++)if(S.items[j].id===id)return S.items[j];
+ return null;
+}
+function rectContains(p,r,margin) { let m=margin||0;return Math.abs(p.x-r.x)<=r.w/2+m && Math.abs(p.y-r.y)<=r.h/2+m; }
+function near(place,range,zrange) {
+ return place && distance(S.p,place)<range && Math.abs(S.p.z-(place.z||0))<(zrange||22);
+}
+function groundReady() { return S.p.mode==="ground" || S.p.mode==="perch"; }
+function inputVector() {
+ let x=(keys.d||keys.ArrowRight?1:0)-(keys.a||keys.ArrowLeft?1:0);
+ let y=(keys.s||keys.ArrowDown?1:0)-(keys.w||keys.ArrowUp?1:0);
+ let n=Math.sqrt(x*x+y*y);if(n>1){x/=n;y/=n;}return {x:x,y:y};
+}
+function freshState() {
+ return {id:GAME_ID,version:VERSION,seed:49217,time:0,mission:0,phase:"play",coins:0,score:0,health:100,
+ upgrades:{wings:0,badge:0,bag:0},evidence:[],breadTotal:0,log:[],done:[],meterRead:false,
+ p:{x:262,y:424,z:0,vx:0,vy:0,vz:0,mode:"ground",facing:1,perch:"",carry:"",anim:0,peck:0,land:0,swoop:0,stamina:100,stepSound:0,stampHop:false},
+ form:{mission:0,location:"rack",x:175,y:260,z:0,vx:0,vy:0,vz:0,checks:[false,false,false],stamped:false,delivered:false,serial:1},
+ items:[],npcs:[],birds:[],vehicles:[],particles:[],fun:{},traffic:{requested:0,green:0,cooldown:0},
+ wind:{time:0,strength:0,angle:0,next:22,lastLoss:-100},meetingTime:0,meetingCoo:0,
+ archiveUnlocked:false,electionReady:false,ending:"",endingBody:"",promotionTime:0,stampTime:0,photoTime:0,
+ chipCooldown:0,scatterCooldown:0,cooCooldown:0,inspectCooldown:0,rescueCooldown:0};
+}
+function resetGame() {
+ S=freshState();worldSetup();missionSetup(0);keys={};commands=[];accumulator=0;cam={x:S.p.x,y:S.p.y};
+ sessionReady=false;overlay="welcome";paused=false;confirmReset=false;
+ say("Employment confirmed. Species field left blank by management.");publish();
+}
+function buyUpgrade(index) {
+ let u=UPGRADES[index];if(!u)return;
+ let lv=upgradeLevel(u.id),cost=u.cost*(lv+1);
+ if(lv>=u.max){say(u.name+": procurement complete.");return;}
+ if(S.coins<cost){say(u.name+" costs "+money(cost)+". Allowance remaining: "+money(S.coins)+".");return;}
+ S.coins-=cost;S.upgrades[u.id]=lv+1;sound("stamp",0.4);say(u.name+" approved. "+u.detail+".");persist();
+}

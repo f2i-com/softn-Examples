@@ -1,0 +1,164 @@
+// Shift boundaries: each shift's target, closing a shift (finishShift: target bonus, overheads,
+// history, the report screen) and opening the next (nextShift: per-shift resets, trucks parked and
+// refuelled, robots charged, more ore exposed). A shift is S.duration (720 s) of S.time.
+// State: S.shift, S.target, S.endPaid (set once a shift is closed and paid; a save with it set
+// reopens on the report screen), S.history (the last 30 shifts) and everything nextShift resets.
+// Carried over: cash, the hopper and its unpaid value (S.plant), ore still in the trucks, incident
+// alerts (those with an eventId), career records, upgrades and equipment.
+// Callers: finishShift from stepSimulation when time is up and from "End shift and reconcile"
+// (tablet/operations.ui); nextShift from "Next shift" on the report screen (screens/report.ui).
+// A new per-shift field on S needs resetting in nextShift, and a check in validState.
+
+// The shift's target: a gentle first shift, then 120 t more each shift, to 1,040 t for the grand
+// reopening (shift 7) and no more than 1,100 after it. Four trucks top out near 1,280 t.
+function targetFor(shift) {
+  return Math.min(1100, 320 + (Math.max(1, shift) - 1) * 120);
+}
+
+// Closes the shift and settles it, once (S.endPaid). Needs at least 60 s worked. Pays the target
+// bonus ($1,500 + $250 a shift, if the target was met) and charges the site overhead ($600 + $70 a
+// robot); an unfinished contract is closed unpaid (updateProgress has already paid a finished
+// one). Records the shift in S.history, shows the report screen and saves at once.
+function finishShift() {
+  if (screen !== 'play' || S.endPaid) return;
+  if (S.time < 60) {
+    notify('PIT', 'Work at least one minute before closing the shift.');
+    return;
+  }
+  updateProgress();
+  closeSiteChapter(); // the chapter's end-of-shift payouts and journal (chapters.logic)
+  if (S.contracts.active) {
+    S.contracts.finished.push(S.contracts.active.id);
+    S.contracts.active = null;
+  }
+  var bonus = S.tonnes >= S.target ? 1500 + S.shift * 250 : 0;
+  S.cash += bonus;
+  S.revenue += bonus;
+  var overhead = 600 + S.robots.length * 70;
+  S.cash -= overhead;
+  S.costs += overhead;
+  S.endPaid = true;
+  var rank = shiftRank();
+  S.history.unshift({
+    shift: S.shift,
+    tonnes: Math.round(S.tonnes),
+    target: S.target,
+    profit: Math.round(S.revenue - S.costs),
+    rank: rank
+  });
+  if (S.history.length > 30) S.history = S.history.slice(0, 30);
+  screen = 'report';
+  tablet = false;
+  releaseMouse();
+  cancelField();
+  resetInputs();
+  refreshUI();
+  saveGame(true);
+  sfx('success');
+}
+
+// Starts the next shift, from the report screen. Resets the shift's numbers, effects and timers;
+// keeps incident alerts but drops the fuel, battery and Kevin ones; exposes 2,000 t more ore;
+// parks every truck in standby at the crusher end, refuelled and 20% healthier, keeping any
+// payload; charges every robot; puts the player and the ute back at the office; starts the next
+// site chapter; and opens the tablet on the Site tab.
+function nextShift() {
+  if (screen !== 'report') return;
+  ensureProgress();
+  S.contracts = { active: null, finished: [], earned: 0 };
+  S.shiftStats = { manualTonnes: 0, repairs: 0 };
+  S.shift++;
+  S.time = 0;
+  S.target = targetFor(S.shift);
+  // Overnight: June tidies the cones, Kevin goes home, the silly statistics start again.
+  S.fun = null;
+  ensureFun();
+  S.props = freshProps();
+  S.kevin = null;
+  toasts = [];
+  bursts = [];
+  fireworksUntil = 0;
+  shake = 0;
+  S.tonnes = 0;
+  S.revenue = 0;
+  S.costs = 0;
+  S.endPaid = false;
+  S.targetAnnounced = false;
+  S.nextEvent = 100; // the first incident is due 100 s in
+  S.nextChat = 30;
+  S.faultNumber = 0;
+  // The crusher and the repeater restart; syncIncidentEffects (below) trips them again if a
+  // carried-over incident still holds them.
+  S.crusher = true;
+  S.relay = true;
+  S.alerts = S.alerts.filter(function (a) {
+    return !!a.eventId;
+  });
+  S.weather = 'dry';
+  S.extraction += 2000;
+  S.hasBegun = true;
+  S.waypoint = null;
+  var queueSlot = 0;
+  for (var i = 0; i < S.trucks.length; i++) {
+    var t = S.trucks[i];
+    t.active = false;
+    t.phase = 'standby';
+    t.progress = 1;
+    t.parkedManual = false;
+    t.speed = 0;
+    t.fault = '';
+    t.stopped = false;
+    t.recall = false;
+    t.service = 0;
+    t.manualTip = 0;
+    t.manualLoad = 0;
+    t.fillRequested = false;
+    t.departureStage = 0;
+    t.parkBrake = false;
+    t.fuel = 100;
+    t.health = Math.min(100, t.health + 20);
+    t.tonnes = 0;
+    t.loads = 0;
+    t.queueSeconds = 0;
+    t.cycleStart = 0;
+    t.waitFor = 0;
+    setTruckPosition(t);
+    // A truck still holding ore spends the night in its tip-queue slot, not the car park, so it never
+    // has to cut across the other lane to reach the crusher in the morning.
+    // (truckRoutePose already puts it there; this places it explicitly, in the same slot.)
+    if (t.payload > 0) {
+      queueSlot++;
+      var slot = pathPosition(Math.max(0, 1 - (queueSlot * 15) / routeTotal), 4.4);
+      t.x = slot.x;
+      t.z = slot.z;
+      t.y = heightAt(slot.x, slot.z);
+      t.heading = slot.heading;
+    }
+  }
+  for (var j = 0; j < S.robots.length; j++) S.robots[j].battery = 100;
+  S.player = spawnPlayer();
+  parkUte(S.ute);
+  S.ute.fuel = 100;
+  S.ute.health = 100;
+  // Restart the autosave and the frame clock for the new S.time.
+  lastAutosave = 0;
+  accumulator = 0;
+  lastFrameTime = 0;
+  nextSiteChapter();
+  ensureRounds();
+  ensureMemos();
+  syncIncidentEffects();
+  screen = 'play';
+  tablet = true;
+  tab = 'site';
+  notify(
+    'HEAD OFFICE',
+    'Shift ' +
+      S.shift +
+      '. New target: ' +
+      S.target +
+      ' tonnes. The fleet is fuelled, the crew is charged and June has tidied the cones.'
+  );
+  refreshUI();
+  saveGame(true);
+}

@@ -1,6 +1,6 @@
 {
   "name": "MazeEscape3D",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "First-person procedural stone cavern maze with Blender PBR sconces, obelisks, unsealing rune crystals, a glowing portal gate, dynamic shadows, and a live fog-of-war minimap across 3 sizes.",
   "main": "ui/main.ui",
   "icon": "assets/icon.svg",

@@ -1,0 +1,50 @@
+<div className="uw-welcome">
+  <div className="uw-welcome-art">
+    <img src={asset("assets/branding/gameplay-oceanview.jpg")} alt="Actual Oceanview gameplay: a riverside skyline, neighbourhood streets and bridges" />
+    <div className="uw-art-shade" />
+    <span className="uw-art-caption">OCEANVIEW · GAMEPLAY CAPTURE</span>
+    <div className="uw-welcome-copy"><span className="uw-eyebrow">A LITTLE LAND. A LONG STORY.</span><span className="uw-welcome-headline">Build a city.<br />Watch it become somewhere.</span><p>Draw the first street, welcome the first neighbours, and discover the character of a city shaped by your decisions.</p></div>
+  </div>
+  <div className="uw-welcome-form">
+    <img className="uw-logo" src={asset("assets/branding/logo.png")} alt="Urbanward" />
+    <span className="uw-eyebrow">WELCOME TO YOUR NEW CHARTER</span>
+    <div className="uw-form-two">
+      <div><label className="uw-form-label" htmlFor="uw-city-name">City name</label><input id="uw-city-name" :bind={mapName} maxLength={40} /></div>
+      <div><label className="uw-form-label" htmlFor="uw-seed">Map seed</label><input id="uw-seed" :bind={seedInput} maxLength={40} /></div>
+    </div>
+    <div className="uw-gap"><span className="uw-form-label">The landscape</span><div className="uw-choice-row">
+      <button className={mapKind === "river" ? "uw-button uw-active" : "uw-button"} @click={() => uwSetTerrain("river")}>River valley</button>
+      <button className={mapKind === "coast" ? "uw-button uw-active" : "uw-button"} @click={() => uwSetTerrain("coast")}>Coastline</button>
+      <button className={mapKind === "lake" ? "uw-button uw-active" : "uw-button"} @click={() => uwSetTerrain("lake")}>Lake country</button>
+    </div></div>
+    <div className="uw-gap"><span className="uw-form-label">City limits</span><div className="uw-choice-row">
+      <button className={mapSize === 48 ? "uw-button uw-active" : "uw-button"} @click={() => uwSetMapSize(48)}>48 × 48 · Recommended</button>
+      <button className={mapSize === 64 ? "uw-button uw-active" : "uw-button"} @click={() => uwSetMapSize(64)}>64 × 64 · Expanded</button>
+    </div></div>
+    <div className="uw-gap"><span className="uw-form-label">Your story</span><div className="uw-choice-row">
+      <button className={scenarioChoice === "charter" ? "uw-small-button uw-active" : "uw-small-button"} @click={() => uwSetScenario("charter")}>Free charter</button>
+      <button className={scenarioChoice === "growth" ? "uw-small-button uw-active" : "uw-small-button"} @click={() => uwSetScenario("growth")}>Growth challenge</button>
+      <button className={scenarioChoice === "recovery" ? "uw-small-button uw-active" : "uw-small-button"} @click={() => uwSetScenario("recovery")}>River recovery</button>
+    </div></div>
+    <div className="uw-scenario-note uw-gap">
+      #if (scenarioChoice === "charter")
+        <span>$60,000 and an open landscape. Build at your own pace, with a guided civic charter and optional disasters.</span>
+      #end
+      #if (scenarioChoice === "growth")
+        <span>Reach 3,000 residents and a non-negative monthly balance within five years. Keep playing beyond the target.</span>
+      #end
+      #if (scenarioChoice === "recovery")
+        <span>Inherit an under-served town with $14,000 and $20,000 debt. Restore 75% approval and a sustainable budget.</span>
+      #end
+    </div>
+    <div className="uw-welcome-actions">
+      <button className="uw-button uw-button-primary" @click={() => uwStartGame("new")}>Found your city →</button>
+      <button className="uw-button uw-button-warm" @click={() => uwStartGame("showcase")}>Explore a living Oceanview</button>
+      <div className="uw-choice-row"><button className="uw-small-button" @click={() => uwOpenModal("saves")}>Load a city</button><button className="uw-small-button" @click={() => uwOpenModal("help")}>How to play</button></div>
+      #if (started)
+        <button className="uw-small-button" @click={uwResumeCity}>Return to {hud.city}</button>
+      #end
+    </div>
+    <span className="uw-footer-note">URBANWARD 0.3.0 · A SOFTN CITY SIMULATION<br />The city pictured is yours to explore. Choose Oceanview to play it. Audio is off until enabled.</span>
+  </div>
+</div>

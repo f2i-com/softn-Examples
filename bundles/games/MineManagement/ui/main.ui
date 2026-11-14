@@ -1,0 +1,92 @@
+<!--
+  Mine Management: the root page. It loads the game's logic, runs the game loop, draws the 3D
+  world and stacks every screen on top of it. Each screen is a page of its own:
+
+    theme.ui                colours, type and the shared building blocks (styles only)
+    screens/title.ui        the title screen
+    screens/hud.ui          the heads-up display while playing (and screens/touch-controls.ui)
+    screens/field-kit.ui    the three-step repair kit
+    tablet/tablet.ui        the PIT tablet and its ten workspaces
+    screens/overlays.ui     toasts and Head Office memos
+    screens/pause.ui        pause menu and settings
+    screens/report.ui       the end-of-shift report
+    screens/export.ui       the PIT JSON snapshot
+
+  Every screen decides for itself when it is shown (an if= on its root, usually on `screen`).
+  Stacking order, lowest first: world, HUD (z-index 2), field kit (4), tablet (5), toasts (7),
+  memo (8), pause and report (20), export (50), the asset error banner (1000).
+
+  Imported pages add their styles to the app's one stylesheet, but not necessarily in import
+  order, so the theme may land after a screen. A screen rule that overrides a theme class must
+  therefore outweigh it (two classes, say .mm-primary.mm-start), not merely come later.
+-->
+<logic src="../logic/main.logic" />
+
+<import Theme from="./theme.ui" />
+<import Title from="./screens/title.ui" />
+<import Hud from="./screens/hud.ui" />
+<import FieldKit from="./screens/field-kit.ui" />
+<import Tablet from="./tablet/tablet.ui" />
+<import Overlays from="./screens/overlays.ui" />
+<import Pause from="./screens/pause.ui" />
+<import Report from="./screens/report.ui" />
+<import Export from="./screens/export.ui" />
+
+<App theme="dark">
+  <!-- The game loop: tick() in logic/core/game-loop.logic, about 30 times a second. -->
+  <Loop interval={33} running={true} @tick={tick()} />
+
+  <div class="mm-game">
+    <!--
+      The 3D world. The logic names models and textures by key (modelKey, textureKey) and asset()
+      turns a key into a URL here, so the scene arrays stay small. The key= remounts the scene when
+      the quality or the look mode changes, because Scene3D reads pointerLock only when it mounts;
+      keepLookThroughRemount (logic/player/camera-look.logic) keeps the view where it was.
+    -->
+    <div class="mm-world" if={assetsReady}>
+      <Scene3D
+        key={quality + (controlsEnabled || pointerLockBlocked ? '-drag' : '-capture')}
+        fill={true}
+        staticObjects={sceneStatic.map(o => o.modelKey ? {...o, modelUrl: asset(o.modelKey)} : o.textureKey ? {...o, textureUrl: asset(o.textureKey)} : o)}
+        objects={sceneObjects.map(o => o.modelKey ? {...o, modelUrl: asset(o.modelKey)} : o.textureKey ? {...o, textureUrl: asset(o.textureKey)} : o)}
+        lights={sceneLights}
+        camera={sceneCamera}
+        sky={sceneSky}
+        background={sceneBackground}
+        fog={sceneFog}
+        effects={sceneFx}
+        toneMapping="aces"
+        toneMappingExposure={0.93}
+        shadows={quality !== 'low'}
+        antialias={quality !== 'low'}
+        maxPixelRatio={quality === 'high' ? 1.5 : 1}
+        pointerLock={!controlsEnabled && !pointerLockBlocked}
+        mouseLook={true}
+        mouseLookSensitivity={0.003 * lookSensitivity}
+        pitchLimit={1.35}
+        cameraSmoothing={0}
+        gameControls={false}
+        orbitControls={false}
+        crosshair={false}
+        @pointerDown={scenePointerDown}
+        @firstFrame={sceneLoaded}
+        @modelState={modelState}
+      />
+    </div>
+
+    <Title />
+    <Hud />
+    <FieldKit />
+    <Tablet />
+    <Overlays />
+    <Pause />
+    <Report />
+    <Export />
+
+    <!-- Shown when a model or texture fails to load; Retry asks for the assets again. -->
+    <div class="mm-error" if={modelError !== ''} role="alert">
+      <span>{modelError}</span>
+      <button class="mm-small-button" type="button" @click={retryAssets}>Retry assets</button>
+    </div>
+  </div>
+</App>

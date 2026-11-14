@@ -1,24 +1,42 @@
-// Notes: a persistent notes board. Uses the host's shared storage when run
-// inside the SoftN directory, falls back to the bundled softn-server routes,
-// and falls back to browser localStorage when opened standalone offline.
+// Notes: persistent master-detail notes workspace with Markdown preview,
+// tag & pin filtering, word/character telemetry, and undo-delete protection.
 
-const LOCAL_NOTES_KEY = "softn-notes:local"
+let LOCAL_NOTES_KEY = "softn-notes:local"
+let PINNED_NOTES_KEY = "softn-notes:pinned"
 
 let notes = []
-let newTitle = ""
-let newContent = ""
-let newTag = "General"
+let selectedNoteId = ""
+let editorTitle = ""
+let editorContent = ""
+let editorTag = "General"
+let editorDirty = false
+let previewMode = false
+let mobilePane = "list"
+
 let activeFilter = "all"
+let searchQuery = ""
 let pinnedMap = {}
 let copiedId = ""
 let noteCount = 0
-let searchQuery = ""
-let storageMode = ""          // "site" | "server" | "local" | "none"
-let statusText = "Connecting…"
+
+let storageMode = ""
+let statusText = "Connecting..."
 let statusDetail = ""
 let formError = ""
+let saveSuccessMsg = ""
 let busy = false
 let serverUrl = "http://localhost:9876"
+
+let deletedBackup = null
+let deletedTitle = ""
+let undoVisible = false
+
+function unwrapText(val) {
+  if (val && typeof val === "object" && val.target !== undefined) {
+    return String(val.target.value || "")
+  }
+  return val === undefined || val === null ? "" : String(val)
+}
 
 function defaultLocalNotes() {
   let now = Date.now()
@@ -26,8 +44,8 @@ function defaultLocalNotes() {
     {
       id: "local-welcome-1",
       data: {
-        title: "Welcome to Notes",
-        content: "Add, tag, pin, search, copy, or delete notes. Currently saved in this browser's local storage.",
+        title: "Welcome to SoftN Notes",
+        content: "# Getting Started\n- Filter notes by tag or pin your favorites to the top\n- Switch between Write and Preview to render Markdown\n- [x] Persistent local & shared workspace storage\n- [ ] Add your next big idea",
         tag: "General",
         createdAt: new Date(now - 60000).toISOString()
       }
@@ -35,10 +53,19 @@ function defaultLocalNotes() {
     {
       id: "local-welcome-2",
       data: {
-        title: "Shared workspace mode",
-        content: "When opened from softn.com or alongside softn-server, Notes syncs with the shared board automatically.",
+        title: "Product Launch Checklist",
+        content: "## Release Milestones\n- [x] Align manifest and permission schemas\n- [x] Verify 1280x800 desktop and 390x844 mobile layouts\n- [ ] Share room link with design review team",
+        tag: "Work",
+        createdAt: new Date(now - 180000).toISOString()
+      }
+    },
+    {
+      id: "local-welcome-3",
+      data: {
+        title: "Shader & UI Micro-interactions",
+        content: "Explore subtle spring transitions and crisp typography pairings for dark-mode cards.\n`transition: transform 160ms ease`",
         tag: "Idea",
-        createdAt: new Date(now - 120000).toISOString()
+        createdAt: new Date(now - 360000).toISOString()
       }
     }
   ]
@@ -46,6 +73,9 @@ function defaultLocalNotes() {
 
 function loadLocalNotes() {
   try {
+    if (typeof localStorage === "undefined") {
+      return { ok: true, records: defaultLocalNotes() }
+    }
     let raw = localStorage.getItem(LOCAL_NOTES_KEY)
     if (raw === null) {
       let seeded = defaultLocalNotes()
@@ -56,13 +86,15 @@ function loadLocalNotes() {
     if (!Array.isArray(parsed)) parsed = []
     return { ok: true, records: parsed }
   } catch (e) {
-    return { ok: false, error: String(e && e.message || e) }
+    return { ok: true, records: defaultLocalNotes() }
   }
 }
 
 function saveLocalNotes(list) {
   try {
-    localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(list))
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(LOCAL_NOTES_KEY, JSON.stringify(list))
+    }
     return true
   } catch (e) {
     return false
@@ -71,25 +103,30 @@ function saveLocalNotes(list) {
 
 function loadPinnedMap() {
   try {
-    let raw = localStorage.getItem("softn-notes:pinned")
-    if (raw) {
-      let parsed = JSON.parse(raw)
-      if (parsed && typeof parsed === "object") { pinnedMap = parsed }
+    if (typeof localStorage !== "undefined") {
+      let raw = localStorage.getItem(PINNED_NOTES_KEY)
+      if (raw) {
+        let parsed = JSON.parse(raw)
+        if (parsed && typeof parsed === "object") { pinnedMap = parsed }
+      }
     }
   } catch (e) {}
 }
 
 function savePinnedMap() {
   try {
-    localStorage.setItem("softn-notes:pinned", JSON.stringify(pinnedMap))
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(PINNED_NOTES_KEY, JSON.stringify(pinnedMap))
+    }
   } catch (e) {}
 }
 
 function isPinned(id) {
-  return !!pinnedMap[id]
+  return !!(id && pinnedMap[id])
 }
 
 function togglePin(id) {
+  if (!id) return
   if (pinnedMap[id]) {
     delete pinnedMap[id]
   } else {
@@ -99,8 +136,33 @@ function togglePin(id) {
   notes = notes.slice()
 }
 
-function setNewTag(tag) {
-  newTag = tag
+function toggleEditorPin() {
+  if (selectedNoteId !== "") {
+    togglePin(selectedNoteId)
+  }
+}
+
+function updateEditorTitle(val) {
+  editorTitle = unwrapText(val)
+  editorDirty = true
+  formError = ""
+  saveSuccessMsg = ""
+}
+
+function updateEditorContent(val) {
+  editorContent = unwrapText(val)
+  editorDirty = true
+  saveSuccessMsg = ""
+}
+
+function updateSearchQuery(val) {
+  searchQuery = unwrapText(val)
+}
+
+function setEditorTag(tag) {
+  editorTag = tag
+  editorDirty = true
+  saveSuccessMsg = ""
 }
 
 function setActiveFilter(f) {
@@ -112,14 +174,169 @@ function clearSearch() {
   activeFilter = "all"
 }
 
+function togglePreviewMode() {
+  previewMode = !previewMode
+}
+
+function backToMobileList() {
+  mobilePane = "list"
+}
+
+function startNewNote() {
+  selectedNoteId = ""
+  editorTitle = ""
+  editorContent = ""
+  editorTag = "General"
+  editorDirty = false
+  previewMode = false
+  formError = ""
+  saveSuccessMsg = ""
+  mobilePane = "editor"
+}
+
+function selectNote(id) {
+  let i = 0
+  while (i < notes.length) {
+    if (notes[i].id === id) {
+      let d = notes[i].data || {}
+      selectedNoteId = id
+      editorTitle = d.title || ""
+      editorContent = d.content || ""
+      editorTag = d.tag || "General"
+      editorDirty = false
+      formError = ""
+      saveSuccessMsg = ""
+      mobilePane = "editor"
+      return
+    }
+    i = i + 1
+  }
+}
+
+function insertSnippet(kind) {
+  let prefix = editorContent.length > 0 && editorContent.charAt(editorContent.length - 1) !== "\n" ? "\n" : ""
+  let addition = ""
+  if (kind === "heading") {
+    addition = prefix + "## Section Heading\n"
+  } else if (kind === "bold") {
+    addition = (editorContent.length > 0 ? " " : "") + "**important**"
+  } else if (kind === "bullet") {
+    addition = prefix + "- Key point"
+  } else if (kind === "todo") {
+    addition = prefix + "- [ ] Action item"
+  } else if (kind === "code") {
+    addition = prefix + "`code snippet`"
+  }
+  editorContent = editorContent + addition
+  previewMode = false
+  editorDirty = true
+  saveSuccessMsg = ""
+}
+
+function stripBoldMarkers(str) {
+  let parts = String(str || "").split("**")
+  return parts.join("")
+}
+
+function countWords(str) {
+  let s = String(str || "").trim()
+  if (s === "") return 0
+  let count = 0
+  let inWord = false
+  let i = 0
+  while (i < s.length) {
+    let ch = s.charAt(i)
+    let isSpace = ch === " " || ch === "\n" || ch === "\r" || ch === "\t"
+    if (!isSpace && !inWord) {
+      count = count + 1
+      inWord = true
+    } else if (isSpace) {
+      inWord = false
+    }
+    i = i + 1
+  }
+  return count
+}
+
+function getNoteWordCount(note) {
+  let body = note && note.data && note.data.content ? note.data.content : ""
+  return countWords(body) + "w"
+}
+
+function getEditorStatsLabel() {
+  let combined = (editorTitle ? editorTitle + " " : "") + (editorContent || "")
+  let words = countWords(combined)
+  let chars = String(editorContent || "").length
+  let mins = Math.max(1, Math.ceil(words / 200))
+  return words + " words · " + chars + " chars · ~" + mins + " min read"
+}
+
+function getPreviewBlocks() {
+  let raw = String(editorContent || "")
+  if (raw.trim() === "") {
+    return [{ idx: 0, kind: "empty", text: "Nothing to preview yet — switch to Write mode to add content." }]
+  }
+  let lines = raw.split("\n")
+  let blocks = []
+  let i = 0
+  while (i < lines.length) {
+    let line = lines[i]
+    let trimmed = line.trim()
+    if (trimmed !== "") {
+      if (trimmed.indexOf("## ") === 0) {
+        blocks.push({ idx: i, kind: "h2", text: trimmed.slice(3) })
+      } else if (trimmed.indexOf("# ") === 0) {
+        blocks.push({ idx: i, kind: "h1", text: trimmed.slice(2) })
+      } else if (trimmed.indexOf("- [x] ") === 0 || trimmed.indexOf("- [X] ") === 0) {
+        blocks.push({ idx: i, kind: "todo-done", text: trimmed.slice(6) })
+      } else if (trimmed.indexOf("- [ ] ") === 0) {
+        blocks.push({ idx: i, kind: "todo-open", text: trimmed.slice(6) })
+      } else if (trimmed.indexOf("- ") === 0 || trimmed.indexOf("* ") === 0) {
+        blocks.push({ idx: i, kind: "bullet", text: trimmed.slice(2) })
+      } else if (trimmed.charAt(0) === "`" && trimmed.charAt(trimmed.length - 1) === "`" && trimmed.length > 2) {
+        blocks.push({ idx: i, kind: "code", text: trimmed.slice(1, trimmed.length - 1) })
+      } else {
+        blocks.push({ idx: i, kind: "p", text: stripBoldMarkers(line) })
+      }
+    }
+    i = i + 1
+  }
+  if (blocks.length === 0) {
+    blocks.push({ idx: 0, kind: "empty", text: "Empty note." })
+  }
+  return blocks
+}
+
 function copyNote(id, title, content) {
   let text = content ? (title + "\n\n" + content) : title
   try {
-    if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+    if (typeof navigator !== "undefined" && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
       navigator.clipboard.writeText(text)
     }
   } catch (e) {}
-  copiedId = id
+  copiedId = id || "editor"
+}
+
+function copyActiveEditor() {
+  copyNote(selectedNoteId || "editor", editorTitle || "Untitled", editorContent || "")
+}
+
+function syncInitialSelection() {
+  if (selectedNoteId !== "") {
+    let i = 0
+    while (i < notes.length) {
+      if (notes[i].id === selectedNoteId) return
+      i = i + 1
+    }
+  }
+  if (notes.length > 0 && editorTitle === "" && editorContent === "") {
+    let first = notes[0]
+    selectedNoteId = first.id
+    editorTitle = first.data && first.data.title ? first.data.title : ""
+    editorContent = first.data && first.data.content ? first.data.content : ""
+    editorTag = first.data && first.data.tag ? first.data.tag : "General"
+    editorDirty = false
+  }
 }
 
 function _init() {
@@ -127,150 +344,310 @@ function _init() {
   refreshNotes()
 }
 
+function _onHide() {
+  savePinnedMap()
+}
+
 function refreshNotes() {
   busy = true
-  if (typeof softn !== "undefined" && softn.storage && softn.storage.query) {
-    softn.storage.query("notes", { orderBy: ["createdAt", "desc"], limit: 200 }, function (r) {
-      if (r && !r.error && r.records) {
-        storageMode = "site"
-        statusText = "Stored on this site"
-        statusDetail = ""
-        notes = r.records
-        noteCount = notes.length
-        busy = false
-        return
-      }
-      tryServerOrLocal(r && r.error ? r.error : "")
-    })
-  } else {
-    tryServerOrLocal("")
-  }
+  try {
+    if (typeof softn !== "undefined" && softn.storage && typeof softn.storage.query === "function") {
+      softn.storage.query("notes", { orderBy: ["createdAt", "desc"], limit: 200 }, function (r) {
+        if (r && !r.error && r.records) {
+          storageMode = "site"
+          statusText = "Shared Storage"
+          statusDetail = ""
+          notes = r.records
+          noteCount = notes.length
+          busy = false
+          syncInitialSelection()
+          return
+        }
+        tryServerOrLocal(r && r.error ? String(r.error) : "")
+      })
+      return
+    }
+  } catch (e) {}
+  tryServerOrLocal("")
 }
 
 function tryServerOrLocal(storageErr) {
-  if (typeof softn !== "undefined" && softn.net && softn.net.fetch) {
-    softn.net.fetch(serverUrl + "/api/notes", {}, function (result) {
-      busy = false
-      if (result && result.ok) {
-        let data = JSON.parse(result.body)
-        storageMode = "server"
-        statusText = "Local server"
-        statusDetail = ""
-        notes = data.notes
-        noteCount = data.count
-        return
-      }
-      fallbackToLocal(storageErr)
-    })
-  } else {
-    busy = false
-    fallbackToLocal(storageErr)
-  }
+  try {
+    if (typeof softn !== "undefined" && softn.net && typeof softn.net.fetch === "function") {
+      softn.net.fetch(serverUrl + "/api/notes", {}, function (result) {
+        busy = false
+        if (result && result.ok && result.body) {
+          try {
+            let data = JSON.parse(result.body)
+            if (data && Array.isArray(data.notes)) {
+              storageMode = "server"
+              statusText = "Local Server"
+              statusDetail = ""
+              notes = data.notes
+              noteCount = notes.length
+              syncInitialSelection()
+              return
+            }
+          } catch (parseErr) {}
+        }
+        fallbackToLocal(storageErr)
+      })
+      return
+    }
+  } catch (e) {}
+  busy = false
+  fallbackToLocal(storageErr)
 }
 
 function fallbackToLocal(storageErr) {
   let local = loadLocalNotes()
   if (local.ok) {
     storageMode = "local"
-    statusText = "Browser storage"
-    statusDetail = "Notes are kept locally in this browser."
+    statusText = "Browser Storage"
+    statusDetail = "Saved locally in this browser."
     notes = local.records
     noteCount = notes.length
+    syncInitialSelection()
     return
   }
   storageMode = "none"
-  statusText = "Nowhere to keep notes"
-  statusDetail = storageErr || "Open this app from the directory or enable browser storage to keep notes."
+  statusText = "Read-Only"
+  statusDetail = storageErr || "Storage unavailable."
   notes = []
   noteCount = 0
 }
 
-function addNote() {
-  let title = String(newTitle || "").trim()
+function saveNote() {
+  let title = String(editorTitle || "").trim()
   if (title === "") {
-    formError = "Give the note a title."
-    return
-  }
-  if (storageMode === "none") {
-    formError = "There is nowhere to keep it. " + statusDetail
+    formError = "Please enter a note title before saving."
     return
   }
   formError = ""
-  let noteData = { title: title, content: String(newContent || ""), tag: newTag || "General", createdAt: new Date().toISOString() }
+  let existingCreatedAt = new Date().toISOString()
+  if (selectedNoteId !== "") {
+    let k = 0
+    while (k < notes.length) {
+      if (notes[k].id === selectedNoteId && notes[k].data && notes[k].data.createdAt) {
+        existingCreatedAt = notes[k].data.createdAt
+      }
+      k = k + 1
+    }
+  }
+
+  let noteData = {
+    title: title,
+    content: String(editorContent || ""),
+    tag: editorTag || "General",
+    createdAt: existingCreatedAt,
+    updatedAt: new Date().toISOString()
+  }
+
+  // Update existing note
+  if (selectedNoteId !== "") {
+    if (storageMode === "site") {
+      if (softn.storage && typeof softn.storage.update === "function") {
+        softn.storage.update("notes", selectedNoteId, noteData, function (r) {
+          editorDirty = false
+          saveSuccessMsg = "Changes saved"
+          refreshNotes()
+        })
+      } else {
+        softn.storage.remove("notes", selectedNoteId, function () {
+          softn.storage.insert("notes", noteData, function (ins) {
+            if (ins && ins.id) selectedNoteId = ins.id
+            editorDirty = false
+            saveSuccessMsg = "Changes saved"
+            refreshNotes()
+          })
+        })
+      }
+      return
+    }
+    if (storageMode === "server") {
+      softn.net.fetch(serverUrl + "/api/update-note", { method: "POST", headers: { "Content-Type": "application/json" }, body: { id: selectedNoteId, data: noteData } }, function (res) {
+        editorDirty = false
+        saveSuccessMsg = "Synced to server"
+        refreshNotes()
+      })
+      return
+    }
+    let updatedList = []
+    let i = 0
+    while (i < notes.length) {
+      if (notes[i].id === selectedNoteId) {
+        updatedList.push({ id: selectedNoteId, data: noteData })
+      } else {
+        updatedList.push(notes[i])
+      }
+      i = i + 1
+    }
+    saveLocalNotes(updatedList)
+    notes = updatedList
+    noteCount = notes.length
+    editorDirty = false
+    saveSuccessMsg = "Saved locally"
+    return
+  }
+
+  // Create new note
   if (storageMode === "site") {
     softn.storage.insert("notes", noteData, function (r) {
-      if (r && r.error) { formError = r.error; return }
-      newTitle = ""
-      newContent = ""
+      if (r && r.error) { formError = String(r.error); return }
+      if (r && r.id) selectedNoteId = r.id
+      editorDirty = false
+      saveSuccessMsg = "Note created"
       refreshNotes()
     })
     return
   }
-  if (storageMode === "local") {
-    let next = [{ id: "local-" + Date.now() + "-" + Math.floor(Math.random() * 1000), data: noteData }].concat(notes)
-    if (!saveLocalNotes(next)) {
-      formError = "Browser storage is full or unavailable."
-      return
-    }
-    notes = next
-    noteCount = notes.length
-    newTitle = ""
-    newContent = ""
+  if (storageMode === "server") {
+    softn.net.fetch(serverUrl + "/api/create-note", { method: "POST", headers: { "Content-Type": "application/json" }, body: noteData }, function (result) {
+      if (result && result.ok) {
+        editorDirty = false
+        saveSuccessMsg = "Note created"
+        refreshNotes()
+      } else {
+        formError = "Server could not save the note."
+      }
+    })
     return
   }
-  softn.net.fetch(serverUrl + "/api/create-note", { method: "POST", headers: { "Content-Type": "application/json" }, body: noteData }, function (result) {
-    if (result && result.ok) {
-      newTitle = ""
-      newContent = ""
-      refreshNotes()
-    } else {
-      formError = "The server did not take the note."
-    }
-  })
+
+  let newId = "local-" + Date.now() + "-" + Math.floor(Math.random() * 1000)
+  let next = [{ id: newId, data: noteData }].concat(notes)
+  saveLocalNotes(next)
+  notes = next
+  noteCount = notes.length
+  selectedNoteId = newId
+  editorDirty = false
+  saveSuccessMsg = "Note added"
 }
 
 function deleteNote(id) {
-  if (pinnedMap[id]) {
+  if (!id) return
+  let target = null
+  let i = 0
+  while (i < notes.length) {
+    if (notes[i].id === id) {
+      target = notes[i]
+    }
+    i = i + 1
+  }
+  let wasPinned = !!pinnedMap[id]
+  if (target) {
+    deletedBackup = { id: target.id, data: target.data, pinned: wasPinned }
+    deletedTitle = target.data && target.data.title ? target.data.title : "Untitled"
+    undoVisible = true
+  }
+
+  if (wasPinned) {
     delete pinnedMap[id]
     savePinnedMap()
   }
-  if (storageMode === "site") {
-    softn.storage.remove("notes", id, function (r) { refreshNotes() })
-    return
+
+  let next = []
+  let j = 0
+  while (j < notes.length) {
+    if (notes[j].id !== id) next.push(notes[j])
+    j = j + 1
   }
-  if (storageMode === "local") {
-    let next = []
-    for (let i = 0; i < notes.length; i = i + 1) {
-      if (notes[i].id !== id) next.push(notes[i])
+
+  if (selectedNoteId === id) {
+    if (next.length > 0) {
+      selectedNoteId = next[0].id
+      editorTitle = next[0].data.title || ""
+      editorContent = next[0].data.content || ""
+      editorTag = next[0].data.tag || "General"
+    } else {
+      selectedNoteId = ""
+      editorTitle = ""
+      editorContent = ""
+      editorTag = "General"
     }
-    saveLocalNotes(next)
+    editorDirty = false
+    mobilePane = "list"
+  }
+
+  if (storageMode === "site") {
     notes = next
     noteCount = notes.length
+    softn.storage.remove("notes", id, function () { refreshNotes() })
     return
   }
-  softn.net.fetch(serverUrl + "/api/delete-note", { method: "POST", headers: { "Content-Type": "application/json" }, body: { id: id } }, function (result) {
-    refreshNotes()
-  })
+  if (storageMode === "server") {
+    notes = next
+    noteCount = notes.length
+    softn.net.fetch(serverUrl + "/api/delete-note", { method: "POST", headers: { "Content-Type": "application/json" }, body: { id: id } }, function () { refreshNotes() })
+    return
+  }
+
+  saveLocalNotes(next)
+  notes = next
+  noteCount = notes.length
+}
+
+function deleteSelectedNote() {
+  if (selectedNoteId !== "") {
+    deleteNote(selectedNoteId)
+  }
+}
+
+function undoDelete() {
+  if (!deletedBackup) return
+  let restored = { id: deletedBackup.id, data: deletedBackup.data }
+  if (deletedBackup.pinned) {
+    pinnedMap[restored.id] = true
+    savePinnedMap()
+  }
+  deletedBackup = null
+  undoVisible = false
+
+  if (storageMode === "site") {
+    softn.storage.insert("notes", restored.data, function () { refreshNotes() })
+    return
+  }
+  if (storageMode === "server") {
+    softn.net.fetch(serverUrl + "/api/create-note", { method: "POST", headers: { "Content-Type": "application/json" }, body: restored.data }, function () { refreshNotes() })
+    return
+  }
+
+  let next = [restored].concat(notes)
+  saveLocalNotes(next)
+  notes = next
+  noteCount = notes.length
+  selectNote(restored.id)
+}
+
+function dismissUndo() {
+  deletedBackup = null
+  undoVisible = false
 }
 
 function getFilteredNotes() {
   let q = searchQuery ? searchQuery.toLowerCase() : ""
   let pinned = []
   let rest = []
-  for (let i = 0; i < notes.length; i = i + 1) {
+  let i = 0
+  while (i < notes.length) {
     let note = notes[i]
-    let noteTag = (note.data && note.data.tag) ? note.data.tag : "General"
+    let d = note.data || {}
+    let noteTag = d.tag ? d.tag : "General"
     let notePinned = !!pinnedMap[note.id]
-    if (activeFilter === "pinned" && !notePinned) continue
-    if (activeFilter !== "all" && activeFilter !== "pinned" && noteTag !== activeFilter) continue
-    if (q !== "") {
-      let title = note.data.title ? note.data.title.toLowerCase() : ""
-      let content = note.data.content ? note.data.content.toLowerCase() : ""
-      if (title.indexOf(q) < 0 && content.indexOf(q) < 0 && noteTag.toLowerCase().indexOf(q) < 0) {
-        continue
+    let pass = true
+    if (activeFilter === "pinned" && !notePinned) pass = false
+    if (activeFilter !== "all" && activeFilter !== "pinned" && noteTag !== activeFilter) pass = false
+    if (pass && q !== "") {
+      let t = d.title ? d.title.toLowerCase() : ""
+      let c = d.content ? d.content.toLowerCase() : ""
+      if (t.indexOf(q) < 0 && c.indexOf(q) < 0 && noteTag.toLowerCase().indexOf(q) < 0) {
+        pass = false
       }
     }
-    if (notePinned) { pinned.push(note) } else { rest.push(note) }
+    if (pass) {
+      if (notePinned) { pinned.push(note) } else { rest.push(note) }
+    }
+    i = i + 1
   }
   return pinned.concat(rest)
 }
@@ -278,15 +655,15 @@ function getFilteredNotes() {
 function formatDate(isoString) {
   if (!isoString) return ""
   let d = new Date(isoString)
+  if (isNaN(d.getTime())) return ""
   let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
   let month = months[d.getMonth()]
   let day = d.getDate()
   let hours = d.getHours()
   let mins = d.getMinutes()
-  let ampm = "AM"
-  if (hours >= 12) ampm = "PM"
+  let ampm = hours >= 12 ? "PM" : "AM"
   if (hours > 12) hours = hours - 12
   if (hours === 0) hours = 12
   let minStr = mins < 10 ? "0" + mins : "" + mins
-  return month + " " + day + " at " + hours + ":" + minStr + " " + ampm
+  return month + " " + day + ", " + hours + ":" + minStr + " " + ampm
 }

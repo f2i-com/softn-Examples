@@ -71,7 +71,7 @@
     </div>
     <button className="os-btn os-wide" @click={replayOpening}>Watch opening</button>
     <button className="os-btn os-wide" @click={toggleSound}>{ambienceText}</button>
-    <button className="os-btn" @click={openPresentation}>Picture &amp; sound</button>
+    <button className="os-btn os-wide" @click={openPresentation}>Picture &amp; sound</button>
     <button className="os-btn os-wide" @click={setMotion}>{reducedMotion ? "Animations: off" : "Animations: on"}</button>
     <button className="os-btn os-wide" @click={openMods}>User mods</button>
     <div className="os-title-footer">SINGLE PLAYER · LOCAL SAVES · BUILT FOR SOFTN<br />FIRST LIGHT 0.61.6 · A PLAYABLE FRONTIER PROTOTYPE<br /><a className="os-credit-link" href="https://www.formlogic.com" target="_blank" rel="noopener">Powered by FormLogic</a> · <a className="os-credit-link" href="https://www.lance.name" target="_blank" rel="noopener">Created by Lance</a></div>

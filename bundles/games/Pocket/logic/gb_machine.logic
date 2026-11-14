@@ -135,13 +135,7 @@ function gbMachine_reset() {
   // CONTRACT.md §3.1, so the power-on values are restored here and the offsets
   // recomputed through the owner's gbCart_remap().
   if (GB_ROM !== null) {
-    GB_CART[GB_K_BANKLO] = 1
-    GB_CART[GB_K_BANKHI] = 0
-    GB_CART[GB_K_MODE] = 0
-    GB_CART[GB_K_RAMEN] = 0
-    GB_CART[GB_K_RAMBANK] = 0
-    GB_RTC[GB_RTC_SEL] = 0
-    gbCart_remap()
+    gbCart_reset()
   }
 
   // 0x80 = CGB + DMG, 0xC0 = CGB only; anything else is a DMG cart. Read back
@@ -151,12 +145,9 @@ function gbMachine_reset() {
   let gbc = flag === 0x80 || flag === 0xc0
 
   gbCpu_reset(gbc)
+  gbPpu_reset()
   gbApu_reset()
-  gbMachine_postBootIo()
-
-  // So the very first getFrame() has a palette to hand back even if it lands
-  // before the first VBlank.
-  gbPpu_buildPalette()
+  gbMmu_writeP1(0x30)
 
   GB_CTR[GB_C_CYCLE_BUDGET] = 0
   gbMachine_resetFpsClock()
@@ -316,6 +307,7 @@ function gbMachine_mapperName() {
   let mbc = GB_CART[GB_K_MBC]
   if (mbc === GB_MBC_NONE) { return "ROM only" }
   if (mbc === GB_MBC_1) { return "MBC1" }
+  if (mbc === gbCart_MBC_2) { return "MBC2" }
   if (mbc === GB_MBC_3) { return "MBC3" }
   if (mbc === GB_MBC_5) { return "MBC5" }
   return "MBC?"
@@ -888,12 +880,14 @@ function gbMachine_saveState() {
 
   // GB_CTR[GB_C_TIMER_BIT] is a mirror of (DIV & mask) that gb_machine's quiet
   // span is allowed to leave behind between edges; freshen it so what goes into
-  // the image is the bit as of this instant. Nothing else here is derived.
+  // the image is the bit as of this instant.
   gbTimer_syncLive()
-  // The CPU flags and DIV live in plain numbers at runtime; the arrays are the
-  // save form. See gb_cpu.logic and gb_timer.logic.
+  // Sync runtime scalars (CPU flags, DIV, PPU countdowns, APU sample clock) out
+  // into the serialised typed arrays before snapshotting them.
   gbCpu_syncFlagsOut()
   gbTimer_syncOut()
+  gbPpu_syncOut()
+  gbApu_syncOut()
 
   let ramBytes = gbMachine_ramBytes()
   let buf = new Uint8Array(gbMachine_stateBytes())
@@ -996,6 +990,9 @@ function gbMachine_loadState(s) {
     return false
   }
 
+  let prevPalRev = GB_CTR[GB_C_PAL_REV]
+  let prevApuActive = GB_APU_G[GB_AG_ACTIVE]
+
   let o = GB_MACHINE_STATE_HEADER
   o = gbMachine_getBytes(src, o, GB_REG)
   o = gbMachine_getBytes(src, o, gbMachine_byteView(GB_REG16))
@@ -1023,44 +1020,35 @@ function gbMachine_loadState(s) {
     o = o + ramBytes
   }
 
-  // gbTimer_live and gbMmu_busy were derived from the arrays this function has
-  // just overwritten. Neither holds anything of its own, so neither is in the
-  // state image; both are re-derived from what came back.
-  // The runtime scalars over GB_CPUF and GB_CTR first — gbTimer_syncLive
-  // derives its two from DIV, so DIV has to be back before it runs.
+  // Restore runtime scalars over GB_CPUF, GB_CTR, PPU and APU.
   gbCpu_syncFlagsIn()
   gbTimer_syncIn()
   gbTimer_syncLive()
   gbMmu_syncBusy()
   gbMmu_syncIrq()
-  GB_PPU_FRAME = GB_CTR[GB_C_FRAME]
-  // Both framebuffers came back whole, so the frame under construction is not
-  // a skipped one whatever was true when the state was taken.
-  gbPpu_skipped = 0
+  gbPpu_syncIn()
 
-  // GB_VRAM went in behind gb_mmu's back, so every tile row is stale — this is
-  // case 4 of CONTRACT.md §4, and skipping it is the failure mode that document
-  // calls the worst possible one: a picture that is subtly, intermittently
-  // wrong rather than obviously broken.
+  // GB_VRAM went in behind gb_mmu's back, so every tile row is stale.
   gbState_invalidateTileCache()
 
-  // The bank registers just changed under the mapper; the precomputed offsets
-  // in GB_CART came from the state, but remapping is idempotent and costs
-  // nothing here, and it is the documented contract for any bank-register write.
+  // Recompute precomputed ROM/RAM window offsets from restored bank registers.
   gbCart_remap()
 
-  // GB_C_PAL_REV came back with GB_CTR, so force the canvas to notice by
-  // rebuilding — buildPalette bumps the revision only if the bytes moved, and
-  // after a state load they almost always have.
+  // Keep monotonic palette revision so <PixelCanvas> never skips decoding a
+  // newly-restored palette whose saved revision happened to match the canvas's.
+  GB_CTR[GB_C_PAL_REV] = prevPalRev
   gbPpu_buildPalette()
+  GB_CTR[GB_C_PAL_REV] = prevPalRev + 1
 
   // Transport state, deliberately not restored: start the audio clock clean
-  // rather than replaying whatever was queued when the state was taken.
+  // while preserving whether the host AudioStream is actively draining.
+  GB_APU_G[GB_AG_ACTIVE] = prevApuActive
   GB_APU_G[GB_AG_RING_WRITE] = 0
   GB_APU_G[GB_AG_RING_READ] = 0
   GB_APU_G[GB_AG_RING_COUNT] = 0
   GB_AUDIO_RING.fill(0)
-  GB_FCTR[GB_F_SAMPLE_ACC] = 0
+  gbApu_syncIn()
+  gbMachine_pacingStalls = 0
 
   // And the machine clock: a state resumes from a whole instruction boundary,
   // never mid-slice.

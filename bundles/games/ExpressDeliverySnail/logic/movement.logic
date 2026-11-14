@@ -1,0 +1,97 @@
+// Derived from v0.1 gameStep/snailJump/snailBoost, not a replacement physics engine.
+// Core constants, exponential drag, velocity clamping and one-way landing are preserved.
+function snailJump() {
+    if (S.rescueTimer > 0 || S.phase !== "play")
+        return;
+    if ((!S.p.grounded && snailCoyote <= 0) || S.jumpCooldown > 0) {
+        snailJumpBuffer = PHYSICS.buffer;
+        return;
+    }
+    snailCoyote = 0;
+    snailJumpBuffer = 0;
+    S.p.vy = -PHYSICS.jump * parcelModifiers().jump;
+    S.p.grounded = false;
+    S.jumpCooldown = 0.2;
+    S.jumpAnim = 0.2;
+    burst(S.p.x, S.p.y + 21, 5, "dust");
+    sound("jump", 0.4, 0.1);
+}
+function jumpRelease() { if (S.p.vy < -165)
+    S.p.vy = -165; }
+function snailBoost() {
+    if (S.phase !== "play" || S.rescueTimer > 0)
+        return;
+    if (S.boost < PHYSICS.boostCost || S.boostCooldown > 0) {
+        sound("shell", 0.17, 0.15);
+        return;
+    }
+    S.boost -= PHYSICS.boostCost;
+    S.boosting = PHYSICS.boostDuration;
+    S.boostCooldown = 0.65;
+    S.boostDir = S.p.facing;
+    profile.boosts++;
+    S.hitAnim = 0;
+    burst(S.p.x - 20 * S.p.facing, S.p.y, 12, "spark");
+    sound("boost", 0.5, 0.1);
+}
+function movementStep(dt) {
+    let p = S.p;
+    snailCoyote = p.grounded ? PHYSICS.coyote : Math.max(0, snailCoyote - dt);
+    snailJumpBuffer = Math.max(0, snailJumpBuffer - dt);
+    S.boost = Math.min(100, S.boost + dt * 4);
+    S.boosting = Math.max(0, S.boosting - dt);
+    S.boostCooldown = Math.max(0, S.boostCooldown - dt);
+    S.jumpCooldown = Math.max(0, S.jumpCooldown - dt);
+    S.hitCooldown = Math.max(0, S.hitCooldown - dt);
+    let axis = (held("ArrowRight", "d") ? 1 : 0) - (held("ArrowLeft", "a") ? 1 : 0);
+    if (axis !== 0)
+        p.facing = axis;
+    let modifiers = parcelModifiers();
+    let braking = isBracing();
+    let accel = PHYSICS.acceleration * modifiers.accel;
+    // Extra countersteer removes the sluggish turnaround without changing straight-line momentum.
+    if (axis * p.vx < 0)
+        accel *= 1.7;
+    if (S.env.wet)
+        accel *= 0.76;
+    if (S.boosting > 0 && !braking)
+        p.vx += dt * S.boostDir * PHYSICS.boostAcceleration;
+    else if (axis !== 0)
+        p.vx += axis * accel * dt;
+    else
+        p.vx *= Math.pow(p.grounded ? (S.env.wet ? 0.993 : PHYSICS.groundDrag) : PHYSICS.airDrag, dt * 20);
+    if (braking) {
+        p.vx *= Math.pow(0.85, dt * 20);
+        S.boosting = 0;
+    }
+    let max = S.boosting > 0 ? PHYSICS.boostSpeed : PHYSICS.topSpeed;
+    p.vx = clamp(p.vx, -max, max);
+    p.vx += S.env.wind * modifiers.wind * dt * (braking ? 0.13 : 1);
+    let oldX = p.x;
+    let oldBottom = p.y + p.h / 2;
+    let wasGrounded = p.grounded;
+    p.x = clamp(p.x + p.vx * dt, 28, S.world - 45);
+    p.vy += dt * PHYSICS.gravity * modifiers.gravity;
+    // Bracing is a useful air-control choice, not a required reaction-time trap.
+    if (braking && p.vy > 290)
+        p.vy = 290;
+    p.y += p.vy * dt;
+    p.grounded = false;
+    let landing = sweepFloor(p, oldBottom);
+    if (landing.landed && !wasGrounded && landing.speed > 60) {
+        S.landAnim = 0.26;
+        S.cameraY = settings.reducedMotion ? 0 : clamp(landing.speed / 120, 0, 5);
+        parcelImpact(landing.soft ? landing.speed * 0.55 : landing.speed, 0, "land");
+        burst(p.x, p.y + 20, landing.soft ? 5 : 9, S.env.wet ? "water" : "dust");
+        sound(S.env.wet ? "splash" : "land", Math.min(0.45, 0.15 + landing.speed / 2200), 0.08);
+    }
+    collideSides(p, oldX);
+    checkNearMiss();
+    if (p.grounded && snailJumpBuffer > 0 && S.jumpCooldown <= 0)
+        snailJump();
+    if (p.y > 670)
+        requestRescue(false);
+    let desired = clamp(p.x - viewWidth * 0.3 + p.vx * 0.13, 0, S.world - viewWidth);
+    S.camera += (desired - S.camera) * (1 - Math.exp(-8 * dt));
+    S.cameraY *= Math.exp(-13 * dt);
+}

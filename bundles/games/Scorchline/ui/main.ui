@@ -1,0 +1,298 @@
+<logic src="../logic/main.logic" />
+<style>
+.sc-root { position:absolute; inset:0; display:flex; flex-direction:column; background:#0c151b; color:#d4dbd8; font-family:Segoe UI,Arial,sans-serif; font-size:12px; overflow:hidden; user-select:none; min-height:0; }
+.sc-root * { box-sizing:border-box; }
+.sc-header { flex:0 0 54px; display:flex; align-items:center; gap:22px; padding:0 17px; background:linear-gradient(180deg,#202c32,#142129); border-bottom:1px solid #475056; box-shadow:0 2px 12px #0005; z-index:7000; }
+.sc-brand { display:flex; align-items:center; gap:11px; min-width:250px; }
+.sc-word { display:block; font-size:19px; font-weight:750; letter-spacing:7px; color:#f2e7d1; }
+.sc-eyebrow { display:block; color:#a6b3b6; font-size:9px; letter-spacing:2px; line-height:1.7; }
+.sc-resource { display:flex; flex-direction:column; gap:1px; min-width:90px; font-variant-numeric:tabular-nums; }
+.sc-value { font-size:18px; color:#ecd7a9; font-weight:600; }
+.sc-value.low { color:#f57f66; }
+.sc-head-actions { margin-left:auto; display:flex; align-items:center; gap:6px; }
+.sc-btn { border:1px solid #47565d!important; border-radius:3px!important; background:#26343b!important; color:#dce4e1!important; padding:7px 11px!important; font-size:11px!important; min-height:35px!important; min-width:35px; box-shadow:none!important; cursor:pointer; font-weight:500; }
+.sc-btn:hover { background:#364951!important; border-color:#7b939a!important; }
+.sc-btn:focus-visible, .sc-root button:focus-visible { outline:2px solid #8fd3e8!important; outline-offset:2px; }
+.sc-btn:disabled { opacity:.4; cursor:default; }
+.sc-btn.active { border-color:#d4a767!important; color:#efcea0!important; background:#3b3730!important; }
+.sc-btn.primary { background:#d09c59!important; border-color:#ecc18a!important; color:#20272a!important; font-weight:750; }
+.sc-btn.danger { color:#f2957f!important; }
+.sc-body { flex:1; min-height:0; display:flex; position:relative; }
+.sc-viewport { flex:1; min-width:0; overflow:hidden; position:relative; background:#0c171b; }
+.sc-world { position:absolute; left:0; top:0; transform-origin:0 0; pointer-events:none; }
+.sc-terrain { position:absolute; left:0; top:0; width:2048px; height:1536px; image-rendering:auto; }
+.sc-entity { position:absolute; pointer-events:none; will-change:transform; }
+.sc-ring { position:absolute; border:1px solid; box-shadow:0 0 3px #8bd89c55; }
+.sc-health { position:absolute; height:5px; background:#101618; padding:1px; z-index:5; }
+.sc-health-fill { display:block; height:3px; }
+.sc-work { position:absolute; background:#e5b268; }
+.sc-work-label { position:absolute; left:0; bottom:20px; width:160px; text-align:center; color:#ffdf96; font-size:10px; text-shadow:1px 1px #000; }
+.sc-cargo { position:absolute; background:#68dcf2; }
+.sc-repair-flag { position:absolute; top:32px; right:20px; color:#a7e8a3; font-weight:800; font-size:17px; }
+.sc-fog { position:absolute; z-index:3300; pointer-events:none; }
+.sc-shot { position:absolute; z-index:2300; border-radius:2px; }
+.sc-explosion { position:absolute; z-index:2400; }
+.sc-ghost { position:absolute; width:160px; height:160px; z-index:3500; opacity:.7; }
+.sc-footprint { position:absolute; border:2px dashed; z-index:2; }
+.sc-hit { position:absolute; inset:0; touch-action:none; z-index:5000; cursor:crosshair; }
+.sc-drag { position:absolute; border:1px solid #a4e6b7; background:#83caa81b; z-index:4500; pointer-events:none; }
+.sc-marker { position:absolute; width:28px; height:28px; border:2px solid #b7e4aa; border-radius:50%; z-index:4400; pointer-events:none; }
+.sc-view-heading { position:absolute; left:20px; top:17px; z-index:5100; pointer-events:none; text-shadow:0 1px 3px #000; }
+.sc-sector { display:block; text-transform:uppercase; letter-spacing:2.4px; font-size:11px; color:#f2dfba; }
+.sc-mission { display:block; font-size:10px; color:#c2c9bb; margin-top:5px; }
+.sc-message { position:absolute; left:18px; right:18px; bottom:15px; z-index:5100; pointer-events:none; color:#f5dbad; font-size:12px; text-shadow:0 1px 2px #000; padding:9px 12px; border-left:2px solid #d1a563; background:linear-gradient(90deg,#101c25e6,transparent); }
+.sc-place-note { position:absolute; left:50%; top:62px; transform:translateX(-50%); background:#10202bf0; border:1px solid #d1a563; padding:11px 18px; z-index:5150; pointer-events:none; text-align:center; min-width:300px; }
+.sc-sidebar { width:282px; flex:0 0 282px; background:#152229; border-left:1px solid #43525a; display:flex; flex-direction:column; min-height:0; z-index:7000; }
+.sc-side-head { padding:10px 13px; border-bottom:1px solid #34434b; display:flex; align-items:center; justify-content:space-between; }
+.sc-label { color:#a6b7ba; font-size:9px; letter-spacing:1.8px; text-transform:uppercase; }
+.sc-mini { width:256px; height:192px; position:relative; margin:12px auto 7px; background:#070e12; border:1px solid #516068; overflow:hidden; }
+.sc-mini-img { position:absolute; inset:0; width:256px; height:192px; }
+.sc-mini-fog { position:absolute; pointer-events:none; z-index:2; }
+.sc-mini-dot { position:absolute; pointer-events:none; z-index:3; }
+.sc-mini-view { position:absolute; border:1px solid #f4e5c7; pointer-events:none; z-index:4; }
+.sc-mini-hit { position:absolute; inset:0; touch-action:none; z-index:5; cursor:crosshair; }
+.sc-mini-status { display:flex; justify-content:space-between; padding:0 13px 10px; font-size:9px; color:#8da6ad; letter-spacing:1px; }
+.sc-tabs { display:flex; gap:5px; padding:8px 10px; border-top:1px solid #34434b; border-bottom:1px solid #34434b; }
+.sc-tabs .sc-btn { flex:1; padding:8px 4px!important; min-height:35px!important; font-size:10px!important; letter-spacing:.7px; }
+.sc-catalog { flex:1; overflow-y:auto; padding:9px; display:grid; grid-template-columns:1fr 1fr; gap:7px; align-content:start; }
+.sc-card { border:1px solid #3c4d55!important; border-radius:3px!important; background:linear-gradient(160deg,#2b3a41,#1c2930)!important; color:#dce2db!important; cursor:pointer; display:flex!important; flex-direction:column; align-items:stretch!important; justify-content:flex-start!important; padding:0!important; overflow:hidden; text-align:left!important; min-height:104px; box-shadow:none!important; }
+.sc-card:hover { border-color:#b6a27e!important; background:#33464e!important; }
+.sc-card.locked { opacity:.55; }
+.sc-card.chosen { border-color:#dfb678!important; background:#454333!important; }
+.sc-card-image { width:100%; height:59px; object-fit:contain; background:radial-gradient(ellipse at center,#6884852b,transparent); image-rendering:auto; }
+.sc-card-text { display:block; font-size:10px; padding:3px 7px 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:600; }
+.sc-card-meta { display:flex; justify-content:space-between; padding:4px 7px 6px; color:#ddb87e; font-size:10px; }
+.sc-tech-list { flex:1; overflow-y:auto; padding:10px; }
+.sc-tech { padding:12px 8px; border-bottom:1px solid #3d4c54; }
+.sc-tech-name { display:block; color:#e6d9bc; font-size:12px; }
+.sc-tech-desc { display:block; color:#9eafb0; font-size:11px; line-height:1.5; padding:5px 0 9px; }
+.sc-bottom { flex:0 0 134px; z-index:7000; display:flex; align-items:stretch; background:linear-gradient(180deg,#1a292f,#111e25); border-top:1px solid #47575d; }
+.sc-portrait { width:134px; padding:9px; flex-shrink:0; background:#0d1c24; border-right:1px solid #3a4a52; position:relative; display:flex; align-items:center; justify-content:center; }
+.sc-portrait-image { width:110px; height:96px; object-fit:contain; }
+.sc-portrait-health { position:absolute; left:12px; right:12px; bottom:9px; height:4px; background:#35444a; }
+.sc-unit-info { padding:13px 17px; min-width:260px; max-width:400px; flex:1; }
+.sc-unit-title { display:block; font-size:13px; color:#eadcc5; font-weight:700; letter-spacing:1.1px; }
+.sc-unit-sub { display:block; font-size:11px; color:#80b8c9; margin-top:5px; }
+.sc-unit-detail { display:block; font-size:10px; color:#a4b4b3; margin-top:9px; }
+.sc-unit-health-text { display:block; font-size:11px; color:#9bd5a5; margin-top:7px; }
+.sc-selection { display:flex; flex:1; flex-wrap:wrap; gap:4px; overflow-y:auto; padding:10px; align-content:flex-start; }
+.sc-small-unit { width:48px; height:48px; padding:0!important; background:#1c2c34!important; border:1px solid #41565f!important; border-radius:2px!important; position:relative; cursor:pointer; }
+.sc-small-unit-image { width:44px; height:42px; object-fit:contain; }
+.sc-queue-item { width:78px; padding:5px!important; background:#1c2c34!important; border:1px solid #41565f!important; color:#d1ddde!important; border-radius:2px!important; display:flex; flex-direction:column; gap:3px; font-size:9px; cursor:pointer; }
+.sc-queue-image { width:66px; height:45px; object-fit:contain; }
+.sc-queue-progress { width:100%; height:3px; background:#34464f; }
+.sc-commands { width:282px; flex:0 0 282px; display:grid; grid-template-columns:1fr 1fr; gap:6px; padding:11px; border-left:1px solid #3b4c54; }
+.sc-command-note { grid-column:1/-1; text-align:center; font-size:9px; color:#859ca3; }
+.sc-tutorial { padding:9px 12px; color:#c2b894; font-size:10px; line-height:1.5; border-top:1px solid #37474e; }
+.sc-modal-wrap { position:absolute; inset:0; background:#071016dd; z-index:10000; display:flex; align-items:center; justify-content:center; padding:24px; overflow:auto; }
+.sc-dialog { width:940px; max-width:100%; max-height:100%; overflow:auto; background:linear-gradient(145deg,#22323b,#111e26 70%); border:1px solid #65716d; box-shadow:0 28px 100px #000a; }
+.sc-dialog-head { padding:22px 28px 18px; border-bottom:1px solid #46545a; }
+.sc-logo { width:425px; max-width:100%; height:auto; display:block; margin-left:-5px; }
+.sc-menu-lead { color:#b5c4c5; font-size:12px; line-height:1.6; display:block; margin-top:6px; }
+.sc-menu-body { display:grid; grid-template-columns:1.4fr 1fr; gap:28px; padding:22px 28px; }
+.sc-section-title { display:block; color:#d9ba85; font-size:10px; letter-spacing:2px; text-transform:uppercase; margin:0 0 10px; }
+.sc-choice-row { display:flex; gap:8px; margin-bottom:21px; }
+.sc-choice { flex:1; border:1px solid #41525b!important; background:#1d2d36!important; border-radius:3px!important; color:#bac9cc!important; padding:12px!important; text-align:left!important; display:flex!important; flex-direction:column; align-items:stretch!important; box-shadow:none!important; cursor:pointer; }
+.sc-choice.selected { border-color:#c4a36f!important; background:#343c39!important; color:#f1dec0!important; }
+.sc-choice-title { font-size:12px; font-weight:600; display:block; }
+.sc-choice-desc { font-size:10px; line-height:1.55; margin-top:7px; color:#9eb4b8; display:block; font-weight:400; }
+.sc-map-choice { margin-bottom:8px; width:100%; padding:10px 12px!important; }
+.sc-map-preview { width:100%; height:210px; object-fit:cover; border:1px solid #59625a; }
+.sc-map-caption { display:block; margin:8px 0 18px; color:#b1c0bf; font-size:11px; line-height:1.5; }
+.sc-seed { display:flex; align-items:center; gap:12px; margin-top:17px; }
+.sc-input { background:#102029!important; color:#cfe0dc!important; border:1px solid #4a5c62!important; border-radius:3px!important; padding:7px 9px!important; font-size:12px; width:120px; }
+.sc-menu-footer { padding:17px 28px; border-top:1px solid #46545a; display:flex; align-items:center; gap:10px; }
+.sc-menu-footer .sc-btn.primary { margin-left:auto; font-size:12px!important; letter-spacing:1.5px; padding:12px 26px!important; }
+.sc-fine { display:block; font-size:10px; line-height:1.6; color:#90a4ac; }
+.sc-compact-dialog { width:540px; padding:30px; }
+.sc-modal-title { display:block; color:#f0d5a8; font-size:27px; letter-spacing:4px; margin-bottom:10px; font-weight:600; }
+.sc-modal-text { display:block; font-size:12px; color:#b7c8cc; line-height:1.7; margin-bottom:20px; }
+.sc-modal-actions { display:flex; flex-wrap:wrap; gap:9px; margin-top:20px; }
+.sc-help-row { padding:8px 0; border-bottom:1px solid #3a4a52; display:flex; justify-content:space-between; gap:15px; font-size:11px; color:#c9d6d5; }
+.sc-help-key { color:#e0b980; white-space:nowrap; }
+.sc-save-input { width:100%; height:210px; resize:vertical; font-family:monospace; font-size:10px; color:#c7d6d4!important; background:#0d1a23!important; border:1px solid #52656e!important; user-select:text; }
+.sc-mobile-bar { display:none; flex:0 0 48px; align-items:center; gap:4px; padding:4px 6px; background:linear-gradient(180deg,#1a282e,#101c23); border-top:1px solid #47575d; z-index:7600; }
+.sc-mobile-bar .sc-btn { flex:1; min-width:0; min-height:36px!important; padding:4px 3px!important; font-size:10px!important; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:center; }
+.sc-mobile-close { display:none!important; }
+@media(max-width:1050px) { .sc-header { gap:12px; } .sc-brand { min-width:190px; } .sc-word { font-size:16px; letter-spacing:4px; } .sc-resource { min-width:72px; } .sc-head-label { display:none; } .sc-selection { max-width:130px; } .sc-unit-info { min-width:190px; padding:12px; } }
+@media(max-width:780px) { .sc-sidebar { width:224px; flex-basis:224px; } .sc-mini { width:206px; height:154.5px; } .sc-mini-img { width:206px; height:154.5px; } .sc-mini-content { transform:scale(.8046875); transform-origin:0 0; } .sc-header { gap:10px; padding:0 9px; } .sc-brand { min-width:0; } .sc-brand .sc-eyebrow { display:none; } .sc-word { font-size:13px; letter-spacing:2px; } .sc-resource { min-width:58px; } .sc-value { font-size:15px; } .sc-commands { width:224px; flex-basis:224px; } .sc-portrait { display:none; } .sc-selection { display:none; } .sc-unit-info { min-width:180px; } .sc-bottom { flex-basis:130px; } .sc-menu-body { gap:18px; padding:18px; } .sc-dialog-head { padding:15px 20px; } .sc-dialog-head .sc-logo { width:310px; } .sc-head-actions .sc-sound { display:none; } }
+@media(max-width:720px) { .sc-root { min-width:0; min-height:0; } .sc-header { flex:0 0 auto; min-height:46px; gap:8px; padding:5px 8px; } .sc-word { display:none; } .sc-resource { min-width:46px; } .sc-eyebrow { font-size:8px; letter-spacing:1px; } .sc-value { font-size:13px; } .sc-head-actions .sc-btn { min-width:34px; min-height:34px!important; padding:5px 9px!important; font-size:11px!important; } .sc-sidebar { display:none; } .sc-sidebar.sc-mobile-open { display:flex; position:absolute; inset:0; width:100%; flex-basis:auto; z-index:7500; border-left:0; } .sc-mobile-close { display:inline-flex!important; min-height:34px!important; padding:4px 10px!important; } .sc-bottom { display:none; } .sc-bottom.sc-mobile-open { display:flex; flex-direction:column; position:absolute; left:0; right:0; bottom:48px; max-height:calc(100% - 48px); overflow-y:auto; z-index:7500; border-top:1px solid #637982; flex-basis:auto; } .sc-bottom.sc-mobile-open .sc-unit-info { max-width:none; min-width:0; padding:10px 12px; } .sc-bottom.sc-mobile-open .sc-selection { display:flex; padding:6px 10px; max-height:90px; } .sc-bottom.sc-mobile-open .sc-commands { width:100%; flex:none; grid-template-columns:1fr 1fr; border-left:0; border-top:1px solid #3b4c54; padding:10px; gap:6px; } .sc-bottom.sc-mobile-open .sc-btn { min-height:38px!important; } .sc-mobile-bar { display:flex; } .sc-view-heading { left:10px; top:8px; right:10px; } .sc-mission { display:none; } .sc-place-note { min-width:0; left:10px; right:10px; transform:none; top:38px; padding:8px 10px; } .sc-message { left:8px; right:8px; bottom:8px; font-size:11px; padding:6px 9px; } .sc-mini { width:256px; height:192px; } .sc-mini-img { width:256px; height:192px; } .sc-mini-content { transform:none; } .sc-catalog { grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); } .sc-modal-wrap { padding:8px; align-items:flex-start; overflow-y:auto; } .sc-dialog { width:100%!important; max-height:100%; overflow-y:auto; } .sc-dialog-head { padding:12px 14px; } .sc-dialog-head .sc-logo { width:240px; } .sc-menu-body { grid-template-columns:1fr; gap:12px; padding:14px; } .sc-choice-row { flex-direction:column; margin-bottom:12px; } .sc-map-preview { height:120px; } .sc-menu-footer { padding:12px 14px; flex-wrap:wrap; gap:8px; } .sc-menu-footer .sc-btn { min-height:40px!important; flex:1 1 auto; margin-left:0!important; } .sc-compact-dialog { padding:18px!important; } .sc-compact-dialog .sc-btn { min-height:38px!important; } .sc-modal-title { font-size:21px; letter-spacing:2px; } }
+@media(max-height:520px) { .sc-root { min-width:0; min-height:0; } .sc-header { flex:0 0 auto; min-height:42px; gap:8px; padding:4px 8px; } .sc-brand .sc-eyebrow, .sc-head-label, .sc-mission { display:none; } .sc-word { font-size:13px; letter-spacing:2px; } .sc-resource { min-width:48px; } .sc-eyebrow { font-size:8px; letter-spacing:1px; } .sc-value { font-size:13px; } .sc-head-actions .sc-btn { min-width:34px; min-height:34px!important; padding:4px 9px!important; font-size:11px!important; } .sc-sidebar { display:none; } .sc-sidebar.sc-mobile-open { display:flex; position:absolute; inset:0; width:100%; flex-basis:auto; z-index:7500; border-left:0; overflow-y:auto; } .sc-mobile-close { display:inline-flex!important; min-height:34px!important; padding:4px 10px!important; } .sc-bottom { display:none; } .sc-bottom.sc-mobile-open { display:flex; flex-direction:row; position:absolute; left:0; right:0; bottom:44px; max-height:calc(100% - 44px); overflow-y:auto; z-index:7500; border-top:1px solid #637982; flex-basis:auto; } .sc-bottom.sc-mobile-open .sc-commands { width:260px; flex:0 0 260px; } .sc-mobile-bar { display:flex; flex:0 0 44px; padding:3px 6px; } .sc-mobile-bar .sc-btn { min-height:34px!important; } .sc-view-heading { left:10px; top:6px; right:10px; } .sc-place-note { min-width:0; left:10px; right:10px; transform:none; top:32px; padding:6px 10px; } .sc-message { left:8px; right:8px; bottom:6px; font-size:11px; padding:5px 8px; } .sc-modal-wrap { padding:8px; align-items:flex-start; overflow-y:auto; } .sc-dialog { max-height:100%; overflow-y:auto; } .sc-dialog-head { padding:10px 14px; } .sc-menu-body { gap:12px; padding:12px 14px; } .sc-menu-footer { padding:10px 14px; } }
+@media(prefers-reduced-motion:reduce) { .sc-root *, .sc-root *::before, .sc-root *::after { animation-duration:0.01ms!important; transition-duration:0.01ms!important; } }
+</style>
+<Box className="sc-root">
+  <Loop interval={100} running={screen === "play" && !paused && resultText === ""} @tick={scFrame} />
+  <Box className="sc-header">
+    <Box className="sc-brand">
+      <img alt="" draggable={false} src={asset("assets/icon.svg")} style={{width:31,height:31}} />
+      <Box><span className="sc-word">SCORCHLINE</span><span className="sc-eyebrow">CONTROL RESOURCES. SHAPE TOMORROW.</span></Box>
+    </Box>
+    <Box className="sc-resource"><span className="sc-eyebrow">CREDITS</span><span className="sc-value">{creditsText}</span></Box>
+    <Box className="sc-resource"><span className="sc-eyebrow">POWER</span><span className={powerLow ? "sc-value low" : "sc-value"}>{powerText}</span></Box>
+    <Box className="sc-resource"><span className="sc-eyebrow">COMMAND</span><span className="sc-value">{supplyText}</span></Box>
+    <Box className="sc-head-actions">
+      <span className="sc-head-label" style={{color:"#91a9af",fontSize:11,marginRight:8}}>{clockText}</span>
+      <button type="button" className="sc-btn sc-sound" @click={toggleMute}>{muted ? "Sound off" : "Sound on"}</button>
+      <button type="button" className="sc-btn" @click={openHelp}>?</button>
+      <button type="button" className="sc-btn" @click={togglePause}>{paused ? "Resume" : "Pause"}</button>
+    </Box>
+  </Box>
+  <Box className="sc-body">
+    <Box className="sc-viewport">
+      <Box className="sc-world" style={worldStyle}>
+        <img alt="" draggable={false} className="sc-terrain" src={asset(terrainSrc)} />
+        #each (o in drawOre) key={o.id}
+          <img alt="" draggable={false} key={o.id} src={asset(o.src)} style={o.style} />
+        #end
+        #each (e in drawEntities) key={e.id}
+          <Box key={e.id} className="sc-entity" style={e.style}>
+            <Box className="sc-ring" style={e.ringStyle} />
+            <Sprite src={asset(e.src)} frameWidth={e.size} frameHeight={e.size} columns={1} row={e.face} playing={false} scale={1} />
+            <Box className="sc-health" style={e.healthStyle}><Box className="sc-health-fill" style={e.barStyle} /></Box>
+            <Box if={!e.complete} className="sc-work" style={e.workStyle} />
+            <span if={!e.complete} className="sc-work-label">{e.label}</span>
+            <Box if={e.hasCargo} className="sc-cargo" style={e.cargoStyle} />
+            <span if={e.repairing} className="sc-repair-flag">+</span>
+          </Box>
+        #end
+        #each (s in drawShots) key={s.id}
+          <Box key={s.id} className="sc-shot" style={s.style} />
+        #end
+        #each (f in drawFX) key={f.id}
+          <Box key={f.id} className="sc-explosion" style={f.style}><Sprite src={asset("assets/fx/explosion.png")} frameWidth={64} frameHeight={64} columns={1} colOffset={f.col} playing={false} scale={f.scale} /></Box>
+        #end
+        #each (f in drawFog) key={f.id}
+          <Box key={f.id} className="sc-fog" style={f.style} />
+        #end
+        #each (g in drawGhost) key={g.id}
+          <Box key={g.id} className="sc-ghost" style={g.style}><Sprite src={asset(g.src)} frameWidth={160} frameHeight={160} columns={1} playing={false} scale={1} /><Box className="sc-footprint" style={g.footStyle} /></Box>
+        #end
+      </Box>
+      <Box className="sc-view-heading"><span className="sc-sector">{sectorText}</span><span className="sc-mission">{objectiveText}</span></Box>
+      <Box if={dragging} className="sc-drag" style={dragStyle} />
+      <Box if={markerVisible} className="sc-marker" style={markerStyle} />
+      <Box className="sc-hit" @pointerdown={battlefieldDown} @pointermove={battlefieldMove} @pointerup={battlefieldUp} @pointercancel={battlefieldLeave} @pointerleave={battlefieldLeave} @contextmenu={(event) => event.preventDefault()} />
+      <Box if={pendingName !== ""} className="sc-place-note"><span style={{display:"block",fontWeight:700,marginBottom:5}}>{pendingName}</span><span style={{fontSize:10}}>{pendingHint}</span></Box>
+      <span className="sc-message">{messageText}</span>
+    </Box>
+    <Box className={mobileDrawer === "build" ? "sc-sidebar sc-mobile-open" : "sc-sidebar"}>
+      <Box className="sc-side-head"><span className="sc-label">TACTICAL COMMAND</span><span style={{fontSize:10,color:"#d9bb83"}}>{modeText}</span><button type="button" className="sc-btn sc-mobile-close" @click={() => setMobileDrawer("")}>Done</button></Box>
+      <Box className="sc-mini">
+        <img alt="" draggable={false} className="sc-mini-img" src={asset(minimapSrc)} />
+        <Box className="sc-mini-content">
+          #each (f in miniFog) key={f.id}
+            <Box key={f.id} className="sc-mini-fog" style={f.style} />
+          #end
+          #each (d in miniDots) key={d.id}
+            <Box key={d.id} className="sc-mini-dot" style={d.style} />
+          #end
+          <Box className="sc-mini-view" style={miniViewport} />
+        </Box>
+        <Box className="sc-mini-hit" @pointerdown={minimapDown} @contextmenu={(event) => event.preventDefault()} />
+      </Box>
+      <Box className="sc-mini-status"><span>{minimapOnline ? "RADAR ONLINE" : "LOCAL TELEMETRY"}</span><span>{zoomText}</span></Box>
+      <Box className="sc-tabs">
+        <button type="button" className={activeTab === "structures" ? "sc-btn active" : "sc-btn"} @click={() => setTab("structures")}>BUILD</button>
+        <button type="button" className={activeTab === "units" ? "sc-btn active" : "sc-btn"} @click={() => setTab("units")}>UNITS</button>
+        <button type="button" className={activeTab === "research" ? "sc-btn active" : "sc-btn"} @click={() => setTab("research")}>TECH</button>
+      </Box>
+      <Box if={activeTab !== "research"} className="sc-catalog">
+        #each (c in buildCards) key={c.id}
+          <button type="button" key={c.id} className={c.active ? "sc-card chosen" : (c.available ? "sc-card" : "sc-card locked")} title={c.desc} @click={() => selectCard(c.id)}>
+            <img alt="" draggable={false} className="sc-card-image" src={asset(c.image)} />
+            <span className="sc-card-text">{c.name}</span>
+            <Box className="sc-card-meta"><span>{c.cost}</span><span>{c.time}</span></Box>
+          </button>
+        #end
+      </Box>
+      <Box if={activeTab === "research"} className="sc-tech-list">
+        #each (r in researchCards) key={r.id}
+          <Box key={r.id} className="sc-tech"><span className="sc-tech-name">{r.name}</span><span className="sc-tech-desc">{r.desc}</span><button type="button" className="sc-btn" disabled={!r.enabled} @click={() => researchUpgrade(r.id)}>{r.label}</button></Box>
+        #end
+      </Box>
+      <span className="sc-tutorial">{tipText}</span>
+    </Box>
+  </Box>
+  <Box className={mobileDrawer === "unit" ? "sc-bottom sc-mobile-open" : "sc-bottom"}>
+    <Box className="sc-portrait"><img alt="" draggable={false} className="sc-portrait-image" src={asset(selectionImage)} /><Box className="sc-portrait-health"><Box style={{width:selectionHealth + "%",height:4,background:"#86c897"}} /></Box></Box>
+    <Box className="sc-unit-info"><span className="sc-unit-title">{selectionTitle}</span><span className="sc-unit-sub">{selectionSub}</span><span className="sc-unit-detail">{selectionDetail}</span><span className="sc-unit-health-text">{selectionHealthText}</span></Box>
+    <Box className="sc-selection">
+      #each (u in selectedCards) key={u.id}
+        <button type="button" if={selectionCount > 1} key={u.id} className="sc-small-unit" title={u.name} @click={() => selectOne(u.id)}><img alt="" draggable={false} className="sc-small-unit-image" src={asset(u.image)} /></button>
+      #end
+      #each (q in queueCards) key={q.id}
+        <button type="button" key={q.id} className="sc-queue-item" title="Click to cancel and refund unspent work" @click={() => cancelProduction(q.building,q.id)}><img alt="" draggable={false} className="sc-queue-image" src={asset(q.image)} /><span>{q.remaining}</span><Box className="sc-queue-progress"><Box style={{width:q.progress + "%",height:3,background:"#d8b27c"}} /></Box></button>
+      #end
+    </Box>
+    <Box className="sc-commands">
+      <button type="button" className="sc-btn" @click={() => commandMode("attackmove")}>A · Attack-move</button>
+      <button type="button" className="sc-btn" @click={stopSelected}>S · Stop / hold</button>
+      <button type="button" className="sc-btn" @click={() => selectionBuilding ? repairSelected() : selectArmy()}>{selectionBuilding ? (selectionRepairing ? "Stop repairs" : "R · Repair") : "Q · Select army"}</button>
+      <button type="button" className="sc-btn" @click={() => selectionBuilding ? sellSelected() : centreBase()}>{selectionBuilding ? "Sell / cancel" : "Home · Base"}</button>
+      <Box className="sc-command-note"><button type="button" className="sc-btn" style={{padding:"3px 10px"}} @click={() => zoomBy(-.1)}>−</button><span style={{padding:"0 8px"}}>{zoomText}</span><button type="button" className="sc-btn" style={{padding:"3px 10px"}} @click={() => zoomBy(.1)}>+</button><button type="button" className="sc-btn" style={{marginLeft:7,padding:"3px 8px"}} @click={cycleSpeed}>{gameSpeed + "x"}</button></Box>
+    </Box>
+  </Box>
+  <Box if={screen === "play"} className="sc-mobile-bar">
+    <button type="button" className={touchAction === "select" ? "sc-btn active" : "sc-btn"} @click={() => setTouchAction("select")}>Select</button>
+    <button type="button" className={touchAction === "pan" ? "sc-btn active" : "sc-btn"} @click={() => setTouchAction("pan")}>Pan</button>
+    <button type="button" className={touchAction === "order" ? "sc-btn active" : "sc-btn"} @click={() => setTouchAction("order")}>Order</button>
+    <button type="button" className={mobileDrawer === "build" ? "sc-btn active" : "sc-btn"} @click={() => setMobileDrawer("build")}>Build</button>
+    <button type="button" className={mobileDrawer === "unit" ? "sc-btn active" : "sc-btn"} @click={() => setMobileDrawer("unit")}>Unit</button>
+  </Box>
+  <Box if={screen === "menu"} className="sc-modal-wrap">
+    <Box className="sc-dialog">
+      <Box className="sc-dialog-head"><span className="sc-eyebrow">CALDERA / FRONTIER CONFLICT</span><img alt="" draggable={false} className="sc-logo" src={asset("assets/logo.png")} /><span className="sc-menu-lead">An original aerial real-time strategy game. Harvest the Vitracite. Build your base. Break their command line.</span></Box>
+      <Box className="sc-menu-body">
+        <Box>
+          <span className="sc-section-title">01 / Choose your command</span>
+          <Box className="sc-choice-row">
+            #each (f in menuFactions) key={f.id}
+              <button type="button" key={f.id} className={chosenFaction === f.id ? "sc-choice selected" : "sc-choice"} @click={() => chooseFaction(f.id)}><span className="sc-choice-title">{f.name}</span><span className="sc-choice-desc">{f.desc}</span></button>
+            #end
+          </Box>
+          <span className="sc-section-title">02 / Theatre of operations</span>
+          #each (m in menuMaps) key={m.id}
+            <button type="button" key={m.id} className={chosenMap === m.id ? "sc-choice sc-map-choice selected" : "sc-choice sc-map-choice"} @click={() => chooseMap(m.id)}><span className="sc-choice-title">{m.name}</span><span className="sc-choice-desc">{m.desc}</span></button>
+          #end
+        </Box>
+        <Box>
+          <img alt="" draggable={false} className="sc-map-preview" src={asset("assets/maps/mini" + chosenMap + ".png")} />
+          <span className="sc-map-caption">One sector. Two commanders. Victory goes to the last surviving Command Core.</span>
+          <span className="sc-section-title">03 / Opponent</span>
+          <Box className="sc-choice-row" style={{marginBottom:9}}>
+            #each (d in menuDifficulties) key={d.id}
+              <button type="button" key={d.id} className={chosenDifficulty === d.id ? "sc-choice selected" : "sc-choice"} style={{padding:9}} @click={() => chooseDifficulty(d.id)}><span className="sc-choice-title" style={{fontSize:11}}>{d.name}</span></button>
+            #end
+          </Box>
+          <span className="sc-fine">Difficulty changes AI planning and attack timing, not its starting money.</span>
+          <Box className="sc-seed"><span className="sc-label">MATCH SEED</span><input className="sc-input" aria-label="Match seed" value={chosenSeed} @change={setSeed} /></Box>
+        </Box>
+      </Box>
+      <Box className="sc-menu-footer"><button type="button" className="sc-btn" @click={openHelp}>Field manual</button><button type="button" if={hasSave} className="sc-btn" @click={loadLocal}>Load checkpoint</button><button type="button" if={clockText !== "00:00" && resultText === ""} className="sc-btn" @click={resumeGame}>Resume</button><button type="button" className="sc-btn primary" @click={startSkirmish}>DEPLOY TO CALDERA</button></Box>
+    </Box>
+  </Box>
+  <Box if={screen === "play" && paused && !helpOpen && !saveOpen && resultText === ""} className="sc-modal-wrap">
+    <Box className="sc-dialog sc-compact-dialog"><span className="sc-eyebrow">TACTICAL PAUSE</span><span className="sc-modal-title">COMMAND ON HOLD</span><span className="sc-modal-text">{reportText}</span><Box className="sc-modal-actions"><button type="button" className="sc-btn primary" @click={togglePause}>Resume operation</button><button type="button" className="sc-btn" @click={saveLocal}>Save checkpoint</button><button type="button" className="sc-btn" @click={openSave}>Portable save</button><button type="button" className="sc-btn" @click={openHelp}>Field manual</button><button type="button" className="sc-btn" @click={showMenu}>Skirmish setup</button></Box><span className="sc-fine" style={{marginTop:15}}>{saveStatus}</span></Box>
+  </Box>
+  <Box if={screen === "play" && resultText !== "" && !helpOpen && !saveOpen} className="sc-modal-wrap">
+    <Box className="sc-dialog sc-compact-dialog"><span className="sc-eyebrow">OPERATION COMPLETE</span><span className="sc-modal-title">{resultText}</span><span className="sc-modal-text">{messageText}</span><span className="sc-modal-text">{reportText}</span><Box className="sc-modal-actions"><button type="button" className="sc-btn primary" @click={showMenu}>New skirmish</button><button type="button" className="sc-btn" @click={openSave}>Export battlefield</button></Box></Box>
+  </Box>
+  <Box if={helpOpen} className="sc-modal-wrap">
+    <Box className="sc-dialog sc-compact-dialog"><span className="sc-eyebrow">SCORCHLINE / FIELD MANUAL</span><span className="sc-modal-title">TAKE COMMAND</span><span className="sc-modal-text">Your first harvester works automatically. Build a Barracks, then a Vehicle Plant. Add Reactors before power runs low. Destroy the opposing Command Core to win.</span>
+      <Box className="sc-help-row"><span>Select / box select</span><span className="sc-help-key">Left click / drag</span></Box>
+      <Box className="sc-help-row"><span>Move, attack or harvest</span><span className="sc-help-key">Right click</span></Box>
+      <Box className="sc-help-row"><span>Attack-move; left click destination</span><span className="sc-help-key">A</span></Box>
+      <Box className="sc-help-row"><span>Queue orders / add to selection</span><span className="sc-help-key">Shift</span></Box>
+      <Box className="sc-help-row"><span>Pan / zoom</span><span className="sc-help-key">Arrows or middle drag / + −</span></Box>
+      <Box className="sc-help-row"><span>Select army / centre base</span><span className="sc-help-key">Q / Home</span></Box>
+      <Box className="sc-help-row"><span>Assign group / recall group</span><span className="sc-help-key">Shift + 1–5 / 1–5</span></Box>
+      <Box className="sc-help-row"><span>Stop / repair / pause</span><span className="sc-help-key">S / R / Space</span></Box>
+      <span className="sc-fine" style={{marginTop:15}}>A depleted Vitracite field stays empty until a new surge creates resources elsewhere. Scout expansions. Protect your harvesters. Artillery outranges turrets, but needs an escort. A Radar Array enables enemy minimap contacts. Buildings can be repaired or sold after selection. Click queued units to cancel.</span>
+      <span className="sc-fine" style={{marginTop:10}}>Desktop mouse and keyboard are recommended. Ctrl-number shortcuts belong to the browser, so Shift-number is the reliable control-group binding. Menu dialogs pause combat.</span>
+      <Box className="sc-modal-actions"><button type="button" className="sc-btn primary" @click={closeHelp}>Return to command</button></Box>
+    </Box>
+  </Box>
+  <Box if={saveOpen} className="sc-modal-wrap">
+    <Box className="sc-dialog sc-compact-dialog" style={{width:730}}><span className="sc-modal-title">FIELD CHECKPOINT</span><span className="sc-modal-text">{saveStatus}</span><textarea className="sc-save-input" aria-label="Portable save JSON" value={saveText} @change={changeSaveText} /><Box className="sc-modal-actions"><button type="button" className="sc-btn primary" @click={exportSaveFile}>Export JSON file</button><button type="button" className="sc-btn" @click={importSaveText}>Import pasted snapshot</button><button type="button" className="sc-btn" @click={saveLocal}>Save locally</button><button type="button" className="sc-btn" @click={closeSave}>Close</button></Box></Box>
+  </Box>
+</Box>

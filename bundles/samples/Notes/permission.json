@@ -1,4 +1,9 @@
 {
+  "app": {
+    "id": "com.softn.notes",
+    "name": "Notes",
+    "version": "1.1.0"
+  },
   "permissions": {
     "net": {
       "enabled": true,
@@ -9,7 +14,9 @@
     },
     "storage": {
       "enabled": true,
-      "collections": { "notes": "public" }
+      "collections": {
+        "notes": "public"
+      }
     },
     "sync": {
       "enabled": true

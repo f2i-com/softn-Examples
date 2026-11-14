@@ -1,0 +1,96 @@
+// Transactional dispatch, receipts and consequences. No score farming from repeat tools.
+function safetyBreach(p) {
+    S.safetyBreaches++;
+    S.integrity = Math.max(0, S.integrity - 12);
+    S.shiftMistakes++;
+    S.totalMistakes++;
+    let texts = {
+        whisper: "The envelope says your employee number. All the lights lean towards it. Close the flap. Clause H1: NEVER OPEN TALKING MAIL.",
+        hungry: "The flap opens a second mouth. It bites the stamp handle. Procurement will be told. Clause H1: teeth require quarantine.",
+        bees: "The bees have joined the workforce. None have completed induction. Clause B2: never open live bee mail.",
+        portal: "Your hand returns holding a rejection slip dated tomorrow. Clause H1: open portals require quarantine."
+    };
+    note(texts[p.type]);
+    triggerFx(p.type === "bees" ? "swarm" : "breach", 100);
+    playSound("buzzer");
+    S.machine.jam = p.type === "hungry" || p.type === "portal";
+    rememberIncident(INCIDENT_NAMES[p.type] || "Safety incident", texts[p.type], p);
+    if (S.integrity <= 0)
+        suspendShift();
+}
+function dispatchParcel(route) {
+    if (!interactionReady() || ROUTES.indexOf(route) < 0)
+        return;
+    let p = currentParcel();
+    let rules = rulesFor(S.stage, S.revision);
+    let blocker = dispatchBlocker(p, rules);
+    if (blocker) {
+        note(blocker);
+        triggerFx("blocked", 10);
+        playSound("click");
+        return;
+    }
+    let result = decision(p, rules);
+    let badInk = rules.blackOnly && p.stampInk !== "black";
+    let correct = !badInk && route === result.route;
+    p.attempts++;
+    if (correct) {
+        let evidence = Object.keys(p.seen).length;
+        let clean = p.attempts === 1 && !p.breached;
+        let points = 80 + Math.min(20, evidence * 4) + (clean ? 25 : 0);
+        S.score += points;
+        S.totalSorted++;
+        S.shiftScore += points;
+        if (clean)
+            S.cleanCases++;
+        S.integrity = Math.min(100, S.integrity + 2);
+        S.lastReceipt = { serial: p.serial, heading: "RELEASED TO " + route, body: result.clause + " / " + result.reason, good: true, points: points };
+        S.transit = { kind: "depart", ticks: 20, total: 20, route: route, reason: "", clause: result.clause };
+        note("RELEASED / " + p.serial + " → " + route + ". Next consignment coming through.");
+        triggerFx(route === "QUARANTINE" ? "cage" : "dispatch", 30);
+        playSound(route === "QUARANTINE" ? "cage" : "belt");
+        if (p.type !== "normal" && p.type !== "fragile" && p.type !== "heavy")
+            rememberIncident(INCIDENT_NAMES[p.type] || "Unusual delivery", p.serial + " released to " + route + ". " + result.reason, p);
+    }
+    else {
+        S.shiftMistakes++;
+        S.totalMistakes++;
+        S.integrity = Math.max(0, S.integrity - 8);
+        let reason = badInk ? "Red ink is void under the acknowledged circular. Apply BLACK ink." : result.reason;
+        let clause = badInk ? "P1" : result.clause;
+        S.lastReceipt = { serial: p.serial, heading: "RETURNED / " + clause, body: reason, good: false, points: 0 };
+        S.transit = { kind: "reject", ticks: 17, total: 17, route: route, reason: reason, clause: clause };
+        triggerFx(p.type === "bees" ? "swarm" : "rejection", 65);
+        playSound("buzzer");
+        if (p.weight > 10 || p.type === "portal" || S.shiftMistakes % 3 === 0)
+            S.machine.jam = true;
+        note("The rejection chute disagrees. A receipt and the SAME parcel are on their way back.");
+        rememberIncident("Returned with an opinion", p.serial + ": " + reason, p);
+        if (S.integrity <= 0)
+            suspendShift();
+    }
+    persist();
+}
+function suspendShift() {
+    S.phase = "suspended";
+    S.toolJob = null;
+    S.transit = null;
+    S.reportTitle = "Your stamp has been confiscated.";
+    S.reportBody = "The supervisor has called a mandatory tea break. Retry this shift with the same consignments, a repaired desk and your earlier shift scores intact.";
+    persist();
+}
+function finishShift() {
+    if (S.current || S.queue.length || S.phase !== "work")
+        return;
+    S.phase = "report";
+    S.reportTitle = S.stage === SHIFT_DEFS.length - 1 ? "Everything has an address. Even this." : "The outgoing mail is someone else's problem.";
+    S.reportBody = S.completed + " consignments processed. " + S.cleanCases + " first-pass inspections. " + S.shiftMistakes + " recorded incidents. " + (S.shiftMistakes === 0 ? "A clean record. Management finds this suspicious." : "All returned mail has been corrected. Nobody has been posted to the wrong district.");
+    profile.best = Math.max(profile.best, S.score);
+    if (S.stage === SHIFT_DEFS.length - 1) {
+        S.phase = "ending";
+        profile.completed++;
+        S.reportBody += " The final core contains a tiny copy of your desk. On it sits a letter addressed to you: THANK YOU FOR YOUR CONTINUED NORMALITY. Your reward is a slightly larger stamp.";
+    }
+    playSound("bell");
+    persist();
+}

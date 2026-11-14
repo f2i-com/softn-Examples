@@ -1,0 +1,91 @@
+// Short milestone conversations follow actual work and persist with the mine.
+// This is shift 1's radio storyline: five beats, each said once when its milestone first happens,
+// at least 16 s after the previous one and not before 12 s into the shift. Later shifts tell their
+// story through the chapters in chapters.logic instead.
+// State: S.story = { seen: [beat ids], nextAt } (saved). Callers: ensureProgress and updateProgress
+// (mine/progression.logic) run ensureStory and updateStory.
+// Before adding a beat: validState (core/persistence.logic) lists the five ids and allows at most
+// five seen, and storyCondition needs a branch for it.
+
+// Each beat: id (saved in S.story.seen), the speaker and message it radios ({target} becomes this
+// shift's target in tonnes), and test, which nothing reads (storyCondition goes by id). Beats are
+// checked in this order.
+var storyBeats = [
+  {
+    id: 'dispatch',
+    speaker: 'HEAD OFFICE',
+    message:
+      'The reopening trial is underway. Deliver {target} tonnes before close and Red Dust earns another shift. Gary has the route; you have the keys.',
+    test: 'dispatch'
+  },
+  {
+    id: 'fault',
+    speaker: 'MEL',
+    message:
+      'Crusher interlock. The guards did their job. Mine did not include legs long enough to reach the panel. We need you at the surface.',
+    test: 'fault'
+  },
+  {
+    id: 'repair',
+    speaker: 'GARY',
+    message:
+      'Green light received. You fixed the bit the spreadsheet could not. Bringing the next load up now.',
+    test: 'repair'
+  },
+  {
+    id: 'delivery',
+    speaker: 'HEAD OFFICE',
+    message:
+      'First load logged. That is real ore in the hopper, not a forecast. Keep the circuit moving; processing pays for tomorrow.',
+    test: 'delivery'
+  },
+  {
+    id: 'target',
+    speaker: 'MEL',
+    message:
+      'Target achieved. Red Dust gets another day, Gary gets another checklist, and you get to decide when to clock off.',
+    test: 'target'
+  }
+];
+
+// Whether beat id's milestone has happened. 'fault' waits for any crusher-kind alert (the scripted
+// interlock on shift 1); an id with no branch here falls through to "target met".
+function storyCondition(id) {
+  return id === 'dispatch'
+    ? S.tutorial.dispatch
+    : id === 'fault'
+      ? S.alerts.some(function (a) {
+          return a.kind === 'crusher';
+        })
+      : id === 'repair'
+        ? S.tutorial.repair
+        : id === 'delivery'
+          ? S.tutorial.delivery
+          : S.tonnes >= S.target;
+}
+
+// Creates S.story if the save has none, counting milestones already reached as seen so a loaded
+// game does not replay them.
+function ensureStory() {
+  if (S.story) return;
+  var seen = [];
+  for (var i = 0; i < storyBeats.length; i++)
+    if (storyCondition(storyBeats[i].id)) seen.push(storyBeats[i].id);
+  S.story = { seen: seen, nextAt: S.time + 12 };
+}
+
+// Runs every simulation step (via updateProgress), on shift 1 only. Radios the first unseen beat
+// whose milestone has happened, then waits 16 s before the next one can play.
+function updateStory() {
+  ensureStory();
+  if (S.shift !== 1 || S.time < S.story.nextAt) return;
+  for (var i = 0; i < storyBeats.length; i++) {
+    var b = storyBeats[i];
+    if (S.story.seen.indexOf(b.id) < 0 && storyCondition(b.id)) {
+      S.story.seen.push(b.id);
+      S.story.nextAt = S.time + 16;
+      notify(b.speaker, b.message.replace('{target}', String(S.target)));
+      return;
+    }
+  }
+}

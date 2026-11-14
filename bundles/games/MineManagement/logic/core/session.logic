@@ -1,0 +1,133 @@
+// Starting, continuing and leaving a game: the title screen's buttons (ui/screens/title.ui) and
+// "Save and return to the title" on the pause and report screens.
+// newGame() and continueGame() replace S, then run much the same setup: ensureProgress() (adds
+// the sections newState() leaves out; see core/state.logic), initRoute(), initWorld(), the inputs,
+// refreshUI() and startAudio(). Keep the two in step when adding setup.
+// State touched (globals in core/state.logic): S, screen, tablet, tab, seedText, canContinue,
+// saveNote and resetConfirm, plus the settings globals restored from S.settings.
+
+// Looks for a save that would load (the main one, else the backup) and sets canContinue and
+// saveNote for the title screen. Called at boot and on returning to the title.
+function checkSave() {
+  var s = readSave(KEY_SAVE);
+  if (!s) s = readSave(KEY_BACKUP);
+  canContinue = !!s;
+  saveNote = s
+    ? 'Shift ' + s.shift + ' / ' + Math.round(s.tonnes) + ' tonnes / ' + money(s.cash)
+    : 'Local saves stay on this device';
+}
+
+// The title's Continue shift button. Loads the main save, or the backup if the main one is missing
+// or fails validState, and picks up where it was: the report screen if that shift has been paid out
+// (S.endPaid), otherwise play with the tablet up. An open repair job is not saved, so it is gone.
+function continueGame() {
+  var saved = readSave(KEY_SAVE);
+  if (!saved) saved = readSave(KEY_BACKUP);
+  if (!saved) {
+    saveNote = 'No valid save found. Start a new mine.';
+    canContinue = false;
+    return;
+  }
+  S = saved;
+  resetTelemetry();
+  cameraYawOffset = 0;
+  cameraPitchOffset = 0;
+  ensureProgress();
+  screen = S.endPaid ? 'report' : 'play';
+  tablet = screen === 'play';
+  if (tablet) S.tutorial.tablet = true;
+  tab = 'operations';
+  cancelField();
+  resetConfirm = false;
+  accumulator = 0;
+  lastFrameTime = 0;
+  // validState only checks that S.settings exists, so each setting is checked as it is restored.
+  muted = !!S.settings.muted;
+  quality = ['low', 'balanced', 'high'].indexOf(S.settings.quality) >= 0 ? S.settings.quality : 'balanced';
+  motion = S.settings.motion !== false;
+  musicEnabled = S.settings.music !== false;
+  radioEnabled = S.settings.radio !== false;
+  // The touch pads follow the save only if the player chose; otherwise this device's own detection
+  // (touchInput in player/camera-look.logic) decides.
+  if (S.settings.controlsChosen === true) {
+    controlsChosen = true;
+    controlsEnabled = S.settings.controls === true;
+  }
+  lookSensitivity = [0.7, 1, 1.4].indexOf(S.settings.lookSensitivity) >= 0 ? S.settings.lookSensitivity : 1;
+  initRoute();
+  initWorld();
+  syncIncidentEffects();
+  resetInputs();
+  releaseMouse();
+  refreshUI();
+  startAudio();
+  notify('PIT', 'Shift restored. The mine waited for you.');
+}
+
+// The title's Open the gate button. With a save on this device the first press only arms
+// resetConfirm (the button then reads "Replace saved mine and start") and the second press starts.
+// Builds a new S from the seed text and saves it straight away, replacing the old save.
+function newGame() {
+  if (canContinue && !resetConfirm) {
+    resetConfirm = true;
+    return;
+  }
+  resetConfirm = false;
+  resetTelemetry();
+  // 80 characters: validState rejects a longer seed.
+  S = newState(String(seedText || 'RED-DUST-4817').slice(0, 80));
+  // prepareSeededSite() below replaces this grade with the seed's site profile, but the rand() call
+  // still advances S.rng: removing the line would change what every seed plays like.
+  S.oreGrade = 0.68 + rand() * 0.22;
+  // The title screen's backdrop game never sets this; incidents, memos, forecasts and Kevin wait
+  // for it.
+  S.hasBegun = true;
+  ensureProgress();
+  prepareSeededSite();
+  screen = 'play';
+  tablet = false;
+  tab = 'operations';
+  cancelField();
+  resetConfirm = false;
+  accumulator = 0;
+  lastFrameTime = 0;
+  initRoute();
+  for (var i = 0; i < S.trucks.length; i++) setTruckPosition(S.trucks[i]);
+  initWorld();
+  setLook(SPAWN.yaw, SPAWN.pitch);
+  takeMouse();
+  refreshUI();
+  startAudio();
+  saveGame(true);
+  radioCue('welcome');
+  notify(
+    'PIT',
+    'Red Dust has one shift to prove it can reopen. Start with PIT: dispatch Gary, recruit Oscar, then take the ute. The Field guide is your induction.'
+  );
+}
+
+// The title's Shuffle button: a new seed from the clock.
+function randomSeed() {
+  seedText = 'RED-DUST-' + String(Math.floor(Date.now() % 999999));
+  sfx('click');
+}
+
+// "Save and return to the title" (pause and report screens). Leaves only if the save worked: if it
+// failed, the game stays put (a running shift is paused) so nothing is lost. Returns true when it
+// went to the title.
+function returnTitle() {
+  if (!saveGame(false)) {
+    if (screen === 'play') pauseGame();
+    releaseMouse();
+    refreshUI();
+    return false;
+  }
+  screen = 'title';
+  tablet = false;
+  resetConfirm = false;
+  cancelField();
+  releaseMouse();
+  checkSave();
+  refreshUI();
+  return true;
+}

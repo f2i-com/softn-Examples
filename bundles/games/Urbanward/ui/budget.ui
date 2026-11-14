@@ -1,0 +1,24 @@
+<span className="uw-eyebrow">THE MUNICIPAL LEDGER</span><span className="uw-title">Make growth sustainable.</span>
+<span className="uw-modal-subtitle">Projected monthly income and costs update as your city changes. Construction spending is separate from the operating budget.</span>
+<div className="uw-modal-grid">
+  <div>
+    <span className="uw-section-title">Monthly forecast</span>
+    #each (row in budgetRows)
+      <div className="uw-key-value"><span>{row.label}</span><span className={row.positive ? "uw-positive" : "uw-negative"}>{row.value}</span></div>
+    #end
+    <div className="uw-total uw-between"><span>Projected balance</span><span className={hud.balanceGood ? "uw-stat-value uw-positive" : "uw-stat-value uw-negative"}>{hud.balance}</span></div>
+    <div className="uw-gap"><span className="uw-section-title">Municipal bonds</span><span className="uw-muted">Outstanding principal: {settings.debt}. Each $20,000 bond has monthly 0.4% interest. Total principal repayment is $333.34 per month; the debt ceiling is $60,000.</span><div className="uw-row uw-gap"><button className="uw-button" @click={uwBorrow}>Issue $20,000 bond</button><button className="uw-button" @click={uwRepayDebt}>Repay up to $20,000</button></div></div>
+  </div>
+  <div>
+    <span className="uw-section-title">Tax rates</span>
+    #each (tax in taxRows)
+      <div className="uw-key-value"><span>{tax.label}</span><div className="uw-adjuster"><button className="uw-small-button" @click={() => uwAdjustTax(tax.id,-1)}>−</button><span className="uw-adjuster-value">{tax.value}%</span><button className="uw-small-button" @click={() => uwAdjustTax(tax.id,1)}>+</button></div></div>
+    #end
+    <span className="uw-muted">Higher rates increase revenue per resident or filled job, but discourage growth and lower satisfaction.</span>
+    <div className="uw-divider" /><span className="uw-section-title">Service funding</span>
+    #each (fund in fundingRows)
+      <div className="uw-key-value"><span>{fund.label}</span><div className="uw-adjuster"><button className="uw-small-button" @click={() => uwAdjustFunding(fund.id,-10)}>−</button><span className="uw-adjuster-value">{fund.value}%</span><button className="uw-small-button" @click={() => uwAdjustFunding(fund.id,10)}>+</button></div></div>
+    #end
+    <div className="uw-gap"><span className="uw-muted">Cutting funding reduces costs and effectiveness. Roads lose capacity; utilities lose output; civic services lose coverage.</span></div>
+  </div>
+</div>

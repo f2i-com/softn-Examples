@@ -1,0 +1,50 @@
+<!--
+  The PIT snapshot: the shift's fleet, routes, loads and events as JSON, labelled as simulated game
+  data (logic/mine/pit-export.logic). Opened from the Production tab or the shift report.
+-->
+<div class="mm-modal-shade mm-export-shade" if={exportOpen}>
+  <section class="mm-export-modal" aria-label="PIT snapshot">
+    <div class="mm-page-head">
+      <div>
+        <span class="mm-label">SIMULATED GAME DATA ONLY</span>
+        <h2>PIT snapshot</h2>
+      </div>
+      <button class="mm-close" type="button" @click={hideExport}>Close ×</button>
+    </div>
+    <p class="mm-muted">Select and copy this JSON for analysis: fleet state, local-grid routes, completed loads and events. It is game data, not a live fleet system, and no tonnes were harmed in its making.</p>
+    <textarea class="mm-export-text" readonly rows="18" aria-label="Snapshot JSON">{exportText}</textarea>
+  </section>
+</div>
+
+<style>
+  .mm-modal-shade.mm-export-shade {
+    z-index: 50;
+  }
+  .mm-export-modal {
+    width: 940px;
+    max-width: 100%;
+    max-height: 100%;
+    overflow: auto;
+    padding: 28px;
+    background: #1e3039;
+    border: 1px solid #60727a;
+    border-radius: 13px;
+  }
+  .mm-export-text {
+    width: 100%;
+    min-height: 40vh;
+    margin-top: 20px;
+    padding: 12px;
+    resize: vertical;
+    background: #10251c;
+    border: 1px solid #496040;
+    border-radius: 4px;
+    font: 11px/1.65 monospace;
+    color: #b4d1a5;
+  }
+  @media (max-width: 620px) {
+    .mm-export-modal {
+      padding: 18px;
+    }
+  }
+</style>

@@ -1,0 +1,109 @@
+<div if={bookOpen && !helpOpen && !confirmReset} className="modal-scrim book-scrim">
+ <section className="open-handbook" role="dialog" aria-modal="true" aria-labelledby="handbook-title">
+  <header className="book-header">
+<div>
+<p className="eyebrow">THE DESK IS PAUSED WHILE YOU READ</p>
+<h2 id="handbook-title">The Postal Handbook</h2>
+</div>
+<button className="paper-button" @click={action("book")} autoFocus={true}>Close book / H</button>
+</header>
+  <nav className="book-tabs" aria-label="Handbook sections">
+<button className={bookPage === "today" ? "book-tab active" : "book-tab"} @click={turnPage("today")}>Today's rules</button>
+<button className={bookPage === "directory" ? "book-tab active" : "book-tab"} @click={turnPage("directory")}>District directory</button>
+<button className={bookPage === "handling" ? "book-tab active" : "book-tab"} @click={turnPage("handling")}>Handling guide</button>
+<button className={bookPage === "incidents" ? "book-tab active" : "book-tab"} @click={turnPage("incidents")}>Incident file</button>
+</nav>
+  <div className="book-pages">
+   <div if={bookPage === "today"} className="rule-spread">
+<div className="book-notice">
+<b>{V.day + " / REVISION " + V.revision}</b>
+<p>When rules overlap: unresolved nested cores must be inspected first. Quarantine restrictions override freight. Freight overrides the address. Stamp requirements apply to every route.</p>
+</div>
+#each (rule in V.rules)
+<article className="regulation">
+<span className="clause-number">{rule.id}</span>
+<div>
+<h3>{rule.title}</h3>
+<p>{rule.body}</p>
+</div>
+</article>
+#end
+</div>
+   <div if={bookPage === "directory"} className="directory-page">
+<p className="book-introduction">Use the two letters before the hyphen in the PERMANENT barcode. The optical scanner reads a code, not a destination. Reversed print and eaten paper do not alter a district.</p>
+<table className="directory-table">
+<thead>
+<tr>
+<th>CODE</th>
+<th>REGISTERED DISTRICT</th>
+<th>SERVICE</th>
+</tr>
+</thead>
+<tbody>
+#each (district in V.directory)
+<tr>
+<td>
+<b>{district.code}</b>
+</td>
+<td>
+<strong>{district.name}</strong>
+<small>{district.note}</small>
+</td>
+<td>{district.route}</td>
+</tr>
+#end
+</tbody>
+</table>
+<div className="book-notice">
+<b>ADDRESS SERVICE IS NOT THE WHOLE DECISION.</b>
+<p>Apply today's safety restrictions and mass rules before choosing a cage. A freight parcel can still require quarantine.</p>
+</div>
+</div>
+   <div if={bookPage === "handling"} className="handling-page">
+<article>
+<h3>01 / Observe before opening</h3>
+<p>Click INSPECT or the parcel to read its address. ROTATE cycles address, rear flap and base. The base carries WIDTH, permits and permanent marks. Visible movement, mouths, wings and whispered captions are evidence. Sound is optional.</p>
+</article>
+<article>
+<h3>02 / Different instruments, different evidence</h3>
+<p>SCAN reads the permanent district barcode. WEIGH records exterior mass. X-RAY shows interior mass and a physical silhouette. It does not announce a route. Compare your readings with the handbook.</p>
+</article>
+<article>
+<h3>03 / Do not trust an unverified scale</h3>
+<p>Place the certified 1 kg reference weight on the pan. A trustworthy scale reads 1 kg. Turn ZERO with the reference on the pan, then weigh the actual parcel again. Old readings are not automatically repaired.</p>
+</article>
+<article>
+<h3>04 / Secure, stamp, release</h3>
+<p>CLAMP runners and parcels that change position without travelling. Apply the wooden INSPECTED stamp using a valid ink pad. Finally choose a cage by its BRASS PLATE. The electric signage is not a postal authority.</p>
+</article>
+<article>
+<h3>05 / Neighbourly conduct</h3>
+<p>The separator protects adjacent address labels. A packing biscuit distracts a hungry parcel; it does not make the parcel safe to deliver. Eaten labels can be recovered with the permanent barcode. Clear conveyor jams with the brass lever.</p>
+</article>
+<article>
+<h3>06 / Desktop, touch and keyboard</h3>
+<p>All tasks have large tap controls. Drag the parcel left to WEIGH, right to X-RAY, down to STAMP, or up to ROTATE. I inspect · R rotate · E scan · W weigh · X X-ray · S stamp · C clamp · Q flap · B biscuit · G separator · J jam · 1–4 dispatch · H handbook · P pause · M sound.</p>
+</article>
+<div className="book-notice">
+<b>NO RUSH. NO INVISIBLE DEADLINES.</b>
+<p>Books, circulars, tea breaks and switching windows pause the simulation. Amendments only apply after the current consignment leaves and you acknowledge the notice.</p>
+</div>
+</div>
+   <div if={bookPage === "incidents"} className="incident-page">
+<p className="book-introduction">Selected statements from the incident file. Nobody has been asked to verify their normality.</p>
+<p if={V.incidents.length === 0}>Nothing to report. Enjoy this while it lasts.</p>
+#each (incident in V.incidents)
+<article className="incident-entry">
+<small>{"SHIFT " + incident.shift + " / " + incident.parcel}</small>
+<h3>{incident.title}</h3>
+<p>{incident.text}</p>
+</article>
+#end
+</div>
+  </div>
+<footer className="book-footer">
+<span>PROPERTY OF MUNICIPAL POST / DO NOT POST</span>
+<span>APPENDIX 8,412 IS A REAL APPENDIX.</span>
+</footer>
+ </section>
+</div>

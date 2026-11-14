@@ -1,0 +1,28 @@
+// An honest no-press route. No auto-click, offline time, exposed progress bar or start-clock button.
+let QUIET_BEATS = [
+    [8, "...", "THE DUCK"],
+    [18, "You're still here.", "THE ROOM"],
+    [28, "The duck is beginning to suspect you can read.", "THE ROOM"],
+    [38, "A plant. It was behind the sign all along.", "THE ROOM"],
+    [52, "It has brought a chair. For you, apparently.", "THE ROOM"],
+    [64, "We had a whole escalation planned.", "THE ROOM"],
+    [72, "The kettle is on.", "THE DUCK"],
+    [88, "This is actually quite nice.", "THE ROOM"],
+    [100, "There is a handle in the wallpaper.", "THE ROOM"],
+    [110, "Somewhere outside, a bird. Not a duck. Imagine.", "THE ROOM"],
+    [130, "Nothing happened. Quite a lot of nothing, together.", "THE DUCK"]
+];
+function advancePatience(dt) {
+    if (S.presses !== 0 || S.phase !== "play") return;
+    S.patience = Math.min(150, S.patience + dt);
+    // Process all crossed cues in order; reloading never fires a cue twice.
+    while (S.quietBeat < QUIET_BEATS.length && S.patience >= QUIET_BEATS[S.quietBeat][0]) {
+        let b = QUIET_BEATS[S.quietBeat];
+        tell(b[1], b[2]); S.quietBeat++; record("quiet:" + S.quietBeat);
+        flashEffect(S.quietBeat >= 4 ? "hearts" : "blink", 1);
+        if (S.quietBeat === 7) playSound("tea", 0.5);
+        else if (S.quietBeat >= 9) playSound("bird", 0.35);
+        worldDirty = true; persist();
+    }
+    if (S.patience >= 150) completeEnding("quiet");
+}

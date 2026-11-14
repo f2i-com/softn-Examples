@@ -1,6 +1,7 @@
 <logic src="../logic/main.logic" />
 
 <style>
+.dh-root, .dh-root * { box-sizing: border-box; }
 .dh-root {
   position: relative;
   width: 100%;
@@ -202,30 +203,40 @@
   display: grid; grid-template-columns: repeat(2, 70px); gap: 8px; pointer-events: auto; z-index: 20;
 }
 @media (max-width: 760px) {
-  .dh-top { top: 8px; left: 8px; right: 168px; max-width: none; gap: 4px; }
-  .dh-chip { padding: 4px 8px; font-size: 11px; }
-  .dh-corner { top: 8px; right: 8px; max-width: 158px; gap: 4px; }
+  .dh-top { top: 8px; left: 8px; right: 184px; max-width: none; gap: 4px; }
+  .dh-chip { padding: 4px 7px; font-size: 11px; }
+  .dh-corner { top: 8px; right: 8px; max-width: 172px; gap: 4px; }
+  .dh-corner button { padding: 4px 6px !important; min-height: 28px !important; font-size: 10px !important; }
   .dh-fps-chip { display: none; }
   .dh-hud {
-    left: 8px; bottom: 52px; min-width: 0; width: 46%; max-width: 178px;
-    padding: 7px 10px; clip-path: none;
+    left: 8px; bottom: 50px; min-width: 0; width: 46%; max-width: 176px;
+    padding: 6px 9px; clip-path: none;
   }
   .dh-ammo {
-    right: 8px; bottom: 52px; min-width: 0; width: 44%; max-width: 170px;
-    padding: 7px 10px; clip-path: none;
+    right: 8px; bottom: 50px; min-width: 0; width: 44%; max-width: 168px;
+    padding: 6px 9px; clip-path: none;
   }
+  .dh-ammo-num { font-size: 26px !important; }
+  .dh-ammo-hint { font-size: 9.5px !important; }
   .dh-slots {
     bottom: 8px; left: 8px; right: 8px; transform: none;
-    justify-content: center; gap: 4px; flex-wrap: nowrap;
+    justify-content: center; gap: 4px; flex-wrap: nowrap; max-width: calc(100vw - 16px);
   }
-  .dh-slot { padding: 6px 8px; font-size: 10px; min-height: 36px; display: flex; align-items: center; white-space: nowrap; }
-  .dh-touch { left: 8px; bottom: 172px; }
-  .dh-touch-btns { right: 8px; bottom: 172px; grid-template-columns: repeat(2, 62px); gap: 6px; }
+  .dh-slot {
+    padding: 5px 6px !important; font-size: 10px !important; min-height: 34px !important; min-width: 0 !important;
+    flex: 1 1 0; display: flex; align-items: center; justify-content: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .dh-touch { left: 8px; bottom: 164px; }
+  .dh-touch-btns { right: 8px; bottom: 164px; grid-template-columns: repeat(2, 60px); gap: 6px; }
   .dh-banner { top: 82px; max-width: calc(100vw - 24px); padding: 6px 12px; }
   .dh-toast { top: 47%; bottom: auto; max-width: calc(100vw - 24px); text-align: center; }
   .dh-bench-prompt { top: 26%; max-width: calc(100vw - 28px); text-align: center; }
-  .dh-logo { font-size: 46px !important; }
-  .dh-card { padding: 20px 14px; }
+  .dh-modal-bg { padding: 10px; }
+  .dh-logo { font-size: 44px !important; }
+  .dh-card { padding: 16px 12px; max-width: 100% !important; }
+  .dh-armory-title { font-size: 22px !important; }
+  .dh-shop-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+  .dh-shop-item { padding: 9px 10px; }
 }
 @media (max-height: 520px) {
   .dh-root { min-height: 0; }
@@ -255,7 +266,7 @@
 
   <Controls
     :bind={pad}
-    enabled={started && !paused && !armoryOpen && !gameOver}
+    enabled={started && !gameOver}
     keys={{
       up: "w ArrowUp",
       down: "s ArrowDown",
@@ -272,6 +283,7 @@
       w3: "3",
       swap: "q",
       fire: "Space",
+      mute: "m",
       pause: "p Escape"
     }}
     @press={onActionPress}
@@ -370,6 +382,9 @@
     <Button variant="ghost" @click={toggleTorchLight} style={{ padding: "6px 9px", minHeight: "34px", fontSize: "11px", background: "rgba(12,16,24,0.85)", color: torchOn ? "#fde047" : "#94a3b8", border: "1px solid rgba(255,255,255,0.18)" }}>
       {torchOn ? "Torch" : "Dark"}
     </Button>
+    <Button variant="ghost" @click={toggleMute} style={{ padding: "6px 9px", minHeight: "34px", fontSize: "11px", background: muted ? "rgba(127,29,29,0.55)" : "rgba(12,16,24,0.85)", color: muted ? "#fca5a5" : "#e2e8f0", border: muted ? "1px solid rgba(248,113,113,0.55)" : "1px solid rgba(255,255,255,0.18)" }}>
+      {muted ? "Muted" : "SFX"}
+    </Button>
     <Button variant="ghost" @click={triggerTouchArmory} style={{ padding: "6px 9px", minHeight: "34px", fontSize: "11px", background: "rgba(12,24,38,0.88)", color: "#38bdf8", border: "1px solid rgba(56,189,248,0.45)" }}>
       Armory
     </Button>
@@ -416,7 +431,9 @@
     <Button variant="ghost" @click={selectSmg} className={weaponIdx === 2 ? "dh-slot dh-slot-on" : "dh-slot"}>
       {weaponUnlocked[2] ? "3 · MP-X SMG" : "3 · Locked"}
     </Button>
-    <Box className="dh-slot" style={{ cursor: "default", color: "#fca5a5" }}>{"G · Frag x" + grenadesLeft}</Box>
+    <Button variant="ghost" @click={triggerHudGrenade} className="dh-slot" style={{ color: grenadesLeft > 0 ? "#fca5a5" : "#64748b" }}>
+      {"G · Frag x" + grenadesLeft}
+    </Button>
   </Box>
 
   <!-- Bottom-Right Ammo & Reload -->
@@ -424,14 +441,14 @@
     <Text className="dh-display" style={{ display: "block", fontSize: "12px", color: "#94a3b8" }}>
       {reloadTimer > 0 ? "RELOADING..." : WEAPONS[weaponIdx].name}
     </Text>
-    <Text className="dh-display" style={{ display: "block", fontSize: "36px", color: magAmmo[weaponIdx] === 0 ? "#f87171" : "#f8fafc", lineHeight: 1.05 }}>
+    <Text className="dh-display dh-ammo-num" style={{ display: "block", fontSize: "36px", color: magAmmo[weaponIdx] === 0 ? "#f87171" : "#f8fafc", lineHeight: 1.05 }}>
       {magAmmo[weaponIdx]}
       <Text style={{ fontSize: "15px", color: "#94a3b8", fontWeight: 600 }}>
         {" / " + (resAmmo[weaponIdx] < 0 ? "∞" : resAmmo[weaponIdx])}
       </Text>
     </Text>
     <Text className="dh-ammo-hint" style={{ display: "block", fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
-      {touchMode ? "Tap FIRE / BASH / RELOAD / SWAP" : "V · Bash  |  R / RMB · Reload"}
+      {touchMode ? "Hold FIRE / BASH / RELOAD / SWAP" : "V · Bash  |  R / RMB · Reload"}
     </Text>
   </Box>
 
@@ -440,7 +457,7 @@
     <DPad :bind={pad} buttonSize={46} />
   </Box>
   <Box if={started && touchMode && !paused && !armoryOpen && !gameOver} className="dh-touch-btns">
-    <Button @click={triggerTouchFire} style={{ padding: "11px 14px", fontWeight: 800, background: "#dc2626", color: "#fff", borderRadius: "999px", minHeight: "46px", gridColumn: "span 2" }}>FIRE</Button>
+    <Button @pointerdown={onTouchFireDown} @pointerup={onTouchFireUp} @pointerleave={onTouchFireUp} @pointercancel={onTouchFireUp} @click={triggerTouchFire} style={{ padding: "11px 14px", fontWeight: 800, background: "#dc2626", color: "#fff", borderRadius: "999px", minHeight: "46px", gridColumn: "span 2" }}>FIRE</Button>
     <Button @click={triggerTouchReload} variant="ghost" style={{ padding: "6px 8px", minHeight: "38px", fontSize: "11px", background: "rgba(15,23,42,0.88)", color: "#e2e8f0", border: "1px solid #475569" }}>RELOAD</Button>
     <Button @click={triggerTouchMelee} variant="ghost" style={{ padding: "6px 8px", minHeight: "38px", fontSize: "11px", background: "rgba(15,23,42,0.88)", color: "#e2e8f0", border: "1px solid #475569" }}>BASH</Button>
     <Button @click={triggerTouchGrenade} variant="ghost" style={{ padding: "6px 8px", minHeight: "38px", fontSize: "11px", background: "rgba(15,23,42,0.88)", color: "#fca5a5", border: "1px solid #7f1d1d" }}>{"FRAG " + grenadesLeft}</Button>
@@ -463,9 +480,12 @@
         <Button variant="ghost" @click={cycleQualityPreset} style={{ padding: "12px 18px", background: "rgba(255,255,255,0.08)", color: "#e2e8f0", border: "1px solid rgba(255,255,255,0.18)" }}>
           {"Graphics: " + qualityPreset.toUpperCase()}
         </Button>
+        <Button variant="ghost" @click={toggleMute} style={{ padding: "12px 16px", background: muted ? "rgba(127,29,29,0.55)" : "rgba(255,255,255,0.08)", color: muted ? "#fca5a5" : "#e2e8f0", border: "1px solid rgba(255,255,255,0.18)" }}>
+          {muted ? "Audio: Muted" : "Audio: On"}
+        </Button>
       </Stack>
 
-      <Stack direction="horizontal" gap={16} style={{ justifyContent: "center", marginTop: "18px", flexWrap: "wrap" }}>
+      <Stack direction="horizontal" gap={14} style={{ justifyContent: "center", marginTop: "18px", flexWrap: "wrap" }}>
         <Text style={{ fontSize: "12px", color: "#cbd5e1" }}><Text className="dh-kbd">WASD</Text> Move</Text>
         <Text style={{ fontSize: "12px", color: "#cbd5e1" }}><Text className="dh-kbd">Shift</Text> Sprint</Text>
         <Text style={{ fontSize: "12px", color: "#cbd5e1" }}><Text className="dh-kbd">LMB</Text> Fire</Text>
@@ -473,6 +493,7 @@
         <Text style={{ fontSize: "12px", color: "#cbd5e1" }}><Text className="dh-kbd">G</Text> Frag</Text>
         <Text style={{ fontSize: "12px", color: "#cbd5e1" }}><Text className="dh-kbd">V</Text> Bash</Text>
         <Text style={{ fontSize: "12px", color: "#cbd5e1" }}><Text className="dh-kbd">E</Text> Armory</Text>
+        <Text style={{ fontSize: "12px", color: "#cbd5e1" }}><Text className="dh-kbd">M</Text> Mute</Text>
       </Stack>
 
       <Box className="dh-board">
@@ -502,13 +523,13 @@
   <!-- Armory Workbench Modal -->
   <Box if={started && armoryOpen && !gameOver} className="dh-ovl dh-modal-bg">
     <Box className="dh-card" style={{ maxWidth: "740px" }}>
-      <Stack direction="horizontal" gap={12} style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <Box style={{ textAlign: "left" }}>
-          <Text className="dh-display" style={{ display: "block", fontSize: "28px", color: "#38bdf8" }}>ARMORY WORKBENCH</Text>
+      <Stack direction="horizontal" gap={10} style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
+        <Box style={{ textAlign: "left", minWidth: 0, flex: "1 1 190px" }}>
+          <Text className="dh-display dh-armory-title" style={{ display: "block", fontSize: "28px", color: "#38bdf8" }}>ARMORY WORKBENCH</Text>
           <Text style={{ display: "block", fontSize: "12px", color: "#94a3b8" }}>Spend Scrap earned from kills & headshots</Text>
         </Box>
-        <Box style={{ padding: "8px 16px", background: "rgba(56,189,248,0.15)", border: "1px solid rgba(56,189,248,0.5)", borderRadius: "6px" }}>
-          <Text className="dh-display" style={{ fontSize: "20px", color: "#38bdf8" }}>{scrap + " SCRAP"}</Text>
+        <Box style={{ padding: "7px 14px", background: "rgba(56,189,248,0.15)", border: "1px solid rgba(56,189,248,0.5)", borderRadius: "6px", flexShrink: 0 }}>
+          <Text className="dh-display" style={{ fontSize: "18px", color: "#38bdf8" }}>{scrap + " SCRAP"}</Text>
         </Box>
       </Stack>
 
@@ -525,7 +546,9 @@
 
         <Box className="dh-shop-item">
           <Text style={{ display: "block", fontWeight: 700, color: "#f8fafc" }}>Ammo Supply Crate</Text>
-          <Text style={{ display: "block", fontSize: "12px", color: "#94a3b8", marginTop: "3px" }}>+18 Shotgun Shells & SMG Mags</Text>
+          <Text style={{ display: "block", fontSize: "12px", color: "#94a3b8", marginTop: "3px" }}>
+            {weaponUnlocked[2] ? "+18 Shotgun Shells & +96 SMG" : "+18 Shotgun Shells"}
+          </Text>
           <Button @click={buyAmmo} style={{ marginTop: "8px", width: "100%", background: "#334155", color: "#fff" }}>Buy (35 Scrap)</Button>
         </Box>
 
@@ -542,9 +565,11 @@
         </Box>
 
         <Box className="dh-shop-item">
-          <Text style={{ display: "block", fontWeight: 700, color: "#f8fafc" }}>Frag Grenades (x2)</Text>
+          <Text style={{ display: "block", fontWeight: 700, color: "#f8fafc" }}>Frag Grenades</Text>
           <Text style={{ display: "block", fontSize: "12px", color: "#94a3b8", marginTop: "3px" }}>Explosive crowd clear (max 4)</Text>
-          <Button @click={buyGrenade} style={{ marginTop: "8px", width: "100%", background: "#b91c1c", color: "#fff" }}>Stockpile (40 Scrap)</Button>
+          <Button @click={buyGrenade} style={{ marginTop: "8px", width: "100%", background: "#b91c1c", color: "#fff" }}>
+            {grenadesLeft >= 4 ? "MAXED (4/4)" : (grenadesLeft === 3 ? "Top Off +1 (20 Scrap)" : "Stockpile +2 (40 Scrap)")}
+          </Button>
         </Box>
 
         <Box className="dh-shop-item">
@@ -603,7 +628,7 @@
       </Text>
 
       <Stack direction="horizontal" gap={8} style={{ justifyContent: "center", marginTop: "18px", flexWrap: "wrap" }}>
-        <Input value={playerName} @change={setPlayerName} placeholder="Survivor name for ledger" style={{ minWidth: "220px" }} />
+        <Input value={playerName} @change={setPlayerName} placeholder="Survivor name for ledger" style={{ width: "min(220px, 100%)" }} />
         <Button @click={submitScore} disabled={scoreSubmitted} style={{ background: scoreSubmitted ? "#334155" : "#0284c7", color: "#fff" }}>
           {scoreSubmitted ? "Recorded" : "Post Score"}
         </Button>

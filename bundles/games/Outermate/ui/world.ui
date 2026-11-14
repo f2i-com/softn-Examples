@@ -26,7 +26,7 @@
        #if (c.resting)<span className="om-rest-breath">~</span>#end
        #if (c.pose === "eat" || c.carryingTray)<i className="om-meal-tray" />#end
        #if (c.eating)<i className="om-meal-spoon" />#end
-       #if (c.chatting)<span className="om-chat-bubble" aria-label="Inmates chatting">···</span>#end
+       #if (c.chatting && !c.speech)<span className="om-chat-bubble" aria-label="Inmates chatting">···</span>#end
        #if (c.speech)<span className="om-speech">{c.speech}</span>#end
        #if (c.pose === "play")<i className="om-ball" />#end
        #if (c.label)<div className="om-actor-label">{c.name}</div>#end

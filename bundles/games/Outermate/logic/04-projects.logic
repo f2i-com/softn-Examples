@@ -1,9 +1,9 @@
 // Escape project escrow is persistent. Pausing never charges materials twice.
 function projectById(id){for(let i=0;i<PROJECTS.length;i++)if(PROJECTS[i].id===id)return PROJECTS[i];return null;}
 function projectState(id){return omGame.projects[id]||null;}
-function projectReady(id){let s=projectState(id);return !!s&&s.complete;}
+function projectReady(id){let s=projectState(id);if(id==="paper"&&s&&s.complete&&omGame&&!omGame.escape&&!totalItemCount("release")){delete omGame.projects.paper;return false;}return !!s&&s.complete;}
 function projectFailure(id){
-  let d=projectById(id);if(!d)return "Unknown project.";let s=projectState(id);
+  let d=projectById(id);if(!d)return "Unknown project.";if(id==="paper")projectReady("paper");let s=projectState(id);
   if(s&&s.complete)return "Project already completed.";
   for(let i=0;i<d.requires.length;i++)if(itemCount(d.requires[i])<1)return "Carry your "+ITEMS[d.requires[i]].name+" to work on this.";
   if((!s||!s.paid)&&!hasGoods(d.cost))return "Need: "+goodsText(d.cost)+".";

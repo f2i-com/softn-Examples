@@ -79,13 +79,10 @@
       "assets/art/night-concept.webp",
       "assets/audio/build-complete.mp3",
       "assets/audio/discovery-soft.mp3",
-      "assets/audio/discovery.wav",
       "assets/audio/first-light.mp3",
       "assets/audio/hollow-air.mp3",
-      "assets/audio/hollow-wind.wav",
       "assets/audio/place-soft.mp3",
       "assets/audio/warning-soft.mp3",
-      "assets/audio/warning.wav",
       "assets/icon.svg",
       "assets/sprites/archive.svg",
       "assets/sprites/barricade.svg",
@@ -349,7 +346,6 @@
       "assets/sprites/colonist2-west-sit.svg",
       "assets/sprites/colonist3-east-sit.svg",
       "assets/sprites/colonist3-west-sit.svg",
-      "assets/art/logo-vector.svg",
       "assets/art/logo-base.svg",
       "assets/art/logo-orbit.svg",
       "assets/art/logo-signal.svg",
@@ -406,8 +402,7 @@
       "assets/audio/story-funeral.mp3",
       "assets/audio/story-newName.mp3",
       "assets/audio/story-ofAge.mp3",
-      "assets/sprites/pen.svg",
-      "assets/share.png"
+      "assets/sprites/pen.svg"
     ],
     "xdb": []
   },

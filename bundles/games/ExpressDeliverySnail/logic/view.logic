@@ -1,0 +1,184 @@
+// Scene presentation only. Asset paths and percentage transforms remain Softn-native.
+let viewWidth = 1000;
+let targetLabel = "0:19";
+let physicalLabel = "100°";
+let physicalStyle = {};
+let mapStops = [];
+let routeNumber = "01";
+let showWeather = false;
+let supportText = "";
+let zoomLabel = "Close-up";
+function toggleZoom() { viewWidth = viewWidth === 1000 ? 680 : (viewWidth === 680 ? 400 : 1000); S.camera = clamp(S.p.x - viewWidth * 0.3, 0, S.world - viewWidth); publish(); }
+function sceneryCache() {
+    scenic = copy(S.props);
+    if (S.level === 0 || S.level === 3 || S.level === 4 || S.level === 1) {
+        for (let x = 30; x < S.world; x += 270) {
+            if (snailGroundAt(x))
+                scenic.push(prop("grass", x, 443, 96 + (x % 41), 65, 6));
+        }
+    }
+}
+function visual(a, id, art, x, y, w, h, z, angle, extra) {
+    let screenX = x - S.camera;
+    if (screenX + w / 2 < -100 || screenX - w / 2 > viewWidth + 100)
+        return;
+    let st = { position: "absolute", left: (screenX / viewWidth * 100) + "%", top: ((y + S.cameraY) / 560 * 100) + "%", width: (w / viewWidth * 100) + "%", height: (h / 560 * 100) + "%", zIndex: z, transform: "translate(-50%, -50%) rotate(" + (angle || 0) + "deg)" };
+    if (extra) {
+        let ks = Object.keys(extra);
+        for (let k = 0; k < ks.length; k++)
+            st[ks[k]] = extra[ks[k]];
+    }
+    a.push({ id: id, art: art, style: st });
+}
+function worldArt(name) { return "assets/world/" + name + ".svg"; }
+function spriteView() {
+    let a = [];
+    let t = S.time;
+    for (let i = 0; i < scenic.length; i++) {
+        let p = scenic[i];
+        visual(a, "decor-" + i, worldArt(p.art), p.x, p.y, p.w, p.h, p.layer, 0);
+    }
+    for (let g = 0; g < S.grounds.length; g++) {
+        let ground = S.grounds[g];
+        visual(a, "ground-" + g, worldArt("ground-" + LEVELS[S.level].ground), ground.x + ground.w / 2, 527.5, ground.w, 105, 10, 0);
+    }
+    for (let z = 0; z < S.zones.length; z++) {
+        let zone = S.zones[z];
+        if (zone.type === "wet")
+            visual(a, "puddle-" + z, worldArt("puddle"), zone.x + zone.w / 2, 476, zone.w, 20, 15, 0);
+        if (zone.type === "sun")
+            visual(a, "sunbeam-" + z, worldArt("sunbeam"), zone.x + zone.w / 2, 237, zone.w, 475, 7, 0);
+        if (zone.type === "heat")
+            visual(a, "heat-" + z, worldArt("heat"), zone.x + zone.w / 2, 419, zone.w, 112, 18, 0, { opacity: settings.reducedMotion ? 0.7 : 0.7 + Math.sin(t * 3) * 0.17 });
+    }
+    for (let j = 0; j < S.platforms.length; j++) {
+        let pl = S.platforms[j];
+        visual(a, "platform-" + j, worldArt("platform-" + pl.art), pl.x, pl.y + 11, pl.w, 22, 20, 0);
+    }
+    for (let k = 0; k < S.rocks.length; k++) {
+        let r = S.rocks[k];
+        visual(a, "rock-" + k, worldArt(r.art), r.x, r.y, r.w, r.h, 23, 0);
+    }
+    for (let c = 0; c < S.checkpoints.length; c++)
+        visual(a, "rest-" + c, worldArt("rest"), S.checkpoints[c], 429, 54, 92, 21, 0, { opacity: c <= S.checkpointIndex ? 1 : 0.7 });
+    for (let st = 0; st < S.stamps.length; st++) {
+        let stamp = S.stamps[st];
+        let bob = settings.reducedMotion ? 0 : Math.sin(t * 2.8 + st) * 4;
+        visual(a, "stamp-" + stamp.id, worldArt("stamp"), stamp.x, stamp.y + bob, 27, 31, 29, settings.reducedMotion ? 0 : Math.sin(t * 2 + st) * 5);
+    }
+    for (let e = 0; e < S.events.length; e++) {
+        let ev = S.events[e];
+        let et = Math.max(0, ev.t);
+        if (ev.type === "sprinkler") {
+            visual(a, "sprinkler-" + e, worldArt("sprinkler"), ev.x, 453, 80, 48, 24, 0);
+            if (ev.active && et > 1.1)
+                visual(a, "spray-" + e, worldArt("spray"), ev.x, 394, 310, 170, 25, 0, { opacity: settings.reducedMotion ? 0.6 : 0.55 + Math.sin(et * 16) * 0.16 });
+        }
+        if (ev.type === "gate")
+            visual(a, "gate-" + e, worldArt("gate"), ev.x, 403, 90, 145, 22, 0, { transform: "translate(-50%, -50%) scaleX(" + (ev.done ? 0.13 : (ev.active ? Math.max(0.13, 1 - et) : 1)) + ")", transformOrigin: "left center" });
+        if (ev.active) {
+            let ob = eventObstacle(ev);
+            if (ob)
+                visual(a, "moving-" + e, worldArt(ob.art), ob.x, ob.y, ob.w, ob.h, 32, ev.type === "fruit" && !settings.reducedMotion ? -et * 120 : 0);
+            if (ev.type === "bird") {
+                let bx = ev.x + 500 - et * 220;
+                visual(a, "bird-" + e, worldArt("bird"), bx, 148, 110, 35, 15, 0, { opacity: 0.5 });
+                visual(a, "shadow-" + e, worldArt("bird"), bx - 60, 468, 190, 35, 31, 0, { opacity: 0.16 });
+            }
+            if (ev.type === "gust") {
+                for (let w = 0; w < 3; w++)
+                    visual(a, "gust-" + e + "-" + w, worldArt("gust"), ev.x - 230 + w * 160 - (settings.reducedMotion ? 0 : (et * 110) % 160), 290 + w * 43, 185, 85, 28, 0, { opacity: 0.65 });
+            }
+            if (ev.type === "dog")
+                visual(a, "dog-" + e, worldArt("dog"), ev.x, 180 + Math.min(1, et) * 110, 310, 300, 8, 0, { opacity: Math.min(1, et, ev.duration - et) });
+        }
+    }
+    let p = S.p;
+    let facing = p.facing;
+    let speed = Math.abs(p.vx);
+    let squash = settings.reducedMotion ? 0 : (S.landAnim > 0 ? Math.sin((0.26 - S.landAnim) / 0.26 * Math.PI) * 0.32 : 0);
+    let hop = settings.reducedMotion ? 0 : (S.jumpAnim > 0 ? (S.jumpAnim > 0.145 ? -0.13 : 0.10) : 0);
+    let stretch = settings.reducedMotion ? 1 : 1 + speed * 0.00048 + squash;
+    let bodyY = 1 - squash + hop;
+    let shellAngle = settings.reducedMotion ? 0 : Math.sin(t * (speed > 10 ? 16 : 2.5)) * Math.min(7, 1 + speed * .017) + clamp(p.vy * .018, -8, 10) + (S.hitAnim > 0 ? Math.sin(S.hitAnim * 55) * 10 : 0);
+    let opacity = S.rescueTimer > 0 ? 0.4 : 1;
+    let blink = !settings.reducedMotion && Math.floor(t * 10) % 51 >= 49;
+    // The shadow anchors the chassis, while the shell and parcel lag behind visually.
+    let shadowTop = p.grounded ? p.y + 21 : 475;
+    visual(a, "snail-shadow", worldArt("puddle"), p.x, shadowTop + 1, 78, 11, 70, 0, { opacity: 0.2 });
+    if (S.boosting > 0 && !settings.reducedMotion)
+        visual(a, "flame", "assets/snail/flame.svg", p.x - 65 * facing, p.y + 5, 60, 27, 79, 0, { transform: "translate(-50%, -50%) scaleX(" + facing + ")" });
+    visual(a, "rocket", "assets/snail/rocket.svg", p.x - 31 * facing, p.y + 6, 40, 22, 80, 0, { transform: "translate(-50%, -50%) scaleX(" + facing + ")", opacity: opacity });
+    visual(a, "body", "assets/snail/body.svg", p.x + 2 * facing, p.y + 5, 101, 42, 82, 0, { transform: "translate(-50%, -50%) scale(" + (stretch * facing) + ", " + bodyY + ")", opacity: opacity });
+    visual(a, "shell", "assets/snail/shell.svg", p.x - 10 * facing, p.y - 10 + squash * 15, 66, 66, 84, shellAngle * facing, { opacity: opacity });
+    visual(a, "eyes", "assets/snail/eyes" + (blink ? "-blink" : "") + ".svg", p.x + 32 * facing, p.y - 22 + squash * 10, 32, S.nearAnim > 0 ? 49 : 43, 85, 0, { transform: "translate(-50%, -50%) scaleX(" + facing + ")", opacity: opacity });
+    visual(a, "cap", "assets/snail/cap.svg", p.x + 33 * facing, p.y - 8 + squash * 10, 36, 21, 86, -6 * facing, { transform: "translate(-50%, -50%) rotate(" + (-6 * facing) + "deg) scaleX(" + facing + ")", opacity: opacity });
+    let parcelY = p.y - 51 + squash * 15;
+    let parcelX = p.x - 15 * facing;
+    if (S.parcel.loose) {
+        parcelX = S.parcel.lostX;
+        parcelY = S.parcel.lostY;
+    }
+    let balloon = S.parcel.id === "balloon";
+    if (!balloon && !S.parcel.loose)
+        visual(a, "straps", "assets/snail/straps.svg", p.x - 13 * facing, p.y - 35 + squash * 15, 34, 38, 88, shellAngle * .6);
+    visual(a, "parcel", parcelArtPath(), parcelX, parcelY - (balloon ? 35 : 0), 45, balloon ? 100 : 45, 89, settings.reducedMotion ? 0 : shellAngle * 0.65 + (S.parcel.loose ? Math.sin(t * 8) * 15 : 0));
+    physicalStyle = { position: "absolute", left: ((parcelX - S.camera) / viewWidth * 100) + "%", top: ((parcelY - (balloon ? 94 : 31) + S.cameraY) / 560 * 100) + "%", transform: "translate(-50%, -50%)", zIndex: 94 };
+    let q = S.parcel;
+    physicalLabel = q.id === "pizza" ? Math.ceil(q.temperature) + "°" : (q.id === "ticking" ? (q.alarmed ? "SURPRISE!" : Math.ceil(q.countdown) + "s") : (q.id === "letter" ? (q.loose ? "CATCH ME" : Math.ceil(q.strap) + "% GRIP") : Math.ceil(q.id === "icecream" ? q.frozen : (q.id === "plant" ? q.vitality : parcelCondition(q))) + "%"));
+    if (S.nearAnim > 0 && !settings.reducedMotion)
+        physicalLabel = "phew!";
+    sprites = a;
+    let out = [];
+    for (let tr = 0; tr < S.slime.length; tr++) {
+        let sl = S.slime[tr];
+        if (sl.x < S.camera - 50 || sl.x > S.camera + viewWidth + 50)
+            continue;
+        out.push({ id: sl.id, style: { left: ((sl.x - S.camera) / viewWidth * 100) + "%", top: ((sl.y + S.cameraY) / 560 * 100) + "%", width: (sl.w / viewWidth * 100) + "%", opacity: Math.min(0.65, sl.life / 5.5), height: "0.55%" } });
+    }
+    trails = out;
+    let ps = [];
+    let colors = { dust: "#c9b28b", water: "#a2d3cf", spark: "#f3d19a", topping: "#bc6d55", confetti: "#a5bb85" };
+    for (let f = 0; f < S.fx.length; f++) {
+        let fx = S.fx[f];
+        if (fx.x < S.camera - 30 || fx.x > S.camera + viewWidth + 30)
+            continue;
+        ps.push({ id: fx.id, style: { left: ((fx.x - S.camera) / viewWidth * 100) + "%", top: ((fx.y + S.cameraY) / 560 * 100) + "%", width: (fx.size / viewWidth * 100) + "%", height: (fx.size / 560 * 100) + "%", background: fx.type === "confetti" ? (fx.id % 2 ? "#d99483" : "#e8c986") : colors[fx.type], opacity: Math.min(0.8, fx.life * 1.5), transform: "rotate(" + (fx.id * 17 + fx.life * 100) + "deg)", borderRadius: fx.type === "confetti" ? "1px" : "50%" } });
+    }
+    particles = ps;
+}
+function publish() {
+    if (!S)
+        return;
+    phase = S.phase;
+    let l = LEVELS[S.level];
+    let q = PARCELS[l.parcel];
+    titleLine = l.name;
+    routeNumber = S.level < 9 ? "0" + (S.level + 1) : String(S.level + 1);
+    parcelTitle = q.name;
+    parcelTip = q.tip;
+    parcelReadout = parcelReadoutText();
+    sceneArt = worldArt(l.id);
+    postcardArt = parcelArtPath();
+    targetLabel = clock(S.par).split(".")[0];
+    timeLabel = clock(S.time);
+    toastText = S.toastTime > 0 ? S.toast : "";
+    stageStyle = { "--accent": l.accent, "--sky": l.sky, "--ratio": String(viewWidth / 560) };
+    farStyle = { position: "absolute", left: (-S.camera * 0.1 / viewWidth * 100) + "%", top: "0", width: (1600 / viewWidth * 100) + "%", height: "100%", zIndex: 0 };
+    timerStyle = { transform: "rotate(" + (S.time % 60 * 6) + "deg)" };
+    fuelStyle = { width: S.boost + "%" };
+    conditionStyle = { width: parcelCondition(S.parcel) + "%" };
+    progressStyle = { width: clamp(S.p.x / S.world * 100, 0, 100) + "%" };
+    zoomLabel = viewWidth === 1000 ? "Close-up" : (viewWidth === 680 ? "Portrait" : "Wide view");
+    showWeather = S.level === 1;
+    supportText = S.started ? parcelReadout : "Clock waits for your first move. A/D to slide · Space to hop · E to boost · Q to care.";
+    routeButtons = [];
+    mapStops = [];
+    for (let i = 0; i < LEVELS.length; i++) {
+        let b = profile.best[i];
+        routeButtons.push({ id: i, number: "0" + (i + 1), name: LEVELS[i].name, parcel: PARCELS[LEVELS[i].parcel].short, art: "assets/parcels/" + PARCELS[LEVELS[i].parcel].art + ".svg", record: b ? (b.stars === 3 ? "★★★" : b.stars === 2 ? "★★☆" : "★☆☆") + " · " + clock(b.time) : "New delivery" });
+    }
+    for (let j = 0; j < S.checkpoints.length; j++)
+        mapStops.push({ id: j, style: { left: S.checkpoints[j] / S.world * 100 + "%" }, active: j <= S.checkpointIndex });
+    spriteView();
+}

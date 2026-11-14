@@ -1,0 +1,164 @@
+// Set dressing that never moves: spinifex, rocks and the dirt jumps. All of it is static scene
+// data, built once by initWorld() (scene.logic) into sceneStatic, and the scatter uses instanced
+// meshes, so hundreds of tufts cost one draw call per set and nothing per frame. (The sun and
+// clouds are static too, but they belong to lighting.logic.)
+//
+// No state. The placement is seeded (scatter()), so the scenery is the same on every run and in
+// every save, and it never touches the simulation's random numbers.
+
+// ---------- Scatter ----------
+
+// Whether a tuft or a rock may go at (x, z): within 212 m of the centre, on the plain (ground 3.2
+// to 6 m high, so not in the pit), on gentle ground, and clear of the compound, the haul road, the
+// jumps, the buildings and the rock outcrops. margin widens the gaps kept around the road, the
+// buildings and the rocks.
+function sceneryClear(x, z, margin) {
+  if (Math.abs(x) > 212 || Math.abs(z) > 212) return false;
+  var h = heightAt(x, z);
+  if (h < 3.2 || h > 6) return false;
+  // Not where the ground changes by more than 0.6 m over 3 m.
+  if (Math.abs(heightAt(x + 3, z) - h) > 0.6 || Math.abs(heightAt(x, z + 3) - h) > 0.6) return false;
+  // The compound.
+  if (x > -100 && x < 115 && z > 98 && z < 178) return false;
+  // Every second point of the haul road, 10 m either way.
+  for (var i = 0; i < HAUL_PATH.length; i += 2) {
+    var q = HAUL_PATH[i];
+    if (Math.abs(q[0] - x) < 10 + margin && Math.abs(q[2] - z) < 10 + margin) return false;
+  }
+  for (var j of JUMPS) if (Math.hypot(j.x - x, j.z - z) < j.len / 2 + 10) return false;
+  for (var b of SOLIDS)
+    if (Math.abs(x - b[0]) < b[2] / 2 + margin + 2 && Math.abs(z - b[1]) < b[3] / 2 + margin + 2)
+      return false;
+  for (var r of ROCK_BOUNDS)
+    if (Math.abs(x - r[0]) < r[2] / 2 + margin + 1 && Math.abs(z - r[1]) < r[3] / 2 + margin + 1)
+      return false;
+  return true;
+}
+
+// Up to count random clear spots, as the flat list Scene3D's instanced objects take: x, y, z and a
+// palette index (0 to 3) for each copy. It runs its own Park-Miller generator seeded from seedText,
+// so the layout is fixed and rand() is left alone, and gives up after count * 14 tries. offset
+// lifts each copy's centre above the ground; positions are rounded to 0.1 m.
+function scatter(count, seedText, margin, offset) {
+  var out = [],
+    n = seedValue(seedText),
+    tries = 0;
+  while (out.length < count * 4 && tries < count * 14) {
+    tries++;
+    n = (n * 48271) % 2147483647;
+    var x = (n / 2147483647) * 440 - 220;
+    n = (n * 48271) % 2147483647;
+    var z = (n / 2147483647) * 440 - 220;
+    n = (n * 48271) % 2147483647;
+    var tint = Math.floor((n / 2147483647) * 4);
+    if (!sceneryClear(x, z, margin)) continue;
+    out.push(nround(x), nround(heightAt(x, z) + offset), nround(z), tint);
+  }
+  return out;
+}
+
+// The scenery for sceneStatic: small and large spinifex, small and large rocks, and the jumps.
+// Large rocks cast shadows on high quality only, decided when initWorld() runs: changing the
+// quality later (cycleQuality) doesn't rebuild sceneStatic.
+function sceneryObjects() {
+  var list = [];
+  var grassPal = ['#8a8a3c', '#a19a4a', '#7b7f39', '#b3a25a'],
+    rockPal = ['#8e5a3c', '#7a4b33', '#a06a46', '#6b4a3a'];
+  list.push({
+    id: 'spinifex-s',
+    type: 'instanced',
+    shape: 'icosahedron',
+    radius: 0.42,
+    instances: scatter(170, 'spinifex-small', 0, 0.18),
+    palette: grassPal,
+    flatShading: true,
+    roughness: 1,
+    receiveShadow: true
+  });
+  list.push({
+    id: 'spinifex-l',
+    type: 'instanced',
+    shape: 'icosahedron',
+    radius: 0.78,
+    instances: scatter(90, 'spinifex-large', 1, 0.28),
+    palette: grassPal,
+    flatShading: true,
+    roughness: 1,
+    receiveShadow: true
+  });
+  list.push({
+    id: 'rocks-s',
+    type: 'instanced',
+    shape: 'dodecahedron',
+    radius: 0.38,
+    instances: scatter(130, 'rocks-small', 0, 0.1),
+    palette: rockPal,
+    flatShading: true,
+    roughness: 0.95,
+    receiveShadow: true
+  });
+  list.push({
+    id: 'rocks-l',
+    type: 'instanced',
+    shape: 'dodecahedron',
+    radius: 1.05,
+    instances: scatter(45, 'rocks-large', 2, 0.15),
+    palette: rockPal,
+    flatShading: true,
+    roughness: 0.95,
+    castShadow: quality === 'high',
+    receiveShadow: true
+  });
+  return list.concat(jumpObjects());
+}
+
+// ---------- Jumps ----------
+
+// Draws each of JUMPS (terrain.logic): a prism of the same shape as jumpHeight(), and a pole with
+// a flag on either side of it, 0.8 m out from its edges.
+function jumpObjects() {
+  var out = [];
+  for (var j of JUMPS) {
+    var base = heightAt(j.x, j.z);
+    // A prism's triangle is its width by its height; turned a quarter it runs along the jump.
+    out.push({
+      id: 'jump-' + j.id,
+      type: 'prism',
+      position: vec(j.x, base + j.high / 2 - 0.02, j.z),
+      rotation: vec(0, j.yaw + Math.PI / 2, 0),
+      width: j.len,
+      height: j.high,
+      depth: j.wide,
+      color: '#a8794f',
+      roughness: 0.95,
+      flatShading: true,
+      castShadow: true,
+      receiveShadow: true
+    });
+    for (var side of [-1, 1]) {
+      var fx = j.x + Math.cos(j.yaw) * side * (j.wide / 2 + 0.8),
+        fz = j.z - Math.sin(j.yaw) * side * (j.wide / 2 + 0.8),
+        fy = heightAt(fx, fz);
+      out.push({
+        id: 'jump-' + j.id + '-pole' + side,
+        type: 'cylinder',
+        position: vec(fx, fy + 1.4, fz),
+        radius: 0.05,
+        height: 2.8,
+        color: '#d8d2c4'
+      });
+      out.push({
+        id: 'jump-' + j.id + '-flag' + side,
+        type: 'box',
+        position: vec(fx + 0.35, fy + 2.5, fz),
+        width: 0.7,
+        height: 0.42,
+        depth: 0.03,
+        color: side < 0 ? '#e4572e' : '#f2c14e',
+        emissive: side < 0 ? '#7a2a14' : '#7a5a14',
+        emissiveIntensity: 0.25
+      });
+    }
+  }
+  return out;
+}

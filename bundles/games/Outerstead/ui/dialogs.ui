@@ -65,15 +65,15 @@
         <span className="os-label">NEW EXPEDITION</span><div className="os-modal-title" style={{ margin: "10px 0 17px" }}>Leave this chapter?</div><span className="os-modal-body">Starting a new settlement replaces the active, unsaved colony. Existing manual and autosave slots will remain. Preserve a save before beginning again.</span><div className="os-modal-footer"><button className="os-btn" @click={closeDialog}>Keep this colony</button><button className="os-btn" @click={openSaves}>Save first</button><button className="os-btn os-primary" @click={confirmNewSettlement}>Begin new expedition</button></div>
       #end
       #if (dialog === "crew")
-        <div className="os-modal-head"><div><span className="os-label">LANDFALL CREW // {seedText}</span><div className="os-modal-title">Four settlers survived the descent.</div></div><div className="os-row"><button className="os-btn os-primary" @click={startNewSettlement}>Landfall</button><button className="os-btn os-icon-btn" title="Back to the title" @click={closeDialog}>×</button></div></div>
+        <div className="os-modal-head"><div><span className="os-label">{"LANDFALL CREW // " + seedText}</span><div className="os-modal-title">Four settlers survived the descent.</div></div><div className="os-row"><button className="os-btn os-primary" @click={startNewSettlement}>Landfall</button><button className="os-btn os-icon-btn" title="Back to the title" @click={closeDialog}>×</button></div></div>
         <div className="os-crew-controls">
           <button className="os-btn os-tab" oson={String(crewMode === "generated")} @click={() => setCrewMode("generated")}>Generated crew</button>
           <button className="os-btn os-tab" oson={String(crewMode === "first")} @click={() => setCrewMode("first")}>First Light crew · Jin, Mara, Mina, Sol</button>
           #if (crewMode === "generated")<button className="os-btn os-tab" @click={rerollCrew}>↻ Reroll all four</button><button className="os-btn os-tab" oson={String(crewAllowHard)} @click={toggleCrewHard}>{crewAllowHard ? "Difficult crews allowed" : "Viable crews only"}</button>#end
         </div>
         <div className="os-crew-summary">
-          #each (s in crewSummary.strengths) key={s}<span className="os-crew-good">✓ {s}</span>#end
-          #each (w in crewSummary.weaknesses) key={w}<span className="os-crew-bad">! {w}</span>#end
+          #each (s in crewSummary.strengths) key={s}<span className="os-crew-good">{"✓ " + s}</span>#end
+          #each (w in crewSummary.weaknesses) key={w}<span className="os-crew-bad">{"! " + w}</span>#end
         </div>
         <div className="os-crew-grid">
           #each (card in crewCards) key={card.slot}
@@ -95,7 +95,7 @@
         <div className="os-modal-footer"><button className="os-btn" @click={closeDialog}>Back</button><button className="os-btn os-primary" @click={startNewSettlement}>Landfall</button></div>
       #end
       #if (dialog === "expedition")
-        <div className="os-modal-head"><div><span className="os-label">EXPEDITION · {expeditionPlanView.kind}</span><div className="os-modal-title">{expeditionPlanView.title}</div></div><button className="os-btn os-icon-btn" @click={closeDialog}>×</button></div>
+        <div className="os-modal-head"><div><span className="os-label">{"EXPEDITION · " + expeditionPlanView.kind}</span><div className="os-modal-title">{expeditionPlanView.title}</div></div><button className="os-btn os-icon-btn" @click={closeDialog}>×</button></div>
         <span className="os-prose">{expeditionPlanView.purpose}</span>
         <div className="os-plan-stats">
           <div className="os-plan-stat"><span className="os-label">WALK</span><b>{expeditionPlanView.walk}</b><span className="os-tiny os-dim">each way, on foot</span></div>
@@ -111,7 +111,7 @@
               <span className="os-plan-name">{c.name}</span>
               <span className="os-plan-role">{c.role}</span>
               <span className="os-plan-skill"><i style={c.exploreStyle} /></span>
-              <span className="os-tiny os-dim">explore {c.explore} · health {c.health}</span>
+              <span className="os-tiny os-dim">{"explore " + c.explore + " · health " + c.health}</span>
               <span className={"os-tiny " + (c.ok ? "os-cyan" : "os-amber")}>{c.note}</span>
             </button>
           #end
@@ -142,7 +142,7 @@
       #if (dialog === "story" || dialog === "archive")
         <button className="os-btn os-wide" style={{ marginTop: "12px" }} @click={togglePause}>{paused ? "Resume colony" : "Pause colony"}</button>
       #end
-      #if (dialog !== "story" && dialog !== "crew")
+      #if (dialog === "saves" || dialog === "menu" || dialog === "event-settings" || dialog === "mods" || dialog === "work" || dialog === "gallery")
         <div className="os-modal-close"><button className="os-btn" @click={closeDialog}>Close menu</button></div>
       #end
     </div>

@@ -1,0 +1,9 @@
+{
+  "app": {
+    "id": "com.softn.oddjobs.duck",
+    "name": "Do Not Press the Duck",
+    "version": "2.0.3"
+  },
+  "permissions": {},
+  "version": 1
+}

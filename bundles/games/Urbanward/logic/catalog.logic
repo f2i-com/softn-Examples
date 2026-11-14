@@ -1,0 +1,58 @@
+// All build costs are game currency, not real-world prices. Monthly upkeep.
+const UW_FACILITIES = {
+    power: { name: "Municipal power station", category: "utilities", cost: 3600, upkeep: 180, power: 2800, water: 0, demand: 0, pollution: 60, color: "#b36552", description: "Reliable baseload power. Its emissions make a poor neighbour for homes." },
+    wind: { name: "Wind turbine", category: "utilities", cost: 1700, upkeep: 35, power: 600, water: 0, demand: 0, pollution: 0, color: "#dce9e4", description: "Clean power, with output reduced during calm weather." },
+    solar: { name: "Solar garden", category: "utilities", cost: 2400, upkeep: 22, power: 850, water: 0, demand: 0, pollution: 0, color: "#337a9d", description: "Clean, seasonally variable monthly generation. Visual night does not switch it off." },
+    tower: { name: "Water tower", category: "utilities", cost: 1400, upkeep: 55, power: 0, water: 1600, demand: 18, pollution: 0, color: "#78b8cf", description: "Stores and treats water for a small town. Requires electricity." },
+    pump: { name: "Water treatment works", category: "utilities", cost: 3900, upkeep: 125, power: 0, water: 5200, demand: 65, pollution: 0, color: "#79bbc1", description: "Large-scale water supply and wastewater treatment. No separate sewage network in this edition." },
+    school: { name: "Neighbourhood school", category: "civic", cost: 2600, upkeep: 115, demand: 20, service: "school", range: 20, color: "#d49759", description: "Education follows road access. Its catchment is weakened by congestion and underfunding." },
+    clinic: { name: "Community clinic", category: "civic", cost: 2900, upkeep: 125, demand: 26, service: "health", range: 24, color: "#ece7df", description: "Improves health and household satisfaction through the connected street network." },
+    police: { name: "Police precinct", category: "civic", cost: 2300, upkeep: 100, demand: 22, service: "police", range: 25, color: "#4c6682", description: "Reduces crime. Good street connections matter more than straight-line distance." },
+    fire: { name: "Fire station", category: "civic", cost: 2500, upkeep: 110, demand: 22, service: "fire", range: 26, color: "#ba6253", description: "Responds to fires through the road network. Congestion slows the response." },
+    library: { name: "Public library", category: "civic", cost: 1900, upkeep: 65, demand: 15, service: "culture", range: 18, color: "#84a4a1", description: "Culture and adult education make established districts more attractive." },
+    university: { name: "City university", category: "civic", cost: 8800, upkeep: 290, demand: 70, service: "university", range: 35, color: "#d6c7a2", description: "Higher education encourages advanced industry and student neighbourhoods." },
+    recycler: { name: "Recycling centre", category: "utilities", cost: 2800, upkeep: 105, demand: 45, service: "waste", range: 32, color: "#639a85", description: "Collects waste along the street network and improves environmental quality." },
+    park: { name: "Pocket park", category: "landscape", cost: 260, upkeep: 9, demand: 1, service: "park", range: 5, color: "#81b478", description: "A small fountain garden. Its amenity reaches nearby lots, even across a footpath." },
+    plaza: { name: "Civic square", category: "landscape", cost: 1100, upkeep: 25, demand: 5, service: "park", range: 8, color: "#d3c3a2", description: "A generous public square with a fountain and space to gather." },
+    depot: { name: "Bus depot", category: "transport", cost: 2200, upkeep: 90, demand: 30, color: "#d9b969", description: "Powers local bus service or scheduled lines on its road network. Open Transport to plan ordered stops and assign buses." },
+    stop: { name: "Bus stop", category: "transport", cost: 150, upkeep: 5, demand: 2, service: "transit", range: 9, color: "#72b4bc", description: "Reduces commuting traffic nearby when a powered bus depot shares its road network." },
+    lighthouse: { name: "Harbour lighthouse", category: "landmarks", cost: 3200, upkeep: 30, demand: 12, service: "park", range: 8, color: "#ddd7c8", description: "An original harbour landmark. Best enjoyed beside the water." },
+    hall: { name: "City hall", category: "landmarks", cost: 6500, upkeep: 130, demand: 40, service: "culture", range: 28, color: "#d9cab0", description: "A civic landmark with a clock tower, gardens and cultural influence." },
+    monument: { name: "Tomorrow spire", category: "landmarks", cost: 10000, upkeep: 90, demand: 55, service: "park", range: 12, color: "#6babb9", description: "A slender original observation tower celebrating your city's future." }
+};
+const UW_TOOL_GROUPS = [
+    { id: "zones", icon: "▦", name: "Zones" }, { id: "transport", icon: "═", name: "Transport" },
+    { id: "utilities", icon: "ϟ", name: "Utilities" }, { id: "civic", icon: "▥", name: "Civic" },
+    { id: "landscape", icon: "♧", name: "Landscape" }, { id: "landmarks", icon: "◇", name: "Landmarks" }
+];
+const UW_BASE_TOOLS = [
+    { id: "res", category: "zones", name: "Low residential", icon: "⌂", cost: 10, upkeep: 0, description: "Homes and townhouses. Draw a rectangle up to two lots deep from a road." },
+    { id: "resHigh", category: "zones", name: "High residential", icon: "▥", cost: 25, upkeep: 0, description: "Apartments and towers. Tall development needs a larger city and good services." },
+    { id: "com", category: "zones", name: "Commercial", icon: "▤", cost: 14, upkeep: 0, description: "Shops and offices. Businesses need customers, workers, utilities and road access." },
+    { id: "comHigh", category: "zones", name: "High commercial", icon: "▥", cost: 28, upkeep: 0, description: "Dense offices and hotels with a taller potential skyline." },
+    { id: "ind", category: "zones", name: "Industry", icon: "▰", cost: 12, upkeep: 0, description: "Warehouses and factories provide jobs but create pollution." },
+    { id: "mixed", category: "zones", name: "Mixed use", icon: "▧", cost: 24, upkeep: 0, description: "Apartments above shops. One lot supplies homes and employment." },
+    { id: "road", category: "transport", name: "Local road", icon: "═", cost: 12, upkeep: 1, description: "Draw from one end to the other. Carries traffic and shared utility ducts. Water crossings cost $180 per tile." },
+    { id: "avenue", category: "transport", name: "Avenue", icon: "╬", cost: 45, upkeep: 2, description: "Higher-capacity road. Existing roads can be upgraded. Bridges cost $240 per tile." },
+    { id: "wire", category: "utilities", name: "Power line", icon: "ϟ", cost: 8, upkeep: 0, description: "Connect electricity beyond the road network. Can share a lot with zoning." },
+    { id: "pipe", category: "utilities", name: "Water main", icon: "≈", cost: 7, upkeep: 0, description: "Connect water networks beyond roads. Visible in the water overlay." },
+    { id: "tree", category: "landscape", name: "Plant trees", icon: "♧", cost: 18, upkeep: 0, description: "Improves local greenery. Choose a 1, 3 or 5 tile brush." },
+    { id: "raise", category: "landscape", name: "Raise land", icon: "△", cost: 65, upkeep: 0, description: "Raises undeveloped terrain. Reclaiming a water tile costs $250." },
+    { id: "lower", category: "landscape", name: "Lower land", icon: "▽", cost: 45, upkeep: 0, description: "Lowers undeveloped ground. Low ground becomes water." }
+];
+let toolCards = [];
+const UW_OVERLAYS = [
+    { id: "none", name: "Natural" }, { id: "zones", name: "Zoning" }, { id: "power", name: "Power" },
+    { id: "water", name: "Water" }, { id: "traffic", name: "Traffic" }, { id: "value", name: "Land value" },
+    { id: "pollution", name: "Pollution" }, { id: "services", name: "Services" }, { id: "districts", name: "Districts" }
+];
+const UW_POLICIES = [
+    { id: "recycling", name: "Recycling charter", cost: 65, text: "Cuts waste pollution by 25%." },
+    { id: "clean", name: "Clean-industry standards", cost: 120, text: "Cuts industrial emissions by 35%; slightly lowers industrial demand." },
+    { id: "transit", name: "Affordable fares", cost: 100, text: "Stronger bus-stop traffic reduction and a small happiness bonus." },
+    { id: "trees", name: "Urban canopy programme", cost: 80, text: "Boosts park amenity and land value." }
+];
+const UW_ZONE_NAMES = ["Unzoned", "Residential", "Commercial", "Industrial", "Mixed use"];
+const UW_LEVEL_NAMES = ["Undeveloped", "Low-rise", "Established", "Mid-rise", "High-rise"];
+const UW_LEVEL_POP = [0, 8, 30, 105, 245];
+const UW_LEVEL_JOBS = [0, 9, 28, 75, 160];

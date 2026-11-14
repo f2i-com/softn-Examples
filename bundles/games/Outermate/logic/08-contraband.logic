@@ -16,7 +16,7 @@ function hasGoods(cost){let k=Object.keys(cost);for(let i=0;i<k.length;i++)if(it
 function takeGoods(cost){if(!hasGoods(cost))return false;let k=Object.keys(cost);for(let i=0;i<k.length;i++)takeItem(k[i],cost[k[i]]);return true;}
 function refundGoods(cost){let k=Object.keys(cost);for(let i=0;i<k.length;i++)for(let j=0;j<cost[k[i]];j++){if(!giveItem(k[i],1))omGame.stashes.cell[k[i]]=(omGame.stashes.cell[k[i]]||0)+1;}dirty();}
 // Replacement paperwork is possible after confiscation, never while a copy survives.
-function totalItemCount(id){let n=itemCount(id);for(let k of Object.keys(omGame.stashes))n+=omGame.stashes[k][id]||0;return n;}
+function totalItemCount(id){let n=itemCount(id);for(let k of Object.keys(omGame.stashes))n+=omGame.stashes[k][id]||0;for(let c of omGame.people)if(c.holding&&c.holding[id]>0)n+=c.holding[id];return n;}
 function recoverLostDocuments(){
   if(!omGame.escape&&projectReady("paper")&&!totalItemCount("release")){delete omGame.projects.paper;logEvent("A form can be filed twice","The release packet is gone. You can prepare another at Records.","project");}
   if(omGame.siteTaken.records&&!totalItemCount("records"))omGame.siteTaken.records=false;

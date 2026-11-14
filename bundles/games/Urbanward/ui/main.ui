@@ -1,0 +1,39 @@
+<logic src="../logic/main.logic" />
+<import Theme from="./theme.ui" />
+<import Topbar from="./topbar.ui" />
+<import Toolbox from="./toolbox.ui" />
+<import Viewport from="./viewport.ui" />
+<import Inspector from="./inspector.ui" />
+<import Welcome from="./welcome.ui" />
+<import Modals from="./modals.ui" />
+<Theme />
+<div className={"uw-root uw-mobile-" + mobilePanel}>
+  <Loop interval={100} running={started} @tick={uwTick} />
+  #if (started)
+    <Topbar />
+    <div className="uw-workspace">
+      <Toolbox />
+      <Viewport />
+      #if (showInspector)
+        <Inspector />
+      #end
+    </div>
+    <div className="uw-mobile-dock">
+      <button className={mobilePanel === "build" ? "uw-small-button uw-active" : "uw-small-button"} @click={() => uwMobilePanel("build")}>{mobilePanel === "build" ? "Close tools" : "Build"}</button>
+      <button className={activeTool === "inspect" && mobilePanel === "" ? "uw-small-button uw-active" : "uw-small-button"} @click={uwMobileNavigate}>Navigate</button>
+      <button className={mobilePanel === "details" ? "uw-small-button uw-active" : "uw-small-button"} @click={() => uwMobilePanel("details")}>{mobilePanel === "details" ? "Close details" : "Details"}</button>
+      <button className="uw-small-button" @click={() => uwOpenModal("settings")}>City menu</button>
+    </div>
+    <div className={noticeTone === "bad" ? "uw-ticker uw-ticker-bad" : "uw-ticker"} role="status">
+      <span className="uw-ticker-label">CITY WIRE</span>
+      <span className="uw-ticker-text">{uiNotice}</span>
+      <button className="uw-small-button" @click={() => uwOpenModal("news")}>Gazette ↗</button>
+    </div>
+  #end
+  #if (welcomeOpen)
+    <Welcome />
+  #end
+  #if (modal !== "")
+    <Modals />
+  #end
+</div>

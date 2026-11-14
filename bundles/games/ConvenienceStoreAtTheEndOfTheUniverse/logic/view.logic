@@ -1,0 +1,91 @@
+// A suggested action, never an automatic transaction. All actions use command().
+function counterAction(){
+ let c=activeCustomer(),st=S.store,kind=SHIFTS[S.stage].routine;
+ if(canCloseShift())return {id:"door",label:"Finish shift"};
+ if(st.carryingCrate)return {id:"shelf:"+(c?c.item:0),label:"Stock "+PRODUCTS[c?c.item:0].name};
+ if(c){
+  if(st.hand>=0 && st.hand!==c.item)return {id:"return",label:"Return item"};
+  if(st.hand<0){
+   if((c.item===2 && st.coffee===0)||(c.item===3 && st.noodles===0))return {id:c.item===2?"coffee":"noodles",label:st.job?"Preparing…":(c.item===2?"Brew coffee":"Warm noodles"),disabled:st.job!==""};
+   if(st.stock[c.item]===0)return {id:"crate",label:"Pick up delivery"};
+   return {id:"shelf:"+c.item,label:"Take "+PRODUCTS[c.item].name};
+  }
+  if(!st.turned)return {id:"turn",label:"Turn package"};
+  if(!st.scanned)return {id:"scan",label:"Scan barcode"};
+  if(!st.bagged)return {id:"bag",label:"Bag item"};
+  if(!c.payment)return {id:"payment",label:"Check payment"};
+  return {id:"till",label:"Complete sale"};
+ }
+ if(S.shift.eventReady && !S.shift.eventDone)return {id:"event",label:"Tonight's oddity"};
+ if(!S.shift.routine){
+  if(kind==="stock")return {id:"crate",label:"Pick up delivery"};
+  if(kind==="clean")return {id:st.mop?"spill":"mop",label:st.mop?"Wipe spill":"Take mop"};
+  if(kind==="coffee" || kind==="noodles")return {id:kind,label:st.job?"Preparing…":(kind==="coffee"?"Brew coffee":"Warm noodles"),disabled:st.job!==""};
+ }
+ return {id:"door",label:"Welcome visitor"};
+}
+function artPath(path){return path;}
+// Pure presentation snapshots. No renderer-specific DOM objects enter a save.
+function portrait(who,happy){let era=S.stage<3?0:(S.stage<5?1:2);return artPath("assets/characters/"+REGULARS[who].art+"-"+era+"-"+(happy?"warm":"quiet")+".svg");}
+function displayName(who){if(who===2 && flag("melloName"))return "Mara / Mello";if(who===4 && flag("nimbusName"))return "Aster / Nimbus";return REGULARS[who].name;}
+function giftText(id){let names={cow:"Iko's hand-drawn cow. It looks almost right.",bananaStand:"R-7's banana stand. KEVIN, says a little label.",mug:"A spare cup, kept warm for Mello.",map:"The Traveller marked a service entrance between universes.",cloud:"A cloud the size of a biscuit. Extremely local weather.",receipt:"Dave's receipt: THANK YOU. Nothing else.",star:"A star that has found a smaller place to shine.",minute:"One minute, off duty. It likes the kettle.",book:"The guestbook. Names have somewhere to stay.",bolt:"The supplier's last bolt. ANCHOR / HINGE, says the packet.",table:"Chairs that do not match. Room for everyone.",scarf:"Take what you need. The shelf is not keeping score.",light:"The light above the door. Still here.",memory:"Little mornings in a jar. Rain. Toast. Someone laughing.",coin:"A coin with three sides. None of them say no.",favour:"I OWE YOU ONE. Dave has underlined it twice."};return names[id] || "A little thing worth keeping.";}
+function nextAction(){
+ let c=activeCustomer(),s=S.store;
+ if(S.dialog)return "There is time to listen. The shop waits while you talk.";
+ if(S.inspection)return "An honest payment can be a very unusual thing.";
+ if(canCloseShift())return "Everyone has their usual. Turn the door sign to finish the shift.";
+ if(c){if(s.hand<0)return displayName(c.who)+" would like "+PRODUCTS[c.item].name+". Choose it from the shelf or counter.";if(!s.turned)return "Turn the package on the counter to find its barcode.";if(!s.scanned)return "Slide the barcode across the scanner.";if(!s.bagged)return "Put the scanned item in the paper bag.";if(!c.payment)return "Check the little brass payment tray.";return "Everything is ready. Close the sale with the till.";}
+ if(S.shift.eventReady && !S.shift.eventDone)return SHIFTS[S.stage].eventLabel+". Something is waiting on the windowsill.";
+ if(!S.shift.routine)return "A little shopkeeping: "+SHIFTS[S.stage].routineLabel.toLowerCase()+".";
+ return "Click a customer to talk, or the door to welcome the next visitor.";
+}
+function publish(){
+ if(!S)return;
+ let c=activeCustomer(),st=S.store,d=S.dialog,n=currentDialogue(),stage=S.stage;
+ let next=counterAction();
+ let dialogueLine=n?n.line:"";
+ if(n && n.recallFlag && flag(n.recallFlag))dialogueLine=n.recall+" "+dialogueLine;
+ view={panel:counterPanel,nextCommand:next.id,nextLabel:next.label,nextDisabled:next.disabled===true,title:TITLE,night:stage+1,shiftName:SHIFTS[stage].name,clock:SHIFTS[stage].time,
+  sky:artPath("assets/sky/night-"+stage+".svg"),skyText:SHIFTS[stage].sky,
+  rootClass:"lastlight"+(settings.reducedMotion?" still":"")+(stage>=5?" unmoored":"")+(S.cosmic.echo>0?" remembering":"")+(S.cosmic.stasis>0?" held-time":""),
+  phase:S.phase,overlay:overlay,running:running,hasProgress:S.time>0 || S.stage>0 || S.shift.spawned>0,
+  notice:noticeTime>0?notice:"",hint:nextAction(),caption:captionTime>0 && settings.captions?soundCaption:"",
+  saveStatus:saveStatus,saveBlocked:saveBlocked,confirmReset:confirmReset,pendingImport:pendingImport!==null,saveText:saveText,
+  muted:settings.muted,music:settings.music,motion:settings.reducedMotion,captions:settings.captions,
+  counter:c!==null,customerId:c?c.id:0,customer:c?displayName(c.who):"A little quiet between customers",
+  customerArt:c?portrait(c.who,c.talked):artPath("assets/objects/coffee.svg"),order:c?PRODUCTS[c.item].name:"The fridge keeps you company.",
+  talked:c?has(S.characters[c.who].conversations,stage):false,
+  hand:st.hand>=0,handArt:st.hand>=0?artPath("assets/objects/"+(st.turned?"barcode":PRODUCTS[st.hand].art)+".svg"):artPath("assets/objects/coffee.svg"),
+  handName:st.hand>=0?PRODUCTS[st.hand].name:"",turned:st.turned,scanned:st.scanned,bagged:st.bagged,
+  bagArt:artPath("assets/objects/"+(st.bagged?"bag-full":"bag")+".svg"),
+  tillReady:!!c && st.bagged && c.payment!=="",paymentReady:!!c && c.payment!=="",
+  tokenArt:c?artPath("assets/objects/"+CURRENCIES[c.currency].art+".svg"):artPath("assets/objects/credits.svg"),
+  tokenName:c?CURRENCIES[c.currency].name:"",tokenAction:c?CURRENCIES[c.currency].action:"",tokenInspected:c?c.inspected:false,
+  tokenText:c?(c.inspected?CURRENCIES[c.currency].seen:CURRENCIES[c.currency].unseen):"",
+  tokenEffect:c?CURRENCIES[c.currency].effect:"",inspection:S.inspection,
+  crate:st.carryingCrate,mop:st.mop,spill:st.spill>0,spillStyle:{opacity:0.28+st.spill*0.2},
+  job:st.job,jobLabel:st.job?(st.job==="coffee"?"Brewing":"Warming")+"…":"",coffee:st.coffee,noodles:st.noodles,
+  jobWidth:{width:st.job?Math.round((1-st.jobTime/st.jobTotal)*100)+"%":"0%"},
+  table:st.table,sign:canCloseShift()?"CLOSE SHIFT":st.sign,ready:canCloseShift(),routine:SHIFTS[stage].routineLabel,routineDone:S.shift.routine,
+  eventReady:S.shift.eventReady && !S.shift.eventDone,eventName:SHIFTS[stage].eventLabel,eventArt:artPath("assets/objects/"+["starlight","radio","seconds","name","bolt","table","lamp"][stage]+".svg"),
+  eventDone:S.shift.eventDone,radio:st.radio,echo:S.cosmic.echo>0,stasis:S.cosmic.stasis>0,starLamp:has(S.gifts,"star"),impossibleReceipt:S.payments.impossible>0,
+  dialogue:d!==null,dialogueName:d?(d.who>=0?displayName(d.who):SHIFTS[stage].eventLabel):"",
+  dialogueArt:d?(d.who>=0?portrait(d.who,d.resolved):artPath("assets/objects/"+["starlight","radio","seconds","name","bolt","table","lamp"][stage]+".svg")):"",
+  dialogueLine:d?(d.resolved?d.reply:dialogueLine):"",dialogueResolved:d?d.resolved:false,
+  finaleLine:companions()>0?"The sky has run out of things to say. Those who chose to stay wait for you, not for a receipt. The promises you kept have made room for these possibilities.":"The sky has run out of things to say. The last bags have left the counter, but the little things people brought are still here. There is time for one more choice.",
+  closeLine:SHIFTS[stage].close,endingTitle:S.ending?S.ending.title:"",endingBody:S.ending?S.ending.body:""
+ };
+ peopleView=S.customers.map(function(p){return {id:p.id,who:p.who,name:displayName(p.who),art:portrait(p.who,p.talked || p.paid),
+  className:"person "+(p.state==="enter" || p.state==="queue" || p.state==="leaving" || p.state==="settling"?"walking":"idle")+(p.state==="counter"?" at-counter":"")+(p.state==="sit"?" seated":""),
+  style:{left:p.x+"%",top:p.y+"%",zIndex:p.state==="sit"?4:6},label:displayName(p.who)+" · "+(p.state==="counter"?"Click to talk":REGULARS[p.who].idle),
+  bubble:p.state==="counter"?PRODUCTS[p.item].name:(p.paid?"Thank you.":""),
+  bag:p.paid};});
+ let places=[{left:"7.8%",top:"38.5%"},{left:"27%",top:"39.5%"},{left:"37%",top:"39.5%"},{left:"47%",top:"39.5%"},{left:"80.5%",top:"38.5%"},{left:"57%",top:"39.5%"}];
+ shelvesView=PRODUCTS.map(function(p,i){return {id:i,art:artPath("assets/objects/"+p.art+".svg"),name:p.name,short:p.short,key:i+1,stock:st.stock[i],style:places[i],className:"shelf-hotspot"+(c && c.item===i?" wanted":"")+(st.stock[i]===0?" empty":""),label:p.name+" · "+st.stock[i]+" on shelf · key "+(i+1)};});
+ starsView=[];for(let i=0;i<50;i++){if(i<50-Math.floor(S.cosmic.level*8))starsView.push({id:i,style:{left:(22+(i*17.31)%64)+"%",top:(10+(i*7.71)%19)+"%",opacity:0.3+(i%4)*0.19},className:"star "+(i%5===0?"twinkle":"")});}
+ keepsakesView=S.gifts.slice(0,12).map(function(id,i){return {id:id,art:artPath("assets/objects/gift-"+id+".svg"),text:giftText(id),style:{left:(24+i*4.8)+"%",top:"31.5%"}};});
+ journalView=S.journal.map(function(row,i){return {id:i,night:row.night+1,text:row.text,name:row.who>=0?displayName(row.who):"The shop"};});
+ choicesView=n?n.choices.map(function(q,i){return {id:i,text:q.text};}):[];
+ endingsView=S.phase==="finale"?endingChoices():[];
+ epiloguesView=S.ending?S.ending.epilogues.map(function(e){return {id:e.who,name:displayName(e.who),art:portrait(e.who,true),text:e.text};}):[];
+}

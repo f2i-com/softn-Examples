@@ -3,7 +3,7 @@
 #end
 #if (routePlan && !escapeCard)
  <div className="om-chapter"><span className="om-label">YOUR LIVE PREPARATION CHECKLIST</span><h3>{routePlan.name}</h3><p>{routePlan.window}</p>
- <p>{routePlan.known ? "✓ Route observed" : "○ Observe the route in person"} · {routePlan.complete ? "✓ Project ready" : "Project " + routePlan.progress + "%"}</p>
+ <p>{(routePlan.known ? "✓ Route observed" : "○ Observe the route in person") + " · " + (routePlan.complete ? "✓ Project ready" : "Project " + routePlan.progress + "%")}</p>
  #if (routePlan.paid && !routePlan.complete)<small>Project materials are reserved. Resume without paying again.</small>#end
  #each (s in routeSupplyCards) key={s.id}<div className="om-card"><strong>{(s.done ? "✓ " : "○ ") + s.name + " · " + s.carried + "/" + s.needed + " carried"}</strong><small>{s.stored + " stored · " + s.missing + " still to acquire"}</small><p className="om-small">{s.source}</p>
  #if (s.site)<button className="om-link" @click={() => inspectSite(s.site)}>Inspect source</button>#end
@@ -15,9 +15,9 @@
  <p className="om-note">{routePlan.reason}</p></div>
 #end
 #if (escapeCard)
- <div className="om-chapter"><span className="om-label">PLAN IN MOTION / {escapeCard.phase}</span><h3>{escapeCard.name}</h3><p>{escapeCard.body}</p><small>{escapeCard.crew} allies joined this attempt.</small>
+ <div className="om-chapter"><span className="om-label">{"PLAN IN MOTION / " + escapeCard.phase}</span><h3>{escapeCard.name}</h3><p>{escapeCard.body}</p><small>{escapeCard.crew + " allies joined this attempt."}</small>
  #if (escapeCard.phase === "transit")<div className="om-meter"><i style={escapeCard.progress} /></div>#end
- #if (escapeCard.route === "blackout")<div className="om-warning">Power returns in {escapeCard.powerRemaining} game minutes.</div>#end
+ #if (escapeCard.route === "blackout")<div className="om-warning">{"Power returns in " + escapeCard.powerRemaining + " game minutes."}</div>#end
  <button className="om-btn om-primary om-wide" disabled={!escapeCard.ready} @click={finishEscape}>Leave prison →</button>
  <button className="om-btn om-wide" disabled={escapeCard.phase === "transit"} @click={continueEscape}>Move to extraction</button>
  <button className="om-btn om-wide" @click={() => focusAt(escapeCard.exit.x,escapeCard.exit.y)}>Show exit on map</button>
@@ -28,8 +28,8 @@
  <button className="om-btn om-wide" @click={() => [guideEnabled || toggleGuide(), setPanel("day")]}>Open the escape guide (step-by-step choices)</button>
 #end
 <div className="om-row"><button className="om-btn om-grow" @click={requestCrewMeet}>Call crew to selected route</button><button className="om-btn" @click={() => setPanel("crew")}>Crew</button></div>
-#each (r in routeCards) key={r.id}<div className={"om-card om-route "+(r.selected?"selected":"")}><span className="om-label">{r.tag}</span><h3>{r.name}</h3><p>{r.description}</p><div className="om-route-check"><span className={r.known?"done":""}>{r.known ? "✓" : "○"} Intel {r.known ? "observed" : r.rumor ? "rumoured" : "unknown"}</span><span className={r.prepared?"done":""}>{r.prepared ? "✓" : "○"} Project prepared</span></div><small>Risk: {r.risk}</small><small>Pace: {r.pace}</small>
+#each (r in routeCards) key={r.id}<div className={"om-card om-route "+(r.selected?"selected":"")}><span className="om-label">{r.tag}</span><h3>{r.name}</h3><p>{r.description}</p><div className="om-route-check"><span className={r.known?"done":""}>{(r.known ? "✓" : "○") + " Intel " + (r.known ? "observed" : r.rumor ? "rumoured" : "unknown")}</span><span className={r.prepared?"done":""}>{(r.prepared ? "✓" : "○") + " Project prepared"}</span></div><small>{"Risk: " + r.risk}</small><small>{"Pace: " + r.pace}</small>
  <button className={"om-btn om-wide "+(r.selected?"is-active":"")} @click={() => selectRoute(r.id)}>{r.selected ? "Selected plan" : "Choose this plan"}</button>
- <button className="om-btn om-primary om-wide" disabled={r.disabled} @click={() => requestEscape(r.id)}>Begin at {r.siteName}</button><small>{r.reason}</small>
+ <button className="om-btn om-primary om-wide" disabled={r.disabled} @click={() => requestEscape(r.id)}>{"Begin at " + r.siteName}</button><small>{r.reason}</small>
  <div className="om-row"><button className="om-link" @click={() => inspectSite(r.intelSite)}>Study route</button><button className="om-link" @click={() => setPanel("schemes")}>Prepare project</button></div>
 </div>#end

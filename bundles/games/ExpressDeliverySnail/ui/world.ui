@@ -1,0 +1,20 @@
+<Box className={S.level === 5 ? "sn-world sn-night" : "sn-world"}>
+ <Image loading="eager" className="sn-far" style={farStyle} src={asset(sceneArt)} objectFit="fill" showPlaceholder={false} alt="" />
+ #each (a in sprites)
+  <Box className="sn-sprite" style={a.style}><Image loading="eager" className="sn-sprite-img" src={asset(a.art)} width="100%" height="100%" objectFit="fill" showPlaceholder={false} alt="" /></Box>
+ #end
+ #each (tr in trails)
+  <Box className="sn-trail" style={tr.style} />
+ #end
+ #each (fx in particles)
+  <Box className="sn-particle" style={fx.style} />
+ #end
+ <Box if={showWeather} className="sn-rain" />
+ <Box className="sn-physical" style={physicalStyle}><Text>{physicalLabel}</Text></Box>
+ <Box className="sn-hud">
+  <Box className="sn-route-label"><Text className="sn-route-count">{"DELIVERY " + routeNumber + " / 07"}</Text><Text className="sn-route-name">{titleLine}</Text></Box>
+  <Box className="sn-watch"><Box className="sn-watch-hand" style={timerStyle} /><Text className="sn-watch-time">{timeLabel}</Text><Text className="sn-watch-label">{"BY " + targetLabel}</Text></Box>
+  <Box className="sn-boost-meter"><Box className="sn-boost-fill" style={fuelStyle} /></Box><Text className="sn-boost-label">SHELL BOOST</Text>
+ </Box>
+ <Text if={toastText} className="sn-toast">{toastText}</Text>
+</Box>

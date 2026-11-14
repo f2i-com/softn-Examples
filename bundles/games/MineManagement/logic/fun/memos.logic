@@ -1,0 +1,413 @@
+// Memos from Clive at Head Office. Each asks for a decision with two answers and a real, if
+// modest, consequence for the rest of the shift. Answer with the card's buttons or the 1 and 2 keys;
+// say nothing for 45 seconds and Clive files your silence as a polite no.
+// At most three a shift: the first at 11:30 on shift 1 (330 s), between 08:30 and 10:00 on later
+// shifts, then 150 to 260 s after each answer, never in the shift's last minute. Timing and choice
+// use rand(), the simulation's stream, not flavour(): an answer changes the simulation, so memos
+// should follow the seed like everything else that does.
+// State: S.memos (the schedule, the open memo and the ids seen lately) and S.memoFx (the answers'
+// effects), both started afresh for each shift by ensureMemos(); validMemos() checks them on load.
+// Calls in: advanceMemos() from stepSimulation (mine/simulation.logic); answerMemo() from the memo
+// card and the 1 and 2 keys (player/input.logic); refreshMemoUI() from refreshUI; droneObject()
+// from buildWorldFrame (world/scene.logic). Other modules read S.memoFx (see answerMemo).
+
+// The memo card's view-model (ui/screens/overlays.ui, and the top of the tablet in
+// ui/tablet/tablet.ui), built by refreshMemoUI.
+var memoView = { visible: false };
+
+// ---------- The memos ----------
+
+// Every memo. Each id is saved (S.memos.current and S.memos.seen) and validMemos rejects an id it
+// doesn't know, so never rename or remove one. a and b are the two answers' buttons; ra and rb the
+// radio reply to each, [speaker, line]. What each answer does is in answerMemo(), by id.
+var MEMOS = [
+  {
+    id: 'trustfall',
+    tag: 'MANDATORY FUN',
+    title: 'Compulsory team building',
+    body: 'Head Office has booked the robots a thirty-second trust-fall workshop. Trucks will pause for it.',
+    a: 'Approve the trust falls',
+    b: 'Morale is fine, thanks',
+    ra: ['GARY', 'I fell. Mel caught me. Mel will not stop mentioning it.'],
+    rb: ['HEAD OFFICE', 'Clive has added a small frowny face to your file.']
+  },
+  {
+    id: 'rebrand',
+    tag: 'REBRANDING',
+    title: 'The Rock Relaxation Unit',
+    body: 'Marketing would like to rename the crusher. New signage is $300. Marketing says the rocks will "feel the difference".',
+    a: 'Approve ($300)',
+    b: 'It stays a crusher',
+    ra: ['MEL', 'The rocks seem calmer. They are still being crushed. But calmer.'],
+    rb: ['HEAD OFFICE', 'Marketing has gone for a walk to process this.']
+  },
+  {
+    id: 'cones',
+    tag: 'COST SAVING',
+    title: 'Drawings of cones',
+    body: "Finance proposes replacing every traffic cone with a drawing of a traffic cone. Saves $400. Gary has been cc'd.",
+    a: 'Approve (+$400)',
+    b: 'Real cones only',
+    ra: ['GARY', 'I have drawn forty cones. They are very good cones. I hate this.'],
+    rb: ['GARY', 'I have printed your reply and put it in a frame. The frame has a cone on it.']
+  },
+  {
+    id: 'drone',
+    tag: 'INNOVATION',
+    title: 'The motivational drone',
+    body: 'We are trialling a drone that hovers near staff and offers encouragement. There is a $250 innovation grant if you take part.',
+    a: 'Accept the drone (+$250)',
+    b: 'Politely decline',
+    ra: ['HEAD OFFICE', 'Drone dispatched. It believes in you. It has been told to.'],
+    rb: ['HEAD OFFICE', 'The drone has been sent to Accounts instead. Accounts is thriving.']
+  },
+  {
+    id: 'kevin',
+    tag: 'WILDLIFE POLICY',
+    title: 'Is the emu staff?',
+    body: 'Please confirm whether Kevin is an employee. Employees must wear hi-vis. Non-employees must stop attending.',
+    a: 'Kevin is staff',
+    b: 'Kevin is not staff',
+    ra: [
+      'GARY',
+      'Kevin has been inducted and issued a vest. He ate the induction booklet. Technically he has read it.'
+    ],
+    rb: [
+      'DOT',
+      'Kevin has been informed of his status. Kevin does not appear to recognise the concept of status.'
+    ]
+  },
+  {
+    id: 'urgent',
+    tag: 'PRODUCTIVITY',
+    title: 'Drive more urgently',
+    body: 'Head Office suggests the fleet drive "with more urgency". Faster hauls, harder on tyres.',
+    a: 'Floor it',
+    b: 'Keep it sensible',
+    ra: ['OSCAR', 'Urgency mode engaged. I have found three new shortcuts. Two of them are the road.'],
+    rb: ['JUNE', 'Sensible it is. I have written "sensible" in the diary and underlined it.']
+  },
+  {
+    id: 'casual',
+    tag: 'CULTURE',
+    title: 'Casual Friday',
+    body: 'It is Casual Friday somewhere. Robots may remove their hard hats as a gesture of relaxation.',
+    a: 'Hats off',
+    b: 'Hats stay on',
+    ra: ['BAZZA', "Hat's off, mate. Feels weird. Feels free. Feels like wind on my antenna."],
+    rb: ['GARY', 'Thank you. My hat is part of my personality.']
+  },
+  {
+    id: 'survey',
+    tag: 'PEOPLE & CULTURE',
+    title: 'A short survey',
+    body: 'On a scale of 1 to 5, how much are you enjoying the mine? Your answer will be used to decide how much you are enjoying the mine.',
+    a: '5, obviously',
+    b: '3',
+    ra: ['HEAD OFFICE', 'Wonderful! A $100 positivity bonus has been credited. Please continue enjoying.'],
+    rb: ['HEAD OFFICE', 'Clive has scheduled a meeting about your 3. The meeting is also a 3.']
+  },
+  {
+    id: 'pizza',
+    tag: 'MORALE',
+    title: 'Pizza party',
+    body: 'A pizza party has been approved. The budget is $40. Please note the robots do not eat.',
+    a: 'Order the pizza (-$40)',
+    b: 'Keep the $40',
+    ra: ['JUNE', 'Pizza has arrived. The robots watched you eat all of it. Morale: somehow excellent.'],
+    rb: ['HEAD OFFICE', 'Clive is very proud of your restraint. Clive has ordered himself a pizza.']
+  },
+  {
+    id: 'consultant',
+    tag: 'EFFICIENCY REVIEW',
+    title: "The consultant's report",
+    body: 'A consultant recommends doing field repairs "leaner". Repairs cost 25% less this shift; faults may also turn up more often.',
+    a: 'Trial lean repairs',
+    b: 'Keep doing them properly',
+    ra: ['DOT', 'Lean repairs approved. I have measured the leanness. It is concerning.'],
+    rb: ['DOT', 'Thank you. The consultant has been given a cone to hold.']
+  },
+  {
+    id: 'ramp',
+    tag: 'COMPLIANCE',
+    title: 'Unapproved earthworks',
+    body: 'Someone has built a dirt ramp south of the compound. Please confirm it has been removed.',
+    a: 'Confirm it is gone',
+    b: 'What ramp?',
+    ra: ['BAZZA', 'It is gone, mate. Completely gone. Please do not drive south.'],
+    rb: [
+      'HEAD OFFICE',
+      'Clive has been shown the ramp. Clive has been ON the ramp. Clive is no longer asking about the ramp.'
+    ]
+  },
+  {
+    id: 'quiet',
+    tag: 'WELLBEING',
+    title: 'Mindful minute',
+    body: 'Staff are encouraged to take one mindful minute. The radio will be quiet. The mine will continue to be a mine.',
+    a: 'Take the minute',
+    b: 'Mindful later',
+    ra: ['JUNE', 'Shhh.'],
+    rb: ['GARY', 'Understood. I will be mindful at 18:00 sharp.']
+  }
+];
+
+// ---------- State, schedule and answers ----------
+
+// The memo with this id, or null.
+function memoSpec(id) {
+  for (var m of MEMOS) if (m.id === id) return m;
+  return null;
+}
+
+// Makes S.memos and S.memoFx if missing, and starts both afresh when the shift number changes:
+// a new schedule, effects back to normal. Two things carry over: the ids seen lately, so memos
+// don't repeat across shifts (the last 11; validMemos allows 12), and Kevin's vest, because once
+// inducted, always inducted. Called by stepSimulation, nextShift, the field kit's repair pricing
+// and the functions here.
+function ensureMemos() {
+  if (!S.memos || S.memos.shift !== S.shift)
+    S.memos = {
+      shift: S.shift,
+      current: null,
+      at: 0,
+      next: S.shift === 1 ? 330 : 150 + Math.floor(rand() * 90),
+      count: 0,
+      seen: S.memos && Array.isArray(S.memos.seen) ? S.memos.seen.slice(-11) : []
+    };
+  // Multipliers (1 = no change), shift times (0 = not active) and flags; answerMemo says which
+  // answer sets each and where it is read. haul is never set or read.
+  if (!S.memoFx || S.memoFx.shift !== S.shift)
+    S.memoFx = {
+      shift: S.shift,
+      crusher: 1,
+      haul: 1,
+      repair: 1,
+      incidents: 1,
+      pauseUntil: 0,
+      quietUntil: 0,
+      drone: false,
+      hatsOff: false,
+      vest: !!(S.memoFx && S.memoFx.vest)
+    };
+}
+
+// The save check for S.memos and S.memoFx, called by validState (core/persistence.logic). Either
+// may be missing from an older save. Memo ids must be known and seen holds 12 at most; the
+// effects must be numbers from 0 to 5000 and the three flags booleans.
+function validMemos(s) {
+  if (s.memos !== undefined) {
+    var m = s.memos;
+    if (
+      !m ||
+      !Number.isInteger(m.shift) ||
+      !Number.isFinite(m.at) ||
+      !Number.isFinite(m.next) ||
+      !Number.isInteger(m.count) ||
+      !Array.isArray(m.seen) ||
+      m.seen.length > 12
+    )
+      return false;
+    if (m.current !== null && !memoSpec(m.current)) return false;
+    for (var id of m.seen) if (!memoSpec(id)) return false;
+  }
+  if (s.memoFx !== undefined) {
+    var f = s.memoFx;
+    if (!f) return false;
+    for (var k of ['crusher', 'haul', 'repair', 'incidents', 'pauseUntil', 'quietUntil'])
+      if (!Number.isFinite(f[k]) || f[k] < 0 || f[k] > 5000) return false;
+    for (var b of ['drone', 'hatsOff', 'vest']) if (typeof f[b] !== 'boolean') return false;
+  }
+  return true;
+}
+
+// Every simulation step: delivers a memo when one is due (see the header), one not seen lately,
+// starting the list over once all have been; and after 45 s without a reply, answers 'b' for the
+// player. dt is not used.
+function advanceMemos(dt) {
+  ensureMemos();
+  var m = S.memos;
+  if (
+    !m.current &&
+    S.hasBegun &&
+    S.time >= m.next &&
+    m.count < 3 &&
+    S.time < S.duration - 60 &&
+    screen === 'play'
+  ) {
+    var fresh = MEMOS.filter(function (x) {
+      return m.seen.indexOf(x.id) < 0;
+    });
+    if (!fresh.length) {
+      m.seen = [];
+      fresh = MEMOS;
+    }
+    var pickM = fresh[Math.floor(rand() * fresh.length)];
+    m.current = pickM.id;
+    m.at = S.time;
+    m.count++;
+    m.seen.push(pickM.id);
+    // validMemos rejects a longer list.
+    if (m.seen.length > 12) m.seen = m.seen.slice(-12);
+    sfx('fax');
+    toast('NEW MEMO FROM HEAD OFFICE', 'memo');
+  }
+  if (m.current && S.time - m.at > 45) {
+    answerMemo('b', true);
+  }
+}
+
+// Answers the open memo: 'a' (button or key 1) applies its consequence; 'b' (2) is mostly a polite
+// no, with a little rapport in two cases. silent is true when the 45 s ran out. If answer 'a' costs
+// money the player doesn't have, spend() says so on the radio and the memo stays open. Otherwise:
+// the reply on the radio, a Site journal entry (siteJournal, mine/chapters.logic), the next memo
+// scheduled, and a save.
+// Where the effects are read: memoFx.crusher in crusherRate (mine/plant.logic); pauseUntil in
+// mine/simulation.logic (and the gridlock check in mine/traffic.logic allows for it); incidents and
+// quietUntil in mine/simulation.logic; repair in player/field-kit.logic; hatsOff in
+// world/actors.logic; vest in world/wildlife.logic; drone in droneObject() below.
+function answerMemo(choice, silent) {
+  ensureMemos();
+  var m = S.memos,
+    spec = memoSpec(m.current);
+  if (!spec || ['a', 'b'].indexOf(choice) < 0) return;
+  var fx = S.memoFx,
+    ok = true;
+  if (choice === 'a') {
+    // trustfall: active trucks hold for 20 s, crew rapport up; rebrand: $300, crusher throughput
+    // x1.1; cones: +$400 as revenue, Gary (crew 1) less impressed; drone: +$250 and the drone;
+    // kevin: Kevin wears hi-vis; urgent: every truck on the urgent policy (faster, harder on the
+    // trucks); casual: hats off, rapport up; survey: +$100; pizza: $40; consultant: repairs 25%
+    // cheaper but incidents 1.18 times as often (mine/simulation.logic divides the gap by it);
+    // quiet: no crew chatter for 60 s. ramp has no effect either way.
+    if (spec.id === 'trustfall') {
+      fx.pauseUntil = S.time + 20;
+      for (var c of S.site.crew) c.rapport = Math.min(100, c.rapport + 6);
+    } else if (spec.id === 'rebrand') {
+      ok = spend(300, 'new crusher signage');
+      if (ok) fx.crusher = 1.1;
+    } else if (spec.id === 'cones') {
+      S.cash += 400;
+      S.revenue += 400;
+      var g = crewMemory(1);
+      if (g) g.rapport = Math.max(0, g.rapport - 10);
+    } else if (spec.id === 'drone') {
+      fx.drone = true;
+      S.cash += 250;
+      S.revenue += 250;
+    } else if (spec.id === 'kevin') {
+      fx.vest = true;
+    } else if (spec.id === 'urgent') {
+      for (var t of S.trucks) t.policy = 'urgent';
+    } else if (spec.id === 'casual') {
+      fx.hatsOff = true;
+      for (var c2 of S.site.crew) c2.rapport = Math.min(100, c2.rapport + 3);
+    } else if (spec.id === 'survey') {
+      S.cash += 100;
+      S.revenue += 100;
+    } else if (spec.id === 'pizza') {
+      ok = spend(40, 'one pizza');
+    } else if (spec.id === 'consultant') {
+      fx.repair = 0.75;
+      fx.incidents = 1.18;
+    } else if (spec.id === 'quiet') {
+      fx.quietUntil = S.time + 60;
+    }
+  } else {
+    // Answer 'b' does something for two memos only: Gary approves of real cones, and the crew of
+    // sensible driving.
+    if (spec.id === 'cones') {
+      var g2 = crewMemory(1);
+      if (g2) g2.rapport = Math.min(100, g2.rapport + 5);
+    }
+    if (spec.id === 'urgent') {
+      for (var c3 of S.site.crew) c3.rapport = Math.min(100, c3.rapport + 2);
+    }
+  }
+  // Short of cash for answer 'a': spend() has said so and the memo stays open.
+  if (!ok) return;
+  m.current = null;
+  m.next = S.time + 150 + rand() * 110;
+  funCount('memos');
+  sfx('click');
+  // Only Head Office, or a robot who is on the books (crewNamed, world/wildlife.logic), may reply;
+  // anyone else's reply becomes a generic line from Head Office.
+  var reply = choice === 'a' ? spec.ra : spec.rb;
+  if (silent) notify('HEAD OFFICE', 'No reply received. Clive has filed your silence under "polite no".');
+  else if (reply[0] === 'HEAD OFFICE' || crewNamed(reply[0])) notify(reply[0], reply[1]);
+  else notify('HEAD OFFICE', 'Thank you for your prompt reply. It has been laminated.');
+  siteJournal(
+    'Memo: ' + spec.title,
+    (silent ? 'No answer' : 'Answered') + ': ' + (choice === 'a' ? spec.a : spec.b) + '.'
+  );
+  refreshUI();
+  saveGame(true);
+}
+
+// Builds memoView, with the seconds left to reply, for the memo card. Called by refreshUI.
+function refreshMemoUI() {
+  ensureMemos();
+  var spec = S.memos.current ? memoSpec(S.memos.current) : null;
+  memoView = spec
+    ? {
+        visible: true,
+        tag: spec.tag,
+        title: spec.title,
+        body: spec.body,
+        a: spec.a,
+        b: spec.b,
+        left: Math.max(0, Math.ceil(45 - (S.time - S.memos.at))) + ' s to reply'
+      }
+    : { visible: false };
+}
+
+// ---------- The drone ----------
+
+// The drone Head Office sends, if you said yes: it hovers beside you and bobs encouragingly.
+// Returns a scene group for buildWorldFrame (world/scene.logic), or null.
+function droneObject() {
+  if (!S.memoFx || !S.memoFx.drone || screen !== 'play') return null;
+  var p = visualPlayer(),
+    t = S.time,
+    yaw = p.yaw || 0;
+  // About 2.5 m ahead and 2.2 m to the side of the player, 3.1 m off the ground (3 m more when
+  // the player is in a vehicle), bobbing gently.
+  var x = p.x + Math.cos(yaw) * -2.2 + Math.sin(yaw) * 2.5,
+    z = p.z - Math.sin(yaw) * -2.2 + Math.cos(yaw) * 2.5,
+    y = groundAt(p.x, p.z) + 3.1 + Math.sin(t * 2.2) * 0.25 + (p.mode !== 'foot' ? 3 : 0);
+  var rotors = [];
+  // Four rotors on the diagonals (0.785 is about PI / 4).
+  for (var i = 0; i < 4; i++) {
+    var a = (i * Math.PI) / 2 + 0.785;
+    rotors.push({
+      id: 'rotor' + i,
+      type: 'cylinder',
+      position: vec(Math.cos(a) * 0.42, 0.12, Math.sin(a) * 0.42),
+      rotation: vec(0, t * 30 + i, 0),
+      radius: 0.2,
+      height: 0.02,
+      color: '#d7e3e6',
+      opacity: 0.55
+    });
+  }
+  return group(
+    'drone',
+    x,
+    y,
+    z,
+    t * 0.6,
+    [
+      box('hull', 0, 0, 0, 0.42, 0.14, 0.42, '#e9eef0'),
+      box('stripe', 0, 0.08, 0, 0.44, 0.03, 0.1, '#efb554'),
+      {
+        id: 'eye',
+        type: 'sphere',
+        position: vec(0, -0.06, 0.2),
+        radius: 0.07,
+        color: '#7fe0cf',
+        emissive: '#3be2cc',
+        emissiveIntensity: 1.6
+      }
+    ].concat(rotors)
+  );
+}

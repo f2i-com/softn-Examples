@@ -1,0 +1,179 @@
+function uwRiverCentre(z, n, seed) { return n * 0.69 + Math.sin(z / n * 5.2 + seed % 7) * n * 0.065; }
+function uwMakeWorld(n, seed, kind, name, scenario) {
+    let w = { version: UW_VERSION, n: n, seed: seed, kind: kind, name: name, scenario: scenario, month: 0, funds: 60000, debt: 0, population: 0, jobs: 0, workers: 0, employed: 0, happiness: 70, tax: [9, 9, 9], funding: { roads: 100, power: 100, water: 100, services: 100 }, policies: { recycling: false, clean: false, transit: false, trees: false }, districtNames: [], districtFocus: [], districtIdentity: [], news: [], history: [], awards: [], objectives: [], monthly: { income: 0, expense: 0, net: 0, taxR: 0, taxC: 0, taxI: 0, upkeep: 0, policies: 0, debt: 0 }, demand: [60, 15, 55], tiles: [], disasters: false, weather: "Clear", weatherMonths: 0, bailout: false, totalBuilt: 0, elapsedGoal: false, pendingChoice: "", choiceCooldown: 0, totalTrees: 0, festival: 0 };
+    for (let d = 0; d < 16; d = d + 1) {
+        w.districtNames.push(UW_WARD_NAMES[d]);
+        w.districtFocus.push("balanced");
+        w.districtIdentity.push("New frontier");
+    }
+    for (let z = 0; z < n; z = z + 1) {
+        for (let x = 0; x < n; x = x + 1) {
+            let centre = uwRiverCentre(z, n, seed), river = Math.abs(x - centre) < n * 0.055;
+            let wet = kind === "river" ? river : kind === "coast" ? z > n * 0.76 + Math.sin(x / 7 + seed % 4) * 2 : ((x - n * 0.77) * (x - n * 0.77) + (z - n * 0.26) * (z - n * 0.26) < n * n * 0.014);
+            let edge = Math.min(x, z, n - x - 1, n - z - 1);
+            let hill = edge < n * 0.11 && uwHash(Math.floor(x / 3), Math.floor(z / 3), seed) > 0.43;
+            let h = wet ? 0 : hill ? 2 + (edge < 2 ? 1 : 0) : 1;
+            let tree = !wet && uwHash(x, z, seed + 9) > (edge < 5 ? 0.24 : 0.76) ? 1 : 0;
+            w.tiles.push({ h: h, wet: wet, tree: tree, road: 0, zone: 0, density: 1, level: 0, stage: 0, build: "", pop: 0, age: 0, variant: Math.floor(uwHash(x, z, seed + 14) * 8), wire: 0, pipe: 0, fire: 0, neglect: 0, flood: 0 });
+        }
+    }
+    w.busRoutes = [];
+    w.transitMode = "local";
+    w.storyMemory = [];
+    w.petitions = [];
+    return w;
+}
+function uwStartGame(mode) {
+    try {
+        let n = Number(mapSize) === 64 ? 64 : 48;
+        let name = String(mapName).trim().slice(0, 40) || "Oceanview";
+        let seed = uwSeed(seedInput);
+        uwWorld = uwMakeWorld(n, seed, mapKind, name, mode === "showcase" ? "showcase" : scenarioChoice);
+        uwRng = seed;
+        uwVisualRng = seed + 271;
+        uwSelectedIndex = -1;
+        uwHoverIndex = -1;
+        uwPreviewPlan = null;
+        uwDragStart = -1;
+        uwRenameDistrictId = -1;
+        sessionError = "";
+        uwUndo = [];
+        canUndo = false;
+        uwMonthAccumulator = 0;
+        uwVisualTime = 0;
+        uwCars = [];
+        uwCamX = -n * 0.14;
+        uwCamZ = 0;
+        uwZoom = 1;
+        viewAngle = 0;
+        if (mode === "showcase") {
+            uwSeedTown(true);
+            uwWorld.funds = 250000;
+            uwWorld.month = 96;
+            uwWorld.disasters = false;
+        }
+        else if (scenarioChoice === "recovery") {
+            uwSeedTown(false);
+            uwWorld.funds = 14000;
+            uwWorld.debt = 20000;
+            uwWorld.month = 36;
+            uwWorld.tax = [12, 11, 9];
+        }
+        uwNetworkDirty = true;
+        uwStaticDirty = true;
+        started = true;
+        welcomeOpen = false;
+        paused = mode === "showcase";
+        modal = "";
+        gameSpeed = 1;
+        activeTool = "inspect";
+        uwNewRoute();
+        uwResetPerformance();
+        uwRecalculate();
+        uwComputeHappiness();
+        uwComputeDemand();
+        uwUpdateDistricts(false);
+        uwCheckMilestones();
+        uwCheckGoals();
+        uwUpdateCamera();
+        uwApplyLighting();
+        uwRenderStatic();
+        uwRefreshUI();
+        uwReadSaveRows();
+        uwNews("A new chapter for " + uwWorld.name, "The charter is signed. Build roads, connect power and water, then zone homes, shops and industry.", "civic");
+        uwNotify(mode === "showcase" ? "Oceanview is yours to explore. Press Play to simulate, or start a new charter from City menu." : (scenarioChoice === "recovery" ? "Recovery starts with $14,000 and $20,000 debt. Restore services and balance the books." : "Your charter includes $60,000. Start with roads, a power station and a water tower."), "good");
+        if (soundEnabled)
+            uwStartMusic();
+    }
+    catch (e) {
+        sessionError = "City creation failed: " + String(e);
+        uwNotify(sessionError, "bad");
+        paused = true;
+    }
+}
+// A live, editable demonstration city, not a background image or a frozen save.
+function uwSeedTown(large) {
+    let n = uwWorld.n, x0 = Math.floor(n * 0.14), z0 = Math.floor(n * 0.18), x1 = Math.floor(n * 0.58), z1 = Math.floor(n * 0.8);
+    for (let z = z0; z <= z1; z = z + 1)
+        for (let x = x0; x <= x1; x = x + 1) {
+            let i = uwIndex(x, z), t = uwWorld.tiles[i];
+            t.wet = false;
+            t.h = 1;
+            t.tree = 0;
+            if ((x - x0) % 5 === 0 || (z - z0) % 5 === 0) {
+                t.road = (x - x0) % 10 === 0 ? 2 : 1;
+                continue;
+            }
+            let near = Math.abs(x - (x0 + x1) / 2) + Math.abs(z - (z0 + z1) / 2);
+            let industrial = z < z0 + 5;
+            t.zone = industrial ? 3 : near < n * 0.16 ? (t.variant % 3 === 0 ? 4 : 2) : 1;
+            t.density = large && near < n * 0.22 ? 2 : 1;
+            t.level = large ? (industrial ? 2 : near < 5 ? 4 : near < 10 ? 3 : t.variant % 3 === 0 ? 2 : 1) : 1;
+            t.pop = Math.round(uwBuildingCapacity(t) * 0.78);
+            t.age = 24 + t.variant * 4;
+        }
+    let place = function (x, z, type) { let i = uwIndex(x, z); if (i < 0)
+        return; let t = uwWorld.tiles[i]; t.wet = false; t.h = 1; t.tree = 0; t.road = 0; t.zone = 0; t.level = 0; t.pop = 0; t.stage = 0; t.build = type; };
+    place(x0 + 1, z0 + 1, "power");
+    place(x0 + 2, z0 + 1, "power");
+    place(x0 + 3, z0 + 1, "pump");
+    place(x0 + 6, z0 + 1, "solar");
+    place(x0 + 7, z0 + 1, "recycler");
+    if (large) {
+        place(x0 + 8, z0 + 1, "power");
+        place(x0 + 9, z0 + 1, "pump");
+    }
+    place(x0 + 6, z0 + 6, "school");
+    place(x0 + 7, z0 + 6, "clinic");
+    place(x0 + 8, z0 + 6, "fire");
+    place(x0 + 1, z0 + 11, "police");
+    place(x0 + 2, z0 + 11, "depot");
+    place(x0 + 3, z0 + 11, "stop");
+    place(x0 + 11, z0 + 11, "hall");
+    place(x0 + 12, z0 + 11, "plaza");
+    place(x0 + 13, z0 + 11, "library");
+    place(x0 + 16, z0 + 16, "university");
+    place(x0 + 17, z0 + 16, "park");
+    place(x0 + 18, z0 + 16, "stop");
+    place(x0 + 1, z0 + 21, "school");
+    place(x0 + 2, z0 + 21, "clinic");
+    place(x0 + 3, z0 + 21, "park");
+    place(x0 + 11, z0 + 21, "fire");
+    place(x0 + 12, z0 + 21, "stop");
+    for (let z = z0 + 6; z < z1; z = z + 10)
+        for (let x = x0 + 1; x < x1; x = x + 10)
+            place(x, z, "park");
+    // Join an existing cross street instead of bulldozing a parallel avenue
+    // one tile away. The old 48-map alignment created a strip of false junctions.
+    let bz = z0 + Math.round((n * 0.57 - z0) / 5) * 5;
+    if (uwWorld.kind === "river") {
+        for (let x = x0; x < Math.floor(n * 0.9); x = x + 1) {
+            let t = uwWorld.tiles[uwIndex(x, bz)];
+            t.tree = 0;
+            t.zone = 0;
+            t.level = 0;
+            t.pop = 0;
+            t.build = "";
+            t.road = 2;
+        }
+        let hx = Math.floor(n * 0.79);
+        place(hx, bz + 1, "lighthouse");
+        for (let z = bz - 5; z <= bz + 6; z = z + 1) {
+            let t = uwWorld.tiles[uwIndex(hx, z)];
+            t.h = 1;
+            t.wet = false;
+            t.tree = 0;
+            t.road = 1;
+            t.build = "";
+        }
+        place(hx + 1, bz + 1, "lighthouse");
+    }
+    if (!large) {
+        // Recovery begins with a genuinely solvable utilities and services problem.
+        for (let i = 0; i < uwWorld.tiles.length; i = i + 1)
+            if (uwWorld.tiles[i].build === "school")
+                uwWorld.tiles[i].build = "";
+        uwWorld.funding.services = 65;
+    }
+}
+function uwDistrictOf(i) { let p = uwXZ(i), s = uwWorld.n / 4; return Math.min(3, Math.floor(p.z / s)) * 4 + Math.min(3, Math.floor(p.x / s)); }

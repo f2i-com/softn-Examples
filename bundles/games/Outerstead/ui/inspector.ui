@@ -48,7 +48,7 @@
           #end
         </div>
         #each (job in blockedWorkCards) key={job.id}
-          <div className="os-card"><div>{job.name}</div><span className="os-small">{job.reason}</span><button className="os-btn os-link" @click={() => inspectWorkJob(job.id)}>Locate task · {job.location}</button></div>
+          <div className="os-card"><div>{job.name}</div><span className="os-small">{job.reason}</span><button className="os-btn os-link" @click={() => inspectWorkJob(job.id)}>{"Locate task · " + job.location}</button></div>
         #end
         #each (c in colonistCards) key={c.id}
           <div className="os-card"><div className="os-row"><img className="os-avatar" src={asset(c.sprite)} alt="" /><div><div>{c.name}</div><span className="os-small os-dim">{c.action}</span></div></div><button className="os-btn os-link" @click={() => selectColonist(c.id)}>Inspect needs and skills</button></div>

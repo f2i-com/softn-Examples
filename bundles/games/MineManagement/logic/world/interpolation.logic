@@ -1,0 +1,109 @@
+// Interpolate between fixed steps. Camera and vehicle share the same position.
+// The simulation steps at 20 Hz but the scene is drawn about 30 times a second, so drawing the
+// raw state would judder. Each stepSimulation() (mine/simulation.logic) first snapshots what moves
+// (captureMotion), and each frame is drawn renderAlpha of the way from that snapshot to the
+// current state: up to one step (50 ms) behind the simulation, but smooth. tick()
+// (core/game-loop.logic) sets renderAlpha only around buildWorldFrame() and puts it back to 1, so
+// outside a frame build the visual*() helpers return the live state.
+//
+// State: motionPrevious (the snapshot; null before the first step and after initWorld) and
+// renderAlpha. visualRobot() is in rigging.logic. Kevin, the props and the dust are drawn straight
+// from S, so they still move in 20 Hz steps. The visual*() results can be the live objects in S:
+// read them, never write to them.
+var motionPrevious = null;
+
+var renderAlpha = 1;
+
+// Snapshots the player, ute, trucks, excavator poses, robots and plant (shallow copies) before a
+// simulation step. Called at the start of every stepSimulation().
+function captureMotion() {
+  motionPrevious = {
+    time: S.time,
+    player: Object.assign({}, S.player),
+    ute: Object.assign({}, S.ute),
+    trucks: S.trucks.map(function (t) {
+      return Object.assign({}, t);
+    }),
+    poses: S.excavators.map(function (e) {
+      return { id: e.id, pose: excavatorPose(e.id) };
+    }),
+    robots: S.robots.map(function (b) {
+      return Object.assign({}, b);
+    }),
+    plant: Object.assign({}, S.plant)
+  };
+}
+
+// The game time the current frame shows. Used for the bucket's ore stream (rigging.logic).
+function motionTime() {
+  return motionPrevious ? lerp(motionPrevious.time, S.time, renderAlpha) : S.time;
+}
+
+// The plant with the crusher shaft's angle and the belt's phase blended. Both only go forwards and
+// wrap (the shaft at 2 PI, the belt at 1), so the blend goes forwards across the wrap.
+function visualPlant() {
+  var p = S.plant;
+  if (!motionPrevious || renderAlpha >= 1) return p;
+  var old = motionPrevious.plant,
+    view = Object.assign({}, p);
+  view.shaft =
+    (old.shaft + ((p.shaft - old.shaft + Math.PI * 2) % (Math.PI * 2)) * renderAlpha) % (Math.PI * 2);
+  view.belt = (old.belt + ((p.belt - old.belt + 1) % 1) * renderAlpha) % 1;
+  return view;
+}
+
+// A truck (or, with ute = true, the ute) as it should be drawn this frame: position, heading (the
+// short way round), wheel spin, body tilt and steering blended, and the loading and tipping timers
+// too while they count up in the same phase. A move of more than 6 m in one step is a jump (a reset
+// or a parking move) and is drawn as it is.
+function visualVehicle(v, ute) {
+  if (!motionPrevious || renderAlpha >= 1) return v;
+  var old = ute ? motionPrevious.ute : null;
+  if (!ute)
+    for (var i = 0; i < motionPrevious.trucks.length; i++)
+      if (motionPrevious.trucks[i].id === v.id) old = motionPrevious.trucks[i];
+  if (!old || dist2(old, v) > 6) return v;
+  var view = Object.assign({}, v);
+  for (var key of ['x', 'y', 'z', 'wheel', 'bodyPitch', 'bodyRoll', 'steerAngle'])
+    if (Number.isFinite(old[key]) && Number.isFinite(v[key])) view[key] = lerp(old[key], v[key], renderAlpha);
+  view.heading = old.heading + wrapAngle(v.heading - old.heading) * renderAlpha;
+  if (old.phase === v.phase)
+    for (var timer of ['service', 'manualLoad', 'manualTip'])
+      if (old[timer] > 0 && v[timer] >= old[timer]) view[timer] = lerp(old[timer], v[timer], renderAlpha);
+  return view;
+}
+
+// The player for this frame: x, y, z and the jump height blended, except across a change of mode or
+// vehicle, or a move of more than 6 m.
+function visualPlayer() {
+  var p = S.player;
+  if (!motionPrevious || renderAlpha >= 1) return p;
+  var old = motionPrevious.player;
+  if (old.mode !== p.mode || old.vehicle !== p.vehicle || dist2(old, p) > 6) return p;
+  var view = Object.assign({}, p);
+  for (var key of ['x', 'y', 'z', 'jump']) view[key] = lerp(old[key], p[key], renderAlpha);
+  return view;
+}
+
+// An excavator's pose for this frame: boom, stick, bucket curl and turret yaw (the short way)
+// blended, and the ore in the bucket (oreAmount; a pose without one counts as 0 or 1 by `ore`).
+function visualExcavatorPose(id) {
+  var pose = excavatorPose(id);
+  if (!motionPrevious || renderAlpha >= 1) return pose;
+  for (var i = 0; i < motionPrevious.poses.length; i++) {
+    var old = motionPrevious.poses[i];
+    if (old.id === id) {
+      var view = Object.assign({}, pose);
+      for (var key of ['boom', 'stick', 'curl']) view[key] = lerp(old.pose[key], pose[key], renderAlpha);
+      view.yaw = old.pose.yaw + wrapAngle(pose.yaw - old.pose.yaw) * renderAlpha;
+      view.oreAmount = lerp(
+        old.pose.oreAmount === undefined ? (old.pose.ore ? 1 : 0) : old.pose.oreAmount,
+        pose.oreAmount === undefined ? (pose.ore ? 1 : 0) : pose.oreAmount,
+        renderAlpha
+      );
+      view.ore = view.oreAmount > 0.001;
+      return view;
+    }
+  }
+  return pose;
+}

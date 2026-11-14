@@ -112,7 +112,7 @@
   #if (weatherNotice)
     <div className="os-weather-notice">{weatherNotice}</div>
   #end
-  <div className="os-map-hint"><div className="os-map-hint-title">{panMode ? "Drag to move map" : followColonistId ? "Following settler · drag to release" : toolLabel}</div><div className="os-map-hint-small">HOLLOW-7 · {hud.weather} · {hud.season}</div></div>
+  <div className="os-map-hint"><div className="os-map-hint-title">{panMode ? "Drag to move map" : followColonistId ? "Following settler · drag to release" : toolLabel}</div><div className="os-map-hint-small">{"HOLLOW-7 · " + hud.weather + " · " + hud.season}</div></div>
   #if (paused)
     <div className="os-pause-pill">PAUSED</div>
   #end
@@ -140,5 +140,5 @@
       <div className="os-caption-foot"><span className="os-tiny os-dim">{storyAutoText}</span><div className="os-caption-timer"><div style={storyTimerStyle} /></div></div>
     </div>
   #end
-  <div className="os-map-coordinate">{hud.foodDays} SOLS OF FOOD · BATTERIES {hud.stored}</div>
+  <div className="os-map-coordinate">{hud.foodDays + " SOLS OF FOOD · BATTERIES " + hud.stored}</div>
 </div>

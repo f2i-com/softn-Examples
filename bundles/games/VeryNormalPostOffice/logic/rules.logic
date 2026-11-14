@@ -1,0 +1,81 @@
+// Authoritative, pure routing policy. Never return its answer in inspection readouts.
+// Precedence: unresolved core -> hazardous/prohibited -> interior/exterior freight -> district.
+function rulesFor(stage, revision) {
+    return { day: SHIFT_DEFS[stage].day, weight: stage >= 1, hazards: stage >= 2,
+        blackOnly: (stage === 3 && revision > 0) || stage === 7,
+        forbiddenWidth: (stage === 3 && revision > 0) || stage === 7 ? 33 : 0,
+        dimensional: stage >= 6, farSuspended: stage === 7 && revision > 0,
+        revision: revision, stage: stage };
+}
+function districtFor(code) {
+    let prefix = String(code || "").split("-")[0];
+    for (let i = 0; i < DIRECTORY.length; i++)
+        if (DIRECTORY[i].code === prefix)
+            return DIRECTORY[i];
+    return { code: prefix, name: "UNREGISTERED", route: "QUARANTINE", note: "No registered district." };
+}
+function decision(p, rules) {
+    if (!p)
+        return { route: "UNRESOLVED", clause: "00", reason: "No parcel on the desk." };
+    if (p.type === "infinite" && (p.layers > 0 || !p.coreScanned))
+        return { route: "UNRESOLVED", clause: "D4", reason: "Unwrap the marked nested layers, then scan the exposed core." };
+    if (p.type === "infinite")
+        return { route: "QUARANTINE", clause: "D4", reason: "Exposed nested cores must be quarantined." };
+    if (rules.hazards && (p.type === "whisper" || p.type === "hungry" || p.type === "portal"))
+        return { route: "QUARANTINE", clause: "H1", reason: "Speech, teeth or an open portal require quarantine, regardless of mass." };
+    if (rules.hazards && p.type === "bees" && !(rules.day === "TUESDAY" && p.beePermit))
+        return { route: "QUARANTINE", clause: "B2", reason: rules.day !== "TUESDAY" ? "Live bees may travel only on Tuesday." : "Tuesday bee mail requires a BEE-2 permit on the base." };
+    if (rules.forbiddenWidth && p.width === rules.forbiddenWidth)
+        return { route: "QUARANTINE", clause: "A33", reason: "Parcels exactly 33 cm wide are temporarily suspended." };
+    let district = districtFor(p.code);
+    if (district.route === "QUARANTINE")
+        return { route: "QUARANTINE", clause: "R0", reason: "The permanent barcode addresses an unregistered or erased district." };
+    if (rules.farSuspended && district.route === "FAR")
+        return { route: "QUARANTINE", clause: "A7", reason: "FAR service is suspended by the acknowledged circular, even for freight." };
+    if (rules.dimensional && p.innerWeight > p.weight)
+        return { route: "FREIGHT", clause: "D3", reason: "Interior mass exceeds exterior mass: dimensional freight." };
+    if (rules.weight && p.weight > 10)
+        return { route: "FREIGHT", clause: "W1", reason: "Exterior mass is over 10 kg. Use freight unless a safety restriction overrides it." };
+    return { route: district.route, clause: "R1", reason: district.name + " is served by " + district.route + "." };
+}
+function dispatchBlocker(p, rules) {
+    if (!p)
+        return "There is no parcel on the inspection mat.";
+    if (S.machine.jam)
+        return "Clear the jam with the brass conveyor lever first.";
+    if ((p.type === "runner" || p.type === "teleport") && !p.clamped)
+        return "Secure the moving parcel with the clamp before dispatch.";
+    if (!p.inspected)
+        return "Read the parcel label first. Click the parcel or use INSPECT.";
+    if ((p.type === "reverse" || p.labelDamaged) && !p.scanned)
+        return "The paper label is unreliable. Scan the permanent barcode first.";
+    if (rules.weight && (!p.weighed || p.weightCalibration !== S.machine.calibration || !S.machine.calibrated))
+        return "A verified scale reading is required. Check the reference weight, zero if needed, then weigh.";
+    if (decision(p, rules).route === "UNRESOLVED")
+        return decision(p, rules).reason;
+    if (!p.stampInk)
+        return "Apply the wooden INSPECTED stamp before releasing the parcel.";
+    return "";
+}
+function ruleRows(rules) {
+    let rows = [
+        { id: "R1", title: "ADDRESS / permanent district code", body: "LS + NW → LOCAL. WF + RD → FAR. Compare the barcode with the directory; reversed or damaged paper is not authoritative." },
+        { id: "R0", title: "NONEXISTENT DISTRICTS", body: "X0 / NULL WARD and all unregistered codes → QUARANTINE. This restriction overrides weight." },
+        { id: "P1", title: "STAMP BEFORE DISPATCH", body: rules.blackOnly ? "BLACK INK ONLY. Red inspections are void. Re-stamp in black; no new label is needed." : "Every parcel requires an INSPECTED imprint. Red and black ink are both valid." }
+    ];
+    if (rules.weight)
+        rows.push({ id: "W1", title: "EXTERIOR MASS", body: "Over 10 kg → FREIGHT. Exactly 10 kg uses its address. Safety restrictions take precedence. Always use a verified scale reading." });
+    if (rules.hazards) {
+        rows.push({ id: "H1", title: "DO NOT OPEN TALKING MAIL", body: "Whispering, hungry or portal parcels → QUARANTINE. Never open speech, teeth or live bees. A biscuit may calm teeth, not change their route." });
+        rows.push({ id: "B2", title: "THE BEE CLAUSE", body: "Bees travel by ordinary address/weight ONLY on TUESDAY with a BEE-2 permit on the base. Otherwise → QUARANTINE. Today's official day: " + rules.day + "." });
+    }
+    if (rules.forbiddenWidth)
+        rows.push({ id: "A33", title: "TEMPORARILY FORBIDDEN DIMENSION", body: "Width EXACTLY 33 cm → QUARANTINE. Measure the base, not the length. 32 and 34 cm are not affected." });
+    if (rules.dimensional) {
+        rows.push({ id: "D3", title: "MORE INSIDE THAN OUTSIDE", body: "Compare X-ray interior kg with analogue exterior kg. Interior greater than exterior → FREIGHT, unless a quarantine restriction applies." });
+        rows.push({ id: "D4", title: "NESTED-BOX SYMBOL", body: "Only parcels marked NESTED / SAFE FLAP may be unwrapped repeatedly. Open each layer, scan the bare core, then QUARANTINE. A nested core is not a portal." });
+    }
+    if (rules.farSuspended)
+        rows.push({ id: "A7", title: "FAR SERVICE SUSPENDED", body: "WF and RD districts → QUARANTINE, including parcels otherwise eligible for freight. LOCAL service is unchanged." });
+    return rows;
+}

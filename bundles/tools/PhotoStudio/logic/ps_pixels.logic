@@ -333,7 +333,7 @@ function psShiftRows(src, w, h, dst, dx, dy, y0, y1, ch) {
     let xStart = dx > 0 ? dx : 0, xEnd = dx < 0 ? w + dx : w;
     if (xEnd <= xStart) continue;
     let sOff = (sy * w + (xStart - dx)) * ch, dOff = (y * w + xStart) * ch, count = (xEnd - xStart) * ch;
-    for (let k = 0; k < count; k++) dst[dOff + k] = src[sOff + k];
+    dst.set(src.subarray(sOff, sOff + count), dOff);
   }
 }
 
@@ -461,17 +461,27 @@ function psGradientRows(data, w, y0, y1, gx0, gy0, gx1, gy1, radial, c0, c1, opa
   let dx = gx1 - gx0, dy = gy1 - gy0;
   let len2 = dx * dx + dy * dy;
   if (len2 < 1) { dx = 1; dy = 0; len2 = 1; }
-  let len = Math.sqrt(len2);
+  let invLen = 1 / Math.sqrt(len2), invLen2 = 1 / len2;
+  let r0 = c0[0], g0 = c0[1], b0 = c0[2], dr = c1[0] - r0, dg = c1[1] - g0, db = c1[2] - b0;
+  let dtDx = dx * invLen2;
   for (let y = y0; y < y1; y++) {
+    let py = y + 0.5 - gy0;
+    let tBase = ((0.5 - gx0) * dx + py * dy) * invLen2;
+    let row = y * w;
     for (let x = 0; x < w; x++) {
-      let px = x + 0.5 - gx0, py = y + 0.5 - gy0;
-      let t = radial ? Math.sqrt(px * px + py * py) / len : (px * dx + py * dy) / len2;
+      let t;
+      if (radial) { let px = x + 0.5 - gx0; t = Math.sqrt(px * px + py * py) * invLen; }
+      else t = tBase + x * dtDx;
       if (t < 0) t = 0; else if (t > 1) t = 1;
-      let p = y * w + x;
+      let p = row + x;
       let a = opacity * (selection ? selection[p] / 255 : 1);
       if (a <= 0) continue;
-      let r = c0[0] + (c1[0] - c0[0]) * t, g = c0[1] + (c1[1] - c0[1]) * t, b = c0[2] + (c1[2] - c0[2]) * t;
+      let r = r0 + dr * t, g = g0 + dg * t, b = b0 + db * t;
       let i = p * 4;
+      if (a >= 1) {
+        data[i] = (r + 0.5) | 0; data[i + 1] = (g + 0.5) | 0; data[i + 2] = (b + 0.5) | 0; data[i + 3] = 255;
+        continue;
+      }
       let da = data[i + 3] / 255;
       let oa = a + da * (1 - a);
       let wS = a / oa, wD = 1 - wS;

@@ -1,0 +1,187 @@
+// The end-of-shift report: a grade with a title, Head Office's verdict and the awards nobody asked
+// for. Worked out from the shift's numbers whenever the report is drawn, so a reload shows the same.
+// Calls in: shiftRank() from finishShift (mine/shift.logic), which keeps the grade in S.history;
+// refreshReportUI() from refreshUI (core/ui-state.logic), which does its work only on the report
+// screen. No saved state of its own: the awards read this shift's counters in S.fun
+// (fun/stats.logic) and S.shiftStats, which nextShift resets, so they hold until the next shift.
+
+// The report's view-model (ui/screens/report.ui; refreshUI also turns reportRankTitle into
+// hud.reportTitle).
+var awardRows = [];
+
+var reportVerdict = '';
+
+var reportRankTitle = '';
+
+// By grade (see shiftRank). The verdict is picked by shift number rather than at random, so it
+// stays the same between refreshes and reloads.
+var RANK_TITLES = {
+  'A+': 'Absolute legend',
+  'A': 'Cracking shift',
+  'B': 'Shift delivered',
+  'C': 'Learning experience',
+  'D': 'Character-building'
+};
+
+var VERDICTS = {
+  'A+': [
+    "Clive has printed your report and put it on his fridge. Next to his child's drawings. Above them, actually.",
+    'The board has used the word "unprecedented". Twice. One of them was about you.'
+  ],
+  'A': [
+    'Head Office is delighted. A strongly worded email of praise is on its way.',
+    'Clive read your numbers out loud in a meeting. People clapped. Clive took a bow.'
+  ],
+  'B': [
+    'Target met. Head Office has marked this shift "fine", which is their highest honour.',
+    'Solid work. Clive has given you a thumbs up emoji. It is the yellow one.'
+  ],
+  'C': [
+    'Not quite. Head Office has scheduled a meeting to discuss scheduling a meeting.',
+    'Clive says the numbers are "a journey". He would like to know where it is going.'
+  ],
+  'D': [
+    'Head Office would like to remind you that the rocks go in the trucks.',
+    'Clive has asked whether the mine is "open, or just ajar".'
+  ]
+};
+
+// The shift's grade from the tonnes delivered against the target: A+ from 150%, A from 120%, B
+// from 100% (target met), C from 70%, D below that.
+function shiftRank() {
+  var ratio = S.tonnes / Math.max(1, S.target);
+  return ratio >= 1.5 ? 'A+' : ratio >= 1.2 ? 'A' : ratio >= 1 ? 'B' : ratio >= 0.7 ? 'C' : 'D';
+}
+
+// The robot operating the truck that hauled most this shift (credit goes to whoever operates it
+// now), with a word for Gary (1), Mel (2) or Oscar (3). If no operated truck hauled anything, the
+// traffic cone wins.
+function employeeOfTheShift() {
+  var best = null,
+    most = 0;
+  for (var t of S.trucks) {
+    var b = botFor(t);
+    if (b && t.tonnes > most) {
+      most = t.tonnes;
+      best = b;
+    }
+  }
+  if (best)
+    return {
+      icon: '★',
+      title: 'Employee of the shift',
+      detail:
+        best.name +
+        ', for ' +
+        Math.round(most) +
+        ' t hauled' +
+        (best.id === 1
+          ? ' and every sign read aloud.'
+          : best.id === 3
+            ? ' and only two attempted shortcuts.'
+            : best.id === 2
+              ? ' without once naming a rock out loud. Twice, then.'
+              : '.')
+    };
+  return {
+    icon: '▲',
+    title: 'Employee of the shift',
+    detail: 'The traffic cone, for standing perfectly still for twelve hours.'
+  };
+}
+
+// The report's award rows: employee of the shift first, then each silly award whose counter
+// qualifies, in this order, six rows at most. 0.35 s is the shortest airtime that counts as a
+// jump (player/stunts.logic).
+function buildAwards() {
+  ensureFun();
+  var f = S.fun,
+    rows = [employeeOfTheShift()];
+  if (f.bestAir >= 0.35)
+    rows.push({
+      icon: '✈',
+      title: 'Frequent flyer',
+      detail:
+        f.bestAir.toFixed(1) +
+        ' s of unlicensed airtime across ' +
+        f.jumps +
+        ' jump' +
+        (f.jumps === 1 ? '' : 's') +
+        '.'
+    });
+  if (f.cones > 0)
+    rows.push({
+      icon: '△',
+      title: 'Cone displacement',
+      detail: f.cones + ' cone' + (f.cones === 1 ? '' : 's') + ' moved without a permit. Gary is coping.'
+    });
+  if (f.kevin + f.kevinWins > 0)
+    rows.push({
+      icon: '◐',
+      title: 'Emu relations',
+      detail:
+        'Management ' +
+        f.kevin +
+        ', Kevin ' +
+        f.kevinWins +
+        '. ' +
+        (f.kevinWins > f.kevin ? 'Kevin remains undefeated.' : 'Kevin has requested a rematch.')
+    });
+  if (f.bonks > 0)
+    rows.push({
+      icon: '✚',
+      title: 'Insurance claims',
+      detail:
+        f.bonks +
+        ' contact' +
+        (f.bonks === 1 ? '' : 's') +
+        ' with fixed infrastructure. The bollards have formed a union.'
+    });
+  if (f.honks >= 3)
+    rows.push({
+      icon: '♪',
+      title: 'Horn section',
+      detail: f.honks + ' honks. The horn has asked for a day off.'
+    });
+  if (S.shiftStats.repairs > 0)
+    rows.push({
+      icon: '⚙',
+      title: 'Field engineer',
+      detail:
+        S.shiftStats.repairs +
+        ' field job' +
+        (S.shiftStats.repairs === 1 ? '' : 's') +
+        ' done in person. Nobody else has legs.'
+    });
+  if (f.memos > 0)
+    rows.push({
+      icon: '✉',
+      title: 'Paperwork',
+      detail: f.memos + ' memo' + (f.memos === 1 ? '' : 's') + ' answered. Clive has laminated them.'
+    });
+  if (f.tape > 0)
+    rows.push({
+      icon: '◎',
+      title: 'Duct tape diplomacy',
+      detail:
+        'Tape applied ' +
+        f.tape +
+        ' time' +
+        (f.tape === 1 ? '' : 's') +
+        '. It did not fix anything. It felt like it did.'
+    });
+  return rows.slice(0, 6);
+}
+
+// Fills the report's grade title, verdict, awards and ending while the report screen is up. The
+// grade is the one finishShift stored in S.history[0]; shiftRank() is only a fallback.
+function refreshReportUI() {
+  if (screen !== 'report') return;
+  var rank = S.history.length ? S.history[0].rank : shiftRank();
+  reportRankTitle = RANK_TITLES[rank] || '';
+  var lines = VERDICTS[rank] || VERDICTS.C;
+  reportVerdict = lines[S.shift % lines.length];
+  awardRows = buildAwards();
+  // The ending (endingView, mine/chapters.logic): on the report of the shift the mine reopened.
+  endingView = { visible: !!(S.site && S.site.opened && S.site.openedShift === S.shift) };
+}

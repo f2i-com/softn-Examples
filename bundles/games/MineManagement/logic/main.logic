@@ -1,0 +1,82 @@
+// Mine Management: the logic's entry point.
+//
+// SoftN reads the import lines below and inlines each file, in this order, into ONE classic script;
+// then the code at the bottom of this file runs. What that means for a maintainer:
+//   - Every top-level var and function in every file is a global. The interface pages (app/ui) read
+//     them and call them from @click handlers, so names must be unique across all files.
+//   - Function declarations are hoisted, so any file may call a function from any other.
+//   - Nothing reads another file's variables while the files load: the only top-level code besides
+//     declarations is the fault table in mine/incidents.logic, which uses nothing from elsewhere. So
+//     the order below is free, and the files are grouped by folder. Keep it that way: start-up work
+//     belongs in boot() (core/game-loop.logic), not at the top level of a file.
+//   - An import line must stand alone (no comment after it): SoftN matches the whole line.
+//     scripts/lib/logic.mjs joins the files the same way for the build and the tests.
+//
+// Development builds (npm run build:dev) also import dev/debug.logic, just before boot().
+
+// ---------- core: the game's state, saving, settings, sound, the frame loop and the screens' view ----------
+import './core/state.logic';
+import './core/util.logic';
+import './core/settings.logic';
+import './core/audio.logic';
+import './core/persistence.logic';
+import './core/session.logic';
+import './core/ui-state.logic';
+import './core/game-loop.logic';
+
+// ---------- world: the ground, collisions and everything the 3D scene draws ----------
+import './world/terrain-data.logic';
+import './world/terrain.logic';
+import './world/collision.logic';
+import './world/primitives.logic';
+import './world/scene-transforms.logic';
+import './world/scene.logic';
+import './world/scenery.logic';
+import './world/lighting.logic';
+import './world/camera.logic';
+import './world/interpolation.logic';
+import './world/actors.logic';
+import './world/vehicles.logic';
+import './world/rigging.logic';
+import './world/props.logic';
+import './world/wildlife.logic';
+
+// ---------- mine: the operation (haul trucks, bays, the crusher, faults, crew, contracts, story) ----------
+import './mine/shift.logic';
+import './mine/route.logic';
+import './mine/bays.logic';
+import './mine/fleet.logic';
+import './mine/traffic.logic';
+import './mine/simulation.logic';
+import './mine/plant.logic';
+import './mine/excavators.logic';
+import './mine/workforce.logic';
+import './mine/crew.logic';
+import './mine/purchases.logic';
+import './mine/progression.logic';
+import './mine/incidents.logic';
+import './mine/rounds.logic';
+import './mine/story.logic';
+import './mine/chapters.logic';
+import './mine/site-profile.logic';
+import './mine/pit-export.logic';
+
+// ---------- player: input, walking and driving, the camera, the field kit and navigation ----------
+import './player/input.logic';
+import './player/camera-look.logic';
+import './player/touch-controls.logic';
+import './player/movement.logic';
+import './player/interactions.logic';
+import './player/navigation.logic';
+import './player/field-kit.logic';
+import './player/haul-assist.logic';
+import './player/stunts.logic';
+
+// ---------- fun: radio banter, toasts, memos from Head Office, career records and awards ----------
+import './fun/banter.logic';
+import './fun/effects.logic';
+import './fun/stats.logic';
+import './fun/memos.logic';
+import './fun/awards.logic';
+
+boot();

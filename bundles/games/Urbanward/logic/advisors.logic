@@ -1,0 +1,53 @@
+// A transparent, deterministic city adviser. No model download or network access.
+function uwGetAdvisors() {
+    let rows = [], w = uwWorld, disconnected = 0, unwatered = 0, vacant = 0, residential = 0, factories = 0;
+    for (let i = 0; i < w.tiles.length; i = i + 1) {
+        let t = w.tiles[i];
+        if (t.zone && uwNet.access[i] < 0)
+            disconnected++;
+        if (t.pop > 0 && uwNet.water[i] < 0.6)
+            unwatered += t.pop;
+        if (t.zone && t.level === 0)
+            vacant++;
+        if (t.zone === 1 || t.zone === 4)
+            residential++;
+        if (t.zone === 3)
+            factories++;
+    }
+    if (!uwNet.roadCount)
+        rows.push({ title: "Give the map a backbone", text: "Choose Transport → Local road. Drag a short street on flat ground. Roads include electricity and water ducts.", tone: "priority", action: "transport" });
+    if (!uwNet.powerSupply)
+        rows.push({ title: "Let there be a power budget", text: "Place a power station, wind turbine or solar garden within two lots of a road. A wind turbine is a low-upkeep start.", tone: "priority", action: "utilities" });
+    if (!uwNet.waterSupply)
+        rows.push({ title: "Water needs power first", text: "Place a water tower beside an electrified street. Extend roads or water mains to connect distant lots.", tone: "priority", action: "utilities" });
+    if (unwatered > 0 || uwNet.waterDemand > uwNet.waterSupply)
+        rows.push({ title: "A dry welcome for residents", text: uwComma(unwatered) + " residents have less than 60% local water supply. Totals can hide disconnected networks: use the water overlay.", tone: "priority", action: "water" });
+    if (w.population > 0 && uwNet.connectedPower < w.population * 0.8)
+        rows.push({ title: "Check the electrical connections", text: "Some homes have inadequate power. Use the power overlay, then add capacity to the affected network rather than a disconnected one.", tone: "priority", action: "power" });
+    if (disconnected)
+        rows.push({ title: "Zoned, but not connected", text: disconnected + " zoned lots have no road within two tiles. Buildings cannot grow there until access arrives.", tone: "warning", action: "transport" });
+    if (w.population > 100 && w.employed < w.workers * 0.75)
+        rows.push({ title: "Homes are outpacing usable jobs", text: "Zone industry or commerce on the same road component as homes. Vacant workplaces also need power and water.", tone: "warning", action: "zones" });
+    if (uwNet.congestion > 15)
+        rows.push({ title: "The commute is getting longer", text: "Upgrade busy roads to avenues, or add a powered bus depot and nearby stops. Transport pressure also weakens service catchments.", tone: "warning", action: "traffic" });
+    if (w.population > 150 && uwNet.education < 30)
+        rows.push({ title: "Give this generation a school", text: "A connected school improves satisfaction and development. A university supports higher-skill districts later.", tone: "warning", action: "civic" });
+    if (w.population > 150 && uwNet.health < 35)
+        rows.push({ title: "Make room for everyday care", text: "A clinic reaches households along roads. Place it near the population, not just near City Hall.", tone: "warning", action: "civic" });
+    if (uwForecast().net < 0)
+        rows.push({ title: "Keep an eye on the runway", text: "Projected balance: " + uwMoney(uwForecast().net) + " per month. Early towns run a deficit; avoid placing every civic service before residents arrive.", tone: "warning", action: "budget" });
+    if (residential < 16 || factories < 8)
+        rows.push({ title: "A compact first neighbourhood", text: "Try 16 homes, 6 shops and 8 industrial lots. Keep industry several tiles away from homes, but connected by the same streets.", tone: "info", action: "zones" });
+    if (!rows.length)
+        rows.push({ title: "The city is finding its rhythm", text: "Inspect district identities, experiment with mixed use, or preserve an old neighbourhood with the heritage focus. Growth is not the only measure of a city.", tone: "good", action: "districts" });
+    rows.push({ title: "Construction is not instantaneous", text: "Foundations and scaffolding take two monthly steps to complete. Demand, utility capacity, services and city size determine later upgrades.", tone: "info", action: "help" });
+    return rows.slice(0, 7);
+}
+function uwAdvisorAction(action) {
+    if (["zones", "transport", "utilities", "civic", "landscape", "landmarks"].indexOf(action) >= 0)
+        uwSelectCategory(action);
+    else if (["water", "power", "traffic"].indexOf(action) >= 0)
+        uwSetOverlay(action);
+    else
+        uwOpenModal(action);
+}

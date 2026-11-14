@@ -1,8 +1,8 @@
 // HO-Scale Model Train Yard Simulation Logic
 
 // Simulation state
-let trainSpeed = 0.6;
-let targetSpeed = 0.6;
+let trainSpeed = 0.7;
+let targetSpeed = 0.7;
 let trainProgress = 0.0;
 let trainDirection = 1; // 1 = FWD, -1 = REV
 let whistleActive = false;
@@ -113,6 +113,36 @@ function getTrackHeading(u) {
   let dx = p2.x - p1.x;
   let dz = p2.z - p1.z;
   return Math.atan2(dx, dz);
+}
+
+function getTrackPitch(u) {
+  let delta = 0.003;
+  let p1 = getTrackPoint(u - delta);
+  let p2 = getTrackPoint(u + delta);
+  let dh = Math.hypot(p2.x - p1.x, p2.z - p1.z);
+  if (dh < 0.0001) return 0;
+  return Math.atan2(p2.y - p1.y, dh);
+}
+
+function getTrackRotation(u) {
+  let h = getTrackHeading(u);
+  let p = getTrackPitch(u);
+  let ch = Math.cos(h);
+  let sh = Math.sin(h);
+  let cp = Math.cos(p);
+  let sp = Math.sin(p);
+  let m13 = Math.max(-1, Math.min(1, sh * cp));
+  let ey = Math.asin(m13);
+  let ex = 0;
+  let ez = 0;
+  if (Math.abs(m13) < 0.99999) {
+    ex = Math.atan2(-sp, ch * cp);
+    ez = Math.atan2(sh * sp, ch);
+  } else {
+    ex = 0;
+    ez = Math.atan2(-ch * sp, cp);
+  }
+  return { x: ex, y: ey, z: ez };
 }
 
 // Town Road Circuit (Two distinct lanes with smooth turnaround loops, zero head-on collisions)
@@ -347,6 +377,7 @@ function buildStaticScenery() {
     let u = i / NUM_TIES;
     let pt = getTrackPoint(u);
     let head = getTrackHeading(u);
+    let trackRot = getTrackRotation(u);
     let cosH = Math.cos(head);
     let sinH = Math.sin(head);
 
@@ -358,7 +389,7 @@ function buildStaticScenery() {
       height: 0.06,
       depth: 0.72,
       position: { x: pt.x, y: pt.y - 0.035, z: pt.z },
-      rotation: { x: 0, y: head, z: 0 },
+      rotation: trackRot,
       color: "#6b7280",
       texture: "stone",
       receiveShadow: true,
@@ -373,7 +404,7 @@ function buildStaticScenery() {
       height: 0.035,
       depth: 0.16,
       position: { x: pt.x, y: pt.y - 0.005, z: pt.z },
-      rotation: { x: 0, y: head, z: 0 },
+      rotation: trackRot,
       color: "#3e2723",
       texture: "wood",
       receiveShadow: true
@@ -391,7 +422,7 @@ function buildStaticScenery() {
         y: pt.y + 0.02,
         z: pt.z + sinH * 0.22
       },
-      rotation: { x: 0, y: head, z: 0 },
+      rotation: trackRot,
       color: "#cbd5e1",
       texture: "metal",
       metalness: 0.8,
@@ -410,7 +441,7 @@ function buildStaticScenery() {
         y: pt.y + 0.02,
         z: pt.z - sinH * 0.22
       },
-      rotation: { x: 0, y: head, z: 0 },
+      rotation: trackRot,
       color: "#cbd5e1",
       texture: "metal",
       metalness: 0.8,
@@ -630,13 +661,11 @@ function buildStaticScenery() {
     color: "#1c1917"
   });
 
-  // 3-Stall Brick Roundhouse. The pit rim is at z = -3.0 and the bridge end
-  // sweeps out to z = -2.9, so every stall's front face stays behind z = -3.05;
-  // the rear corners stop short of the mainline ballast at z = -5.25.
+  // 3-Stall Brick Roundhouse radially aligned with turntable pivot (-4.5, -1.2)
   let roundhouseStalls = [
-    { x: -5.8, z: -3.95, rot: 0.25 },
+    { x: -5.75, z: -3.88, rot: Math.atan2(1.25, 2.68) },
     { x: -4.5, z: -4.05, rot: 0.0 },
-    { x: -3.2, z: -3.95, rot: -0.25 }
+    { x: -3.25, z: -3.88, rot: -Math.atan2(1.25, 2.68) }
   ];
   for (let r = 0; r < 3; r = r + 1) {
     let st = roundhouseStalls[r];
@@ -995,19 +1024,21 @@ function buildStaticScenery() {
   });
   let ticks = [
     { x: -5.8, label: "0" },
-    { x: -4.9, label: "35" },
-    { x: -4.0, label: "70" },
+    { x: -4.89, label: "35" },
+    { x: -3.98, label: "70" },
     { x: -3.2, label: "100" }
   ];
   for (let k = 0; k < ticks.length; k = k + 1) {
     list.push({
       id: "ctrl-tick-" + k,
       type: "box",
-      width: 0.03,
-      height: 0.08,
-      depth: 0.02,
-      position: { x: ticks[k].x, y: 0.50, z: 9.36 },
-      color: "#fbbf24"
+      width: 0.14,
+      height: 0.14,
+      depth: 0.06,
+      position: { x: ticks[k].x, y: 0.50, z: 9.37 },
+      color: "#fbbf24",
+      cursor: "pointer",
+      interactive: true
     });
   }
 
@@ -1077,13 +1108,14 @@ function buildDynamicObjects(delta) {
   // 1. BLENDER PBR 4-6-0 STEAM LOCOMOTIVE (Hero centerpiece with articulated Bell + Smoke + Rear Coupler)
   let locoPt = getTrackPoint(trainProgress);
   let locoHead = getTrackHeading(trainProgress);
+  let locoRot = getTrackRotation(trainProgress);
 
   list.push({
     id: "loco-hero",
     type: "model",
     modelUrl: "assets/models/steam-loco-detail.glb",
     position: { x: locoPt.x, y: locoPt.y + 0.02, z: locoPt.z },
-    rotation: { x: 0, y: locoHead, z: 0 },
+    rotation: locoRot,
     scale: { x: 0.56, y: 0.56, z: 0.56 },
     parts: {
       Bell: { rotation: { x: bellSwing, y: 0, z: 0 } }
@@ -1098,8 +1130,17 @@ function buildDynamicObjects(delta) {
     id: "train-loco",
     type: "group",
     position: { x: locoPt.x, y: locoPt.y, z: locoPt.z },
-    rotation: { x: 0, y: locoHead, z: 0 },
+    rotation: locoRot,
     children: [
+      {
+        id: "loco-headlamp-bulb",
+        type: "sphere",
+        radius: 0.075,
+        position: { x: 0, y: 0.92, z: 1.06 },
+        color: lightsEnabled ? "#fef9c3" : "#475569",
+        emissive: lightsEnabled ? "#fde047" : "#000000",
+        emissiveIntensity: lightsEnabled ? (isNight ? 4.5 : 2.2) : 0.0
+      },
       {
         id: "loco-rod-l",
         type: "box",
@@ -1154,13 +1195,13 @@ function buildDynamicObjects(delta) {
   // 2. COAL TENDER (Articulated group firmly coupled to locomotive)
   let tenderProg = trainProgress - 0.038;
   let tenderPt = getTrackPoint(tenderProg);
-  let tenderHead = getTrackHeading(tenderProg);
+  let tenderRot = getTrackRotation(tenderProg);
 
   list.push({
     id: "train-tender",
     type: "group",
     position: { x: tenderPt.x, y: tenderPt.y, z: tenderPt.z },
-    rotation: { x: 0, y: tenderHead, z: 0 },
+    rotation: tenderRot,
     children: [
       {
         id: "tender-body",
@@ -1257,13 +1298,13 @@ function buildDynamicObjects(delta) {
   // 3. BLENDER PBR COAL FREIGHT HOPPER (Articulated group with front and rear interlocking couplers)
   let boxcarProg = trainProgress - 0.076;
   let boxcarPt = getTrackPoint(boxcarProg);
-  let boxcarHead = getTrackHeading(boxcarProg);
+  let boxcarRot = getTrackRotation(boxcarProg);
 
   list.push({
     id: "train-boxcar",
     type: "group",
     position: { x: boxcarPt.x, y: boxcarPt.y, z: boxcarPt.z },
-    rotation: { x: 0, y: boxcarHead, z: 0 },
+    rotation: boxcarRot,
     children: [
       {
         id: "hopper-model",
@@ -1320,13 +1361,13 @@ function buildDynamicObjects(delta) {
   // 4. CHEMICAL TANK CAR (Articulated group with front and rear interlocking couplers)
   let tankerProg = trainProgress - 0.114;
   let tankerPt = getTrackPoint(tankerProg);
-  let tankerHead = getTrackHeading(tankerProg);
+  let tankerRot = getTrackRotation(tankerProg);
 
   list.push({
     id: "train-tanker",
     type: "group",
     position: { x: tankerPt.x, y: tankerPt.y, z: tankerPt.z },
-    rotation: { x: 0, y: tankerHead, z: 0 },
+    rotation: tankerRot,
     children: [
       {
         id: "tanker-cylinder",
@@ -1422,13 +1463,13 @@ function buildDynamicObjects(delta) {
   // 5. BRIGHT RED CABOOSE WITH CUPOLA (Articulated group with front coupler and rear marker lamps)
   let cabooseProg = trainProgress - 0.152;
   let caboosePt = getTrackPoint(cabooseProg);
-  let cabooseHead = getTrackHeading(cabooseProg);
+  let cabooseRot = getTrackRotation(cabooseProg);
 
   list.push({
     id: "train-caboose",
     type: "group",
     position: { x: caboosePt.x, y: caboosePt.y, z: caboosePt.z },
-    rotation: { x: 0, y: cabooseHead, z: 0 },
+    rotation: cabooseRot,
     children: [
       {
         id: "caboose-body",
@@ -1548,18 +1589,18 @@ function buildDynamicObjects(delta) {
     receiveShadow: true
   });
 
-  // Rotating Yard Floodlight Beacons (Respond to lightsEnabled & animate at night)
+  // Rotating Yard Floodlight Beacons & Warm Village Window Glow (Respond to lightsEnabled & pop dramatically at night)
   let towerLocs = [
     { x: -7.5, z: 2.4 },
     { x: -1.2, z: 2.4 }
   ];
   for (let tb = 0; tb < towerLocs.length; tb = tb + 1) {
     let tl = towerLocs[tb];
-    let pulse = lightsEnabled ? (1.8 + Math.sin(beaconPhase + tb * Math.PI) * 1.1) : 0.0;
+    let pulse = lightsEnabled ? ((isNight ? 3.8 : 2.2) + Math.sin(beaconPhase + tb * Math.PI) * 1.1) : 0.0;
     list.push({
       id: "yard-tower-beacon-" + tb,
       type: "sphere",
-      radius: 0.13,
+      radius: 0.14,
       position: {
         x: tl.x + Math.sin(beaconPhase + tb * 1.5) * 0.14,
         y: 5.18,
@@ -1571,12 +1612,64 @@ function buildDynamicObjects(delta) {
     });
   }
 
+  let winGlow = lightsEnabled ? (isNight ? 3.4 : 1.5) : 0.0;
+  let winCol = lightsEnabled ? "#fde68a" : "#1e293b";
+  let winEmissive = lightsEnabled ? "#fbbf24" : "#000000";
+  let villageWindows = [
+    { id: "win-depot-1", x: -0.95, y: 1.32, z: 6.76, w: 0.42, h: 0.44 },
+    { id: "win-depot-2", x: 0.55, y: 1.32, z: 6.76, w: 0.42, h: 0.44 },
+    { id: "win-hotel-1", x: 3.05, y: 1.85, z: 6.76, w: 0.36, h: 0.42 },
+    { id: "win-hotel-2", x: 3.95, y: 1.85, z: 6.76, w: 0.36, h: 0.42 },
+    { id: "win-hotel-3", x: 3.50, y: 1.15, z: 6.76, w: 0.55, h: 0.44 },
+    { id: "win-store-1", x: -3.50, y: 1.25, z: 6.76, w: 0.68, h: 0.46 },
+    { id: "win-bakery-1", x: -5.60, y: 1.20, z: 6.76, w: 0.62, h: 0.44 }
+  ];
+  for (let vw = 0; vw < villageWindows.length; vw = vw + 1) {
+    let w = villageWindows[vw];
+    list.push({
+      id: w.id,
+      type: "box",
+      width: w.w,
+      height: w.h,
+      depth: 0.03,
+      position: { x: w.x, y: w.y, z: w.z },
+      color: winCol,
+      emissive: winEmissive,
+      emissiveIntensity: winGlow
+    });
+  }
+
+  // Streetlamp globes along Main Street & Station Platform
+  let lampPosts = [-5.6, -2.1, 1.4, 4.6];
+  for (let lp = 0; lp < lampPosts.length; lp = lp + 1) {
+    let lx = lampPosts[lp];
+    list.push({
+      id: "town-lamp-post-" + lp,
+      type: "cylinder",
+      radius: 0.028,
+      height: 0.72,
+      position: { x: lx, y: 0.94, z: 7.56 },
+      color: "#1e293b"
+    });
+    list.push({
+      id: "town-lamp-globe-" + lp,
+      type: "sphere",
+      radius: 0.075,
+      position: { x: lx, y: 1.33, z: 7.56 },
+      color: lightsEnabled ? "#fef3c7" : "#475569",
+      emissive: lightsEnabled ? "#fbbf24" : "#000000",
+      emissiveIntensity: lightsEnabled ? (isNight ? 3.8 : 1.6) : 0.0
+    });
+  }
+
   // 6. Turntable Rotating Bridge (Group, Safely centered at x = -4.5, z = -1.2)
   list.push({
     id: "turntable-bridge",
     type: "group",
     position: { x: -4.5, y: 0.65, z: -1.2 },
     rotation: { x: 0, y: turntableAngle, z: 0 },
+    cursor: "pointer",
+    interactive: true,
     children: [
       {
         id: "bridge-deck",
@@ -2052,16 +2145,16 @@ function buildLights() {
     });
 
   } else {
-    // Starry Night
+    // Starry Night — deep moonlight contrast so Night Lights glow dramatically
     timeLabel = "11:00 PM (Night)";
-    skyColor = "#090d16";
+    skyColor = "#060a14";
 
-    // Soft cool moonlight
+    // Crisp cool moonlight
     list.push({
       id: "moon",
       type: "directional",
       color: "#93c5fd",
-      intensity: 0.48,
+      intensity: lightsEnabled ? 0.36 : 0.24,
       position: { x: -8, y: 16, z: -6 },
       castShadow: true,
       follow: "view",
@@ -2074,64 +2167,82 @@ function buildLights() {
       id: "ambient",
       type: "ambient",
       color: "#1e1b4b",
-      intensity: 0.38
+      intensity: lightsEnabled ? 0.26 : 0.16
+    });
+  }
+
+  if (lightsEnabled) {
+    let lampMult = isNight ? 1.0 : (timeProgress > 0.42 && timeProgress <= 0.58 ? 0.62 : 0.28);
+
+    // Forward Locomotive Headlight Beam
+    list.push({
+      id: "light-loco-beam",
+      type: "point",
+      color: "#fef08a",
+      intensity: 5.8 * lampMult,
+      distance: 10.5,
+      decay: 1.55,
+      position: {
+        x: locoPt.x + Math.sin(locoHead) * 1.55,
+        y: locoPt.y + 0.95,
+        z: locoPt.z + Math.cos(locoHead) * 1.55
+      }
     });
 
-    if (lightsEnabled) {
-      // Forward Locomotive Headlight Beam
-      list.push({
-        id: "light-loco-beam",
-        type: "point",
-        color: "#fef08a",
-        intensity: 2.2,
-        distance: 7.5,
-        position: {
-          x: locoPt.x + Math.sin(locoHead) * 1.5,
-          y: locoPt.y + 0.9,
-          z: locoPt.z + Math.cos(locoHead) * 1.5
-        }
-      });
+    // Warm station platform glow
+    list.push({
+      id: "light-station",
+      type: "point",
+      color: "#fde68a",
+      intensity: 4.8 * lampMult,
+      distance: 10.5,
+      decay: 1.6,
+      position: { x: 0.0, y: 2.0, z: 6.7 }
+    });
 
-      // Warm station platform glow
-      list.push({
-        id: "light-station",
-        type: "point",
-        color: "#fef08a",
-        intensity: 2.0,
-        distance: 8.5,
-        position: { x: 0.0, y: 2.0, z: 6.7 }
-      });
+    // Town street lamp glow
+    list.push({
+      id: "light-town",
+      type: "point",
+      color: "#fed7aa",
+      intensity: 4.4 * lampMult,
+      distance: 9.5,
+      decay: 1.6,
+      position: { x: 3.5, y: 2.3, z: 7.3 }
+    });
 
-      // Town street lamp glow
-      list.push({
-        id: "light-town",
-        type: "point",
-        color: "#fed7aa",
-        intensity: 1.8,
-        distance: 7.5,
-        position: { x: 3.5, y: 2.4, z: 7.2 }
-      });
+    // Roundhouse Terminal interior glow
+    list.push({
+      id: "light-roundhouse",
+      type: "point",
+      color: "#fbbf24",
+      intensity: 4.6 * lampMult,
+      distance: 10.5,
+      decay: 1.6,
+      position: { x: -4.5, y: 2.2, z: -2.9 }
+    });
 
-      // Roundhouse Terminal interior glow
-      list.push({
-        id: "light-roundhouse",
-        type: "point",
-        color: "#fbbf24",
-        intensity: 2.0,
-        distance: 9.0,
-        position: { x: -4.5, y: 2.2, z: -3.0 }
-      });
+    // Yard Floodlight Tower Pool
+    list.push({
+      id: "light-yard-pool",
+      type: "point",
+      color: "#fef9c3",
+      intensity: 5.6 * lampMult,
+      distance: 12.5,
+      decay: 1.5,
+      position: { x: -4.5, y: 4.9, z: 1.8 }
+    });
 
-      // Yard Floodlight Tower Pool
-      list.push({
-        id: "light-yard-pool",
-        type: "point",
-        color: "#fef08a",
-        intensity: 2.2,
-        distance: 9.5,
-        position: { x: -4.5, y: 4.8, z: 1.8 }
-      });
-    }
+    // Harbor Quay Lantern
+    list.push({
+      id: "light-harbor",
+      type: "point",
+      color: "#bae6fd",
+      intensity: 3.6 * lampMult,
+      distance: 8.5,
+      decay: 1.6,
+      position: { x: 5.4, y: 2.1, z: 1.2 }
+    });
   }
 
   return list;
@@ -2151,6 +2262,12 @@ function toggleSound() {
   soundEnabled = !soundEnabled;
   if (soundEnabled) {
     playSfx("assets/sfx/switch.wav", 0.45);
+  } else {
+    try {
+      if (typeof softn !== "undefined" && softn.audio && softn.audio.stopAll) {
+        softn.audio.stopAll();
+      }
+    } catch (err) {}
   }
 }
 
@@ -2213,23 +2330,35 @@ function gameStep(dt) {
     }
   }
 
-  // 7. Dynamic Camera tracking for "cab" ride mode (Looks further ahead along curve)
+  // 7. Dynamic Camera tracking for "cab" ride mode (Faces travel direction in both FWD and REV)
   if (cameraMode === "cab") {
-    let locoPt = getTrackPoint(trainProgress);
-    let locoHead = getTrackHeading(trainProgress);
-    let aheadPt = getTrackPoint(trainProgress + 0.045 * trainDirection);
-    let backDist = 2.15;
-    let eyeH = 1.38;
-    cameraPos = {
-      x: locoPt.x - Math.sin(locoHead) * backDist * trainDirection,
-      y: locoPt.y + eyeH,
-      z: locoPt.z - Math.cos(locoHead) * backDist * trainDirection
-    };
-    cameraLookAt = {
-      x: aheadPt.x,
-      y: aheadPt.y + 0.65,
-      z: aheadPt.z
-    };
+    if (trainDirection > 0) {
+      let cabPt = getTrackPoint(trainProgress - 0.018);
+      let aheadPt = getTrackPoint(trainProgress + 0.055);
+      cameraPos = {
+        x: cabPt.x,
+        y: cabPt.y + 1.44,
+        z: cabPt.z
+      };
+      cameraLookAt = {
+        x: aheadPt.x,
+        y: aheadPt.y + 0.72,
+        z: aheadPt.z
+      };
+    } else {
+      let revCabPt = getTrackPoint(trainProgress - 0.148);
+      let revAheadPt = getTrackPoint(trainProgress - 0.215);
+      cameraPos = {
+        x: revCabPt.x,
+        y: revCabPt.y + 1.42,
+        z: revCabPt.z
+      };
+      cameraLookAt = {
+        x: revAheadPt.x,
+        y: revAheadPt.y + 0.70,
+        z: revAheadPt.z
+      };
+    }
   }
 
   // 8. Rebuild dynamic objects and lights
@@ -2242,6 +2371,21 @@ function setSpeed(sp) {
   hasInteracted = true;
   targetSpeed = Math.max(0.0, Math.min(1.0, sp));
   playSfx("assets/sfx/switch.wav", 0.4);
+}
+
+function stepThrottle(stepDir) {
+  let stops = [0.0, 0.35, 0.7, 1.0];
+  let nearest = 0;
+  let bestDiff = 999;
+  for (let i = 0; i < stops.length; i = i + 1) {
+    let d = Math.abs(targetSpeed - stops[i]);
+    if (d < bestDiff) {
+      bestDiff = d;
+      nearest = i;
+    }
+  }
+  let nextIdx = Math.max(0, Math.min(stops.length - 1, nearest + stepDir));
+  setSpeed(stops[nextIdx]);
 }
 
 function toggleDirection() {
@@ -2261,7 +2405,8 @@ function blowWhistle() {
 function rotateTurntableNext() {
   hasInteracted = true;
   turntableStall = (turntableStall + 1) % 4;
-  let angles = [0.0, 0.28, 0.56, -0.28];
+  let sideStallAngle = Math.atan2(1.25, 2.68);
+  let angles = [0.0, sideStallAngle, -sideStallAngle, Math.PI / 2];
   targetTurntableAngle = angles[turntableStall];
   playSfx("assets/sfx/bell.wav", 0.4);
 }
@@ -2311,37 +2456,128 @@ function setCameraView(mode) {
 
 // In-World 3D Object Click Handler
 function handleSceneClick(hit) {
-  if (!hit || !hit.objectId) return;
+  if (!hit) return;
+  let rootId = hit.rootObjectId || hit.objectId || "";
+  let leafId = hit.objectId || rootId;
+  if (!rootId && !leafId) return;
   hasInteracted = true;
-  let id = hit.objectId;
 
-  if (id === "loco-hero" || id.indexOf("loco-") === 0) {
+  if (leafId === "ctrl-tick-0" || rootId === "ctrl-tick-0") {
+    setSpeed(0.0);
+  } else if (leafId === "ctrl-tick-1" || rootId === "ctrl-tick-1") {
+    setSpeed(0.35);
+  } else if (leafId === "ctrl-tick-2" || rootId === "ctrl-tick-2") {
+    setSpeed(0.7);
+  } else if (leafId === "ctrl-tick-3" || rootId === "ctrl-tick-3") {
+    setSpeed(1.0);
+  } else if (rootId === "loco-hero" || rootId === "train-loco" || rootId.indexOf("loco-") === 0 || leafId.indexOf("loco-") === 0) {
     blowWhistle();
-  } else if (id.indexOf("ctrl-throttle") !== -1 || id === "ctrl-slot" || id === "ctrl-bezel-throttle" || id.indexOf("ctrl-tick") !== -1) {
-    if (trainSpeed < 0.25) {
-      setSpeed(0.5);
-    } else if (trainSpeed < 0.65) {
+  } else if (
+    rootId.indexOf("ctrl-throttle") !== -1 ||
+    leafId.indexOf("ctrl-throttle") !== -1 ||
+    rootId === "ctrl-slot" ||
+    rootId === "ctrl-bezel-throttle"
+  ) {
+    if (hit.point && (rootId === "ctrl-slot" || rootId === "ctrl-bezel-throttle")) {
+      let norm = Math.max(0.0, Math.min(1.0, (hit.point.x - (-5.8)) / 2.6));
+      if (norm < 0.18) setSpeed(0.0);
+      else if (norm < 0.52) setSpeed(0.35);
+      else if (norm < 0.85) setSpeed(0.7);
+      else setSpeed(1.0);
+    } else if (targetSpeed < 0.18) {
+      setSpeed(0.35);
+    } else if (targetSpeed < 0.52) {
+      setSpeed(0.7);
+    } else if (targetSpeed < 0.85) {
       setSpeed(1.0);
     } else {
       setSpeed(0.0);
     }
-  } else if (id === "ctrl-switch-dir" || id === "ctrl-bezel-dir") {
+  } else if (rootId === "ctrl-switch-dir" || rootId === "ctrl-bezel-dir" || leafId === "ctrl-switch-dir") {
     toggleDirection();
-  } else if (id === "ctrl-btn-whistle" || id === "ctrl-bezel-whistle") {
+  } else if (rootId === "ctrl-btn-whistle" || rootId === "ctrl-bezel-whistle" || leafId === "ctrl-btn-whistle") {
     blowWhistle();
-  } else if (id.indexOf("ctrl-turntable") !== -1 || id === "ctrl-bezel-turntable") {
+  } else if (
+    rootId.indexOf("ctrl-turntable") !== -1 ||
+    leafId.indexOf("ctrl-turntable") !== -1 ||
+    rootId === "ctrl-bezel-turntable" ||
+    rootId === "turntable-bridge" ||
+    rootId === "turntable-pit" ||
+    rootId === "turntable-pivot"
+  ) {
     rotateTurntableNext();
-  } else if (id === "ctrl-switch-lights" || id === "ctrl-lamp-lights" || id === "ctrl-bezel-lights") {
+  } else if (
+    rootId === "ctrl-switch-lights" ||
+    rootId === "ctrl-lamp-lights" ||
+    rootId === "ctrl-bezel-lights" ||
+    rootId.indexOf("signal-gantry") === 0 ||
+    rootId.indexOf("yard-tower") === 0
+  ) {
     toggleLights();
   }
+}
+
+function _init() {
+  if (typeof window !== "undefined") {
+    if (window.__tyKeyCleanup) {
+      window.__tyKeyCleanup();
+    }
+    let onKeyDown = function (e) {
+      if (!e || e.ctrlKey || e.metaKey || e.altKey) return;
+      let rawTag = e.targetTag || (e.target && e.target.tagName) || "";
+      let tag = rawTag ? String(rawTag).toUpperCase() : "";
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      let key = e.key || "";
+      let low = key.toLowerCase();
+      if (key === " " || e.code === "Space") {
+        if (e.preventDefault) e.preventDefault();
+        if (!e.repeat) blowWhistle();
+      } else if (key === "ArrowUp") {
+        if (e.preventDefault) e.preventDefault();
+        stepThrottle(1);
+      } else if (key === "ArrowDown") {
+        if (e.preventDefault) e.preventDefault();
+        stepThrottle(-1);
+      } else if (low === "r" && !e.repeat) {
+        toggleDirection();
+      } else if (key === "1") {
+        setCameraView("front");
+      } else if (key === "2") {
+        setCameraView("cab");
+      } else if (key === "3") {
+        setCameraView("tower");
+      } else if (key === "4") {
+        setCameraView("harbor");
+      } else if (key === "5") {
+        setCameraView("overhead");
+      } else if (low === "t" && !e.repeat) {
+        rotateTurntableNext();
+      } else if (low === "l" && !e.repeat) {
+        toggleLights();
+      } else if (low === "m" && !e.repeat) {
+        toggleSound();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.__tyKeyCleanup = function () {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }
+  gameStep(0.016);
 }
 
 function _onHide() {
   whistleActive = false;
   whistleTimer = 0.0;
-  if (typeof softn !== "undefined" && softn.audio && softn.audio.stopAll) {
-    softn.audio.stopAll();
+  if (typeof window !== "undefined" && window.__tyKeyCleanup) {
+    window.__tyKeyCleanup();
+    window.__tyKeyCleanup = null;
   }
+  try {
+    if (typeof softn !== "undefined" && softn.audio && softn.audio.stopAll) {
+      softn.audio.stopAll();
+    }
+  } catch (err) {}
 }
 
 // Initialize on load

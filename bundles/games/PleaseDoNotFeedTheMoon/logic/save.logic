@@ -1,0 +1,103 @@
+// Versioned, bounded local saves. Legacy key is read but never deleted or overwritten.
+let SAVE_KEY="oddjobs:moon:v2";
+let LEGACY_KEY="oddjobs:moon:v1";
+function knownNote(key) {
+ if(key==="rejection")return true;
+ if(typeof key!=="string")return false;
+ if(key.indexOf("item:")===0){let raw=key.slice(5),id=Number(raw);return String(id)===raw&&!!itemById(id);}
+ for(let i=0;i<RECIPES.length;i++)if(key==="combo:"+RECIPES[i].id)return true;
+ return false;
+}
+function cleanList(a,kind) {
+ let out=[];if(!Array.isArray(a))return out;
+ for(let i=0;i<a.length&&i<100;i++){
+  let v=a[i],ok=kind==="note" ? knownNote(v) : kind==="combo" ? RECIPES.some(function(r){return r.id===v;}) : ENDINGS.some(function(e){return e.id===v;});
+  if(ok&&out.indexOf(v)<0)out.push(v);
+ }return out;
+}
+function safeNumber(v,fallback,lo,hi) {return finite(v)?clamp(v,lo,hi):fallback;}
+function validateBase(g) {
+ return !!g&&typeof g==="object"&&!Array.isArray(g)&&Array.isArray(g.stock)&&g.stock.length===ITEMS.length&&
+ g.stock.every(function(n){return Number.isInteger(n)&&n>=0&&n<=40;})&&
+ Number.isInteger(g.stage)&&g.stage>=0&&g.stage<=6&&Number.isInteger(g.selected)&&!!itemById(g.selected)&&
+ [g.heat,g.gravity,g.mass,g.bond].every(function(n){return finite(n)&&n>=0&&n<=100;})&&
+ finite(g.time)&&g.time>=0&&g.time<1e9&&finite(g.totalFeeds)&&g.totalFeeds>=0&&g.totalFeeds<1e8;
+}
+function hydrate(g) {
+ if(!validateBase(g))throw new Error("Invalid lunar state");
+ let s=freshState(safeNumber(g.seed,472091,1,2147483646));
+ let bounded={time:[0,1e9],night:[0,1e7],duration:[30,300],coins:[0,1e8],health:[0,100],totalFeeds:[0,1e8],servedTotal:[0,1e8],served:[0,1e6],nightFeeds:[0,1e6],energy:[0,90],cheese:[0,1e8],actions:[0,1e8],groundings:[0,1e8],refusals:[0,1e8],lastGround:[-50,1e9],stabilityTime:[0,1e9],repeat:[0,1e8],rejections:[0,1e8],nextCustomer:[1,1e8],queueClock:[0,60],moodTime:[0,30],serial:[0,1e9],milestone:[0,3]};
+ let ks=Object.keys(bounded);for(let i=0;i<ks.length;i++){let k=ks[i],b=bounded[k];s[k]=safeNumber(g[k],s[k],b[0],b[1]);}
+ s.stage=g.stage;s.selected=g.selected;s.aisle=ITEMS[s.selected].aisle;s.stock=g.stock.slice();
+ s.heat=g.heat;s.gravity=g.gravity;s.mass=g.mass;s.bond=g.bond;s.freeplay=g.freeplay===true;s.broadcast=g.broadcast===true;s.refusedThisNight=g.refusedThisNight===true;
+ s.phase=["play","report","ending"].indexOf(g.phase)>=0?g.phase:"play";
+ s.ending=ENDINGS.some(function(e){return e.id===g.ending;})?g.ending:"";if(s.phase==="ending"&&!s.ending)s.phase="play";
+ if(g.flags&&typeof g.flags==="object"){let fs=Object.keys(s.flags);for(let i=0;i<fs.length;i++)s.flags[fs[i]]=g.flags[fs[i]]===true;}
+ if(g.fx&&typeof g.fx==="object"){let fs=Object.keys(s.fx);for(let i=0;i<fs.length;i++)s.fx[fs[i]]=safeNumber(g.fx[fs[i]],0,0,90);}
+ s.discoveries=cleanList(g.discoveries,"note");s.combos=cleanList(g.combos,"combo");
+ s.lastItem=Number.isInteger(g.lastItem)&&itemById(g.lastItem)?g.lastItem:-1;
+ if(Array.isArray(g.history)){s.history=g.history.slice(-3).filter(function(h){return h&&itemById(h.item)&&finite(h.time)&&h.time>=0&&h.time<=s.time;}).map(function(h){return {item:h.item,time:h.time};});}
+ if(g.shot){
+  if(!itemById(g.shot.item)||!finite(g.shot.t)||g.shot.t<0||g.shot.t>1.6)throw new Error("Invalid pending offering");
+  s.shot={item:g.shot.item,t:g.shot.t,returning:g.shot.returning===true,resolved:g.shot.resolved===true};
+ }
+ if(Array.isArray(g.customers)){s.customers=g.customers.slice(0,2).filter(function(c){return c&&Number.isInteger(c.id)&&itemById(c.item)&&finite(c.patience)&&typeof c.name==="string";}).map(function(c){return {id:c.id,item:c.item,name:c.name.slice(0,40),patience:clamp(c.patience,1,70),age:safeNumber(c.age,0,0,70)};});}
+ let moods=["watching","sleepy","awake","delighted","angry","confused","surprised","tender","listening","suspicious","sulking"];
+ s.mood=moods.indexOf(g.mood)>=0?g.mood:"watching";
+ if(g.reaction&&typeof g.reaction.title==="string"&&typeof g.reaction.text==="string"){
+  s.reaction={id:s.serial,kind:typeof g.reaction.kind==="string"?g.reaction.kind.slice(0,30):"quiet",title:g.reaction.title.slice(0,100),text:g.reaction.text.slice(0,700),time:safeNumber(g.reaction.time,0,0,20),item:itemById(g.reaction.item)?g.reaction.item:-1};
+ }
+ if(Array.isArray(g.log))s.log=g.log.filter(function(v){return typeof v==="string";}).slice(0,16).map(function(v){return v.slice(0,300);});
+ makeProps(s);
+ if(Array.isArray(g.props))for(let p=0;p<Math.min(g.props.length,s.props.length);p++)if(g.props[p]&&g.props[p].id===p)s.props[p].caught=g.props[p].caught===true;
+ s.awaitingClose=closeReady(s);return s;
+}
+function migrateLegacy(data) {
+ let g=data&&data.state;
+ if(!data||data.schema!==1||data.game!=="moon"||!g||!Array.isArray(g.stock)||g.stock.length!==12||!g.stock.every(function(n){return Number.isInteger(n)&&n>=0&&n<=40;}))throw new Error("Invalid legacy save");
+ let s=freshState(safeNumber(g.seed,472091,1,2147483646));
+ for(let i=0;i<12;i++)s.stock[i]=g.stock[i];
+ let bounded={stage:[0,6],time:[0,1e9],night:[0,300],coins:[0,1e8],health:[0,100],heat:[0,100],gravity:[0,100],mass:[0,100],bond:[0,100],energy:[0,90],totalFeeds:[0,1e8],servedTotal:[0,1e8],served:[0,1e6],cheese:[0,1e8]};
+ let ks=Object.keys(bounded);for(let i=0;i<ks.length;i++){let k=ks[i];s[k]=safeNumber(g[k],s[k],bounded[k][0],bounded[k][1]);}
+ s.stage=Math.floor(s.stage);s.selected=Number.isInteger(g.selected)&&g.selected>=0&&g.selected<12?g.selected:0;s.aisle=ITEMS[s.selected].aisle;
+ if(Array.isArray(g.discoveries))for(let i=0;i<g.discoveries.length;i++)if(itemById(g.discoveries[i]))ensureNote(s,"item:"+g.discoveries[i]);
+ // The old Radio/Television flag bug is repaired from actual discovered item IDs.
+ s.broadcast=s.discoveries.indexOf("item:6")>=0;
+ s.phase=g.phase==="report"?"report":"play";s.nightFeeds=0;
+ if(g.phase==="ending"){s.phase="ending";s.ending=resolveEnding(s);}
+ makeProps(s);return s;
+}
+function savePayload() {return {schema:2,game:"moon",state:S,profile:profile,settings:settings};}
+function loadPayload(raw) {
+ if(typeof raw!=="string"||raw.length>250000)throw new Error("Backup is too large");
+ let d=JSON.parse(raw);if(!d||d.game!=="moon")throw new Error("Not a lunar save");
+ let state=d.schema===1?migrateLegacy(d):d.schema===2?hydrate(d.state):null;if(!state)throw new Error("Unknown save version");
+ let p={notes:[],endings:[],completed:0};
+ if(d.profile){p.notes=cleanList(d.profile.notes,"note");p.endings=cleanList(d.profile.endings,"ending");p.completed=Math.floor(safeNumber(d.profile.completed,0,0,1e8));}
+ for(let i=0;i<state.discoveries.length;i++)if(p.notes.indexOf(state.discoveries[i])<0)p.notes.push(state.discoveries[i]);
+ let set={muted:false,reducedMotion:false};if(d.settings){set.muted=d.settings.muted===true;set.reducedMotion=d.settings.reducedMotion===true;}
+ return {state:state,profile:p,settings:set,legacy:d.schema===1};
+}
+function persist() {
+ if(!S)return;
+ try{
+  let payload=JSON.stringify(savePayload());if(payload.length>250000)throw new Error("Save limit");
+  let old=localStorage.getItem(SAVE_KEY);
+  if(old){try{loadPayload(old);localStorage.setItem(SAVE_KEY+":backup",old);}catch(err){/* Do not promote a broken save. */}}
+  localStorage.setItem(SAVE_KEY,payload);saveStatus="Saved on this device.";
+ }catch(err){saveStatus="Storage is unavailable. Use Save desk to keep a text backup.";}
+}
+function restore() {
+ let candidates=[SAVE_KEY,SAVE_KEY+":backup",LEGACY_KEY],found=false;
+ for(let i=0;i<candidates.length;i++){
+  try{
+   let raw=localStorage.getItem(candidates[i]);if(!raw)continue;found=true;
+   let d=loadPayload(raw);S=d.state;profile=d.profile;settings=d.settings;
+   saveStatus=d.legacy?"Original save migrated. Your old save is untouched.":i===1?"Recovered the previous good save.":"Your night shift is waiting.";return true;
+  }catch(err){
+   if(err&&err.name==="SecurityError"){saveStatus="Storage is unavailable. Use Save desk to keep a text backup.";return false;}
+   found=true;
+  }
+ }
+ saveStatus=found?"Unreadable save left untouched. Start a new shift or import a backup.":"Saves stay on this device.";return false;
+}

@@ -1,0 +1,116 @@
+function uwComputeDemand() {
+    let homes = 0, commercial = 0, industrial = 0;
+    for (let i = 0; i < uwWorld.tiles.length; i = i + 1) {
+        let t = uwWorld.tiles[i];
+        homes += uwBuildingCapacity(t);
+        if (t.zone === 2 || t.zone === 4)
+            commercial += uwJobCapacity(t);
+        if (t.zone === 3)
+            industrial += uwJobCapacity(t);
+    }
+    let population = uwWorld.population, employment = uwWorld.workers > 0 ? uwWorld.employed / uwWorld.workers : 0.7;
+    let vacancies = homes > 0 ? (homes - population) / homes : 0;
+    let r = 47 + employment * 32 - vacancies * 45 + (uwWorld.happiness - 60) * 0.3 - (uwWorld.tax[0] - 9) * 6;
+    let cTarget = Math.max(12, population * 0.17), iTarget = Math.max(28, population * 0.38);
+    let c = 32 + (cTarget - commercial) / Math.max(25, cTarget) * 55 - (uwWorld.tax[1] - 9) * 5;
+    let ind = 36 + (iTarget - industrial) / Math.max(35, iTarget) * 50 - (uwWorld.tax[2] - 9) * 5 - (uwWorld.policies.clean ? 7 : 0);
+    if (population < 80)
+        r = Math.max(r, 55);
+    uwWorld.demand = [Math.round(uwClamp(r, -100, 100)), Math.round(uwClamp(c, -100, 100)), Math.round(uwClamp(ind, -100, 100))];
+}
+function uwLotDemand(t) { return t.zone === 1 ? uwWorld.demand[0] : t.zone === 2 ? uwWorld.demand[1] : t.zone === 3 ? uwWorld.demand[2] : (uwWorld.demand[0] + uwWorld.demand[1]) / 2; }
+function uwGrowCity() {
+    let changed = false, newSites = 0, maxSites = Math.min(30, 10 + Math.floor(uwWorld.population / 450)), total = uwWorld.tiles.length;
+    // Rotating the scan start prevents the north-west corner winning every permit.
+    let start = (uwWorld.month * 137) % total;
+    for (let step = 0; step < total; step = step + 1) {
+        let i = (start + step) % total, t = uwWorld.tiles[i];
+        if (!t.zone || t.road || t.build || t.wet)
+            continue;
+        if (t.level > 0)
+            t.age += 1;
+        let access = uwNet.access[i] >= 0 && uwNet.power[i] >= 0.65 && uwNet.water[i] >= 0.55 && !t.fire && !t.flood;
+        let desire = uwLotDemand(t), val = uwNet.value[i], focus = uwWorld.districtFocus[uwDistrictOf(i)];
+        if (focus === "employment" && (t.zone === 2 || t.zone === 3))
+            desire += 8;
+        if (focus === "green" && t.zone === 3)
+            desire -= 10;
+        if (t.stage > 0) {
+            if (access) {
+                t.stage -= 1;
+                changed = true;
+            }
+            continue;
+        }
+        if (!t.level) {
+            if (access && desire > 8 && newSites < maxSites && uwRandom() < desire / 180) {
+                t.level = 1;
+                t.age = 0;
+                t.stage = 2;
+                t.neglect = 0;
+                t.tree = 0;
+                newSites += 1;
+                changed = true;
+            }
+            continue;
+        }
+        if (!access || desire < -35)
+            t.neglect += 1;
+        else
+            t.neglect = Math.max(0, t.neglect - 1);
+        if (t.neglect >= 8) {
+            t.level = Math.max(0, t.level - 1);
+            t.pop = Math.min(t.pop, uwBuildingCapacity(t));
+            t.neglect = 3;
+            changed = true;
+            continue;
+        }
+        let cap = uwBuildingCapacity(t);
+        if (cap > 0) {
+            let employment = uwNet.employment[i], targetRatio = access ? uwClamp(0.55 + (val / 100) * 0.28 + employment * 0.2 - (uwWorld.tax[0] - 9) * 0.035, 0.1, 0.98) : 0.1;
+            if (t.fire || t.flood)
+                targetRatio = 0;
+            let target = Math.round(cap * targetRatio), diff = target - t.pop;
+            if (Math.abs(diff) > 0)
+                t.pop += diff > 0 ? Math.min(diff, Math.max(1, Math.ceil(cap * 0.14))) : Math.max(diff, -Math.max(1, Math.ceil(cap * 0.18)));
+        }
+        let maxLevel = t.density === 2 ? 4 : 2;
+        if (t.zone === 3)
+            maxLevel = uwNet.education > 40 ? 3 : 2;
+        if (focus === "heritage")
+            maxLevel = Math.min(maxLevel, 2);
+        if (uwWorld.population < 600)
+            maxLevel = Math.min(maxLevel, 2);
+        if (uwWorld.population < 2000)
+            maxLevel = Math.min(maxLevel, 3);
+        let threshold = t.zone === 3 ? 18 : 28 + t.level * 8;
+        if (access && t.level < maxLevel && val > threshold && desire > 12 && t.age > t.level * 4 && uwRandom() < 0.13) {
+            t.level += 1;
+            t.stage = 2;
+            t.age = 0;
+            changed = true;
+        }
+    }
+    if (newSites > 0)
+        uwStaticDirty = true;
+    return changed;
+}
+function uwComputeHappiness() {
+    let sum = 0, population = 0, s = uwNet.service;
+    for (let i = 0; i < uwWorld.tiles.length; i = i + 1) {
+        let t = uwWorld.tiles[i];
+        if (!t.pop)
+            continue;
+        let road = uwNet.access[i], traffic = road >= 0 ? uwNet.traffic[road] : 180;
+        let score = 61 + s.park[i] * 0.12 + s.school[i] * 0.08 + s.health[i] * 0.09 + s.police[i] * 0.05 + s.culture[i] * 0.04 + s.waste[i] * 0.05;
+        score -= (1 - uwNet.employment[i]) * 22 + uwNet.pollution[i] * 0.24 + Math.max(0, traffic - 70) * 0.045 + (uwWorld.tax[0] - 9) * 3;
+        score -= (1 - uwNet.power[i]) * 23 + (1 - uwNet.water[i]) * 25;
+        if (uwWorld.policies.transit)
+            score += 2;
+        if (uwWorld.festival > 0)
+            score += 5;
+        sum += uwClamp(score, 5, 98) * t.pop;
+        population += t.pop;
+    }
+    uwWorld.happiness = population ? Math.round(sum / population) : 70;
+}

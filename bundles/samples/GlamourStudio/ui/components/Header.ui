@@ -20,6 +20,7 @@
       <Heading level={4} style={{ fontSize: "1.125rem", fontWeight: 600, whiteSpace: "nowrap", fontFamily: "Georgia, 'Times New Roman', serif" }} if={currentPage === "clients"}>Clients</Heading>
       <Heading level={4} style={{ fontSize: "1.125rem", fontWeight: 600, whiteSpace: "nowrap", fontFamily: "Georgia, 'Times New Roman', serif" }} if={currentPage === "staff"}>Staff</Heading>
       <Heading level={4} style={{ fontSize: "1.125rem", fontWeight: 600, whiteSpace: "nowrap", fontFamily: "Georgia, 'Times New Roman', serif" }} if={currentPage === "services"}>Services</Heading>
+      <Heading level={4} style={{ fontSize: "1.125rem", fontWeight: 600, whiteSpace: "nowrap", fontFamily: "Georgia, 'Times New Roman', serif" }} if={currentPage === "studio"}>Beauty Studio</Heading>
     </Stack>
 
     // Action Buttons
@@ -64,9 +65,9 @@
         </Text>
       </Button>
 
-      // Settings lives in the bottom bar on phones
-      <Button variant=ghost size=sm @click=openDataModal style={{ padding: "0.4rem 0.6rem" }} className="softn-mobile-hide">
-        <Text size=xs style={{ color: getMutedColor(), fontSize: "0.7rem" }}>Settings</Text>
+      // Settings accessible on both desktop and mobile header
+      <Button variant=ghost size=sm @click=openDataModal style={{ padding: "0.4rem 0.55rem" }} ariaLabel="Data & Settings" title="Data & Settings">
+        <Text size=xs style={{ color: getMutedColor(), fontSize: "0.7rem" }}>Data</Text>
       </Button>
     </Stack>
   </Stack>

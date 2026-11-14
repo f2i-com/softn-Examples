@@ -1,0 +1,63 @@
+<!--
+  05 Production: where the money comes from. Tonnes count when they are tipped into the hopper;
+  revenue arrives as the crusher processes them. Also the history of finished shifts, and the PIT
+  JSON snapshot. Figures come from refreshUI() in logic/core/ui-state.logic.
+-->
+<div if={tab === 'ledger'}>
+  <div class="mm-page-head">
+    <div>
+      <span class="mm-label">PRODUCTION & RECONCILIATION</span>
+      <h2>The tonnes that actually arrived.</h2>
+      <p class="mm-muted">A loaded truck is a promise. Tipped ore is a fact. Processed ore is money. Ore still in the hopper at the end of a shift waits for the next one.</p>
+    </div>
+    <button class="mm-secondary" type="button" @click={showExport}>Open the PIT JSON snapshot</button>
+  </div>
+
+  <div class="mm-metrics">
+    #each (item in financialRows)
+      <div><span class="mm-label">{item.name}</span><span class="mm-metric-value">{item.value}</span></div>
+    #end
+  </div>
+
+  <section class="mm-card">
+    <div class="mm-card-title"><span>Completed shifts</span><span class="mm-small">LOCAL RECORD</span></div>
+    <div class="mm-history-row mm-label"><span>SHIFT</span><span>DELIVERED / TARGET</span><span>NET CASH FLOW</span><span>GRADE</span></div>
+    #each (row in historyRows)
+      <div class="mm-history-row"><span>{row.shift}</span><span>{row.tonnes} / {row.target} t</span><span>{row.profit}</span><span>{row.rank}</span></div>
+    #empty
+      <p class="mm-empty">Your first shift report will appear here. Head Office is already excited.</p>
+    #end
+  </section>
+
+  <div class="mm-callout">
+    <span class="mm-label">ISOLATED BY DESIGN</span>
+    <p>This tablet runs a game version of PIT's fleet model. The JSON snapshot is labelled as simulated, and the tablet makes no network requests. It is not connected to a real mine, which Gary finds very reassuring.</p>
+  </div>
+</div>
+
+<style>
+  .mm-history-row {
+    display: grid;
+    grid-template-columns: 0.6fr 1.4fr 1.2fr 0.5fr;
+    gap: 18px;
+    padding: 14px 19px;
+    border-bottom: 1px solid var(--line);
+    font-size: 12px;
+  }
+  .mm-history-row.mm-label {
+    display: grid;
+    background: #1d2c33;
+    font-size: 8px;
+  }
+  @media (max-width: 620px) {
+    .mm-history-row {
+      gap: 10px;
+      padding: 12px 10px;
+      font-size: 10px;
+    }
+    .mm-history-row.mm-label {
+      font-size: 7px;
+      letter-spacing: 0.5px;
+    }
+  }
+</style>

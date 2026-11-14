@@ -1,0 +1,80 @@
+<header className="office-mast">
+  <div className="department-brand">
+<span className="postal-emblem" aria-hidden="true">M<span>POST</span>
+</span>
+<div>
+<p className="eyebrow">MUNICIPAL POSTAL SERVICE · EST. 1968, APPARENTLY</p>
+<h1>VERY NORMAL POST OFFICE</h1>
+</div>
+</div>
+  <div className="mast-controls">
+<button className="small-switch" @click={openBook("today")} disabled={S.phase !== "work" || V.overlay}>Handbook</button>
+<button className="small-switch" @click={action("sound")}>{V.soundLabel}</button>
+<button className="small-switch" @click={action("pause")} disabled={S.phase !== "work"}>{paused ? "Resume" : "Tea break"}</button>
+<button className="small-switch" @click={action("help")}>Help / settings</button>
+</div>
+</header>
+<div className="back-office" aria-label="The municipal sorting facility">
+  <div className="fluorescent" aria-hidden="true">
+<span>
+</span>
+</div>
+  <div className="shift-docket">
+<span className="paperclip">
+</span>
+<p className="eyebrow">DUTY ROSTER / {"SHIFT 0" + V.stageNumber}</p>
+<h2>{V.stageName}</h2>
+<p>{V.subtitle}</p>
+<span className="date-stamp">{V.day}</span>
+</div>
+  <div className="observation-window" aria-hidden="true">
+<span className="glass-lettering">SORTING FLOOR B</span>
+<div className="distant-belt">
+</div>
+<div className="worker worker-one">
+<i>
+</i>
+<b>
+</b>
+<span>
+</span>
+</div>
+<div className="worker worker-two">
+<i>
+</i>
+<b>
+</b>
+<span>
+</span>
+</div>
+<div className={V.supervisor ? "supervisor visible" : "supervisor"}>
+<i>
+</i>
+<b>
+</b>
+</div>
+<span className="window-grille">
+</span>
+</div>
+  <div className="wall-poster">
+<strong>DO NOT<br />FEED THE<br />POST OFFICE.</strong>
+<span>Parcels excepted.<br />See approved biscuit.</span>
+</div>
+  <div className="wall-clock" aria-hidden="true">
+<span className="clock-twelve">12</span>
+<span className="clock-six">6</span>
+<i className="clock-hour">
+</i>
+<i className="clock-minute" style={V.clockHand}>
+</i>
+<b>
+</b>
+</div>
+  <div className="tube">
+<i className={V.ambientMoving ? "tube-canister moving" : "tube-canister"}>
+</i>
+</div>
+  <span className="office-number">INSPECTION<br />
+<b>04</b>
+</span>
+</div>

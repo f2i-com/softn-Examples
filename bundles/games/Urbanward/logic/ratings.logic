@@ -1,0 +1,54 @@
+// Read-only city report card. Scores are derived from the same fields used by
+// development and household approval; no new hidden simulation state is saved.
+let cityRatings = [];
+let cityWellbeing = { score: "—", label: "A fresh start", color: "#9db1b6", ring: "conic-gradient(#344e55 0deg 360deg)", detail: "Welcome your first residents.", happiness: "—", mood: "Awaiting residents", face: "○", trend: "No previous month", green: "—", greenLabel: "Awaiting residents", greenWidth: "0%", populationTrend: "New charter" };
+function uwRatingBand(score) {
+    if (score === null) return { label: "Not yet measured", color: "#94a9b0" };
+    return score >= 80 ? {label:"Thriving",color:"#b7dc88"} : score >= 60 ? {label:"Healthy",color:"#83cec0"} : score >= 40 ? {label:"Needs attention",color:"#e2c17b"} : {label:"Under pressure",color:"#e89988"};
+}
+function uwUpdateRatings() {
+    let w = uwWorld, population = w.population, pollution = 0, safety = 0, parks = 0, power = 0, water = 0;
+    for (let i = 0; i < w.tiles.length; i++) {
+        let pop = w.tiles[i].pop;
+        pollution += uwNet.pollution[i] * pop;
+        safety += (uwNet.service.police[i] + uwNet.service.fire[i]) * 0.5 * pop;
+        parks += uwNet.service.park[i] * pop;
+        power += uwNet.power[i] * pop; water += uwNet.water[i] * pop;
+    }
+    let money = uwForecast(), live = population > 0;
+    let entries = [
+        ["happiness", "Happiness", live ? w.happiness : null, "Household approval after services, jobs, pollution, taxes and utility shortages.", "services"],
+        ["green", "Clean & Green", live ? 100 - pollution / population : null, "100 minus pollution where residents live, weighted by population. Industry, waste and greenery affect this score.", "pollution"],
+        ["mobility", "Getting around", uwNet.roads.length ? 100 - uwNet.congestion : null, "100 minus citywide congestion pressure. Avenues and effective bus coverage can improve it.", "traffic"],
+        ["education", "Education", live ? uwNet.education : null, "Population-weighted school and university coverage.", "services"],
+        ["health", "Healthcare", live ? uwNet.health : null, "Population-weighted clinic coverage, including road access and congestion.", "services"],
+        ["safety", "Public safety", live ? safety / population : null, "Average police and fire coverage where residents live. This is service coverage, not a measured crime rate.", "services"],
+        ["parks", "Parks & leisure", live ? parks / population : null, "Park, plaza and tree amenity where residents live, weighted by population.", "value"],
+        ["utilities", "Essential services", live ? (power + water) / population * 50 : null, "Average electricity and water supply ratios at residential lots. Citywide surplus cannot hide isolated homes.", "power"],
+        ["jobs", "Employment", w.workers > 0 ? w.employed / w.workers * 100 : null, "Share of the city's workers matched to road-connected jobs.", "none"],
+        ["budget", "Financial health", money.expense > 0 || money.income > 0 ? uwClamp(70 + money.net / Math.max(1, money.expense) * 30, 0, 100) : null, "A score of 70 means a balanced monthly forecast. Surplus raises it; deficits reduce it. Formula: 70 + 30 × net / expenses, bounded to 0–100.", "none"]
+    ];
+    let rows = [], total = 0, weight = 0;
+    for (let k = 0; k < entries.length; k++) {
+        let a = entries[k], score = a[2] === null ? null : Math.round(uwClamp(a[2], 0, 100)), band = uwRatingBand(score);
+        rows.push({ id:a[0], label:a[1], score:score === null ? "—" : String(score), measured:score !== null, value:score || 0, width:(score || 0)+"%", color:band.color, status:band.label, detail:a[3], overlay:a[4] });
+        if (score !== null) { let importance = a[0] === "happiness" ? 2 : 1; total += score * importance; weight += importance; }
+    }
+    // An empty city's roads and spending do not constitute resident wellbeing.
+    let overall = live && weight ? Math.round(total / weight) : null, band = uwRatingBand(overall);
+    let previous = null;
+    for (let k = w.history.length - 1; k >= 0; k--) if (w.history[k].month < w.month) { previous = w.history[k]; break; }
+    let delta = previous ? w.happiness - previous.approval : 0, popDelta = previous ? population - previous.population : 0;
+    let happinessBand = uwRatingBand(live ? w.happiness : null);
+    cityWellbeing = { score:overall === null ? "—" : String(overall), label:overall === null ? "A fresh start" : band.label + " city", color:happinessBand.color,
+        ring:"conic-gradient("+band.color+" 0deg "+(overall || 0)*3.6+"deg, #344e55 "+(overall || 0)*3.6+"deg 360deg)",
+        detail:live ? "Ten city indicators. Happiness counts twice; unmeasured indicators are excluded." : "Ratings appear as residents arrive. Your city has room for its first chapter.",
+        happiness:live ? w.happiness+"%" : "—", mood:live ? happinessBand.label : "Awaiting residents", face:!live ? "○" : w.happiness >= 60 ? "☺" : "☹",
+        trend:!live || !previous ? "No previous month" : delta === 0 ? "Steady since last month" : (delta > 0 ? "↑ +" : "↓ ")+delta+" pts since last month",
+        green:rows[1].score, greenLabel:!live ? "Awaiting residents" : rows[1].status, greenWidth:rows[1].width,
+        populationTrend:previous ? (popDelta >= 0 ? "+" : "")+uwComma(popDelta)+" since last month" : "New chapter" };
+    cityRatings = rows;
+}
+function uwRatingInspect(overlay) {
+    modal = ""; panel = "overview"; showInspector = true; uwSetOverlay(overlay);
+}

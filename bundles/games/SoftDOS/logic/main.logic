@@ -32,6 +32,7 @@ let isRunning = true;
 let isMuted = false;
 let isExpanded = false;
 let crtTheme = "color";
+let crtAspect = "16:10";            // "16:10" (square pixels) | "4:3" (classic CRT)
 let keyMask = 0; // bit 0: Left, 1: Right, 2: Up, 3: Down, 4: Fire/Space
 let mouseCursorStyle = "default";   // "none" while a program draws its own pointer
 let programList = [];               // the .EXE and .COM files on drive C
@@ -67,6 +68,84 @@ let CAPTURED_KEYS = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " ", "Ta
 
 let pcmBuffer = null; // Preallocated audio buffer
 let pcmMix = null;    // the mix before it is clamped to 16 bits
+let winListenersBound = false;
+let wasRunningBeforeHide = false;
+let physHeld = {};
+
+function onWindowKeyDown(e) {
+  if (e && e.targetEditable === true) return;
+  if (!e || typeof e.key !== "string") return;
+  if (!e.ctrlKey && !e.metaKey && CAPTURED_KEYS.indexOf(e.key) >= 0) {
+    if (typeof e.preventDefault === "function") e.preventDefault();
+  }
+  handleKeyEvent(e.key, true);
+}
+
+function onWindowKeyUp(e) {
+  if (e && e.targetEditable === true) return;
+  if (!e || typeof e.key !== "string") return;
+  handleKeyEvent(e.key, false);
+}
+
+function releaseAllInputs() {
+  releaseAllVirtualKeys();
+  let pkeys = Object.keys(physHeld);
+  for (let i = 0; i < pkeys.length; i++) {
+    let k = pkeys[i];
+    if (physHeld[k] === 1) {
+      physHeld[k] = 0;
+      let up = scanForKey(k);
+      if (up !== 0) dosInt_pushScan(up | 0x80, 0);
+    }
+  }
+  keyMask = 0;
+  swipeActive = false;
+  dosMouse_releaseAll();
+  syncShiftState();
+}
+
+function onWindowBlur() {
+  releaseAllInputs();
+}
+
+function bindWindowListeners() {
+  if (winListenersBound) return;
+  if (typeof window !== "undefined" && window.addEventListener) {
+    window.addEventListener("keydown", onWindowKeyDown);
+    window.addEventListener("keyup", onWindowKeyUp);
+    window.addEventListener("blur", onWindowBlur);
+    winListenersBound = true;
+  }
+}
+
+function unbindWindowListeners() {
+  if (!winListenersBound) return;
+  if (typeof window !== "undefined" && window.removeEventListener) {
+    window.removeEventListener("keydown", onWindowKeyDown);
+    window.removeEventListener("keyup", onWindowKeyUp);
+    window.removeEventListener("blur", onWindowBlur);
+  }
+  winListenersBound = false;
+}
+
+function _onHide() {
+  wasRunningBeforeHide = isRunning;
+  isRunning = false;
+  DOS_SPEAKER_ON = 0;
+  autoRunLock = false;
+  releaseAllInputs();
+  unbindWindowListeners();
+}
+
+function _onShow() {
+  bindWindowListeners();
+  lastFrameAt = 0;
+  cyclesStamp = 0;
+  if (wasRunningBeforeHide) {
+    wasRunningBeforeHide = false;
+    isRunning = true;
+  }
+}
 
 function _init() {
   let wasDoomRunning = (activeMode === "custom" && loadedFileName === "FDOOM.EXE");
@@ -91,6 +170,9 @@ function _init() {
   FD_FAIL_MSG = "";
   FD_RESYNC_PHASE = 0;
   cyclesText = "";
+  physHeld = {};
+  virtualHeld = {};
+  keyMask = 0;
 
   pcmBuffer = new Int16Array(4096 * 2);
   pcmMix = new Float32Array(4096 * 2);
@@ -98,18 +180,8 @@ function _init() {
   dosSb_reset();
   dosOpl_accelInit();
 
-  // Install keyboard listeners on the window. A key headed for one of the
-  // page's own text fields is left alone.
-  if (typeof window !== "undefined" && window.addEventListener) {
-    window.addEventListener("keydown", function(e) {
-      if (e && e.targetEditable === true) return;
-      handleKeyEvent(e.key, true);
-    });
-    window.addEventListener("keyup", function(e) {
-      if (e && e.targetEditable === true) return;
-      handleKeyEvent(e.key, false);
-    });
-  }
+  // Install keyboard and focus-loss listeners on the window once.
+  bindWindowListeners();
   refreshProgramList();
   doomLoading = false;
   doomLoadPct = 0;
@@ -257,11 +329,13 @@ function handleKeyEvent(key, isDown) {
   else if (key === " " || key === "Control") mask = 0x10;
 
   if (!isDown) {
+    physHeld[key] = 0;
     keyMask = keyMask & ~mask;
     let up = scanForKey(key);
     if (up !== 0) dosInt_pushScan(up | 0x80, 0);   // the break code
     return;
   }
+  physHeld[key] = 1;
   keyMask = keyMask | mask;
 
   let scan = scanForKey(key);
@@ -902,6 +976,18 @@ function romPayload(result) {
 
 function toggleExpanded() {
   isExpanded = !isExpanded;
+}
+
+function setAspect43() {
+  crtAspect = "4:3";
+}
+
+function setAspect1610() {
+  crtAspect = "16:10";
+}
+
+function toggleAspect() {
+  crtAspect = (crtAspect === "4:3") ? "16:10" : "4:3";
 }
 
 function setCrtColor() {

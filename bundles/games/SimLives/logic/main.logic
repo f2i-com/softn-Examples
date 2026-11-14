@@ -38,11 +38,25 @@ let planEffects = {
 };
 
 function playSimSfx(path, vol) {
+  if (muted) return;
   try {
     if (typeof softn !== "undefined" && softn.audio && softn.audio.play) {
       softn.audio.play(path, { volume: vol || 0.4 });
     }
   } catch (err) {}
+}
+
+function toggleMute() {
+  muted = !muted;
+  if (muted) {
+    try {
+      if (typeof softn !== "undefined" && softn.audio && softn.audio.stopAll) {
+        softn.audio.stopAll();
+      }
+    } catch (err) {}
+  } else {
+    playSimSfx("assets/sfx/click.wav", 0.3);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1098,9 +1112,25 @@ function abandon(s) {
 function dropQueued(i) {
   let s = activeSim();
   if (!s) return;
-  if (i === -1) { abandon(s); }
-  else if (i === -2) { if (s.task) s.task.then = null; }
-  else if (i >= 0 && i < s.queue.length) { let keep = []; for (let k = 0; k < s.queue.length; k = k + 1) if (k !== i) keep.push(s.queue[k]); s.queue = keep; }
+  if (i === -1) {
+    s.queue = s.queue.filter(function (q) { return !q.chain; });
+    abandon(s);
+  } else if (i <= -10) {
+    let tidx = -10 - i;
+    if (s.task && s.task.then && tidx >= 0 && tidx < s.task.then.length) {
+      let nt = [];
+      for (let k = 0; k < s.task.then.length; k = k + 1) {
+        if (k !== tidx) nt.push(s.task.then[k]);
+      }
+      s.task.then = nt.length ? nt : null;
+    }
+  } else if (i === -2) {
+    if (s.task) s.task.then = null;
+  } else if (i >= 0 && i < s.queue.length) {
+    let keep = [];
+    for (let k = 0; k < s.queue.length; k = k + 1) if (k !== i) keep.push(s.queue[k]);
+    s.queue = keep;
+  }
   refreshCards();
 }
 
@@ -2216,9 +2246,9 @@ function queueChips(s) {
   if (s.task && s.task.then) {
     for (let i = 0; i < s.task.then.length; i = i + 1) {
       let k = s.task.then[i];
-      if (typeof k === "object") { let it2 = itemById(k.itemId); let o2 = optById(it2, k.optId); if (o2) q.push({ i: -2, label: o2.icon + " " + o2.label, cur: false, chain: true }); continue; }
+      if (typeof k === "object") { let it2 = itemById(k.itemId); let o2 = optById(it2, k.optId); if (o2) q.push({ i: -10 - i, label: o2.icon + " " + o2.label, cur: false, chain: true }); continue; }
       let step = CHAIN_STEPS[k];
-      if (step) q.push({ i: -2, label: step.opt.icon + " " + step.opt.label, cur: false, chain: true });
+      if (step) q.push({ i: -10 - i, label: step.opt.icon + " " + step.opt.label, cur: false, chain: true });
     }
   }
   for (let i = 0; i < s.queue.length; i = i + 1) {
@@ -2263,6 +2293,7 @@ function refreshCards() {
 // ---------------------------------------------------------------------------
 function liveClick(hit) {
   if (creatorOpen) return;
+  if (mobilePanel !== "") mobilePanel = "";
   let p = idParts(hit);
   let s = activeSim();
   if (p && p.kind === "sim" && p.id !== activeSimId) {
@@ -2341,6 +2372,7 @@ function chooseOption(id) {
   }
   menu = null;
   menuTarget = null;
+  if (mobilePanel === "inspector") mobilePanel = "";
   playSimSfx("assets/sfx/click.wav", 0.32);
   refreshCards();
 }
@@ -2366,6 +2398,7 @@ function toggleAuto() {
 function cancelTask() {
   let s = activeSim();
   if (!s) return;
+  s.queue = s.queue.filter(function (q) { return !q.chain; });
   abandon(s);
   s.lastFail = "";
   refreshCards();
@@ -2433,8 +2466,24 @@ function confirmDraft() {
 function removeActiveSim() {
   let s = activeSim();
   if (!s) return;
+  let removedId = s.id;
   clearTask(s);
-  sims = sims.filter(function (o) { return o.id !== s.id; });
+  sims = sims.filter(function (o) { return o.id !== removedId; });
+  for (let i = 0; i < sims.length; i = i + 1) {
+    let o = sims[i];
+    if (o.task && (o.task.kind === "social" || o.task.kind === "chatting") && o.task.simId === removedId) {
+      clearTask(o);
+    }
+    if (o.queue && o.queue.length > 0) {
+      o.queue = o.queue.filter(function (q) { return !(q.kind === "social" && q.simId === removedId); });
+    }
+    if (o.rel) delete o.rel[removedId];
+    if (o.greeted) delete o.greeted[removedId];
+  }
+  if (menuTarget && menuTarget.kind === "sim" && menuTarget.id === removedId) {
+    menu = null;
+    menuTarget = null;
+  }
   activeSimId = sims.length ? sims[0].id : 0;
   liveStatus = s.name + " moved out.";
   logEvent(s.name + " moved out.");
@@ -2484,11 +2533,49 @@ function setAppMode(mode) {
 
 function onPlanChangedLive() {
   navDirty = true;
+  for (let k in liveHiddenItems) {
+    if (!itemById(parseInt(k))) delete liveHiddenItems[k];
+  }
+  for (let k in doorAngles) {
+    if (!openingById(parseInt(k))) { delete doorAngles[k]; delete doorHold[k]; }
+  }
+  for (let k in roomLit) {
+    if (!roomById(parseInt(k))) delete roomLit[k];
+  }
   for (let i = 0; i < sims.length; i = i + 1) {
     let s = sims[i];
-    if (s.task && s.task.kind === "use" && s.task.itemId && !itemById(s.task.itemId)) clearTask(s);
+    if (s.doorPause && !openingById(s.doorPause.id)) s.doorPause = null;
+    if (s.task && s.task.kind === "use") {
+      if (s.task.itemId && !itemById(s.task.itemId)) {
+        clearTask(s);
+      } else {
+        if (s.task.seatId && !itemById(s.task.seatId)) {
+          s.task.seatId = null;
+          if (s.pose === "sit") { s.pose = "stand"; s.onY = 0.06; }
+        }
+        if (s.task.then && s.task.then.length > 0) {
+          let nt = [];
+          for (let j = 0; j < s.task.then.length; j = j + 1) {
+            let st = s.task.then[j];
+            if (typeof st === "object" && st.itemId && !itemById(st.itemId)) continue;
+            nt.push(st);
+          }
+          s.task.then = nt.length ? nt : null;
+        }
+      }
+    }
+    if (s.queue && s.queue.length > 0) {
+      s.queue = s.queue.filter(function (q) {
+        if (q.kind === "use" && q.itemId && !itemById(q.itemId)) return false;
+        return true;
+      });
+    }
   }
-  if (appMode === "live") { rebuildNav(); buildLiveLights(); }
+  if (menuTarget && menuTarget.kind === "item" && !itemById(menuTarget.id)) {
+    menu = null;
+    menuTarget = null;
+  }
+  if (appMode === "live") { rebuildNav(); buildLiveLights(); refreshCards(); }
 }
 
 function saveHousehold() {
@@ -2533,4 +2620,20 @@ function _init() {
   }
   refreshCards();
   setAppMode("live");
+}
+
+function _onHide() {
+  keys = {};
+  if (typeof window !== "undefined") {
+    window.__scene3dWantLock = false;
+    if (window.__hbCleanup) {
+      window.__hbCleanup();
+      window.__hbCleanup = null;
+    }
+  }
+  try {
+    if (typeof softn !== "undefined" && softn.audio && softn.audio.stopAll) {
+      softn.audio.stopAll();
+    }
+  } catch (err) {}
 }

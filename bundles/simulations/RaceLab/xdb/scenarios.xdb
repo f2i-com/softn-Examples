@@ -1,0 +1,69 @@
+{
+  "collection": "scenarios",
+  "schema": {
+    "alias": "scenarios",
+    "fields": [
+      {
+        "name": "fieldText",
+        "type": "string"
+      },
+      {
+        "name": "going",
+        "type": "string"
+      },
+      {
+        "name": "pace",
+        "type": "string"
+      },
+      {
+        "name": "trials",
+        "type": "string"
+      },
+      {
+        "name": "selectionText",
+        "type": "string"
+      },
+      {
+        "name": "stake",
+        "type": "string"
+      },
+      {
+        "name": "barrierMode",
+        "type": "string"
+      },
+      {
+        "name": "historyMode",
+        "type": "string"
+      },
+      {
+        "name": "fieldJSON",
+        "type": "string"
+      },
+      {
+        "name": "fieldOrigin",
+        "type": "string"
+      },
+      {
+        "name": "modelJSON",
+        "type": "string"
+      },
+      {
+        "name": "portfolioJSON",
+        "type": "string"
+      },
+      {
+        "name": "portfolioMode",
+        "type": "string"
+      },
+      {
+        "name": "hypotheticalDividend",
+        "type": "string"
+      },
+      {
+        "name": "snapshotId",
+        "type": "string"
+      }
+    ]
+  },
+  "records": []
+}

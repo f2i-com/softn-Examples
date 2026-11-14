@@ -1,0 +1,145 @@
+// Presentation projection. No authoritative route is included in V for an active parcel.
+function parcelWitness(p) {
+    if (!p)
+        return "Awaiting the next consignment.";
+    if (p.type === "hungry")
+        return p.fed ? "The mouth chews quietly. Its teeth remain teeth." : "The lower seam slowly opens. Something pink reaches out.";
+    if (p.type === "whisper")
+        return "Sound caption: a paper-thin voice says 'psst'. Nothing outside the parcel is speaking.";
+    if (p.type === "bees")
+        return "Sound caption: a layered buzz. The box vibrates; tiny wings emerge from an air hole.";
+    if (p.type === "runner")
+        return p.clamped ? "Small feet push uselessly against the clamp." : "Little shoes tap under the carton. It edges towards the exit.";
+    if (p.type === "teleport")
+        return p.clamped ? "The clamp holds it in one location. Two faint outlines remain." : "Two displaced outlines appear where the parcel was a moment ago.";
+    if (p.type === "infinite")
+        return "A small box casts a much larger rectangular shadow. The base bears a nested-box mark.";
+    if (p.type === "portal")
+        return "The seam contains a slowly turning patch of somewhere else.";
+    if (p.type === "density")
+        return "The carton seems ordinary. Its shadow contains more corners than the carton does.";
+    if (p.type === "reverse")
+        return "The paper address is printed backwards. A permanent barcode is still right-way round.";
+    if (p.type === "heavy")
+        return "The scale pan and desk both remember that landing.";
+    return p.type === "fragile" ? "Something small rattles once. Then apologises by remaining still." : "Brown paper. String. An almost convincing absence of movement.";
+}
+function publish() {
+    if (!S)
+        return;
+    let p = S.current;
+    let def = SHIFT_DEFS[S.stage];
+    let rules = rulesFor(S.stage, S.revision);
+    let overlay = S.phase !== "work" || paused || bookOpen || helpOpen || confirmReset;
+    let busy = !!S.transit || !!S.toolJob;
+    let face = p ? p.face : 0;
+    let activeFx = fx.ticks > 0 ? fx.kind : "";
+    let count = S.completed + (p ? 1 : 0);
+    let dial = 0;
+    if (S.machine.referenceOn)
+        dial = 1 + S.machine.bias;
+    else if (p && S.viewTool === "weigh") {
+        let ratio = S.toolJob && S.toolJob.kind === "weigh" ? 1 - S.toolJob.ticks / S.toolJob.total : 1;
+        dial = (p.weight + S.machine.bias) * ratio;
+    }
+    let location = "50%";
+    let top = "53%";
+    let scale = 1;
+    let rotate = -3;
+    let opacity = 1;
+    if (p && S.viewTool === "weigh" && !S.machine.referenceOn) {
+        location = "18%";
+        top = "35%";
+        scale = 0.65;
+        rotate = 0;
+    }
+    if (p && S.viewTool === "xray") {
+        location = "81%";
+        top = "45%";
+        scale = 0.63;
+        rotate = 0;
+    }
+    if (p && !p.clamped && p.type === "teleport" && S.viewTool !== "weigh" && S.viewTool !== "xray") {
+        location = ["50%", "40%", "59%"][p.position];
+        top = ["53%", "48%", "57%"][p.position];
+    }
+    if (S.transit) {
+        let t = S.transit;
+        let progress = 1 - t.ticks / t.total;
+        if (t.kind === "arrive") {
+            location = (10 + progress * 40) + "%";
+            top = (1 + progress * 52) + "%";
+            scale = 0.55 + progress * 0.45;
+            rotate = -9 + progress * 6;
+        }
+        else if (t.kind === "return") {
+            location = (92 - progress * 42) + "%";
+            top = (3 + progress * 50) + "%";
+            scale = 0.5 + progress * 0.5;
+        }
+        else {
+            let index = ROUTES.indexOf(t.route);
+            location = (50 + (12 + index * 25 - 50) * progress) + "%";
+            top = (53 + progress * 68) + "%";
+            scale = 1 - progress * 0.55;
+            opacity = 1 - progress * 0.65;
+            rotate = -3 + progress * 9;
+        }
+    }
+    let root = "po-root" + (settings.reducedMotion ? " reduced-motion" : "") + (overlay ? " frozen" : "") + (activeFx === "breach" ? " emergency" : "") + (p && (p.type === "infinite" || activeFx === "teleport") ? " temporal-disturbance" : "");
+    let crateClass = "carton" + (p ? " type-" + p.type : "") + (p && p.clamped ? " clamped" : "") + (p && p.fed ? " fed" : "") + (p && p.xrayed && S.viewTool === "xray" ? " is-xrayed" : "") + (p && p.flapOpened ? " flap-open" : "") + (activeFx === "rotate" ? " turning" : "") + (p && p.type === "infinite" ? " nest-depth-" + p.layers : "");
+    let evidence = [];
+    if (p) {
+        evidence = [
+            { label: "PERMANENT CODE", value: p.scanned ? p.code : "— not scanned", ready: p.scanned },
+            { label: "EXTERIOR MASS", value: p.weighed ? p.weightReading + " kg" + (S.machine.calibrated && p.weightCalibration === S.machine.calibration ? " / verified" : " / UNVERIFIED") : "— not weighed", ready: p.weighed },
+            { label: "INTERIOR MASS", value: p.xrayed ? p.innerWeight + " kg / X-ray" : "— not X-rayed", ready: p.xrayed },
+            { label: "BASE / WIDTH", value: p.measured ? p.width + " cm" + (p.type === "bees" ? (p.beePermit ? " / BEE-2" : " / NO PERMIT") : "") : "— rotate to base", ready: p.measured },
+            { label: "CERTIFICATION", value: p.stampInk ? "INSPECTED / " + p.stampInk.toUpperCase() : "— awaiting imprint", ready: !!p.stampInk }
+        ];
+    }
+    let circles = [];
+    for (let i = 0; i < def.types.length; i++)
+        circles.push({ id: i, label: String(i + 1), className: i < S.completed ? "ledger-box complete" : (i === S.completed && p ? "ledger-box current" : "ledger-box") });
+    let queue = [];
+    for (let i = 0; i < Math.min(2, S.queue.length); i++)
+        queue.push({ id: S.queue[i].id, serial: S.queue[i].serial, damaged: S.queue[i].labelDamaged, position: { left: (8 + i * 18) + "%" }, className: "waiting-box" + (S.queue[i].labelDamaged ? " label-missing" : "") });
+    let cages = [];
+    for (let i = 0; i < ROUTES.length; i++) {
+        let r = ROUTES[i];
+        cages.push({ id: r, key: String(i + 1), className: "route-cage cage-" + r.toLowerCase() + (S.transit && S.transit.route === r ? " cage-active" : ""),
+            electric: S.stage === 5 || S.stage === 7 ? ROUTES[(i + 1 + Math.floor(S.tick / 45) % 2) % 4] : r,
+            note: ["CITY SERVICE", "REGIONAL SERVICE", "MASS EXCEPTION", "SEALED HOLDING"][i] });
+    }
+    let stampText = rules.blackOnly ? "BLACK INK ONLY" : "RED + BLACK INK VALID";
+    let circular = rules.farSuspended ? "FAR SERVICE SUSPENDED. WF + RD → quarantine, including freight." : (rules.forbiddenWidth ? "WIDTH 33 cm SUSPENDED. All such parcels → quarantine. Black inspection ink only." : (S.stage === 5 ? "CALIBRATE THE SCALE. Trust brass destination plates, not electric signs." : (rules.hazards ? "LIVE BEES: Tuesday + BEE-2 permit only. Speech, teeth and portals → quarantine." : (rules.weight ? "OVER 10 kg → FREIGHT. Secure moving mail before dispatch." : "USE THE DIRECTORY. Stamp every inspected parcel before dispatch."))));
+    V = { rootClass: root, overlay: overlay, locked: overlay || busy, toolsDisabled: overlay || busy || !p,
+        dragDisabled: overlay || busy || !p, phase: S.phase, stageNumber: S.stage + 1, stageName: def.name, day: def.day, subtitle: def.subtitle, intro: def.intro, lesson: def.lesson,
+        progress: count + " / " + def.types.length, score: String(S.score).padStart(5, "0"), integrity: S.integrity, integrityStyle: { width: S.integrity + "%" },
+        circles: circles, queue: queue, cages: cages, hasParcel: !!p, slots: p ? [{ key: p.id + ":" + dragSerial }] : [],
+        serial: p ? p.serial : "NO CONSIGNMENT", recipient: p && p.inspected ? p.recipient : "Awaiting label inspection", street: p && p.inspected ? p.street : "Click the parcel or press I", district: p && p.inspected ? (p.labelDamaged ? "PAPER ADDRESS MISSING" : p.printedDistrict) : "Inspect / rotate / cross-reference",
+        labelPrefix: p ? (p.labelDamaged ? "??" : p.printedPrefix) : "", labelClass: p && p.type === "reverse" ? "shipping-label reverse-print" : "shipping-label",
+        labelDamaged: p ? p.labelDamaged : false, face: face, faceName: ["ADDRESS FACE", "REAR / INSPECTION FLAP", "BASE / PERMANENT MARKS"][face],
+        baseCode: p ? p.code : "", baseDimensions: p ? p.width + " W × " + p.length + " L × " + p.height + " H cm" : "", basePermit: p && p.type === "bees" ? (p.beePermit ? "BEE-2 / LIVE MAIL PERMIT" : "NO LIVE MAIL PERMIT") : "STANDARD POSTAGE",
+        rearSeal: p && p.type === "infinite" ? "▣ NESTED / SAFE FLAP" : "INSPECTION FLAP / OBSERVE FIRST",
+        flapLabel: p && p.type === "infinite" ? (p.layers ? "Open layer (" + p.layers + ")" : "Core exposed") : (p && p.flapOpened ? "Close flap" : "Open flap"),
+        nested: p ? p.type === "infinite" : false, nestedLayers: p ? p.layers : 0,
+        actualType: p ? p.type : "normal", witness: p && !p.inspected ? "Observe the parcel, then click it to record your observations." : parcelWitness(p), evidence: evidence,
+        parcelStyle: { left: location, top: top, opacity: opacity, transform: "translate(-50%, -50%) scale(" + scale + ") rotate(" + rotate + "deg)" }, cartonClass: crateClass,
+        stampInk: p ? p.stampInk : "", ink: S.ink, stampClass: p && p.stampInk ? "ink-imprint ink-" + p.stampInk : "ink-imprint hidden",
+        clamp: p ? p.clamped : false, fed: p ? p.fed : false,
+        tool: S.viewTool, toolBusy: !!S.toolJob, jobLabel: S.toolJob ? S.toolJob.kind.toUpperCase() + " IN PROGRESS" : "INSPECTION READY", scanActive: !!S.toolJob && S.toolJob.kind === "scan",
+        xrayActive: !!p && p.xrayed && S.viewTool === "xray", xrayLoading: !!S.toolJob && S.toolJob.kind === "xray",
+        scannerCode: p && p.scanned ? p.code : "─── ───", scannerFooter: p && p.coreScanned ? "CORE SERIAL VERIFIED" : (p && p.scanned ? "PERMANENT DISTRICT CODE" : "OPTICAL READER / PRESS E"),
+        xrayMass: p && p.xrayed ? p.innerWeight + " kg INSIDE" : "INTERIOR / NOT READ",
+        scaleValue: Math.round(dial * 10) / 10 + "", needleStyle: { transform: "rotate(" + (-115 + clamp(dial, 0, 25) * 9.2) + "deg)" }, scaleStatus: S.machine.calibrated ? "VERIFIED" : "VERIFY BEFORE USE", reference: S.machine.referenceOn, calibrated: S.machine.calibrated,
+        separator: S.machine.separator, jam: S.machine.jam, receipt: S.lastReceipt, hasReceipt: !!S.lastReceipt,
+        message: S.message, saveStatus: saveStatus, soundUnavailable: soundUnavailable, soundLabel: settings.muted ? "Sound off" : "Sound on", motionLabel: settings.reducedMotion ? "Motion reduced" : "Motion full",
+        fx: activeFx, stampMoving: activeFx === "stamp", dragActive: dragActive,
+        supervisor: activeFx === "rejection" || activeFx === "breach" || activeFx === "swarm" || S.ambient === 3,
+        ambient: S.ambient, ambientMoving: S.ambientTicks > 0, clockHand: { transform: "rotate(" + (S.tick / 80 % 360) + "deg)" },
+        circular: circular, stampRule: stampText, revision: S.revision, rules: ruleRows(rules), directory: DIRECTORY,
+        noticeTitle: S.stage === 7 ? "FAR service is suspended." : "Two small amendments.",
+        noticeBody: S.stage === 7 ? "All parcels addressed to WF / WEST FEN or RD / RED DALE now go to QUARANTINE. This overrides weight and dimensional freight. LOCAL service is unaffected." : "1. RED inspection ink is now INVALID. Use the BLACK pad. 2. Parcels EXACTLY 33 cm wide go to QUARANTINE, regardless of mass or address. Measure WIDTH on the base, not length.",
+        reportTitle: S.reportTitle, reportBody: S.reportBody, shiftScore: S.shiftScore, cleanCases: S.cleanCases, mistakes: S.shiftMistakes, incidents: S.incidents.slice(0, 6), best: profile.best };
+}

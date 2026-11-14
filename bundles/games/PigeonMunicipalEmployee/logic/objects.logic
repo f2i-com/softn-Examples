@@ -1,0 +1,110 @@
+// Physical forms, beak inventory, airborne notices and wind-blown originals.
+function itemById(id) { for(let i=0;i<S.items.length;i++)if(S.items[i].id===id)return S.items[i];return null; }
+function carriedObject() { return S.p.carry==="form"?S.form:itemById(S.p.carry); }
+function syncCarried() {
+ let obj=carriedObject();if(!obj)return;
+ obj.x=S.p.x+S.p.facing*17;obj.y=S.p.y+2;obj.z=S.p.z+15;obj.vx=0;obj.vy=0;obj.vz=0;
+}
+function takeForm() {
+ if(S.electionReady || S.phase!=="play"){say("No further forms required. Procurement has fainted.");return;}
+ if(S.p.carry && S.p.carry!=="form"){say("Your beak is full. Deliver or drop the item first [C].");return;}
+ if(S.form.location==="beak"){say("You are already carrying your report.");return;}
+ if(S.form.location!=="rack")say("Replacement issued. The old copy is void. Existing checks and stamp retained.");
+ else say("Form obtained. It weighs more than you do, emotionally.");
+ S.form.location="beak";S.form.serial++;S.form.airdrop=false;S.p.carry="form";syncCarried();sound("paper",0.32);persist();
+}
+function placeForm() {
+ if(S.p.carry!=="form"){say(S.form.location==="board"?"Walk to each little checkbox and peck [E]. Pick the page up with C afterwards.":"Carry your report here, then peck to lay it on the clipboard.");return;}
+ S.form.location="board";S.form.x=310;S.form.y=319;S.form.z=0;S.form.vx=0;S.form.vy=0;S.form.vz=0;
+ S.p.carry="";sound("paper",0.3);
+ say(requirementsReady()?"Report placed. Peck the three boxes along the bottom of the clipboard.":"Report placed safely. Complete your fieldwork before certifying it.");
+}
+function checkForm(index) {
+ if(S.form.location!=="board"){placeForm();return;}
+ if(!requirementsReady()){say("Certification refused: you have not completed all required observations.");sound("reject",0.15);return;}
+ if(S.form.checks[index]){say("This box is already pecked. Do not double-bird the paperwork.");return;}
+ S.form.checks[index]=true;S.p.peck=0.25;spawnDust(S.p.x,S.p.y,3,"ink");sound("pen",0.4);
+ say(checksReady()?"All three boxes certified. Pick up the form [C], carry it to the red press, then hop [Space].":"Checkbox certified. Two feet; impeccable handwriting.");persist();
+}
+function dropCarried(forced) {
+ let obj=carriedObject();if(!obj)return false;
+ let id=S.p.carry;
+ obj.x=S.p.x+S.p.facing*17;obj.y=S.p.y;obj.z=S.p.z+14;
+ obj.vx=S.p.vx*0.58+(forced?60:0);obj.vy=S.p.vy*0.58;obj.vz=forced?24:-16;
+ obj.airdrop=!forced && !groundReady() && S.p.z>18;obj.rest=0;
+ if(id==="form")obj.location="ground";else obj.active=true;
+ S.p.carry="";sound("paper",0.25);
+ if(forced)say("Gust! Your report is loose. Recover it with C, or request a replacement at the forms rack.");
+ return true;
+}
+function carryAction() {
+ // A mission original may replace the report in the beak. The report remains
+ // a real recoverable object, rather than being silently deleted.
+ let priority=null;
+ for(let i=0;i<S.items.length;i++) {
+  let it=S.items[i];
+  if(it.active && (it.id==="awningpage" || it.id==="minutes") && near(it,57,29)) {
+   if(it.id==="minutes" && !S.archiveUnlocked)continue;
+   priority=it;break;
+  }
+ }
+ if(S.p.carry) {
+  if(S.p.carry==="form" && priority) {
+   dropCarried(false);S.p.carry=priority.id;priority.active=false;syncCarried();say("Original secured. Your report is resting where you exchanged it.");sound("paper",0.3);return;
+  }
+  dropCarried(false);return;
+ }
+ if(priority) { S.p.carry=priority.id;priority.active=false;syncCarried();sound("paper",0.3);say("Original in beak. Deliver it to the archive window.");return; }
+ if((S.form.location==="ground" || S.form.location==="board") && near(S.form,64,30)) {
+  S.form.location="beak";S.p.carry="form";S.form.airdrop=false;syncCarried();sound("paper",0.3);return;
+ }
+ if(near(placeById("rack"),52) && S.form.location==="rack"){takeForm();return;}
+ let best=null,range=54;
+ for(let j=0;j<S.items.length;j++) {
+  let it=S.items[j];
+  if(it.id==="minutes" && !S.archiveUnlocked){if(near(it,58,30))say("The archive clip is locked. Use your access card at its window first.");continue;}
+  if(it.active && near(it,range,28)) {best=it;range=distance(S.p,it);}
+ }
+ if(best){best.active=false;S.p.carry=best.id;syncCarried();sound("paper",0.24);}
+ else {S.p.peck=0.22;say("Nothing light enough within beak range. Forms, loose pages and chips qualify.");}
+}
+function deliverOriginal() {
+ let id=S.p.carry;
+ if(id==="awningpage" && S.mission===4) {
+  itemById(id).active=false;S.p.carry="";completeRequirement("awningPage");say("Awning page received by the archive. Recover your report, then certify it at council.");return true;
+ }
+ if(id==="minutes" && S.mission===8 && S.archiveUnlocked) {
+  itemById(id).active=false;S.p.carry="";completeRequirement("minutes");addEvidence("duck4");return true;
+ }
+ return false;
+}
+function stepLooseObject(o,dt,isForm) {
+ if(!isForm && o.id==="minutes" && !S.archiveUnlocked)return;
+ if((isForm && o.location!=="ground") || (!isForm && (!o.active || S.p.carry===o.id)))return;
+ let oldZ=o.z;
+ let wind=S.wind.strength;
+ let paper=isForm || o.type==="paper";
+ o.vx+=(paper?Math.cos(S.wind.angle)*wind*35:0)*dt;
+ o.vy+=(paper?Math.sin(S.wind.angle)*wind*35:0)*dt;
+ o.vx*=Math.max(0,1-dt*(o.z>3?0.8:4));o.vy*=Math.max(0,1-dt*(o.z>3?0.8:4));
+ o.x=clamp(o.x+o.vx*dt,55,WORLD_W-55);o.y=clamp(o.y+o.vy*dt,110,WORLD_H-40);
+ o.vz-=250*dt;o.z+=o.vz*dt;
+ if(isForm && tryServeNotice(o,oldZ))return;
+ let surfaces=allSurfaces(),floor=0;
+ for(let i=0;i<surfaces.length;i++) {
+  let r=surfaces[i];if(rectContains(o,r,0) && oldZ>=r.z-1 && o.z<=r.z && r.z>floor)floor=r.z;
+ }
+ if(o.z<=floor) {o.z=floor;o.vz=0;o.rest=(o.rest||0)+dt;if(isForm)o.airdrop=false;}
+ if(paper && waterAt(o) && o.z===0 && (o.rest||0)>4) {
+  o.x=1110;o.y=405;o.vx=0;o.vy=0;o.rest=0;
+  say("Parks staff fished the page out. It is waiting on the west pond bank.");
+ }
+}
+function stepObjects(dt) {
+ stepLooseObject(S.form,dt,true);
+ for(let i=0;i<S.items.length;i++)stepLooseObject(S.items[i],dt,false);
+ if(S.p.carry==="form" && S.p.z>85 && S.wind.strength>0.85 && S.time-S.wind.lastLoss>34 && upgradeLevel("bag")===0 && !settings.gentle) {
+  // Only a high-speed swoop loosens the un-clipped sheet, not ordinary flight.
+  if(S.p.swoop>0){S.wind.lastLoss=S.time;dropCarried(true);}
+ }
+}

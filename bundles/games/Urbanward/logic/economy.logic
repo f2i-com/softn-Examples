@@ -1,0 +1,113 @@
+function uwForecast() {
+    let taxR = 0, taxC = 0, taxI = 0, upkeep = 0, policyCost = 0, roadCost = 0, utilityCost = 0, serviceCost = 0;
+    for (let i = 0; i < uwWorld.tiles.length; i = i + 1) {
+        let t = uwWorld.tiles[i], f = t.build ? UW_FACILITIES[t.build] : null, access = uwNet.access[i];
+        taxR += t.pop * 2.6 * (uwWorld.tax[0] / 9) * (0.8 + uwNet.value[i] / 200);
+        if (access >= 0 && uwNet.power[i] > 0.3 && uwNet.water[i] > 0.25) {
+            let group = uwNet.groups[uwNet.roadIds[access]], occupied = group.jobs > 0 ? Math.min(1, group.workers / group.jobs) : 0;
+            let jobs = uwJobCapacity(t) * occupied;
+            if (t.zone === 2 || t.zone === 4)
+                taxC += jobs * 3.7 * uwWorld.tax[1] / 9;
+            if (t.zone === 3)
+                taxI += jobs * 3.4 * uwWorld.tax[2] / 9;
+        }
+        if (t.road)
+            roadCost += (t.road === 2 ? 1.6 : 0.65) * uwWorld.funding.roads / 100 + (t.wet ? 1.5 : 0);
+        if (t.wire || t.pipe)
+            roadCost += 0.05;
+        if (f) {
+            let amount = f.upkeep;
+            if (f.power)
+                utilityCost += amount * uwWorld.funding.power / 100;
+            else if (f.water)
+                utilityCost += amount * uwWorld.funding.water / 100;
+            else
+                serviceCost += amount * uwWorld.funding.services / 100;
+        }
+    }
+    for (let k = 0; k < UW_POLICIES.length; k = k + 1)
+        if (uwWorld.policies[UW_POLICIES[k].id])
+            policyCost += UW_POLICIES[k].cost;
+    let busCost = 0;
+    if (uwWorld.transitMode === "routes")
+        for (let r = 0; r < uwWorld.busRoutes.length; r++)
+            if (uwWorld.busRoutes[r].enabled) busCost += uwWorld.busRoutes[r].buses * 45;
+    let principal = Math.min(uwWorld.debt, 333.34), interest = uwWorld.debt * 0.004;
+    upkeep = roadCost + utilityCost + serviceCost + busCost;
+    let income = Math.round(taxR + taxC + taxI), expense = Math.round(upkeep + policyCost + principal + interest);
+    return { buses: busCost, income: income, expense: expense, net: income - expense, taxR: Math.round(taxR), taxC: Math.round(taxC), taxI: Math.round(taxI), upkeep: Math.round(upkeep), roads: Math.round(roadCost), utilities: Math.round(utilityCost), services: Math.round(serviceCost), policies: policyCost, debt: Math.round(principal + interest), principal: principal };
+}
+function uwCloseAccounts() {
+    let forecast = uwForecast();
+    uwWorld.monthly = forecast;
+    uwWorld.funds = Math.round(uwWorld.funds + forecast.net);
+    uwWorld.debt = Math.max(0, Math.round((uwWorld.debt - forecast.principal) * 100) / 100);
+    if (uwWorld.funds < 0 && !uwWorld.bailout) {
+        uwWorld.funds += 15000;
+        uwWorld.bailout = true;
+        uwNews("Regional treasury approves one emergency grant", "$15,000 prevents an immediate cash crisis. This rescue is available only once per city. Review taxes and running costs.", "finance");
+    }
+    if (uwWorld.funds < 0) {
+        paused = true;
+        uwNotify("The treasury is overdrawn. Simulation paused: reduce upkeep, adjust taxes or issue a bond before resuming.", "bad");
+    }
+}
+function uwAdjustTax(which, amount) {
+    if (!uwWorld)
+        return;
+    let k = Number(which);
+    if (k < 0 || k > 2)
+        return;
+    uwWorld.tax[k] = uwClamp(uwWorld.tax[k] + amount, 3, 18);
+    uwComputeDemand();
+    uwComputeHappiness();
+    uwRefreshUI();
+}
+function uwAdjustFunding(key, amount) {
+    if (!uwWorld || !(key in uwWorld.funding))
+        return;
+    uwWorld.funding[key] = uwClamp(uwWorld.funding[key] + amount, 40, 120);
+    uwRecalculate();
+    uwComputeHappiness();
+    uwStaticDirty = true;
+    uwRenderStatic();
+    uwRefreshUI();
+}
+function uwTogglePolicy(id) {
+    if (!uwWorld || !(id in uwWorld.policies))
+        return;
+    uwWorld.policies[id] = !uwWorld.policies[id];
+    uwRecalculate();
+    uwComputeHappiness();
+    uwComputeDemand();
+    uwRefreshUI();
+}
+function uwBorrow() {
+    if (!uwWorld)
+        return;
+    if (uwWorld.debt > 40000) {
+        uwNotify("The council debt ceiling is $60,000. Repay existing principal before borrowing again.", "bad");
+        return;
+    }
+    uwWorld.debt += 20000;
+    uwWorld.funds += 20000;
+    uwUndo = [];
+    canUndo = false;
+    uwNews("Council issues a $20,000 municipal bond", "Debt service includes $333.34 principal per month across outstanding debt, plus 0.4% monthly interest. Early repayment is permitted.", "finance");
+    uwRefreshUI();
+}
+function uwRepayDebt() {
+    if (!uwWorld || uwWorld.debt <= 0)
+        return;
+    let amount = Math.min(uwWorld.debt, 20000);
+    if (uwWorld.funds < amount) {
+        uwNotify("The treasury cannot afford that repayment.", "bad");
+        return;
+    }
+    uwWorld.funds -= amount;
+    uwWorld.debt -= amount;
+    uwUndo = [];
+    canUndo = false;
+    uwNotify(uwMoney(amount) + " of principal repaid.", "good");
+    uwRefreshUI();
+}

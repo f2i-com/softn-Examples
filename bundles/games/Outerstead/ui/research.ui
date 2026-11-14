@@ -3,7 +3,7 @@
   <div className="os-card"><span className="os-label">ACTIVE PROJECT</span><div className="os-small os-amber" style={{ marginTop: "5px" }}>{researchSummary}</div></div>
   #each (r in researchCards) key={r.id}
     <div className="os-research-card" osactive={String(r.active)} osdone={String(r.done)}>
-      <div className="os-between"><span className="os-label">{r.branch}</span><span className="os-tiny os-dim">{r.progress} / {r.cost}</span></div>
+      <div className="os-between"><span className="os-label">{r.branch}</span><span className="os-tiny os-dim">{r.progress + " / " + r.cost}</span></div>
       <div className="os-research-name" style={{ marginTop: "6px" }}>{r.name}</div>
       <div className="os-item-desc">{r.description}</div>
       <div className="os-tech-progress"><i style={r.barStyle} /></div>

@@ -1,0 +1,106 @@
+// Traffic watchers, run by stepSimulation every step after the trucks have moved. Robot trucks
+// never collide with each other (clearanceScore in world/collision.logic skips them): they keep
+// apart by same-lane spacing, 15 m queue slots and one truck per bay. They do stop for anything
+// else in their lane (a person, the ute, Kevin, a truck the player drives or has parked), and wait
+// as long as it takes, because they never steer round anything. fleetWatchdog breaks a jam nothing
+// explains; laneWatch tells the player when they are the reason for the wait.
+// State: gridlock and lastLaneCall are module variables, not saved, so they restart on load; each
+// truck's t.waitFor.
+
+// ---------- Fleet watchdog ----------
+
+// The last resort, so a shift can never silently stop. A jam is two or more working robot trucks
+// (active, not held, faulted or out of fuel), all below 0.2 m/s, none loading or tipping, and at
+// least one of them blocked or manoeuvring, with nothing to explain it (the excuses below). After
+// 25 s of jam, dispatch untangles them: each is snapped straight onto its route pose
+// (setTruckPosition without dt), car-park departures are cancelled, and the radio says so.
+// It is meant never to be needed. The one jam known to reach it (an empty truck leaving the car
+// park and a truck that kept its load overnight waiting on each other at the start of a shift) is
+// fixed in pitBays; if the radio ever says it untangled the fleet, that is a new bug worth finding.
+var gridlock = 0; // seconds the current unexplained jam has lasted
+
+function fleetWatchdog(dt) {
+  var active = S.trucks.filter(function (t) {
+    return t.active && t.phase !== 'manual' && !t.stopped && !t.fault && t.fuel > 0;
+  });
+  var stuck =
+    active.length >= 2 &&
+    active.every(function (t) {
+      return t.speed < 0.2 && t.phase !== 'loading' && t.phase !== 'dumping';
+    }) &&
+    active.some(function (t) {
+      return t.trafficBlocked || t.positioning;
+    });
+  // A good reason to wait is not a jam: a fault, the loader or crusher out, a full hopper, a person.
+  // In full: Kevin on the road, any open alert, the crusher's interlock, the loader unavailable or
+  // relocating, less than a truckload (80 t) of hopper room, no ore left, the player driving the
+  // ute anywhere, the trust-fall memo's pause, a truck without a charged operator, or the player or
+  // the ute within 26 m of one of these trucks.
+  var excuse =
+    kevinOnRoad() ||
+    S.alerts.length > 0 ||
+    !S.crusher ||
+    !loaderAvailable() ||
+    S.deployment.remaining > 0 ||
+    hopperSpace() < 80 ||
+    S.extraction <= 0 ||
+    S.player.mode === 'ute' ||
+    S.memoFx.pauseUntil > S.time ||
+    active.some(function (t) {
+      var b = botFor(t);
+      return !b || b.battery <= 0 || dist2(S.player, t) < 26 || dist2(S.ute, t) < 26;
+    });
+  gridlock = stuck && !excuse ? gridlock + dt : 0;
+  if (gridlock < 25) return;
+  gridlock = 0;
+  for (var t of active) {
+    t.departureStage = 0;
+    t.positioning = false;
+    t.trafficBlocked = false;
+    setTruckPosition(t);
+  }
+  notify(
+    'DISPATCH',
+    'Traffic jam at the tip, cleared. Gary has untangled four hundred tonnes of truck and will not say how.'
+  );
+}
+
+// ---------- Lane watch ----------
+
+// Robot trucks wait for people and parked utes, politely and indefinitely. After eight seconds of
+// waiting on you, the driver says so.
+// t.waitFor counts the seconds each active robot truck has been blocked (t.trafficBlocked). From
+// 8 s on, if the player is on foot within 26 m of it, or the ute stands unattended within 26 m,
+// its driver says so with a toast and a radio line. At most one call per 40 s for the whole fleet;
+// lastLaneCall is the S.time of the last one (it starts at -100 so the first is never held back;
+// secondsSince treats one left over from an earlier shift as long ago).
+// It only talks: the truck keeps waiting until the lane is clear.
+var lastLaneCall = -100;
+
+function laneWatch(dt) {
+  var p = S.player,
+    ute = S.ute;
+  for (var t of S.trucks) {
+    t.waitFor = t.active && t.trafficBlocked && t.phase !== 'manual' ? (t.waitFor || 0) + dt : 0;
+    if (t.waitFor < 8 || secondsSince(lastLaneCall) < 40) continue;
+    var byYou = p.mode === 'foot' && dist2(p, t) < 26,
+      byUte = p.mode !== 'ute' && dist2(ute, t) < 26;
+    if (!byYou && !byUte) continue;
+    lastLaneCall = S.time;
+    var b = botFor(t),
+      who = b ? b.name.toUpperCase() : t.external_id;
+    toast(t.external_id + ' is waiting for you to move', 'memo');
+    notify(
+      who,
+      byUte
+        ? pick([
+            'The ute is parked in my lane. I will wait. I am very good at waiting.',
+            'There is an unattended ute in the haul lane. I have started composing a sign.'
+          ])
+        : pick([
+            'There is a human in my lane. I will wait. Forever, if necessary.',
+            'Hello. You are standing in the haul road. I am a very large truck. No pressure.'
+          ])
+    );
+  }
+}

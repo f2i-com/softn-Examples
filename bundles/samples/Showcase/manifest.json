@@ -1,7 +1,8 @@
 {
   "name": "SoftN Showcase",
   "version": "1.1.0",
-  "description": "Charts, animations, interactive widgets, and articulated PBR 3D scenes the runtime ships, on four pages, in light and dark",
+  "description": "UI controls, charts, animations, drag-and-drop widgets, and articulated PBR 3D scenes the runtime ships, in light and dark",
+  "author": "SoftN",
   "main": "ui/main.ui",
   "icon": "assets/icon.svg",
   "files": {
@@ -11,6 +12,7 @@
       "ui/pages/ChartsPage.ui",
       "ui/pages/AnimationsPage.ui",
       "ui/pages/InteractivePage.ui",
+      "ui/pages/ControlsPage.ui",
       "ui/pages/Scene3DPage.ui"
     ],
     "logic": [

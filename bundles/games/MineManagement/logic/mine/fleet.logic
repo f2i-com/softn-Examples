@@ -1,0 +1,306 @@
+// The robot haul fleet: the orders behind PIT's Fleet tab (dispatch, hold, recall, driving policy,
+// locate), the queues for the two bays (pitBays) and the moment a tip becomes production
+// (completeDump). The trucks are S.trucks (made by freshTruck in core/state.logic); route.logic
+// turns a truck's phase and progress into a place on the haul road, and stepSimulation
+// (simulation.logic) drives the cycle.
+// State: on each truck, active, stopped, recall, policy, operator_id (with the robot's assigned),
+// queueAt, service, the departure fields and the cycle statistics (tonnes, loads, cycleStart,
+// lastCycle, version); on S, the delivery totals (S.tonnes, S.lifetimeTonnes, S.loads,
+// S.targetAnnounced) and the hopper's tonnes and value (S.plant). selectedTruck
+// (declared in core/state.logic) is the Fleet tab's selection.
+//
+// t.phase is one of eight strings; validState (core/persistence.logic) rejects any other, and
+// phaseLabel (core/ui-state.logic) names them for the player:
+//   standby     parked and inactive. Usually in the car park by the crusher; HT-01 starts a new
+//               game in the loading bay; a truck the player left stays put (t.parkedManual); a
+//               truck that still holds ore spends the night in its tip-queue slot.
+//   queued      waiting for the loading bay, in a 15 m slot on the empty lane short of the bay.
+//   loading     in the loading bay, taking 20 t bucket passes.
+//   hauling     driving loaded up the haul road; t.progress rises from 0 (Bench 1) to 1 (crusher).
+//   dump_queue  waiting for the tip bay, in a 15 m slot on the loaded lane short of the bay.
+//   dumping     in the tip bay, tipping into the crusher's hopper.
+//   returning   driving empty back down; t.progress falls from 1 to 0.
+//   manual      the player is driving it. t.active is false and the simulation leaves it alone.
+// Transitions: pitDispatch (standby into the cycle); pitBays (queued -> loading, dump_queue ->
+// dumping); stepSimulation (loading -> hauling -> dump_queue, dumping -> returning -> queued, or
+// dumping -> standby when recalled); advanceExcavators (a manual bucket that fills a robot truck
+// sends it hauling); player/interactions.logic (into and out of manual, and the tow); nextShift
+// (everyone to standby). A robot truck works the cycle while t.active; t.stopped holds it where it
+// is, payload and all.
+
+// ---------- Dispatch orders (PIT Fleet tab) ----------
+
+// The Fleet tab's main button for a truck (tablet/fleet.ui): Dispatch a parked truck, or Hold /
+// Release an active one. Dispatching finds an operator if the truck has none, refuses a truck
+// that needs service, and puts it into the phase that fits its load and position. Returns true if
+// the order was carried out. Also called by dispatchAll.
+function pitDispatch(id) {
+  if (!S || screen !== 'play') return false;
+  var t = getTruck(id);
+  if (!t || t.phase === 'manual') return false;
+  if (t.active) {
+    t.stopped = !t.stopped;
+    notify('DISPATCH', t.external_id + (t.stopped ? ' holding position.' : ' released.'));
+    return true;
+  }
+  // Take the first unassigned robot. robot.assigned is a truck id, 0 when unassigned, or -1 on
+  // loader duty at the excavator.
+  if (!t.operator_id) {
+    for (var i = 0; i < S.robots.length; i++) {
+      var r = S.robots[i];
+      if (r.assigned === 0) {
+        t.operator_id = r.id;
+        r.assigned = t.id;
+        break;
+      }
+    }
+  }
+  var bot = botFor(t);
+  if (!bot) {
+    notify(
+      'DISPATCH',
+      t.external_id +
+        ' needs an operator. Recruit one in Workforce. They are robots, so the interview is mostly a firmware check.',
+      'warning'
+    );
+    return false;
+  }
+  // Battery, condition and fuel are percentages. The operator stays assigned if the truck is
+  // refused here.
+  if (bot.battery < 8 || t.health < 15 || t.fuel < 3 || t.fault) {
+    notify(
+      'DISPATCH',
+      'Service ' + t.external_id + ' before releasing it. It is making a noise that sounds like a question.',
+      'warning'
+    );
+    return false;
+  }
+  // An empty truck in the car park (progress > 0.9 is the last tenth of the route, about 76 m)
+  // leaves in two stages, run by setTruckPosition: back 14 m straight out of its space (stage 1),
+  // then drive onto its route pose (stage 2).
+  if (t.phase === 'standby' && !t.parkedManual && t.progress > 0.9 && !(t.payload > 0)) {
+    t.departureStage = 1;
+    t.departureX = t.x;
+    t.departureZ = t.z + 14;
+    t.positioning = true;
+  }
+  t.parkedManual = false;
+  t.parkBrake = false;
+  t.fillRequested = false;
+  t.active = true;
+  t.stopped = false;
+  t.recall = false;
+  // A truck still carrying ore at the crusher end joins the tip queue, so overnight loads wait their
+  // turn instead of every truck manoeuvring into the bay at once. Any other loaded truck hauls; an
+  // empty one returns to the pit, or joins the load queue if within 2% (about 15 m) of the bay.
+  t.phase =
+    t.payload > 0
+      ? t.progress > 0.9
+        ? 'dump_queue'
+        : 'hauling'
+      : t.progress > 0.02
+        ? 'returning'
+        : 'queued';
+  // Queues are first come, first served; the id term keeps trucks dispatched together in id order.
+  t.queueAt = S.time + t.id * 0.01;
+  t.cycleStart = S.time;
+  t.version++; // the record version in the PIT export (pit-export.logic)
+  S.tutorial.dispatch = true;
+  notify(
+    bot.name.toUpperCase(),
+    pick([
+      'Route received. Commencing an extremely normal shift.',
+      'Route received. I have read the route twice and the sign about the route once.',
+      'On my way. If anyone needs me I will be driving in a big loop, forever.',
+      'Dispatch acknowledged. Engaging professional mode. It looks the same as normal mode.'
+    ])
+  );
+  return true;
+}
+
+// "Start fleet" (Fleet, Operations, Workforce and Field guide tabs): dispatches every truck that is
+// not already active. A truck that cannot go says why on the radio.
+function dispatchAll() {
+  for (var i = 0; i < S.trucks.length; i++) if (!S.trucks[i].active) pitDispatch(S.trucks[i].id);
+  refreshUI();
+}
+
+// "Return & park" (Fleet tab), and recallOperator (Workforce tab). The truck parks in the car park
+// after its next tip (stepSimulation's dumping step), so an empty truck loads and hauls once more
+// first; then its operator charges. Also releases a hold. The next dispatch clears the recall.
+function recallTruck(id) {
+  var t = getTruck(id);
+  if (!t || t.phase === 'manual') return;
+  t.recall = true;
+  t.stopped = false;
+  notify('DISPATCH', t.external_id + ' will park at the surface after unloading.');
+  refreshUI();
+}
+
+// Cycles the driving policy: cautious -> balanced -> urgent (Fleet tab). In stepSimulation urgent
+// drives 22% faster and cautious 20% slower, fuel burn scales the same way, and urgent wears the
+// truck four times as fast.
+function setPolicy(id) {
+  var t = getTruck(id);
+  if (!t) return;
+  var options = ['cautious', 'balanced', 'urgent'];
+  t.policy = options[(options.indexOf(t.policy) + 1) % 3];
+  notify('DISPATCH', t.external_id + ': ' + t.policy + ' driving.');
+  refreshUI();
+}
+
+// "Locate" on the Fleet tab and the truck markers on the Operations map: selects the truck and
+// puts a waypoint on it that follows its reported position (trackUnit in workforce.logic).
+function selectTruck(id) {
+  selectedTruck = id;
+  var t = getTruck(id);
+  if (t) {
+    trackUnit('truck', id, t.external_id);
+  }
+  refreshUI();
+}
+
+// ---------- Bays ----------
+
+// Hands each bay to the head of its queue. Runs once per simulation step, after the trucks have
+// worked their phases and before they move (stepSimulation). One truck per bay. A bay is busy
+// while any truck, held or not, is loading or tipping in it (a robot phase or the player's manual
+// timer); until a robot truck that has just left is 25 m clear of it; and while a player-driven or
+// parked truck stands within 13 m of the bay. A truck still leaving the car park is 'returning' at
+// progress 1 too, but it isn't in the tip bay, so it doesn't count: the departure waits for the tip
+// queue to clear (setTruckPosition in route.logic), and counting it here as well held both up.
+// Queues are first come, first served (simQueueOrder) and only the head is considered: nobody
+// overtakes a head truck that cannot go yet, for example because its payload does not fit in the
+// hopper. Held, faulted or fuel-less trucks, and trucks whose operator is missing or flat, drop out
+// of the queue while they stay in its phase (and keep their slot, see truckRoutePose).
+// The player's own loading and tipping check the bays through bayOwner (bays.logic) instead.
+function pitBays() {
+  var loadingBusy = false,
+    dumpingBusy = false,
+    loadQueue = [],
+    dumpQueue = [];
+  for (var i = 0; i < S.trucks.length; i++) {
+    var t = S.trucks[i];
+    // (20, -11) and (74, 142) are where a robot truck stands to load and to tip: the route's two
+    // ends, 4.4 m into the loaded lane. dist2 is the ground distance in metres (not squared).
+    if (
+      t.phase === 'loading' ||
+      t.manualLoad ||
+      (t.phase === 'hauling' && t.progress * routeTotal < 25) ||
+      ((t.phase === 'manual' || t.phase === 'standby') && dist2(t, { x: 20, z: -11 }) < 13)
+    )
+      loadingBusy = true;
+    if (
+      t.phase === 'dumping' ||
+      t.manualTip ||
+      (t.phase === 'returning' && !t.departureStage && (1 - t.progress) * routeTotal < 25) ||
+      ((t.phase === 'manual' || t.phase === 'standby') && dist2(t, { x: 74, z: 142 }) < 13)
+    )
+      dumpingBusy = true;
+    if (!t.active || t.stopped || t.fault || t.fuel <= 0) continue;
+    var bot = botFor(t);
+    if (!bot || bot.battery <= 0) continue;
+    if (t.phase === 'queued') loadQueue.push(t);
+    if (t.phase === 'dump_queue') dumpQueue.push(t);
+  }
+  loadQueue.sort(simQueueOrder);
+  dumpQueue.sort(simQueueOrder);
+  // Loading also needs the loader: not being driven by the player, available (not held, relocating
+  // or broken down), its manual bucket empty (that ore must go into a truck first), and ore left at
+  // the face. The truck snaps to progress 0 and manoeuvres into the bay before the first pass.
+  if (
+    !loadingBusy &&
+    loadQueue.length &&
+    !manualLoader() &&
+    loaderAvailable() &&
+    S.manualExcavator.bucket === 0 &&
+    S.extraction > 0
+  ) {
+    var l = loadQueue[0];
+    l.phase = 'loading';
+    l.service = 0;
+    l.progress = 0;
+  }
+  // Tipping needs the crusher running and room in the hopper for the whole payload.
+  if (!dumpingBusy && dumpQueue.length && S.crusher && hopperSpace() + 0.001 >= dumpQueue[0].payload) {
+    var d = dumpQueue[0];
+    d.phase = 'dumping';
+    d.service = 0;
+    d.progress = 1;
+  }
+}
+
+// ---------- Deliveries ----------
+
+// Credits one tip, from a robot truck (stepSimulation's dumping step) or the player
+// (advanceManualTip in bays.logic). Production is recognised here, at the tip: the shift's tonnes
+// (S.tonnes, which the target and the production contract count), lifetime tonnes, the truck's own
+// totals, the load log and the hopper. The money is not paid yet: the load's value goes into the
+// hopper with it and is paid out as the crusher processes it (advanceCrusher in plant.logic).
+// Does nothing if the tray is empty or the hopper cannot take the whole load; callers check the
+// hopper before a tip starts.
+function completeDump(t) {
+  ensureOperations();
+  var tonnes = Math.min(t.capacity, Math.max(0, t.payload));
+  if (tonnes <= 0 || hopperSpace() + 0.001 < tonnes) return;
+  ensureProgress();
+  // Tipped by the player: counts for the manual contract and the Owner operator badge.
+  if (t.phase === 'manual') {
+    S.shiftStats.manualTonnes += tonnes;
+    S.career.manualTonnes += tonnes;
+  }
+  S.tonnes += tonnes;
+  S.lifetimeTonnes += tonnes;
+  t.tonnes += tonnes;
+  t.loads++;
+  // Sale value in dollars: $39 a tonne plus up to $16 more for the ore grade (S.oreGrade, 0 to 1).
+  var value = Math.round(tonnes * (39 + S.oreGrade * 16));
+  S.plant.hopper += tonnes;
+  S.plant.value += value;
+  // The load log for the PIT export, newest first: up to 120 in memory, the latest 25 in a save.
+  S.loads.unshift({
+    id: S.nextId++,
+    shift: S.shift,
+    truck_id: t.id,
+    truck_code: t.external_id,
+    route_id: 1,
+    material: 'Copper ore',
+    tonnes: nround(tonnes),
+    loaded_at: t.loadedAt || 0,
+    dumped_at: S.time,
+    source: 'SIMULATED GAME DATA'
+  });
+  if (S.loads.length > 120) S.loads = S.loads.slice(0, 120);
+  t.payload = 0;
+  t.lastCycle = S.time - t.cycleStart; // seconds from dispatch or the last tip, for the Fleet tab
+  t.cycleStart = S.time;
+  S.tutorial.delivery = true;
+  notify(
+    'WEIGHBRIDGE',
+    t.external_id +
+      ' tipped ' +
+      Math.round(tonnes) +
+      ' t into the hopper. ' +
+      pick([
+        'The crusher says thank you.',
+        'The rocks will be processed into money shortly.',
+        'Lovely load. Very rocky.',
+        'Hopper fed. Hopper happy.'
+      ])
+  );
+  sfx('dump');
+  ensureFun();
+  celebrateDelivery(t, tonnes);
+  // Announced once a shift (nextShift clears S.targetAnnounced).
+  if (S.tonnes >= S.target && !S.targetAnnounced) {
+    S.targetAnnounced = true;
+    notify(
+      'HEAD OFFICE',
+      'TARGET MET. Clive is doing a little dance in a meeting room. Keep hauling for extra ore money, or end the shift in PIT.',
+      'success'
+    );
+    sfx('success');
+    radioCue('target');
+  }
+  updateProgress();
+}

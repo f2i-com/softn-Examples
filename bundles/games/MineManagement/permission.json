@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "app": {
+    "id": "com.softn.minemanagement",
+    "name": "Mine Management",
+    "version": "1.0.0"
+  },
+  "permissions": {
+    "storage": {
+      "enabled": true
+    },
+    "files": {
+      "scopes": [
+        "user_selected"
+      ]
+    }
+  }
+}

@@ -1,0 +1,27 @@
+<Box className="world-viewport">
+ <Box className="world" style={worldStyle}>
+  <Image loading="eager" className="ground-art" src={asset("assets/art/town.svg")} width="1600px" height="1180px" showPlaceholder={false} alt="Littleborough: council to the northwest, park to the northeast, high street and bakery to the south" />
+  #each (a in staticActors)
+   <Box className="sprite" style={a.style}><Image loading="eager" src={asset(a.art)} width="100%" height="100%" showPlaceholder={false} alt="" /></Box>
+  #end
+  <Box className="pigeon-shadow" style={shadowStyle} />
+  #each (a in actors)
+   <Box className="sprite" style={a.style}><Image loading="eager" src={asset(a.art)} width="100%" height="100%" showPlaceholder={false} alt="" /></Box>
+  #end
+  <Box className="sprite player" style={playerStyle}><Image loading="eager" src={asset(playerArt)} width="100%" height="100%" showPlaceholder={false} alt="Your municipal pigeon" /></Box>
+  <Box if={S.p.carry !== ""} className="sprite carried" style={carryStyle}><Image loading="eager" src={asset(carryArt)} width="100%" height="100%" showPlaceholder={false} alt={hud.carry} /></Box>
+  <Box if={markerVisible} className="assist-marker" style={markerStyle} />
+  <Box if={S.traffic.green > 0} className="crossing-lamp" style={{left:"706px",top:"688px"}} />
+  #each (b in bubbles)
+   <Box className="speech" style={b.style}><Text style={{fontSize:"inherit",fontWeight:"inherit",color:"inherit",lineHeight:"inherit",margin:0}}>{b.text}</Text></Box>
+  #end
+ </Box>
+ <Box className="scene-vignette" />
+ <Box className="id-card"><Text style={{fontSize:"inherit",fontWeight:"inherit",color:"inherit",lineHeight:"inherit",margin:0}} className="eyebrow">EMPLOYEE 001 / AVIAN SERVICES</Text><Text style={{fontSize:"inherit",fontWeight:"inherit",color:"inherit",lineHeight:"inherit",margin:0}} className="rank-name">{hud.rank}</Text><Text style={{fontSize:"inherit",fontWeight:"inherit",color:"inherit",lineHeight:"inherit",margin:0}} className="rank-note">{hud.mode}</Text></Box>
+ <Box className="wing-card"><Box className="wing-heading"><Text style={{fontSize:"inherit",fontWeight:"inherit",color:"inherit",lineHeight:"inherit",margin:0}}>WINGS</Text><Text style={{fontSize:"inherit",fontWeight:"inherit",color:"inherit",lineHeight:"inherit",margin:0}}>{Math.ceil(hud.stamina) + "%"}</Text></Box><Box className="wing-track"><Box className={hud.stamina < 20 ? "wing-fill tired" : "wing-fill"} style={{width:hud.stamina+"%"}} /></Box><Text style={{fontSize:"inherit",fontWeight:"inherit",color:"inherit",lineHeight:"inherit",margin:0}} className="wind-label">{S.wind.strength > 0.65 ? "GUSTS · secure loose pages" : "LIGHT CIVIC BREEZE"}</Text></Box>
+ <Box if={S.promotionTime > 0} className="promotion"><Text style={{fontSize:"inherit",fontWeight:"inherit",color:"inherit",lineHeight:"inherit",margin:0}} className="eyebrow">PERSONNEL DEPARTMENT</Text><Text style={{fontSize:"inherit",fontWeight:"inherit",color:"inherit",lineHeight:"inherit",margin:0}} className="promotion-title">PROMOTED.</Text><Text style={{fontSize:"inherit",fontWeight:"inherit",color:"inherit",lineHeight:"inherit",margin:0}}>{hud.rank}</Text><Text style={{fontSize:"inherit",fontWeight:"inherit",color:"inherit",lineHeight:"inherit",margin:0}} className="rank-note">{hud.promotion}</Text></Box>
+ <Box if={S.mission === 7 && S.meetingTime > 0 && !has(S.done,"meeting")} className="meeting-timer"><Text style={{fontSize:"inherit",fontWeight:"inherit",color:"inherit",lineHeight:"inherit",margin:0}}>{"Committee attendance: " + Math.min(100,hud.meeting) + "%"}</Text></Box>
+ <Box if={toastTime > 0} className="dispatch"><Text style={{fontSize:"inherit",fontWeight:"inherit",color:"inherit",lineHeight:"inherit",margin:0}} className="dispatch-label">COUNCIL WIRE</Text><Text style={{fontSize:"inherit",fontWeight:"inherit",color:"inherit",lineHeight:"inherit",margin:0}}>{toastText}</Text></Box>
+ <Box if={cameraFlash > 0 && !settings.reducedMotion} className="camera-flash" />
+</Box>
+<Box className="context-strip"><Text style={{fontSize:"inherit",fontWeight:"inherit",color:"inherit",lineHeight:"inherit",margin:0}} className="context-text">{hud.context}</Text><Text style={{fontSize:"inherit",fontWeight:"inherit",color:"inherit",lineHeight:"inherit",margin:0}} className="beak-inventory">{hud.carry}</Text></Box>

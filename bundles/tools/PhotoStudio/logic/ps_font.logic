@@ -13,9 +13,9 @@ function psFontInit() {
   let keys = Object.keys(PS_FONT_DATA);
   for (let i = 0; i < keys.length; i++) {
     let k = keys[i], d = PS_FONT_DATA[k];
-    let mbytes = Uint8Array.fromBase64(d.metrics);
+    let mbytes = psFromBase64(d.metrics);
     let metrics = new Int32Array(mbytes.buffer, mbytes.byteOffset, mbytes.byteLength >> 2);
-    PS_FONTS[k] = { size: d.size, ascent: d.ascent, descent: d.descent, metrics: metrics, pixels: Uint8Array.fromBase64(d.pixels) };
+    PS_FONTS[k] = { size: d.size, ascent: d.ascent, descent: d.descent, metrics: metrics, pixels: psFromBase64(d.pixels) };
   }
 }
 // Face selection: family key + bold -> atlas key, horizontal squeeze, synthetic bold flag.

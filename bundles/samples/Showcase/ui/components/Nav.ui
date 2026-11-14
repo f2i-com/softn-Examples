@@ -31,6 +31,7 @@
     <Stack direction=vertical gap=xs style={{ flex: 1, marginTop: "0.25rem" }}>
       <Text size=xs color=muted style={{ padding: "0.25rem 0.75rem", textTransform: "uppercase", letterSpacing: "0.1em", opacity: 0.4, fontSize: "0.625rem" }}>Pages</Text>
       <NavItem icon=chart label="Charts" active={currentPage === "charts"} @click={navigate("charts")} />
+      <NavItem icon=list label="UI Controls" active={currentPage === "controls"} @click={navigate("controls")} />
       <NavItem icon=star label="Animations" active={currentPage === "animations"} @click={navigate("animations")} />
       <NavItem icon=settings label="Interactive" active={currentPage === "interactive"} @click={navigate("interactive")} />
       <NavItem icon=globe label="3D & PBR" active={currentPage === "scene3d"} @click={navigate("scene3d")} />

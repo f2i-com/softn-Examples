@@ -15,11 +15,11 @@
 </div>
 <button className="os-btn os-wide" oson={String(highDetail)} @click={toggleTerrainQuality}>{highDetail ? "High detail · 128px tiles" : "Standard detail · 32px tiles"}</button>
 <div className="os-muted">High detail draws a new vector terrain atlas at four times the resolution. Only visible terrain is drawn, at screen resolution. Standard keeps the original pixel style. Buildings and people stay vector sharp in both modes.</div>
-<div className="os-picture-brightness"><button className="os-btn" disabled={imageBrightness <= 70} @click={() => changeImageBrightness(-10)}>Dimmer</button><span>Brightness {imageBrightness}%</span><button className="os-btn" disabled={imageBrightness >= 150} @click={() => changeImageBrightness(10)}>Brighter</button></div>
+<div className="os-picture-brightness"><button className="os-btn" disabled={imageBrightness <= 70} @click={() => changeImageBrightness(-10)}>Dimmer</button><span>{"Brightness " + imageBrightness + "%"}</span><button className="os-btn" disabled={imageBrightness >= 150} @click={() => changeImageBrightness(10)}>Brighter</button></div>
 <div className="os-row"><button className="os-btn os-tab" @click={resetVisuals}>Reset picture</button><button className="os-btn os-tab" @click={toggleWeatherSound}>{weatherSoundEnabled ? "Weather audio: on" : "Weather audio: off"}</button></div>
 <div className="os-row"><button className="os-btn os-tab" @click={toggleSound}>{ambienceText}</button><button className="os-btn os-tab" @click={toggleEffects}>{effectsEnabled ? "Effects on" : "Effects off"}</button></div>
 <div className="os-row"><button className="os-btn os-tab" disabled={!soundEnabled || !effectsEnabled || !weatherSoundEnabled} @click={() => previewWeatherSound("rain")}>Hear rain · 5s</button><button className="os-btn os-tab" disabled={!soundEnabled || !effectsEnabled || !weatherSoundEnabled} @click={() => previewWeatherSound("storm")}>Hear storm · 5s</button></div>
-<p className="os-muted">{visualPreferenceMessage} Rain and distant thunder follow the weather, including the trailer storm.</p>
+<p className="os-muted">{visualPreferenceMessage + " Rain and distant thunder follow the weather, including the trailer storm."}</p>
 <button className="os-btn os-primary os-wide" @click={closeDialog}>Done</button>
 
 </div>

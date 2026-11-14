@@ -183,33 +183,34 @@ function exportChronicle() {
   saveText=lines.join("\n");resetMapGesture();paused=true;dialog="saves";refreshSlots();
   if(!downloadText(saveFileName("-chronicle.txt"),saveText,"text/plain;charset=utf-8","Downloaded {name}. The chronicle text is also below."))saveMessage="The chronicle is in the text box below. Select all, copy, and keep it wherever you like.";
 }
-function openSaves() {resetMapGesture();paused=true;dialog="saves";saveText="";saveMessage="Three manual slots and three rotating autosaves. Refreshing or closing the page autosaves and resumes. Download a save file to keep a copy outside the browser.";refreshSlots();}
+function openSaves() {resetMapGesture();paused=true;dialog="saves";saveText="";saveMessage="Three manual slots and three rotating autosaves. Refreshing or closing the page autosaves and resumes. Download a save file to keep a copy outside the browser.";refreshSlots();viewDirty=true;}
 // Files: the host hands the browser a download and opens its file picker. Text stays as the fallback.
 function filesAvailable() {return typeof softn!=="undefined"&&!!softn.files&&typeof softn.files.saveFile==="function";}
 function saveFileName(suffix) {return ("Outerstead-"+(osGame?osGame.name:"colony")+"-Sol"+(osGame?dayNow():0)).replace(/[^A-Za-z0-9._-]+/g,"-")+suffix;}
 function downloadText(name,text,mime,doneMessage) {
   if(!filesAvailable())return false;
-  saveMessage="Preparing "+name+"…";
-  try{softn.files.saveFile(name,text,{mime:mime},function(result){saveMessage=result&&result.ok?doneMessage.replace("{name}",result.name||name):"The download was not available: "+(result&&result.error?result.error:"unknown host error")+". The text below still works.";});}
-  catch(error){saveMessage="The download failed: "+String(error.message||error)+". Copy the text below instead.";}
+  saveMessage="Preparing "+name+"…";viewDirty=true;
+  try{softn.files.saveFile(name,text,{mime:mime},function(result){saveMessage=result&&result.ok?doneMessage.replace("{name}",result.name||name):"The download was not available: "+(result&&result.error?result.error:"unknown host error")+". The text below still works.";viewDirty=true;});}
+  catch(error){saveMessage="The download failed: "+String(error.message||error)+". Copy the text below instead.";viewDirty=true;}
   return true;
 }
 function exportSave() {
   try{saveText=snapshotText();
     if(!downloadText(saveFileName(".json"),saveText,"application/json","Downloaded {name} to the browser download folder. The same text is below if you ever need it."))saveMessage="Select and copy the text below into a .json file. Keep it outside the browser before updating the app.";
   }catch(error){saveMessage=String(error.message||error);}
+  viewDirty=true;
 }
 function importSaveFile() {
-  if(!filesAvailable()||typeof softn.files.pickFile!=="function"||typeof softn.files.readText!=="function"){saveMessage="Choosing files is not available in this host. Paste the save text instead.";return;}
-  saveMessage="Choose an Outerstead .json save file.";
+  if(!filesAvailable()||typeof softn.files.pickFile!=="function"||typeof softn.files.readText!=="function"){saveMessage="Choosing files is not available in this host. Paste the save text instead.";viewDirty=true;return;}
+  saveMessage="Choose an Outerstead .json save file.";viewDirty=true;
   try{softn.files.pickFile({accept:".json,application/json,text/plain",multiple:false},function(files){
-    if(!files||!files.length||!files[0]||!files[0].ref){saveMessage="No file was chosen.";return;}
+    if(!files||!files.length||!files[0]||!files[0].ref){saveMessage="No file was chosen.";viewDirty=true;return;}
     softn.files.readText(files[0].ref,function(result){
       let text=typeof result==="string"?result:(result&&typeof result.text==="string"?result.text:(result&&typeof result.value==="string"?result.value:""));
-      if(!text){saveMessage="That file could not be read"+(result&&result.error?": "+result.error:".");return;}
-      saveText=text;if(loadSaveText(text))saveMessage="Restored from "+files[0].name+". The colony is paused.";
+      if(!text){saveMessage="That file could not be read"+(result&&result.error?": "+result.error:".");viewDirty=true;return;}
+      saveText=text;if(loadSaveText(text))saveMessage="Restored from "+files[0].name+". The colony is paused.";viewDirty=true;
     });
-  });}catch(error){saveMessage="The file picker failed: "+String(error.message||error);}
+  });}catch(error){saveMessage="The file picker failed: "+String(error.message||error);viewDirty=true;}
 }
 // Every save marks the session for automatic resume (saveSlot), so a refresh opens the latest save.
 // Leaving or refreshing the page still autosaves, but a host that keeps saves outside the page (FormLogic)
@@ -236,4 +237,4 @@ function resumeFromLastSession() {
   }catch(error){/* Fall through to the title. */}
   return false;
 }
-function importSave() {if(!saveText.trim()){saveMessage="Paste an Outerstead save first.";return;}loadSaveText(saveText);}
+function importSave() {if(!saveText.trim()){saveMessage="Paste an Outerstead save first.";viewDirty=true;return;}loadSaveText(saveText);viewDirty=true;}

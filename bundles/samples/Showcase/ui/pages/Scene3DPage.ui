@@ -31,9 +31,8 @@
         </Box>
       </Box>
 
-      <Box style={{
+      <Box className="showcase-3d-stage" style={{
         position: "relative",
-        height: "420px",
         borderRadius: "10px",
         overflow: "hidden",
         border: "1px solid " + getBorderColor(),

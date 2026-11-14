@@ -153,6 +153,9 @@
                 Add Service
               </Button>
             </Stack>
+            <Button variant=primary size=md @click={openStudioPage()} style={{ justifyContent: "center", gap: "0.5rem", fontSize: "0.8rem", borderRadius: "10px", background: "linear-gradient(135deg, " + getAccentColor() + ", " + getAccentHover() + ")", color: darkMode ? "#1c1917" : "#ffffff", border: "none", fontWeight: 600 }}>
+              Open Beauty & Lighting Studio
+            </Button>
           </Stack>
         </Stack>
       </Card>

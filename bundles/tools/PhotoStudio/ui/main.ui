@@ -1,4 +1,4 @@
-// main.ui - Photo Studio (Softn sandbox edition)
+// main.ui - Photo Studio (SoftN sandbox edition)
 // Every raster operation runs inside ZIPP; the template only lays out the
 // workspace and hands pointer, keyboard and file events to main.logic.
 
@@ -6,33 +6,35 @@
 
 <style>
 .sp-root { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 480px; overflow: hidden; background: #181a20; color: #e4e5ee; font-family: "Segoe UI", system-ui, sans-serif; font-size: 12px; user-select: none; }
-.sp-topbar { display: flex; align-items: center; gap: 12px; padding: 6px 12px; border-bottom: 1px solid #2c2f3a; background: #1d1f27; flex: none; }
-.sp-mark { width: 26px; height: 26px; border-radius: 7px; background: #b2a0ff; color: #241d34; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; }
+.sp-topbar { display: flex; align-items: center; gap: 10px; padding: 6px 12px; border-bottom: 1px solid #2c2f3a; background: #1d1f27; flex: none; flex-wrap: wrap; }
+.sp-mark { width: 26px; height: 26px; border-radius: 7px; background: #b2a0ff; color: #241d34; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; flex: none; }
 .sp-brand { font-weight: 600; font-size: 13px; letter-spacing: 0.2px; }
 .sp-brand small { display: block; font-weight: 400; font-size: 10px; color: #8a8fa3; }
-.sp-title { flex: 1; text-align: center; color: #aeb3c3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-title { flex: 1; min-width: 80px; text-align: center; color: #aeb3c3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sp-runtime { font-size: 9px; letter-spacing: 1.5px; color: #70788d; }
-.sp-menubar { display: flex; align-items: center; gap: 2px; padding: 0 8px; border-bottom: 1px solid #2c2f3a; background: #1a1c24; position: relative; z-index: 30; flex: none; height: 28px; }
-.sp-menubtn { background: transparent; border: 0; color: #d8dae6; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 12px; }
+.sp-menubar { display: flex; align-items: center; gap: 2px; padding: 0 8px; border-bottom: 1px solid #2c2f3a; background: #1a1c24; position: relative; z-index: 30; flex: none; min-height: 28px; flex-wrap: wrap; }
+.sp-menubtn { background: transparent; border: 0; color: #d8dae6; padding: 5px 9px; border-radius: 5px; cursor: pointer; font-size: 12px; white-space: nowrap; }
 .sp-menubtn:hover, .sp-menubtn.open { background: #2d3040; }
-.sp-dropdown { position: absolute; top: 28px; min-width: 260px; background: #23252e; border: 1px solid #3a3d4a; border-radius: 8px; box-shadow: 0 12px 30px rgba(0,0,0,0.45); padding: 6px; z-index: 40; }
+.sp-dropdown { position: absolute; top: 28px; min-width: 240px; max-width: calc(100vw - 16px); background: #23252e; border: 1px solid #3a3d4a; border-radius: 8px; box-shadow: 0 12px 30px rgba(0,0,0,0.45); padding: 6px; z-index: 40; }
 .sp-item { display: flex; justify-content: space-between; gap: 18px; width: 100%; background: transparent; border: 0; color: #e4e5ee; padding: 6px 10px; border-radius: 5px; cursor: pointer; text-align: left; font-size: 12px; }
 .sp-item:hover { background: #3a3d4f; }
 .sp-item kbd { color: #8a8fa3; font-family: inherit; font-size: 11px; }
 .sp-sep { height: 1px; background: #3a3d4a; margin: 5px 4px; }
-.sp-options { display: flex; align-items: center; gap: 10px; padding: 5px 12px; border-bottom: 1px solid #2c2f3a; background: #1d1f27; flex: none; min-height: 34px; flex-wrap: wrap; }
+.sp-options { display: flex; align-items: center; gap: 10px; padding: 5px 12px; border-bottom: 1px solid #2c2f3a; background: #1d1f27; flex: none; min-height: 34px; overflow-x: auto; white-space: nowrap; }
 .sp-optlabel { color: #9aa0b4; font-size: 11px; }
-.sp-opt { display: flex; align-items: center; gap: 6px; }
+.sp-opt { display: flex; align-items: center; gap: 6px; flex: none; }
 .sp-swatch { width: 22px; height: 22px; border-radius: 5px; border: 1px solid #454858; cursor: pointer; }
-.sp-body { display: flex; flex: 1; min-height: 0; }
+.sp-body { display: flex; flex: 1; min-height: 0; position: relative; }
+.sp-backdrop { display: none; position: absolute; inset: 0; background: rgba(8, 10, 16, 0.52); z-index: 32; }
+.sp-drawer-close { display: none; }
 .sp-tools { width: 78px; display: flex; flex-wrap: wrap; align-content: flex-start; justify-content: center; gap: 4px; padding: 10px 5px; border-right: 1px solid #2c2f3a; background: #1a1c24; overflow-y: auto; flex: none; }
 .sp-toolcap { width: 100%; text-align: center; font-size: 8px; letter-spacing: 1px; color: #70788d; margin: 6px 0 2px; }
 .sp-tool { width: 31px; height: 31px; border-radius: 7px; border: 1px solid transparent; background: transparent; color: #c9ccdc; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
 .sp-tool:hover { background: #2d3040; }
 .sp-tool.active { background: #3b355e; border-color: #b2a0ff; color: #ffffff; }
 .sp-center { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: #101116; }
-.sp-doctab { display: flex; align-items: center; gap: 8px; padding: 4px 12px; font-size: 11px; color: #aeb3c3; background: #15161c; border-bottom: 1px solid #2c2f3a; flex: none; }
-.sp-doctab .dot { width: 7px; height: 7px; border-radius: 50%; background: #b2a0ff; }
+.sp-doctab { display: flex; align-items: center; gap: 8px; padding: 4px 10px; font-size: 11px; color: #aeb3c3; background: #15161c; border-bottom: 1px solid #2c2f3a; flex: none; overflow-x: auto; white-space: nowrap; }
+.sp-doctab .dot { width: 7px; height: 7px; border-radius: 50%; background: #b2a0ff; flex: none; }
 .sp-viewwrap { flex: 1; position: relative; min-height: 0; display: flex; }
 .sp-rulerx { position: absolute; left: 20px; right: 0; top: 0; height: 20px; background: #1a1c24; border-bottom: 1px solid #2c2f3a; z-index: 5; overflow: hidden; pointer-events: none; }
 .sp-rulery { position: absolute; left: 0; top: 20px; bottom: 0; width: 20px; background: #1a1c24; border-right: 1px solid #2c2f3a; z-index: 5; overflow: hidden; pointer-events: none; }
@@ -42,13 +44,14 @@
 .sp-ticky { left: 2px; border-top: 1px solid #575e70; padding-top: 1px; width: 18px; }
 .sp-viewport { position: absolute; inset: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; }
 .sp-viewport.ruled { top: 20px; left: 20px; }
-.sp-artboard { flex: none; background-color: #3a3d4a; background-image: linear-gradient(45deg, #2b2e3a 25%, transparent 25%), linear-gradient(-45deg, #2b2e3a 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #2b2e3a 75%), linear-gradient(-45deg, transparent 75%, #2b2e3a 75%); background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0; box-shadow: 0 0 0 1px #000, 0 20px 50px rgba(0,0,0,0.6); }
+.sp-artboard { flex: none; position: relative; background-color: #3a3d4a; background-image: linear-gradient(45deg, #2b2e3a 25%, transparent 25%), linear-gradient(-45deg, #2b2e3a 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #2b2e3a 75%), linear-gradient(-45deg, transparent 75%, #2b2e3a 75%); background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0; box-shadow: 0 0 0 1px #000, 0 20px 50px rgba(0,0,0,0.6); }
 .sp-artboard canvas { display: block; }
+.sp-artboard svg { display: block; width: 100%; height: 100%; overflow: visible; }
 .sp-hit { position: absolute; inset: 0; touch-action: none; cursor: crosshair; }
 .sp-hit.grab { cursor: grab; }
 .sp-hit.text { cursor: text; }
 .sp-hit.zoomin { cursor: zoom-in; }
-.sp-cursor { position: absolute; border: 1px solid rgba(255,255,255,0.9); box-shadow: 0 0 0 1px rgba(0,0,0,0.6); border-radius: 50%; pointer-events: none; }
+.sp-cursor { position: absolute; left: 0; top: 0; will-change: transform; border: 1px solid rgba(255,255,255,0.9); box-shadow: 0 0 0 1px rgba(0,0,0,0.6); border-radius: 50%; pointer-events: none; }
 .sp-sidebar { width: 268px; border-left: 1px solid #2c2f3a; background: #1a1c24; display: flex; flex-direction: column; min-height: 0; flex: none; overflow-y: auto; }
 .sp-panel { padding: 10px 12px; border-bottom: 1px solid #2c2f3a; }
 .sp-panel h3 { margin: 0 0 8px; font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; color: #8a8fa3; display: flex; justify-content: space-between; font-weight: 600; }
@@ -99,8 +102,18 @@
 .sp-select { background: #101116; border: 1px solid #3a3d4a; color: #e4e5ee; border-radius: 6px; padding: 5px 8px; font-size: 12px; }
 .sp-check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #c9ccdc; }
 textarea.sp-input { min-height: 80px; resize: vertical; font-family: inherit; }
-@media (max-width: 900px) { .sp-sidebar { width: 220px; } }
-@media (max-width: 700px) { .sp-tools { width: 44px; } .sp-toolcap { display: none; } .sp-topbar .sp-runtime { display: none; } }
+@media (max-width: 860px) {
+  .sp-sidebar { position: absolute; right: 0; top: 0; bottom: 0; width: min(272px, 84vw); z-index: 35; box-shadow: -12px 0 32px rgba(0,0,0,0.65); }
+  .sp-backdrop { display: block; }
+  .sp-drawer-close { display: inline-block; }
+  .sp-title { display: none; }
+}
+@media (max-width: 700px) {
+  .sp-tools { width: 42px; padding: 8px 4px; }
+  .sp-toolcap, .sp-topbar .sp-runtime, .sp-rgb-tag { display: none; }
+  .sp-topbar { padding: 6px 8px; gap: 6px; }
+  .sp-statusbar { gap: 10px; padding: 4px 8px; font-size: 10px; }
+}
 </style>
 
 <App theme="dark">
@@ -108,7 +121,7 @@ textarea.sp-input { min-height: 80px; resize: vertical; font-family: inherit; }
 
     <Box className="sp-topbar">
       <div className="sp-mark">P</div>
-      <div className="sp-brand">Photo Studio<small>Made for Softn</small></div>
+      <div className="sp-brand">Photo Studio<small>Made for SoftN</small></div>
       <div className="sp-title">{docTitle}</div>
       <span className="sp-runtime">LOCAL / NO UPLOADS</span>
       <FileChooser accept=".png,.jpg,.jpeg,.gif,.bmp,.psd,.sphoto,image/png,image/jpeg,image/gif,image/bmp" label="Open" @select={filesChosen} />
@@ -183,7 +196,8 @@ textarea.sp-input { min-height: 80px; resize: vertical; font-family: inherit; }
             <button className="sp-btn" title="Fit to screen" @click={runAction("fit")}>Fit</button>
             <button className="sp-btn" title="Actual pixels (100%)" @click={runAction("actual")}>100%</button>
             <button className={rulersOn ? "sp-btn selected" : "sp-btn"} title="Toggle rulers" @click={runAction("rulers")}>Rulers</button>
-            <span style={{ marginLeft: "6px" }}>RGB / 8</span>
+            <button className={sidebarOpen ? "sp-btn selected" : "sp-btn"} title="Toggle layers & navigator panel" @click={runAction("toggle-sidebar")}>{"Layers (" + layerCount + ")"}</button>
+            <span className="sp-rgb-tag" style={{ marginLeft: "4px" }}>RGB / 8</span>
           </span>
         </div>
         <div className="sp-viewwrap" @pointerdown={closeMenus}>
@@ -203,20 +217,24 @@ textarea.sp-input { min-height: 80px; resize: vertical; font-family: inherit; }
           <div className={rulersOn ? "sp-viewport ruled" : "sp-viewport"}>
             <div className="sp-artboard" style={{ width: artWidth, height: artHeight, transform: artTransform }}>
               <PixelCanvas width={docW} height={docH} fit="contain" getFrame={frameSource} smooth={smoothZoom} style={{ width: "100%", height: "100%" }} />
+              #if (gestureSvg !== "")
+                <Icon svg={gestureSvg} size="100%" style={{ position: "absolute", inset: "0", pointerEvents: "none" }} />
+              #end
             </div>
             <article className={tool === "hand" || tool === "move" ? "sp-hit grab" : tool === "text" ? "sp-hit text" : tool === "zoom" ? "sp-hit zoomin" : "sp-hit"}
               @pointerdown={onPointerDown} @pointermove={onPointerMove} @pointerup={onPointerUp} @pointerleave={onPointerLeave} @pointercancel={onPointerCancel} @dblclick={onDoubleClick}></article>
             #if (cursorVisible)
-              <div className="sp-cursor" style={{ left: cursorLeft, top: cursorTop, width: cursorDiameter, height: cursorDiameter }}></div>
+              <div className="sp-cursor" style={{ width: cursorDiameter, height: cursorDiameter, transform: cursorTransform }}></div>
             #end
           </div>
         </div>
       </Box>
 
       #if (sidebarOpen)
+      <div className="sp-backdrop" @click={closeMobileSidebar}></div>
       <Box className="sp-sidebar">
         <div className="sp-panel">
-          <h3>Navigator<span>Overview</span></h3>
+          <h3>Navigator<span><button className="sp-icnbtn sp-drawer-close" title="Close panel" @click={toggleSidebar}>✕</button></span></h3>
           <div className="sp-nav">
             #if (navFrame)
               <PixelCanvas width={navFrame.w} height={navFrame.h} frame={navFrame} fit="contain" smooth={true} style={{ width: "100%", height: "100%" }} />
@@ -297,6 +315,7 @@ textarea.sp-input { min-height: 80px; resize: vertical; font-family: inherit; }
 
     <Loop interval={0} running={jobActive} @tick={pumpJobs} />
 
+    #if (dialog !== "")
     <Modal open={dialog === "new"} onClose={closeDialog} title="New canvas" size="sm">
       <div className="sp-field"><span>Document name</span><input className="sp-input" type="text" :bind={dlgName} /></div>
       <div className="sp-fields2">
@@ -311,10 +330,10 @@ textarea.sp-input { min-height: 80px; resize: vertical; font-family: inherit; }
     <Modal open={dialog === "resize"} onClose={closeDialog} title="Image size" size="sm">
       <div style={{ color: "#aeb3c3", marginBottom: "10px" }}>Resamples every layer and mask. Text becomes raster pixels. Undo restores the original.</div>
       <div className="sp-fields2">
-        <div className="sp-field"><span>Width (px)</span><input className="sp-input" type="number" min="1" max="4096" :bind={dlgWidth} /></div>
-        <div className="sp-field"><span>Height (px)</span><input className="sp-input" type="number" min="1" max="4096" :bind={dlgHeight} /></div>
+        <div className="sp-field"><span>Width (px)</span><input className="sp-input" type="number" min="1" max="4096" value={dlgWidth} @change={setResizeWidth} /></div>
+        <div className="sp-field"><span>Height (px)</span><input className="sp-input" type="number" min="1" max="4096" value={dlgHeight} @change={setResizeHeight} /></div>
       </div>
-      <label className="sp-check"><input type="checkbox" :bind={dlgLock} />Preserve aspect ratio (width controls height)</label>
+      <label className="sp-check"><input type="checkbox" :bind={dlgLock} />Preserve aspect ratio</label>
       <label className="sp-check" style={{ marginTop: "6px" }}><input type="checkbox" :bind={dlgNearest} />Nearest neighbour (pixel art)</label>
       <div className="sp-dlgactions"><button className="sp-btn" @click={closeDialog}>Cancel</button><button className="sp-btn primary" @click={applyDialog}>Resize</button></div>
     </Modal>
@@ -373,8 +392,10 @@ textarea.sp-input { min-height: 80px; resize: vertical; font-family: inherit; }
     <Modal open={dialog === "export"} onClose={closeDialog} title="Export image" size="sm">
       <div style={{ color: "#aeb3c3", marginBottom: "10px" }}>Flattens visible layers into a new image. Your document and layers remain editable here.</div>
       <div className="sp-field"><span>Format</span><Select options={formatOptions} :bind={dlgFormat} size="sm" /></div>
-      <div className="sp-field"><span>{"JPEG quality: " + dlgQuality}</span><Slider value={dlgQuality} min={10} max={100} step={1} :bind={dlgQuality} /></div>
-      <div className="sp-field"><span>JPEG background (fills transparency)</span><ColorPicker :bind={dlgJpegBg} size="sm" /></div>
+      #if (dlgFormat === "jpeg")
+        <div className="sp-field"><span>{"JPEG quality: " + dlgQuality}</span><Slider value={dlgQuality} min={10} max={100} step={1} :bind={dlgQuality} /></div>
+        <div className="sp-field"><span>JPEG background (fills transparency)</span><ColorPicker :bind={dlgJpegBg} size="sm" /></div>
+      #end
       <div className="sp-dlgactions"><button className="sp-btn" @click={closeDialog}>Cancel</button><button className="sp-btn primary" @click={applyDialog}>Download</button></div>
     </Modal>
 
@@ -419,7 +440,7 @@ Layers and masks: double-click a layer name to rename. Click a mask thumbnail to
     </Modal>
 
     <Modal open={dialog === "compat"} onClose={closeDialog} title="Compatibility and limits" size="md">
-      <div className="sp-help">This sandbox edition runs every pixel inside Softn's scripting engine. Opens PNG, JPEG (baseline and progressive), GIF (first frame), BMP, 8-bit RGB PSD and .sphoto projects. Saves PNG, JPEG, layered PSD and .sphoto. WebP and AVIF need the native edition.
+      <div className="sp-help">This sandbox edition runs every pixel inside SoftN's scripting engine. Opens PNG, JPEG (baseline and progressive), GIF (first frame), BMP, 8-bit RGB PSD and .sphoto projects. Saves PNG, JPEG, layered PSD and .sphoto. WebP and AVIF need the native edition.
 
 Limits: 4096 px per side; 3 megapixels per document (larger photos are downscaled on import); 32 layers; 160 MiB of live layer surfaces; 64 MiB of undo surfaces; 48 MiB input files. Long operations run in slices with a progress bar.
 
@@ -429,12 +450,13 @@ PSD: reads Raw, RLE and ZIP data, writes RLE. No CMYK, Lab, 16 or 32-bit, PSB, I
       <div className="sp-dlgactions"><button className="sp-btn primary" @click={closeDialog}>Close</button></div>
     </Modal>
 
-    <Modal open={dialog === "about"} onClose={closeDialog} title="Softn Photo Studio 0.2" size="sm">
-      <div className="sp-help">A local-first, layered image editor written entirely in .logic: decoders, encoders, compositing, brushes and type all run inside the Softn sandbox, so this bundle works on any unchanged Softn runtime. No network calls, uploads or telemetry.
+    <Modal open={dialog === "about"} onClose={closeDialog} title="SoftN Photo Studio 1.0" size="sm">
+      <div className="sp-help">A local-first, layered image editor written entirely in .logic: decoders, encoders, compositing, brushes and type all run inside the SoftN sandbox, so this bundle works on any unchanged SoftN runtime. No network calls, uploads or telemetry.
 
 Independent software, not affiliated with Adobe. Type is drawn from the DejaVu fonts (Bitstream Vera licence).</div>
       <div className="sp-dlgactions"><button className="sp-btn primary" @click={closeDialog}>Keep creating</button></div>
     </Modal>
+    #end
 
   </Box>
 </App>

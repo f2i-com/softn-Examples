@@ -1,0 +1,113 @@
+<div if={S.phase === "briefing" && !helpOpen && !confirmReset} className="modal-scrim">
+ <section className="briefing-sheet" role="dialog" aria-modal="true" aria-labelledby="briefing-title">
+<span className="large-paperclip">
+</span>
+<div className="briefing-topline">
+<span>EMPLOYEE COPY / WINDOW 04</span>
+<b>{"SHIFT " + V.stageNumber + " OF 8"}</b>
+</div>
+<p className="red-type">YOUR ATTENDANCE HAS BEEN ASSUMED.</p>
+<h2 id="briefing-title">{V.stageName}</h2>
+<span className="briefing-date">{V.day}</span>
+<p className="briefing-intro">{V.intro}</p>
+<div className="training-note">
+<b>TODAY'S INDUCTION</b>
+<p>{V.lesson}</p>
+</div>
+<div className="briefing-foot">
+<span>No countdown. No rush.<br />The mail will wait. Mostly.</span>
+<button className="approve-button" @click={action("begin")} autoFocus={true}>CLOCK IN →</button>
+</div>
+<span className="paper-fineprint">By continuing, you acknowledge that the building is not responsible for any additional buildings found inside the mail.</span>
+</section>
+</div>
+<div if={S.phase === "notice" && !helpOpen && !confirmReset} className="modal-scrim notice-scrim">
+<section className="briefing-sheet amendment-sheet" role="dialog" aria-modal="true" aria-labelledby="notice-title">
+<p className="red-type">PNEUMATIC CIRCULAR / BELT HELD</p>
+<h2 id="notice-title">{V.noticeTitle}</h2>
+<p className="briefing-intro">{V.noticeBody}</p>
+<div className="training-note">
+<b>EFFECTIVE AFTER YOUR SIGNATURE</b>
+<p>The last consignment has already left. No parcel on the desk is affected retroactively. The next consignment is the first subject to this amendment.</p>
+</div>
+<button className="approve-button" @click={action("acknowledge")} autoFocus={true}>ACKNOWLEDGE &amp; RESUME →</button>
+<span className="paper-fineprint">The updated circular remains pinned beside your handbook.</span>
+</section>
+</div>
+<div if={paused && S.phase === "work" && !bookOpen && !helpOpen && !confirmReset} className="modal-scrim">
+<section className="tea-sheet" role="dialog" aria-modal="true" aria-labelledby="pause-title">
+<div className="tea-cup" aria-hidden="true">
+</div>
+<p className="red-type">UNION-AUTHORISED INTERRUPTION</p>
+<h2 id="pause-title">The mail can wait.</h2>
+<p>All inspections, parcels and paperwork are paused. Nothing moves while you are away.</p>
+<button className="approve-button" @click={action("pause")} autoFocus={true}>RETURN TO THE DESK →</button>
+<button className="paper-link" @click={action("help")}>Help and settings</button>
+</section>
+</div>
+<div if={(S.phase === "report" || S.phase === "ending" || S.phase === "suspended") && !helpOpen && !confirmReset} className="modal-scrim">
+<section className="briefing-sheet report-sheet" role="dialog" aria-modal="true" aria-labelledby="report-title">
+<p className="red-type">{S.phase === "ending" ? "FINAL COLLECTION / CAMPAIGN COMPLETE" : (S.phase === "suspended" ? "MANDATORY RETRAINING" : "END-OF-SHIFT CERTIFICATE")}</p>
+<h2 id="report-title">{V.reportTitle}</h2>
+<p className="briefing-intro">{V.reportBody}</p>
+<div if={S.phase === "ending"} className="final-delivery">
+<div className="miniature-office">
+<span className="miniature-window">
+</span>
+<b className="miniature-desk">
+<i>
+</i>
+</b>
+<small>WINDOW 04</small>
+</div>
+<div className="final-letter">
+<small>TO: YOU / VIA THIS DESK</small>
+<strong>Thank you for your<br />continued normality.</strong>
+<span>PLEASE DO NOT POST THE BUILDING.</span>
+</div>
+</div>
+<div className="report-ledger">
+<span>THIS SHIFT<strong>{V.shiftScore}</strong>
+</span>
+<span>FIRST-PASS CASES<strong>{V.cleanCases}</strong>
+</span>
+<span>TOTAL MERIT<strong>{V.score}</strong>
+</span>
+</div>
+<div if={V.incidents.length > 0} className="report-memory">
+<small>FROM THE INCIDENT FILE</small>
+<p>{V.incidents[0].text}</p>
+</div>
+<button if={S.phase === "report"} className="approve-button" @click={action("next-shift")} autoFocus={true}>NEXT DUTY ROSTER →</button>
+<button if={S.phase === "suspended"} className="approve-button" @click={action("retry")} autoFocus={true}>RETRY THIS SHIFT →</button>
+<button if={S.phase === "ending"} className="approve-button" @click={action("reset-request")} autoFocus={true}>REQUEST RE-EMPLOYMENT</button>
+<span className="paper-fineprint">{V.saveStatus}</span>
+</section>
+</div>
+<div if={helpOpen && !confirmReset} className="modal-scrim">
+<section className="briefing-sheet settings-sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+<p className="red-type">EMPLOYEE ASSISTANCE / DESK PAUSED</p>
+<h2 id="settings-title">A few reasonable adjustments.</h2>
+<p className="briefing-intro">Inspect the label, gather the evidence you need, cross-reference the handbook, stamp and route. Work at your own pace. Every task supports tapping; dragging is optional.</p>
+<div className="settings-controls">
+<button className="paper-button" @click={action("sound")}>{V.soundLabel}</button>
+<button className="paper-button" @click={action("motion")}>{V.motionLabel}</button>
+</div>
+<p>Reduced motion removes decorative movement and transitions. Clues remain visible as shapes, static outlines and descriptive captions. Audio is not required for any decision.</p>
+<p className="settings-keys">I inspect · R rotate · E scan · W weigh · X X-ray · S stamp · C clamp · Q flap · B biscuit · G separator · J clear jam · 1–4 route · H handbook · P pause · M sound.</p>
+<p>{V.saveStatus}</p>
+<p if={V.soundUnavailable}>This host did not make audio available. Visual and written evidence still works.</p>
+<button className="approve-button" @click={action("help")} autoFocus={true}>BACK TO WORK</button>
+<button className="paper-link danger-link" @click={action("reset-request")}>Start a new campaign</button>
+<span className="paper-fineprint">Eight shifts / deterministic roster 9041968. Saves stay on this device. Version 2.0.2.</span>
+</section>
+</div>
+<div if={confirmReset} className="modal-scrim">
+<section className="tea-sheet" role="dialog" aria-modal="true" aria-labelledby="reset-title">
+<p className="red-type">PLEASE CHECK BEFORE SHREDDING</p>
+<h2 id="reset-title">Replace this campaign?</h2>
+<p>The current inspection and shift progress will be replaced. Your best merit score and completed-campaign count are retained. The original v1 game save is never modified.</p>
+<button className="paper-button" @click={action("reset-request")} autoFocus={true}>KEEP THIS CAMPAIGN</button>
+<button className="approve-button danger-button" @click={action("reset-confirm")}>REPLACE CAMPAIGN</button>
+</section>
+</div>

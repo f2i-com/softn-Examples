@@ -1,6 +1,7 @@
 {
-  "app": { "id": "com.softn.pocket", "name": "Pocket", "version": "0.1.0" },
+  "app": { "id": "com.softn.pocket", "name": "Pocket", "version": "0.2.0" },
   "permissions": {
-    "files": { "enabled": true }
+    "files": { "enabled": true, "scopes": ["user_selected"] },
+    "storage": { "enabled": true }
   }
 }

@@ -1,0 +1,62 @@
+// Office motion and hazards are independent of frog and mission controllers.
+function worldStep(dt) {
+    let w=G.world,p=G.p;
+    for(let i=0;i<w.platforms.length;i++) {let b=w.platforms[i];let ox=b.x,oy=b.y;
+        b.compression=approach(b.compression,0,dt*34);
+        if(b.kind==="hull" && G.boss)b.x=G.boss.x+18;
+        if(b.kind==="drawer") b.y=b.baseY-Math.sin(G.time*b.rate)*b.amplitude;
+        if(b.kind==="boat") {
+            let riding=p.grounded && p.support===b.id;let aim=riding?inputAxis()*180:0;
+            if(riding && G.tongue.state==="latched") {let t=findTarget(G.tongue.target);if(t && t.kind==="anchor")aim+=sign(t.x-(b.x+b.w/2))*125;}
+            b.vx=approach(b.vx,aim+(riding?12:0),dt*(riding?160:30));b.x=clamp(b.x+b.vx*dt,b.minX,b.maxX);
+            b.y=b.baseY+Math.sin(G.time*2.2)*5;
+        }
+        if(b.kind==="chair") {
+            if(G.mission.chairStarted && !G.mission.braked) b.vx=approach(b.vx,420,dt*53);
+            else b.vx=approach(b.vx,0,dt*240);
+            b.x=Math.min(b.maxX,b.x+b.vx*dt);
+            if(b.x>=b.maxX && !G.mission.braked && b.vx>30) {b.vx=0;G.mission.chairStarted=false;G.shake=settings.reducedMotion?0:0.3;tell("The chair found a cushion. Pull the red brake cord before signing off.",4);sound("bump");}
+        }
+        b.dx=b.x-ox;b.dy=b.y-oy;
+        if(b.kind!=="boat" && b.kind!=="chair")b.vx=b.dx/dt;
+        b.vy=b.dy/dt;
+    }
+    for(let i=0;i<w.targets.length;i++) {let t=w.targets[i];
+        if(!t.active && t.kind!=="plug")continue;
+        if(t.flight){t.x=t.homeX+Math.sin(G.time*t.rate+t.phase)*t.rx;t.y=t.homeY+Math.sin(G.time*t.rate*1.63+t.phase)*t.ry;}
+        if(t.kind==="plug" && !t.attached) looseObjectStep(t,dt);
+    }
+    if(G.stage===6 && G.mission.chairStarted && !G.mission.braked) {
+        // A low swinging badge gate encourages jumping off and back onto the chair.
+        let gate={x:1090,y:380+Math.sin(G.time*1.8)*20,w:60,h:125};
+        if(p.x+p.w/2>gate.x && p.x-p.w/2<gate.x+gate.w && p.y>gate.y && p.y-p.h<gate.y+gate.h)damage(13,"A visitor badge has challenged your credentials.");
+    }
+    for(let i=0;i<w.checkpoints.length;i++) {let c=w.checkpoints[i];
+        if(!c.used && p.grounded && Math.abs(p.x-c.x)<75 && Math.abs(p.y-c.y)<10) {
+            c.used=true;G.checkpoint={x:c.x,y:c.y,id:c.id};tell("Paperclip checkpoint. HR will return you here (R).",3);sound("latch",0.3);saveProgress();
+        }
+    }
+}
+function looseObjectStep(t,dt) {
+    let r=12,oldX=t.x,oldY=t.y;
+    if(!t.pulled)t.vy=Math.min(700,t.vy+CFG.gravity*dt);
+    t.x=clamp(t.x+t.vx*dt,r,G.world.width-r);
+    for(let i=0;i<G.world.platforms.length;i++) {let b=G.world.platforms[i];
+        if(!b.solid || t.y+r<=b.y || t.y-r>=b.y+b.h)continue;
+        if(oldX+r<=b.x && t.x+r>b.x){t.x=b.x-r;t.vx=0;}
+        if(oldX-r>=b.x+b.w && t.x-r<b.x+b.w){t.x=b.x+b.w+r;t.vx=0;}
+    }
+    t.y+=t.vy*dt;
+    for(let i=0;i<G.world.platforms.length;i++){let b=G.world.platforms[i];
+        if(t.x+r<b.x || t.x-r>b.x+b.w)continue;
+        if(t.vy>=0 && oldY+r<=b.y+2 && t.y+r>=b.y){t.y=b.y-r;t.vy=0;if(!t.pulled)t.vx*=0.8;}
+        if(b.solid && t.vy<0 && oldY-r>=b.y+b.h && t.y-r<b.y+b.h){t.y=b.y+b.h+r;t.vy=0;}
+    }
+    if(t.y>G.world.height+20){t.x=t.homeX;t.y=t.homeY;t.vx=0;t.vy=0;t.pulled=false;if(G.tongue.target===t.id)releaseTongue();tell("IT retracts the loose cable to its original desk.",3);}
+}
+function effectsStep(dt) {
+    let out=[];
+    for(let i=0;i<G.particles.length;i++){let p=G.particles[i];p.life-=dt;if(p.life<=0)continue;p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=dt*280;out.push(p);}G.particles=out;
+    G.shake=Math.max(0,G.shake-dt);G.feedbackTime=Math.max(0,G.feedbackTime-dt);G.speechTime=Math.max(0,G.speechTime-dt);
+    if(G.celebrate>0)G.celebrate=Math.max(0,G.celebrate-dt);
+}

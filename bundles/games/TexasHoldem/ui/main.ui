@@ -199,9 +199,14 @@ button:active, [role="button"]:active {
 }
 
 @media (max-width: 680px) {
+  .poker-table-root {
+    max-width: 100vw !important;
+    overflow-x: clip !important;
+    box-sizing: border-box !important;
+  }
   .poker-topbar {
-    padding: 6px 10px !important;
-    gap: 6px !important;
+    padding: 6px 8px !important;
+    gap: 5px !important;
     flex-wrap: wrap !important;
   }
   .poker-topbar-left {
@@ -217,6 +222,7 @@ button:active, [role="button"]:active {
     order: 3 !important;
     flex: 1 0 100% !important;
     max-width: 100% !important;
+    box-sizing: border-box !important;
     flex-direction: row !important;
     justify-content: center !important;
     gap: 8px !important;
@@ -226,23 +232,44 @@ button:active, [role="button"]:active {
     display: none !important;
   }
   .poker-stage {
-    padding: 24px 16px 26px !important;
+    padding: 24px 8px 22px !important;
+    overflow: hidden !important;
   }
   .poker-felt {
-    width: min(92vw, 460px) !important;
+    box-sizing: border-box !important;
+    width: min(88vw, 430px) !important;
     height: 100% !important;
-    max-height: 390px !important;
-    min-height: 200px !important;
-    border-width: 7px !important;
-    border-radius: 104px !important;
+    max-height: 410px !important;
+    min-height: 210px !important;
+    border-width: 6px !important;
+    border-radius: 96px !important;
+  }
+  .poker-seat-pos-br, .poker-seat-pos-tr {
+    right: 2px !important;
+  }
+  .poker-seat-pos-tl, .poker-seat-pos-bl {
+    left: 2px !important;
+  }
+  .poker-seat-pos-tr, .poker-seat-pos-tl {
+    top: 14px !important;
+  }
+  .poker-seat-pos-br, .poker-seat-pos-bl {
+    bottom: 14px !important;
+  }
+  .poker-seat-pos-top {
+    top: -20px !important;
+  }
+  .poker-seat-pos-bottom {
+    bottom: -20px !important;
   }
   .poker-seat-occupied {
-    width: 74px !important;
-    height: 108px !important;
-    padding: 4px 4px 40px 4px !important;
+    width: 72px !important;
+    height: 104px !important;
+    padding: 4px 4px 38px 4px !important;
+    box-sizing: border-box !important;
   }
   .poker-seat-empty {
-    width: 68px !important;
+    width: 64px !important;
   }
   .poker-seat-avatar {
     width: 32px !important;
@@ -251,11 +278,20 @@ button:active, [role="button"]:active {
     min-height: 32px !important;
   }
   .poker-seat-card {
-    width: 22px !important;
-    height: 32px !important;
+    width: 21px !important;
+    height: 30px !important;
   }
   .poker-seat-cards {
-    min-height: 34px !important;
+    min-height: 32px !important;
+  }
+  .poker-board-row {
+    gap: 4px !important;
+    padding: 4px 6px !important;
+    min-height: 52px !important;
+  }
+  .poker-board-card {
+    width: 34px !important;
+    height: 48px !important;
   }
   .poker-bottom-dock {
     padding: 2px 6px max(8px, env(safe-area-inset-bottom)) !important;

@@ -1,0 +1,76 @@
+// Entry and input lifecycle. No DOM access, eval, dynamic imports or external services in the game.
+function _init() {
+    if (inputCleanup) inputCleanup();
+    if (!restore()) S = freshState();
+    cooldown = 0; actionCooldown = 0; paused = false; overlay = ""; resetIntent = "";
+    lastClock = Date.now(); worldDirty = true;
+    installInput(); publish();
+}
+function tick() {
+    let now = Date.now(), dt = lastClock ? Math.max(0, (now - lastClock) / 1000) : TICK_MS / 1000;
+    lastClock = now;
+    // A stalled/hidden host may not forward blur. Never award unattended patience.
+    if (dt > 1.5 && !paused && !overlay && S && S.phase !== "ending") { loseFocus(); return; }
+    advanceSimulation(dt);
+}
+function pauseGame() {
+    if (!S) return;
+    if (overlay) { closeOverlay(); return; }
+    paused = !paused; autoPaused = false; resetIntent = ""; lastClock = Date.now();
+    if (paused) stopAmbience(); else unlockAudio();
+    persist(); publish();
+}
+function openSettings() { paused = true; overlay = "settings"; resetIntent = ""; stopAmbience(); persist(); publish(); }
+function openGallery() { paused = true; overlay = "gallery"; resetIntent = ""; stopAmbience(); persist(); publish(); }
+function openHelp() { paused = true; overlay = "help"; resetIntent = ""; stopAmbience(); persist(); publish(); }
+function closeOverlay() { overlay = ""; paused = false; resetIntent = ""; autoPaused = false; lastClock = Date.now(); unlockAudio(); publish(); }
+function toggleMotion() { settings.reducedMotion = !settings.reducedMotion; worldDirty = true; persist(); publish(); }
+function toggleAssist() { settings.assist = !settings.assist; worldDirty = true; persist(); publish(); }
+function toggleCaptions() { settings.captions = !settings.captions; persist(); publish(); }
+function requestReset(kind) { paused = true; overlay = "settings"; resetIntent = kind === "all" ? "all" : "room"; stopAmbience(); publish(); }
+function cancelReset() { resetIntent = ""; publish(); }
+function confirmReset() {
+    if (!resetIntent) return;
+    let all = resetIntent === "all";
+    stopAmbience();
+    if (all) {
+        profile = { endings: [], best: 0, sessions: 0, legacyCompleted: 0 };
+        try { localStorage.removeItem(SAVE_KEY); localStorage.removeItem(SAVE_KEY + ":backup"); localStorage.removeItem(LEGACY_KEY); } catch (e) { saveStatus = "Storage could not be cleared."; }
+    } else { try { localStorage.removeItem(SAVE_KEY); localStorage.removeItem(SAVE_KEY + ":backup"); } catch (e) {} }
+    S = freshState(); profile.sessions = Math.min(1000000, profile.sessions + 1);
+    cooldown = 0; actionCooldown = 0; effectLife = 0; effectKind = ""; particles = [];
+    paused = false; overlay = ""; resetIntent = ""; hintShown = false; autoPaused = false;
+    lastClock = Date.now(); saveClock = 0; soundTimes = {}; worldDirty = true;
+    persist(); publish();
+}
+function keyDown(e) {
+    if (!S || e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.targetEditable) return;
+    let tag = String(e.targetTag || (e.target && e.target.tagName) || "").toLowerCase();
+    if (tag === "input" || tag === "textarea" || tag === "select") return;
+    let k = String(e.key || ""); if (k.length === 1) k = k.toLowerCase();
+    // Native button activation is preserved. No double press from the window listener.
+    if (tag === "button" && (k === " " || k === "Enter")) return;
+    if (k === "Tab") return;
+    if (k === "Escape" || k === "p") { pauseGame(); return; }
+    if (k === "m") { toggleSound(); return; }
+    if (!active()) return;
+    if (k === " ") { if (e.preventDefault) e.preventDefault(); pressDuck(); }
+    if (k === "1" || k === "2" || k === "3") interact(Number(k) - 1);
+    if (k === "h") helpGate();
+}
+function loseFocus() {
+    if (!S || paused) return;
+    paused = true; autoPaused = true; stopAmbience(); persist(); publish();
+}
+function installInput() {
+    window.addEventListener("keydown", keyDown);
+    window.addEventListener("blur", loseFocus);
+    window.addEventListener("pagehide", loseFocus);
+    // Do not capture Tab/Enter/Space at host level: it would swallow native button activation.
+    try { softn.input.captureKeys(["1", "2", "3"]); } catch (e) { /* Older runtime. */ }
+    inputCleanup = function () {
+        window.removeEventListener("keydown", keyDown); window.removeEventListener("blur", loseFocus); window.removeEventListener("pagehide", loseFocus);
+        try { softn.input.captureKeys([]); } catch (e) {}
+        stopAmbience();
+    };
+}

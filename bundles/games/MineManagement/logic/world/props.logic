@@ -1,0 +1,372 @@
+// Loose things: cones, drums, an esky and one portaloo. Walk into them and they get kicked; drive
+// into them and they fly. A few lines of ballistics each, no physics engine. Gary keeps count.
+//
+// State: S.props, one per PROP_LAYOUT row: k (the kind), x, y, z, yaw, tilt (0 upright to PI / 2
+// on its side), tiltYaw (the way it fell) and roll (a drum rolling on its side); while moving also
+// vx, vy, vz, spin, moving and air. They are reset every shift (nextShift in mine/shift.logic).
+// Entry points: advanceProps() every simulation step, appendPropObjects() every frame, standProp()
+// from interact() (player/interactions.logic) and validProps() from validState().
+// validProps() rejects a save with more than 40 props, so PROP_LAYOUT must stay at 40 rows or
+// fewer; new fields on a prop belong in its checks too. Props are only for fun: they block nothing,
+// and their tumbles use flavour(), not rand(), so the simulation's random sequence is untouched.
+
+// ---------- Kinds and layout ----------
+
+// For each kind: r, the contact radius in metres; mass, which divides the kicks; h, a height that
+// nothing reads.
+var PROP_KINDS = {
+  cone: { r: 0.32, mass: 1, h: 0.75 },
+  drum: { r: 0.42, mass: 3, h: 0.95 },
+  esky: { r: 0.45, mass: 2, h: 0.5 },
+  portaloo: { r: 0.9, mass: 9, h: 2.4 }
+};
+
+// Where each prop starts the shift: [kind, x, z]. A change in the number of rows replaces the
+// props of a saved game when it is loaded (ensureProps).
+var PROP_LAYOUT = [
+  ['cone', -25.5, 176],
+  ['cone', -18.5, 176],
+  ['cone', -25.5, 183],
+  ['cone', -18.5, 183],
+  ['cone', -22, 204],
+  ['cone', -22, 209],
+  ['cone', 31, 206],
+  ['cone', 45, 206],
+  ['cone', -29.5, 159],
+  ['cone', -40, 159],
+  ['cone', -11, 149],
+  ['cone', -5, 149],
+  ['drum', -58, 141.5],
+  ['drum', -57.1, 142.6],
+  ['drum', -56, 141.6],
+  ['drum', 12.5, 152],
+  ['drum', 13.6, 153.2],
+  ['drum', 51, 211],
+  ['esky', -30.5, 146.5],
+  ['portaloo', -49, 163]
+];
+
+// Rate limits for propHit(): Gary comments on a kicked cone at most every 45 s of game time
+// (lastKickTalk, S.time), and the kick sound plays at most every 140 ms of real time
+// (lastKickSound, Date.now()).
+var lastKickTalk = -100;
+
+var lastKickSound = 0;
+
+// Every prop upright at its PROP_LAYOUT spot, each turned a little differently.
+function freshProps() {
+  return PROP_LAYOUT.map(function (p, i) {
+    return {
+      k: p[0],
+      x: p[1],
+      z: p[2],
+      y: groundAt(p[1], p[2]),
+      yaw: (i * 1.7) % 6.28,
+      tilt: 0,
+      tiltYaw: 0,
+      roll: 0
+    };
+  });
+}
+
+// Fresh props when S.props is missing or no longer matches PROP_LAYOUT's length.
+function ensureProps() {
+  if (!Array.isArray(S.props) || S.props.length !== PROP_LAYOUT.length) S.props = freshProps();
+}
+
+// The save check for S.props (validState in core/persistence.logic): absent is fine; otherwise at
+// most 40, of known kinds, with finite numbers, within 230 m of the centre.
+function validProps(s) {
+  if (s.props === undefined) return true;
+  if (!Array.isArray(s.props) || s.props.length > 40) return false;
+  for (var p of s.props) {
+    if (!p || !PROP_KINDS[p.k]) return false;
+    for (var k of ['x', 'y', 'z', 'yaw', 'tilt', 'tiltYaw', 'roll']) if (!Number.isFinite(p[k])) return false;
+    if (Math.abs(p.x) > 230 || Math.abs(p.z) > 230) return false;
+  }
+  return true;
+}
+
+// ---------- Kicks and ballistics ----------
+
+// Gives a prop a kick: the horizontal impulse is divided by its mass, the upward one by the square
+// root of its mass, and the spin by its mass.
+function kickProp(p, ix, iy, iz, spin) {
+  var m = PROP_KINDS[p.k].mass;
+  p.vx = (p.vx || 0) + ix / m;
+  p.vy = (p.vy || 0) + iy / Math.sqrt(m);
+  p.vz = (p.vz || 0) + iz / m;
+  p.spin = (p.spin || 0) + spin / m;
+  p.moving = true;
+  p.air = true;
+}
+
+// What follows a hit: cones are counted (25 in one shift earns Cone ranger), a sound plays, and the
+// radio has something to say about a toppled portaloo (June) or a kicked cone (Gary, if he's on
+// the crew). `who` ('boot', 'ute' or 'truck') isn't used.
+function propHit(p, who) {
+  if (p.k === 'cone') {
+    funCount('cones');
+    if (S.fun.cones >= 25) awardBadge('cones', 'Cone ranger');
+  }
+  var now = Date.now();
+  if (now - lastKickSound > 140) {
+    lastKickSound = now;
+    sfx(p.k === 'cone' ? 'kick' : 'bonk');
+  }
+  if (p.k === 'portaloo' && p.tilt < 0.5) {
+    toast('PORTALOO DOWN', 'gold');
+    banter(['JUNE', 'Nobody was in the portaloo. I checked the roster. Twice. Probably.'], true);
+  } else if (p.k === 'cone' && S.time - lastKickTalk > 45 && getBot(1)) {
+    lastKickTalk = S.time;
+    banter(
+      pick([
+        ['GARY', 'That cone had a name.'],
+        ['GARY', 'Cone ' + S.fun.cones + ' of the shift has been displaced. I am being very calm about it.'],
+        ['GARY', 'Please return the cone to its designated cone place.'],
+        ['GARY', 'I watched that. The cone watched that.']
+      ]),
+      true
+    );
+  }
+}
+
+// Every simulation step: kicks the props that something has run into, then moves the ones in
+// motion.
+function advanceProps(dt) {
+  ensureProps();
+  var p = S.player,
+    ute = S.ute;
+  for (var pr of S.props) {
+    var kind = PROP_KINDS[pr.k];
+    // Contacts: boots, the ute, the trucks and one emu.
+    // Boots: walking into it faster than 0.6 m/s. The portaloo takes only 35% of the push.
+    if (p.mode === 'foot' && p.speed > 0.6) {
+      var d = dist2(p, pr);
+      if (d < kind.r + 0.45 && d > 0.01) {
+        var push = (p.speed * 0.9 + 1.6) * (pr.k === 'portaloo' ? 0.35 : 1);
+        kickProp(
+          pr,
+          ((pr.x - p.x) / d) * push,
+          2.2 + p.speed * 0.25,
+          ((pr.z - p.z) / d) * push,
+          (flavour() - 0.5) * 9
+        );
+        propHit(pr, 'boot');
+      }
+    }
+    // The ute above 1.5 m/s, unless it is flying more than 2 m over the prop: thrown ahead and off
+    // to the side the prop was on. Drums and the portaloo cost the ute a fifth of its speed.
+    if (Math.abs(ute.speed) > 1.5 && !(p.mode === 'ute' && ute.air && ute.y > pr.y + 2)) {
+      var du = dist2(ute, pr);
+      if (du < kind.r + 1.9) {
+        var sp = Math.abs(ute.speed),
+          dirx = Math.sin(ute.heading) * (ute.speed < 0 ? -1 : 1),
+          dirz = Math.cos(ute.heading) * (ute.speed < 0 ? -1 : 1),
+          side = (pr.x - ute.x) * dirz - (pr.z - ute.z) * dirx > 0 ? 1 : -1;
+        kickProp(
+          pr,
+          dirx * (sp * 1.15 + 2) + dirz * side * 2.5,
+          3 + sp * 0.35,
+          dirz * (sp * 1.15 + 2) - dirx * side * 2.5,
+          (flavour() - 0.5) * 16
+        );
+        propHit(pr, 'ute');
+        if (pr.k === 'portaloo' || pr.k === 'drum') {
+          ute.speed *= 0.8;
+          addShake(0.25);
+        }
+      }
+    }
+    // A truck moving faster than 1 m/s sends it flying ahead.
+    for (var t of S.trucks) {
+      if (Math.abs(t.speed) < 1) continue;
+      var dt2 = dist2(t, pr);
+      if (dt2 < kind.r + 3.6) {
+        var hx = Math.sin(t.heading),
+          hz = Math.cos(t.heading);
+        kickProp(
+          pr,
+          hx * (Math.abs(t.speed) * 1.3 + 3),
+          5,
+          hz * (Math.abs(t.speed) * 1.3 + 3),
+          (flavour() - 0.5) * 12
+        );
+        propHit(pr, 'truck');
+      }
+    }
+    // Kevin in full flight scatters cones.
+    if (S.kevin && S.kevin.mode === 'flee' && dist2(S.kevin, pr) < kind.r + 0.7 && pr.k === 'cone') {
+      kickProp(pr, (pr.x - S.kevin.x) * 2, 2, (pr.z - S.kevin.z) * 2, 6);
+    }
+    if (!pr.moving) continue;
+    // Ballistics, a bounce and a lot of friction. Gravity here is 18 m/s^2.
+    pr.vy -= 18 * dt;
+    var ox = pr.x,
+      oz = pr.z;
+    pr.x += pr.vx * dt;
+    pr.z += pr.vz * dt;
+    pr.y += pr.vy * dt;
+    pr.yaw += pr.spin * dt;
+    // Off the site, or into something solid (a person-sized check against the fixed world): back
+    // where it was, rebounding at 35% of its speed.
+    if (
+      Math.abs(pr.x) > 222 ||
+      Math.abs(pr.z) > 222 ||
+      clearanceScore(S.player, 'foot', pr.x, pr.z, 0, false) > 0.001
+    ) {
+      pr.x = ox;
+      pr.z = oz;
+      pr.vx *= -0.35;
+      pr.vz *= -0.35;
+    }
+    var ground = groundAt(pr.x, pr.z);
+    if (pr.y <= ground) {
+      pr.y = ground;
+      // Landing faster than 3 m/s: it bounces and tips further over, towards the way it was going
+      // (the portaloo only when moving faster than 5 m/s).
+      if (pr.vy < -3) {
+        pr.vy = -pr.vy * 0.32;
+        if (pr.k !== 'portaloo' || Math.hypot(pr.vx, pr.vz) > 5) {
+          pr.tilt = Math.min(Math.PI / 2, pr.tilt + (pr.k === 'drum' ? 1.6 : 1.2));
+          pr.tiltYaw = Math.atan2(pr.vx, pr.vz);
+        }
+      } else {
+        pr.vy = 0;
+        pr.air = false;
+      }
+      // Friction on the ground: each second the speed falls to 12% (55% for a drum rolling on its
+      // side) and the spin to 20%.
+      var f = Math.pow(pr.tilt > 1 && pr.k === 'drum' ? 0.55 : 0.12, dt);
+      pr.vx *= f;
+      pr.vz *= f;
+      pr.spin *= Math.pow(0.2, dt);
+    }
+    // A drum on its side rolls: the angle turned is the distance travelled over its radius.
+    if (pr.k === 'drum' && pr.tilt > 1) pr.roll += Math.hypot(pr.x - ox, pr.z - oz) / kind.r;
+    // At rest once it is on the ground and slower than 0.12 m/s.
+    if (!pr.air && Math.hypot(pr.vx, pr.vz) < 0.12) {
+      pr.moving = false;
+      pr.vx = pr.vz = pr.vy = 0;
+      pr.spin = 0;
+    }
+  }
+}
+
+// ---------- Standing them back up ----------
+
+// The nearest knocked-over prop at rest within 2.6 m of the player, or null. Only scripts/soak.mjs
+// calls this: the game finds fallen props in nearestInteraction() (player/interactions.logic),
+// with the same rules.
+function nearestFallenProp() {
+  var p = S.player,
+    best = null,
+    bd = 2.6;
+  for (var pr of S.props || []) {
+    if (pr.tilt < 0.5 || pr.moving) continue;
+    var d = dist2(p, pr);
+    if (d < bd) {
+      bd = d;
+      best = pr;
+    }
+  }
+  return best;
+}
+
+// Standing a fallen cone back up is a small kindness the crew notices.
+// Called from interact() (player/interactions.logic). A cone earns a point of rapport with Gary
+// (crew member 1), and sometimes a word from him.
+function standProp(pr) {
+  pr.tilt = 0;
+  pr.roll = 0;
+  pr.y = groundAt(pr.x, pr.z);
+  sfx('click');
+  if (pr.k === 'cone') {
+    var m = crewMemory(1);
+    if (m) m.rapport = Math.min(100, m.rapport + 1);
+    toast('Cone restored to dignity', 'good');
+    if (getBot(1) && flavour() < 0.4)
+      banter(['GARY', 'You stood the cone up. I have added you to the good list. It is a short list.'], true);
+  } else toast(pr.k === 'portaloo' ? 'Portaloo upright. Nobody needs to know.' : 'Tidied up', 'good');
+}
+
+// ---------- Drawing ----------
+
+// A prop's scene group, built from primitives; drums take one of three colours by index.
+function propObject(pr, i) {
+  var parts = [];
+  if (pr.k === 'cone') {
+    parts.push(box('base', 0, 0.03, 0, 0.52, 0.06, 0.52, '#262b2d'));
+    parts.push({
+      id: 'cone',
+      type: 'cone',
+      position: vec(0, 0.4, 0),
+      radius: 0.21,
+      height: 0.68,
+      color: '#f08a2c',
+      roughness: 0.6
+    });
+    parts.push({
+      id: 'band',
+      type: 'cylinder',
+      position: vec(0, 0.42, 0),
+      radius: 0.125,
+      height: 0.09,
+      color: '#f4f1e6',
+      roughness: 0.5
+    });
+  } else if (pr.k === 'drum') {
+    var c = ['#2f6e9a', '#b8462c', '#d9a43a'][i % 3];
+    parts.push({
+      id: 'body',
+      type: 'cylinder',
+      position: vec(0, 0.47, 0),
+      radius: 0.3,
+      height: 0.92,
+      color: c,
+      roughness: 0.55,
+      metalness: 0.3
+    });
+    parts.push({
+      id: 'rim',
+      type: 'cylinder',
+      position: vec(0, 0.66, 0),
+      radius: 0.31,
+      height: 0.05,
+      color: '#20282b',
+      metalness: 0.4
+    });
+  } else if (pr.k === 'esky') {
+    parts.push(box('tub', 0, 0.22, 0, 0.78, 0.42, 0.46, '#e8e2d0'));
+    parts.push(box('lid', 0, 0.46, 0, 0.82, 0.08, 0.5, '#2d79b8'));
+  } else {
+    parts.push(box('cabin', 0, 1.15, 0, 1.25, 2.3, 1.25, '#3e8a7a'));
+    parts.push(box('roof', 0, 2.34, 0, 1.4, 0.1, 1.4, '#e9e6dc'));
+    parts.push(box('door', 0, 1.1, 0.63, 0.82, 1.9, 0.03, '#2f6e60'));
+    parts.push(box('sign', 0, 1.8, 0.65, 0.36, 0.22, 0.02, '#f2c14e'));
+  }
+  // Turned about its own axis, then tipped toward the way it was knocked:
+  // world = T·Ry(fall)·Rx(tilt)·Ry(spin), with fall = tiltYaw and spin = yaw - tiltYaw, so an
+  // upright prop faces yaw. A drum on its side also rolls about its own axis. Fallen props are
+  // lifted so they rest on their side.
+  var spin = group(
+    'spin',
+    0,
+    0,
+    0,
+    pr.yaw - pr.tiltYaw + (pr.k === 'drum' && pr.tilt > 1 ? pr.roll : 0),
+    parts
+  );
+  var tilted = group('tilt', 0, 0, 0, 0, [spin]);
+  tilted.rotation = vec(pr.tilt, 0, 0);
+  var lift =
+    Math.sin(Math.min(pr.tilt, Math.PI / 2)) *
+    (pr.k === 'cone' ? 0.24 : pr.k === 'portaloo' ? 0.62 : PROP_KINDS[pr.k].r * 0.75);
+  return group('prop-' + i, pr.x, pr.y + lift, pr.z, pr.tiltYaw, [tilted]);
+}
+
+// Adds every prop to the frame (from buildWorldFrame in scene.logic).
+function appendPropObjects(objects) {
+  ensureProps();
+  for (var i = 0; i < S.props.length; i++) objects.push(propObject(S.props[i], i));
+}

@@ -1,0 +1,67 @@
+// Small shared helpers: arithmetic, angles, money and clock formatting, and the seed hash. They
+// keep no state and are used all over the logic, so keep them pure and what they return unchanged.
+// seedValue above all: every seed's random sequence and site profile start from it, and a save's
+// stored site profile is checked against a fresh one (validSite in mine/chapters.logic).
+
+function clamp(v, a, b) {
+  return Math.max(a, Math.min(b, v));
+}
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+// Rounds to one decimal place, for tidy figures in the loads list and the PIT export.
+function nround(v) {
+  return Math.round(v * 10) / 10;
+}
+
+// Distance between two points on the ground plane, from their x and z (y is ignored). The 2 means
+// two dimensions: it is the distance itself, not its square.
+function dist2(a, b) {
+  var dx = a.x - b.x,
+    dz = a.z - b.z;
+  return Math.sqrt(dx * dx + dz * dz);
+}
+
+// Wraps an angle in radians into the range -PI to PI.
+// Seconds of shift time since t, a past value of S.time. S.time starts again from 0 each shift, so
+// a t ahead of the clock (left over from an earlier shift) counts as long ago.
+function secondsSince(t) {
+  return S.time >= t ? S.time - t : Infinity;
+}
+
+function wrapAngle(v) {
+  while (v > Math.PI) v -= Math.PI * 2;
+  while (v < -Math.PI) v += Math.PI * 2;
+  return v;
+}
+
+// Dollars for display: whole dollars with thousands separators, such as "$6,500" or "-$1,250".
+function money(v) {
+  var a = Math.round(v);
+  return (a < 0 ? '-$' : '$') + String(Math.abs(a)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+// Hashes a seed string to a starting state for rand() (core/state.logic): 1 to 2147483646. Never 0,
+// because that generator would then return 0 for ever. Also seeds the site profile
+// (mine/site-profile.logic) and the scenery, so changing it changes every seed's mine.
+function seedValue(s) {
+  var v = 4817;
+  for (var i = 0; i < s.length; i++) v = (v * 31 + s.charCodeAt(i)) % 2147483647;
+  return Math.max(1, v);
+}
+
+// The shift clock: t seconds into the shift as "HH:MM" from 06:00. The fraction of the 720 s shift
+// that has passed is spread over the 720 minutes from 06:00 to 18:00, so one second is one game
+// minute. The 720 is fixed here rather than read from S.duration (validState insists on 720).
+function clockLabel(t) {
+  var minutes = 360 + Math.floor((t / 720) * 720);
+  return String(Math.floor(minutes / 60) % 24).padStart(2, '0') + ':' + String(minutes % 60).padStart(2, '0');
+}
+
+// Smoothstep: blends from a to b as t goes from 0 to 1, easing in and out (t is clamped).
+function smoothBlend(a, b, t) {
+  t = clamp(t, 0, 1);
+  return lerp(a, b, t * t * (3 - 2 * t));
+}

@@ -1,0 +1,311 @@
+let uwSmokeSources = [];
+let uwWalkSegments = [];
+let uwIncidents = [];
+function uwArchitecture(t) {
+    return Math.min(2, Math.floor(Math.max(0, uwWorld.month - t.age) / 120));
+}
+function uwLotCondition(i, x, y, z, t) {
+    if (quality === "low" || activeOverlay !== "none" || !t.level || t.stage) return;
+    if (t.neglect >= 4) {
+        let front = t.zone === 1 && t.level <= 2 ? 0.69 : t.zone === 3 ? 0.8 : t.level === 4 ? 0.66 : 0.79;
+        for (let side = -1; side <= 1; side += 2) {
+            uwBox(x + side * 0.34, y + 0.38, z + front, 0.3, 0.23, 0.055, "#927b60", "boardedwindow", false);
+            uwBox(x + side * 0.34, y + 0.39, z + front + 0.035, 0.32, 0.045, 0.025, "#b59c75", "boardbrace", false);
+        }
+        uwBox(x + 0.6, y + 0.1, z + 0.87, 0.25, 0.18, 0.16, "#74756a", "litter", false);
+    }
+    else if (uwNet.value[i] >= 65 && t.zone !== 3) {
+        uwPlanter(x - 0.52, y, z - 0.86, t.variant, true);
+        uwPlanter(x + 0.52, y, z - 0.86, t.variant + 1, true);
+    }
+    if (uwNet.pollution[i] > 45)
+        uwBox(x - 0.87, y + 0.021, z, 0.16, 0.012, 1.5, "#8d9274", "pollutionstain", false);
+}
+function uwOverlayColour(i, base) {
+    let t = uwWorld.tiles[i], value = 0;
+    if (activeOverlay === "none")
+        return base;
+    if (activeOverlay === "zones")
+        return [base, "#80b98d", "#6fabc2", "#c5ad65", "#a49bc1"][t.zone];
+    if (activeOverlay === "districts")
+        return ["#9eae88", "#76a4a8", "#c1aa83", "#939fb5", "#b498a9", "#80b196", "#ae9a7b", "#83a9bd"][uwDistrictOf(i) % 8];
+    if (activeOverlay === "power")
+        value = uwNet.power[i] * 100;
+    else if (activeOverlay === "water")
+        value = uwNet.water[i] * 100;
+    else if (activeOverlay === "value")
+        value = uwNet.value[i];
+    else if (activeOverlay === "pollution")
+        value = 100 - uwNet.pollution[i];
+    else if (activeOverlay === "traffic")
+        value = t.road ? 100 - Math.min(100, uwNet.traffic[i] / 1.5) : 60;
+    else if (activeOverlay === "services")
+        value = (uwNet.service.school[i] + uwNet.service.health[i] + uwNet.service.fire[i]) / 3;
+    return value < 20 ? "#b56f64" : value < 40 ? "#c1986c" : value < 60 ? "#c4bc79" : value < 80 ? "#9bb686" : "#70aa96";
+}
+function uwStreetLinks(i) {
+    let nn = uwNeighbours(i), me = uwXZ(i), links = { north:-1, south:-1, east:-1, west:-1, count:0 };
+    for (let k = 0; k < nn.length; k = k + 1)
+        if (uwRoadPassable(i, nn[k])) {
+            let p = uwXZ(nn[k]);
+            if (p.x > me.x) links.east = nn[k];
+            if (p.x < me.x) links.west = nn[k];
+            if (p.z > me.z) links.south = nn[k];
+            if (p.z < me.z) links.north = nn[k];
+            links.count++;
+        }
+    return links;
+}
+function uwStreetCrossings(i, links) {
+    let t = uwWorld.tiles[i], out = [];
+    if (t.wet || t.flood || links.count < 3) return out;
+    let p = uwXZ(i), civic = false;
+    for (let dz = -2; dz <= 2; dz++)
+        for (let dx = -2; dx <= 2; dx++) {
+            if (Math.abs(dx) + Math.abs(dz) > 2) continue;
+            let j = uwIndex(p.x+dx,p.z+dz);
+            if (j >= 0 && ["school","university","park","plaza","stop","hall"].indexOf(uwWorld.tiles[j].build) >= 0) civic = true;
+        }
+    if (t.road !== 2 && !civic) return out;
+    let vertical = 0, horizontal = 0;
+    if (links.north >= 0) vertical += uwWorld.tiles[links.north].road;
+    if (links.south >= 0) vertical += uwWorld.tiles[links.south].road;
+    if (links.east >= 0) horizontal += uwWorld.tiles[links.east].road;
+    if (links.west >= 0) horizontal += uwWorld.tiles[links.west].road;
+    // Mark at most one opposing pair, along the dominant through street.
+    // Adjoining junction tiles are one wide road area, not repeated crossings.
+    let arms = vertical >= horizontal ? ["north","south"] : ["east","west"];
+    for (let k = 0; k < arms.length; k++) {
+        let next = links[arms[k]];
+        if (next >= 0 && !uwWorld.tiles[next].wet && uwStreetLinks(next).count <= 2) out.push(arms[k]);
+    }
+    return out;
+}
+function uwRenderRoad(i, x, y, z, t) {
+    let nn = uwNeighbours(i), links = uwStreetLinks(i), east = links.east >= 0, west = links.west >= 0, north = links.north >= 0, south = links.south >= 0;
+    let asphalt = uwOverlayColour(i, t.road === 2 ? "#586970" : "#657174"), yy = uwRoadHeight(i);
+    uwBox(x, yy, z, 2, 0.08, 2, "#b1b8ac", "road", false);
+    let rw = t.road === 2 ? 1.77 : 1.5;
+    uwBox(x, yy + 0.046, z, rw, 0.025, rw, asphalt, "road", false);
+    if (north)
+        uwBox(x, yy + 0.046, z - 0.875, rw, 0.025, 0.25, asphalt, "road", false);
+    if (south)
+        uwBox(x, yy + 0.046, z + 0.875, rw, 0.025, 0.25, asphalt, "road", false);
+    if (east)
+        uwBox(x + 0.875, yy + 0.046, z, 0.25, 0.025, rw, asphalt, "road", false);
+    if (west)
+        uwBox(x - 0.875, yy + 0.046, z, 0.25, 0.025, rw, asphalt, "road", false);
+    let alongX = (east || west) && !north && !south, alongZ = (north || south) && !east && !west;
+    if (alongX || alongZ) {
+        let lanes = t.road === 2 ? [-0.07,0.07] : [0];
+        for (let k = 0; k < lanes.length; k++)
+            uwBox(x + (alongZ ? lanes[k] : 0), yy + 0.065, z + (alongX ? lanes[k] : 0), alongX ? 0.62 : 0.025, 0.012, alongX ? 0.025 : 0.62, "#bbbca5", "roadmark", false);
+    }
+    if (quality !== "low" && activeOverlay === "none") {
+        let arms = uwStreetCrossings(i, links);
+        for (let k = 0; k < arms.length; k++) {
+            let arm = arms[k], acrossX = arm === "north" || arm === "south", sign = arm === "north" || arm === "west" ? -1 : 1;
+            for (let a = -1; a <= 1; a++)
+                uwBox(x + (acrossX ? a * 0.34 : sign * 0.66), yy + 0.069, z + (acrossX ? sign * 0.66 : a * 0.34), acrossX ? 0.14 : 0.22, 0.012, acrossX ? 0.22 : 0.14, "#cbd0bc", "crosswalk", false);
+        }
+        let p = uwXZ(i);
+        if (!t.wet && !t.flood && links.count === 2 && (alongX || alongZ)) {
+            let ends = alongX ? [links.east,links.west] : [links.north,links.south];
+            let clear = ends[0] >= 0 && ends[1] >= 0 && uwStreetLinks(ends[0]).count === 2 && uwStreetLinks(ends[1]).count === 2;
+            if (clear && t.road === 2 && (p.x + p.z) % 3 === 0) {
+                uwBox(x, yy + 0.085, z, alongX ? 1.12 : 0.18, 0.07, alongX ? 0.18 : 1.12, "#b3b8a2", "medianrim", false);
+                uwBox(x, yy + 0.13, z, alongX ? 0.95 : 0.12, 0.045, alongX ? 0.12 : 0.95, "#81b844", "medianplanting", false);
+            }
+            for (let k = 0; k < nn.length; k++) {
+                let lot = uwWorld.tiles[nn[k]];
+                if (lot.build === "stop") {
+                    let stop = uwWorldPosition(nn[k]), dx = (stop.x-x)/2, dz = (stop.z-z)/2;
+                    uwBox(x+dx*0.78,yy+0.07,z+dz*0.78,dx?0.055:0.9,0.014,dx?0.9:0.055,"#81bcc0","buscurb",false);
+                }
+            }
+        }
+    }
+    // Short pavement walks stay within one straight local-road tile. No route
+    // finding, street crossings or resident simulation is implied by these figures.
+    if (quality !== "low" && activeOverlay === "none" && !t.wet && !t.flood && t.road === 1 &&
+        ((east && west && !north && !south) || (north && south && !east && !west))) {
+        let alongX = east && west;
+        for (let k = 0; k < nn.length; k++) {
+            let neighbour = uwWorld.tiles[nn[k]];
+            if (!neighbour.wet && !neighbour.fire && !neighbour.flood &&
+                (neighbour.build || (neighbour.level && !neighbour.stage && neighbour.zone !== 3))) {
+                let p = uwWorldPosition(nn[k]);
+                let side = alongX ? (p.z > z ? 1 : -1) : (p.x > x ? 1 : -1);
+                uwWalkSegments.push({ x: x, y: yy, z: z, alongX: alongX, side: side, seed: i });
+            }
+        }
+    }
+    if (t.wet) {
+        let alongX = east || west;
+        if (alongX) {
+            uwBox(x, yy + 0.23, z - 0.93, 2, 0.08, 0.055, "#c0c9bf", "bridge-rail", false);
+            uwBox(x, yy + 0.23, z + 0.93, 2, 0.08, 0.055, "#c0c9bf", "bridge-rail", false);
+        }
+        else {
+            uwBox(x - 0.93, yy + 0.23, z, 0.055, 0.08, 2, "#c0c9bf", "bridge-rail", false);
+            uwBox(x + 0.93, yy + 0.23, z, 0.055, 0.08, 2, "#c0c9bf", "bridge-rail", false);
+        }
+        if (i % 2 === 0)
+            uwBox(x, -0.05, z, 0.55, 1.15, 0.55, "#a3ada8", "bridge-pier", false);
+        if (quality !== "low") {
+            for (let side = -1; side <= 1; side += 2) {
+                uwBox(x + (alongX ? 0 : side * 0.92), yy + 0.55, z + (alongX ? side * 0.92 : 0), alongX ? 2 : 0.075, 0.12, alongX ? 0.075 : 2, "#3688a1", "bridgegirder", false);
+                uwBox(x + (alongX ? 0 : side * 0.92), yy + 0.31, z + (alongX ? side * 0.92 : 0), 0.08, 0.62, 0.08, "#738f8d", "bridgerivetpost", false);
+            }
+        }
+    }
+    let streetGrid = uwXZ(i);
+    if ((streetGrid.x + streetGrid.z * 3) % 7 === 0 && quality !== "low") {
+        uwBox(x + 0.87, yy + 0.72, z + 0.8, 0.055, 1.42, 0.055, "#657c7c", "lamppost", false);
+        uwBox(x + 0.79, yy + 1.45, z + 0.8, 0.25, 0.1, 0.17, "#f1dca8", "streetlamp", uwNet.power[i] > 0.5);
+    }
+}
+function uwRenderStatic() {
+    if (!uwWorld || !uwStaticDirty)
+        return;
+    let renderStart = uwPerfStart();
+    uwBeginMeshes();
+    uwSmokeSources = [];
+    uwWalkSegments = [];
+    uwIncidents = [];
+    let n = uwWorld.n, greens = ["#91bd5d", "#97c566", "#92c061", "#9ac76c", "#88b759", "#91bf64"];
+    uwSpecialMeshes.push({ id: "uw-water", type: "box", position: { x: 0, y: -0.22, z: 0 }, width: n * 2 + 2, height: 0.13, depth: n * 2 + 2, color: lightMode === "night" ? "#245570" : "#259cc1", metalness: 0.38, roughness: 0.24, receiveShadow: true });
+    for (let i = 0; i < uwWorld.tiles.length; i = i + 1) {
+        let t = uwWorld.tiles[i], p = uwWorldPosition(i), y = uwGround(i), x = p.x, z = p.z;
+        if (t.wet && !t.road && quality !== "low") {
+            let banks = uwNeighbours(i);
+            for (let k = 0; k < banks.length; k++) {
+                if (uwWorld.tiles[banks[k]].wet) continue;
+                let bank = uwWorldPosition(banks[k]), dx = (bank.x-x)/2, dz = (bank.z-z)/2;
+                uwBox(x+dx*0.8, -0.15, z+dz*0.8, dx ? 0.4 : 2, 0.025, dx ? 2 : 0.4, lightMode === "night" ? "#356778" : "#66ced0", "shallows", false);
+                if (t.variant % 3 === 0) {
+                    uwPart("dodecahedron", x+dx*0.75, -0.03, z+dz*0.75, 0.55, 0.55, 0.55, "#b0b3a2", "coastrock", false);
+                    uwPart("dodecahedron", x+dx*0.72+dz*0.32, -0.08, z+dz*0.72+dx*0.32, 0.35, 0.35, 0.35, "#a0a797", "coastpebble", false);
+                }
+            }
+        }
+        if (!t.wet) {
+            let base = greens[t.variant % greens.length], nearWater = false, nn = uwNeighbours(i);
+            for (let k = 0; k < nn.length; k = k + 1)
+                if (uwWorld.tiles[nn[k]].wet)
+                    nearWater = true;
+            if (nearWater)
+                base = "#ead69b";
+            if (t.h >= 3)
+                base = t.h >= 4 ? "#a7a596" : "#a3ab8e";
+            uwBox(x, (y - 0.9) / 2, z, 2, y + 0.9, 2, uwOverlayColour(i, base), "ground", false);
+            if (nearWater && quality !== "low") {
+                for (let k = 0; k < nn.length; k++) {
+                    if (!uwWorld.tiles[nn[k]].wet) continue;
+                    let edge = uwWorldPosition(nn[k]), dx = (edge.x - x) / 2, dz = (edge.z - z) / 2;
+                    if (t.road || t.build)
+                        uwBox(x + dx * 0.94, y - 0.13, z + dz * 0.94, dx ? 0.12 : 2, 0.42, dx ? 2 : 0.12, "#a8b4a7", "quaywall", false);
+                    else if (!t.zone && i % 3 === 0) {
+                        uwBox(x + dx * 0.8, y + 0.15, z + dz * 0.8, 0.05, 0.3, 0.05, "#7a9059", "reed", false);
+                        uwBox(x + dx * 0.8 + 0.13, y + 0.21, z + dz * 0.8 + 0.1, 0.04, 0.42, 0.04, "#91a564", "reed", false);
+                    }
+                }
+            }
+            if (t.flood > 0)
+                uwBox(x, y + 0.05, z, 1.96, 0.09, 1.96, "#77aab6", "flood", false);
+        }
+        if (t.road)
+            uwRenderRoad(i, x, y, z, t);
+        else if (t.build)
+            uwFacility(x, y, z, t.build, uwNet.power[i] > 0.6);
+        else if (t.zone && (t.level || t.stage)) {
+            uwBox(x, y + 0.015, z, 1.92, 0.03, 1.92, t.zone === 3 ? "#aaa58e" : "#c7cead", "lot", false);
+            if (t.stage)
+                uwConstruction(x, y, z, t);
+            else if (t.zone === 3)
+                uwFactory(x, y, z, t, uwNet.power[i] > 0.6);
+            else if (t.zone === 1 && t.level <= 2)
+                uwHouse(x, y, z, t, uwNet.power[i] > 0.6);
+            else
+                uwUrbanBlock(x, y, z, t, uwNet.power[i] > 0.6);
+            uwLotCondition(i, x, y, z, t);
+        }
+        else {
+            if (t.zone && !t.wet) {
+                uwBox(x, y + 0.017, z, 1.82, 0.028, 1.82, ["#9ab386", "#84b59a", "#8ab6c1", "#c6b576", "#ada5bd"][t.zone], "zonepad", false);
+                if (quality !== "low") {
+                    if (t.age > 0 && t.neglect > 0) {
+                        uwBox(x, y + 0.07, z, 1.35, 0.14, 1.2, "#8b8d7d", "ruinfoundation", false);
+                        uwBox(x - 0.45, y + 0.18, z - 0.35, 0.24, 0.36, 0.55, "#a29985", "ruinwall", false);
+                    }
+                    uwBox(x - 0.84, y + 0.1, z - 0.84, 0.055, 0.2, 0.055, "#ddd5b9", "zonestake", false);
+                    uwBox(x + 0.84, y + 0.1, z + 0.84, 0.055, 0.2, 0.055, "#ddd5b9", "zonestake", false);
+                }
+            }
+            if (t.tree && !t.wet && (quality !== "low" || i % 2 === 0))
+                uwTree(x + (t.variant % 3 - 1) * 0.24, y, z + (t.variant % 2 - 0.5) * 0.38, t.variant);
+        }
+        if (t.wire && !t.road) {
+            uwBox(x, y + 1.12, z, 0.08, 2.2, 0.08, "#7d8072", "powerpole", false);
+            uwBox(x, y + 2.12, z, 0.8, 0.07, 0.07, "#7d8072", "powerarm", false);
+        }
+        if (t.pipe && activeOverlay === "water")
+            uwBox(x, y + 0.07, z, 1.9, 0.1, 0.12, "#7bd3dd", "watermain", false);
+        if (t.fire > 0) {
+            if (uwIncidents.length < 8) uwIncidents.push(i);
+            uwPart("cone", x, y + 1.1, z, 0.7, 1.9, 0.7, "#e7a252", "flame", true);
+            uwPart("cone", x + 0.35, y + 0.8, z + 0.25, 0.45, 1.2, 0.45, "#d8754d", "flame", true);
+        }
+    }
+    let result = [], instances = 0;
+    for (let k = 0; k < uwBatchOrder.length; k = k + 1) {
+        let b = uwBatchMap[uwBatchOrder[k]].spec;
+        result.push(b);
+        instances += b.instances.length / 4;
+    }
+    for (let k = 0; k < uwSpecialMeshes.length; k = k + 1)
+        result.push(uwSpecialMeshes[k]);
+    staticObjects = result;
+    uwRendererStats = { batches: result.length, instances: instances };
+    uwStaticDirty = false;
+    // Construction changes may invalidate vehicle routes. Re-seed only when needed.
+    uwRefreshCars();
+    uwRenderMotion();
+    uwBatchMap = {};
+    uwBatchOrder = [];
+    uwSpecialMeshes = [];
+    uwPerfEnd("Static draw lists", renderStart);
+}
+function uwSetOverlay(id) {
+    activeOverlay = id;
+    let legends = { none: "Natural colours. Inspect any lot for detailed information.", zones: "Green: homes · Blue: commerce · Gold: industry · Violet: mixed use.", power: "Red: disconnected / insufficient · Green: full electrical supply. Roads contain utility ducts.", water: "Red: disconnected / insufficient · Green: full water supply. Water facilities require power.", traffic: "Green: free-flowing · Gold: pressure · Red: overloaded. Traffic is aggregate commuting demand.", value: "Red: low amenity · Green: high land value. Services, parks and pollution shape this map.", pollution: "Red: high pollution · Green: cleaner air and effective waste service.", services: "Combined school, clinic and fire coverage. Catchments follow roads and congestion.", districts: "Sixteen neighbourhoods. Select a lot to inspect and rename its district." };
+    overlayLegend = legends[id] || legends.none;
+    uwStaticDirty = true;
+    uwRenderStatic();
+    uwRefreshUI();
+}
+function uwApplyLighting() {
+    skyName = lightMode === "night" ? "night" : lightMode === "dusk" ? "dusk" : "day";
+    envUrl = lightMode === "night" ? "assets/env/night-moon.hdr" : lightMode === "dusk" ? "assets/env/studio-dusk.hdr" : "assets/env/sunny-meadow.hdr";
+    exposure = lightMode === "night" ? 1.25 : 1.06;
+    lights = [
+        { id: "ambient", type: "ambient", color: lightMode === "night" ? "#9fb5d6" : "#fff2d5", intensity: lightMode === "night" ? 0.55 : 0.9 },
+        { id: "skyfill", type: "hemisphere", color: lightMode === "night" ? "#a8c1e1" : "#c6e7ff", groundColor: "#668849", intensity: lightMode === "night" ? 0.35 : 0.6 },
+        { id: "sun", type: "directional", color: lightMode === "dusk" ? "#f5c29d" : lightMode === "night" ? "#90a9d0" : "#fff5df", intensity: lightMode === "night" ? 0.45 : 2.1, position: { x: -40, y: 85, z: 40 }, castShadow: quality !== "low", follow: "view", shadowCameraSize: 30, shadowMapSize: quality === "high" ? 2048 : 1024, shadowFar: 260, shadowBias: -0.0008 }
+    ];
+    uwStaticDirty = true;
+}
+function uwCycleLight() { lightMode = lightMode === "day" ? "dusk" : lightMode === "dusk" ? "night" : "day"; uwApplyLighting(); uwRenderStatic(); }
+function uwChangeQuality() { quality = quality === "low" ? "balanced" : quality === "balanced" ? "high" : "low"; uwApplyLighting(); uwStaticDirty = true; uwRenderStatic(); uwRefreshUI(); }
+function uwUpdateCamera() {
+    if (!uwWorld)
+        return;
+    let angle = Math.PI / 4 + viewAngle * Math.PI / 2, radius = uwWorld.n * 2.65 * uwZoom;
+    camera = { position: { x: uwCamX + Math.cos(angle) * radius, y: radius * 0.78, z: uwCamZ + Math.sin(angle) * radius }, lookAt: { x: uwCamX, y: 0, z: uwCamZ }, fov: 32 };
+}
+function uwPan(dx, dz) { if (!uwWorld)
+    return; let angle = viewAngle * Math.PI / 2; uwCamX = uwClamp(uwCamX + dx * Math.cos(angle) - dz * Math.sin(angle), -uwWorld.n, uwWorld.n); uwCamZ = uwClamp(uwCamZ + dx * Math.sin(angle) + dz * Math.cos(angle), -uwWorld.n, uwWorld.n); uwUpdateCamera(); }
+function uwZoomBy(factor) { uwZoom = uwClamp(uwZoom * factor, 0.25, 1.7); uwUpdateCamera(); }
+function uwRotate(amount) { viewAngle = (viewAngle + amount + 4) % 4; uwUpdateCamera(); }
+function uwResetCamera() { if (!uwWorld)
+    return; uwCamX = -uwWorld.n * 0.14; uwCamZ = 0; uwZoom = 1; viewAngle = 0; uwUpdateCamera(); }

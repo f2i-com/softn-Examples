@@ -105,13 +105,19 @@ let floorRows = [
 let modelHandle = null
 let modelLoaded = false
 let modelLoading = false
+let aiUnavailable = false
 let simRunning = false
 let simFast = false
 let generating = false
+let aiEpoch = 0
+let pageHidden = false
+let wasSimRunningBeforeHide = false
 let statusText = "Press Play to start the day"
 let messageCount = 0
 let speakingCharId = null
 let thinkingCharId = null
+let selectedCharIdx = -1
+let activeTopic = ""
 
 // The line the speaking character is currently saying, shown in a bubble over
 // their head. Cleared with speakingCharId when the bubble times out.
@@ -145,12 +151,13 @@ let APPROACH_TICKS = 400
 // How much of the conversation is kept in storage.
 let CHAT_LOG_LIMIT = 200
 
-// How far the office is zoomed in the viewport. The map is 896x640 map pixels;
-// at 1.25 it is comfortably bigger than the panel, which is the point — the
-// user pans around it.
-let zoom = 1.25
-let MIN_ZOOM = 0.6
+// How far the office is zoomed in the viewport. Auto-fitted on _init and resize
+// for both 1280x800 desktop and 390x844 mobile unless manually adjusted.
+let zoom = 1.0
+let MIN_ZOOM = 0.4
 let MAX_ZOOM = 2.5
+let userZoomOverride = false
+let resizeHandlerRef = null
 
 // Bumped to ask the viewport to scroll back to the middle of the office.
 let recenterKey = 0
@@ -159,13 +166,7 @@ let recenterKey = 0
 // glance at the log tells you who is talking without reading the names.
 let charColors = ["#f0883e", "#58a6ff", "#3fb950", "#db61a2", "#e3b341", "#a371f7"]
 
-// Small talk, used until the language model is loaded.
-//
-// The office used to stand completely silent behind a model download: nothing
-// walked, nothing spoke, and the chat panel said "no conversations yet" until
-// the model landed. Now the day runs on scripted lines from the moment you
-// press Play, and loading the model upgrades the writing rather than switching
-// the demo on. Lines are tagged so the log can say which is which.
+// Small talk, used until the language model is loaded (or as a fallback).
 let smallTalk = [
   ["Did I ever tell you I was almost in a movie? Almost.",
    "This is why I am the boss. Well. One of the reasons.",
@@ -194,6 +195,99 @@ let smallTalk = [
 ]
 let smallTalkNext = []
 
+// Topic-steered scripted lines per character [Michael, Diane, Jimmy, Angela, Kevin, Raj]
+let topicLinesStapler = [
+  ["Whoever put a stapler in lime jelly, it was objectively hilarious. Also illegal.",
+   "As Regional Manager, I am declaring Desk Supplies Amnesty until four o'clock."],
+  ["I have three spare staplers in reception if anyone promises to behave.",
+   "Honestly the jelly wobbled in a very artistic way."],
+  ["For the record, lime jelly brings out the chrome finish.",
+   "Check the vending machine slot B4. Hypothetically."],
+  ["Tampering with company stationery is theft. I have filed a form.",
+   "My stapler stays locked in my drawer next to the cat vitamins."],
+  ["Wait... is nobody going to eat the jelly around the stapler?",
+   "I accidentally stapled my sleeve to a spreadsheet."],
+  ["In business school we went paperless. Staplers are legacy tech.",
+   "I already ordered Bluetooth smart-staplers on the corporate card."]
+]
+
+let topicLinesFridge = [
+  ["Whoever ate the turkey club has until five to confess, or we hold a tribunal.",
+   "Technically a fridge without names is a communal buffet."],
+  ["I drew a polite little sign for the fridge door with a crying sandwich on it.",
+   "You can have half of my soup if yours went missing!"],
+  ["I saw somebody eating mustard with a spoon at 10:45. Draw your own conclusions.",
+   "Labelling your lunch 'DO NOT TOUCH' only makes it a challenge."],
+  ["I am installing a combination padlock on the crisper drawer immediately.",
+   "Two yoghurts vanished Tuesday. This office has zero moral fibre."],
+  ["That sandwich had three cheeses. Three! This is a crime scene.",
+   "I keep a decoy salad in front and hide my real pie behind the milk."],
+  ["At headquarters they have a private sushi chef. Just saying.",
+   "Let's form a Fridge Task Force. Naturally I'll chair it."]
+]
+
+let topicLinesFireDrill = [
+  ["Stay calm! Everybody stay EXTREMELY calm! Why is nobody staying calm?!",
+   "Today, smoking is not going to save lives. Follow me to the car park!"],
+  ["Please don't throw chairs through the break room window again.",
+   "I grabbed the visitor book and Susan the reception plant!"],
+  ["Stopwatch says ninety seconds before someone tries the locked stationery cupboard.",
+   "I brought marshmallows just in case it's a real one."],
+  ["Save Bandit's framed portrait! Leave the interns if necessary!",
+   "Single file! Nobody is respecting the floor wardens!"],
+  ["First stop in an evacuation is the snack machine. Priorities.",
+   "My shoes aren't built for sprinting down corridors."],
+  ["I livestreamed the last drill as a leadership case study.",
+   "Technically I pulled the alarm to test crisis agility."]
+]
+
+let topicLinesAudit = [
+  ["Auditors love jokes. Put a knock-knock joke on cover page one.",
+   "Quick question: what does 'reconciliation' mean, legally?"],
+  ["I colour-coded all the visitor logs so at least the front desk looks calm.",
+   "Does anyone want peppermint tea before the auditor arrives?"],
+  ["I replaced Raj's Q3 forecast folder with a menu from Pizza Palace.",
+   "Act natural. Nothing says innocent like shredding documents at noon."],
+  ["My ledgers have been balanced to the penny since January. Yours are a disgrace.",
+   "I welcome the auditor. Finally, accountability."],
+  ["If a number doesn't balance, I use my special rounding constant.",
+   "Wait — petty cash isn't for afternoon pies?"],
+  ["I'm framing our shortfalls as 'pre-revenue synergy investments'.",
+   "Me and the auditor probably know the same people at corporate."]
+]
+
+let topicLinesCake = [
+  ["Ice-cream cake. Final answer. Even if someone is lactose intolerant, power through.",
+   "A party without two flavours of frosting isn't leadership."],
+  ["Lemon drizzle with little sugar daisies would make everyone smile!",
+   "I bought sparkler candles — wait, maybe not after the fire drill."],
+  ["Let's tell Angela we ordered a giant novelty biscuit shaped like a dog.",
+   "Sheet cake politics are more ruthless than sales quotas."],
+  ["Plain vanilla sponge, rectangular, napkins folded in triangles. No confetti.",
+   "The Party Planning Committee vote is final and binding."],
+  ["Why choose between chocolate fudge and carrot cake when we have two hands?",
+   "I volunteer to guard the cake in the break room. Alone."],
+  ["Cupcakes are over. Artisanal matcha mille-crepe is what winners eat.",
+   "Make sure my name is spelled right on the icing when I get promoted."]
+]
+
+let topicLinesPromotion = [
+  ["There are no favourites here. Except the people who laugh at my impressions.",
+   "Assistant TO the Regional Manager is already a massive honour."],
+  ["Whoever gets it, I already made a 'Congratulations!' card just in case.",
+   "I quite like my desk by the window, honestly."],
+  ["If the promotion comes with extra meetings, count me aggressively out.",
+   "I nominated Susan the potted plant. Strong silent leader."],
+  ["Seniority, punctuality, and proper cardigan etiquette should decide this.",
+   "If Raj gets promoted I am writing directly to headquarters."],
+  ["Does the new title come with a mini-fridge under the desk?",
+   "I'd be a great boss. Half-days every Friday after lunch."],
+  ["I already printed business cards that say 'VP of Future Initiatives'.",
+   "Let's be real — corporate clearly has their eye on my trajectory."]
+]
+
+let topicTurnCounter = 0
+
 // Character data
 let charNames = []
 let charIds = []
@@ -210,16 +304,12 @@ let charClothes = []
 let charClothesColors = []
 
 // What each character is currently up to, and how long they will keep at it.
-// This is what makes the office read as an office rather than six people
-// pacing at random: everyone has a desk they come back to, and errands they
-// leave it for.
 let charHomes = []
 let charGoing = []
 let charDoing = []
 let charDwell = []
 
-// How many consecutive ticks a character has been stuck behind somebody else,
-// which is what triggers asking them to move.
+// How many consecutive ticks a character has been stuck behind somebody else.
 let charBlocked = []
 
 // Movement speed (pixels per tick at 50ms interval)
@@ -230,22 +320,66 @@ let charDelays = []
 let speakingDelay = 0
 
 // Render tick counter — forces React re-render each movement tick
-// (charPositions/charDirs/charMoving are only accessed via sync functions,
-// so they don't trigger re-renders on their own)
 let renderTick = 0
 
-// Somewhere worth going, and a reason for going there. Movement is chosen from
-// this list rather than from a bag of anonymous corridor tiles, so what you
-// watch is people running errands instead of people milling about.
+// Destination places
 let placeX = []
 let placeY = []
 let placeGoing = []
 let placeDoing = []
 let placeDwell = []
 
-// Where each character sits. Index-matched to the characters collection, and
-// spread across the floor so the pods are not all empty on one side.
+// Where each character sits: [col, row].
+// Michael sits at (2, 4) = pixel (80, 144) facing UP (DIR_UP = 1) into his boss desk!
 let deskSeats = [[2, 4], [9, 4], [4, 8], [10, 12], [15, 8], [9, 18]]
+let deskSeatDirs = [1, 1, 0, 1, 0, 1]
+
+function computeAutoFitZoom() {
+  if (typeof window === "undefined" || !window.innerWidth || !window.innerHeight) {
+    return 1.0
+  }
+  let vw = window.innerWidth
+  let vh = window.innerHeight
+  let mapW = MAP_W * TILE_SZ
+  let mapH = MAP_H * TILE_SZ
+  let availW = vw - 356
+  let availH = vh - 124
+  if (vw <= 820) {
+    availW = vw - 12
+    availH = Math.max(190, Math.floor(vh * 0.54) - 116)
+  }
+  if (availW < 150) availW = 150
+  if (availH < 130) availH = 130
+  let fit = Math.min(availW / mapW, availH / mapH)
+  let rounded = Math.floor(fit * 100) / 100
+  if (rounded < MIN_ZOOM) rounded = MIN_ZOOM
+  if (rounded > 1.25) rounded = 1.25
+  return rounded
+}
+
+function bindResizeListener() {
+  if (typeof window === "undefined" || typeof window.addEventListener !== "function") return
+  unbindResizeListener()
+  resizeHandlerRef = function() {
+    if (!userZoomOverride) {
+      let nextZoom = computeAutoFitZoom()
+      if (Math.abs(nextZoom - zoom) >= 0.02) {
+        zoom = nextZoom
+        recenterKey = recenterKey + 1
+      }
+    }
+  }
+  window.addEventListener("resize", resizeHandlerRef)
+}
+
+function unbindResizeListener() {
+  if (resizeHandlerRef && typeof window !== "undefined" && typeof window.removeEventListener === "function") {
+    try {
+      window.removeEventListener("resize", resizeHandlerRef)
+    } catch (e) {}
+  }
+  resizeHandlerRef = null
+}
 
 function _init() {
   // A permission grant re-runs the whole script, and this again: every
@@ -254,6 +388,7 @@ function _init() {
   charDirs = []; charMoving = []; charBases = []; charHairs = []; charHairColors = []; charClothes = []; charClothesColors = []
   charDelays = []; charBlocked = []; charHomes = []; charGoing = []; charDoing = []; charDwell = []; smallTalkNext = []
   placeX = []; placeY = []; placeGoing = []; placeDoing = []; placeDwell = []
+  pageHidden = false
   buildMap()
   setupPlaces()
 
@@ -261,13 +396,29 @@ function _init() {
   let i = 0
   while (i < chars.length) {
     let c = chars[i]
+    let home = deskSeats[i % deskSeats.length]
+    let homeDir = deskSeatDirs[i % deskSeatDirs.length]
+    let spawnX = c.data.x
+    let spawnY = c.data.y
+    let spawnDir = c.data.row
+
+    // Fix legacy Michael spawn (144, 112) or any character spawned on a blocked tile
+    let stx = Math.floor(spawnX / TILE_SZ)
+    let sty = Math.floor(spawnY / TILE_SZ)
+    let blockedSpawn = stx < 0 || stx >= MAP_W || sty < 0 || sty >= MAP_H || collisionGrid[sty][stx] == 0
+    if ((c.id == "characters_1" && spawnX == 144 && spawnY == 112) || blockedSpawn) {
+      spawnX = home[0] * TILE_SZ + TILE_SZ / 2
+      spawnY = home[1] * TILE_SZ + TILE_SZ / 2
+      spawnDir = homeDir
+    }
+
     charNames.push(c.data.name)
     charIds.push(c.id)
     charPersonalities.push(c.data.personality)
-    charPositions.push([c.data.x, c.data.y])
+    charPositions.push([spawnX, spawnY])
     charPaths.push([])
     charPathSteps.push(0)
-    charDirs.push(c.data.row)
+    charDirs.push(spawnDir)
     charMoving.push(false)
     charBases.push(c.data.base)
     charHairs.push(c.data.hair)
@@ -276,12 +427,10 @@ function _init() {
     charClothesColors.push(c.data.clothesColor)
     charDelays.push(0)
     charBlocked.push(0)
-    charHomes.push(deskSeats[i % deskSeats.length])
+    charHomes.push(home)
     charGoing.push("")
     charDoing.push("at their desk")
     charDwell.push(200)
-    // Everyone starts at a different point in their own set of lines, so two
-    // runs of the demo do not open with the same conversation.
     smallTalkNext.push(Math.floor(Math.random() * 4))
     i = i + 1
   }
@@ -289,30 +438,70 @@ function _init() {
   let msgs = db.query("office_chat")
   messageCount = msgs.length
 
+  zoom = computeAutoFitZoom()
+  recenterKey = recenterKey + 1
+  bindResizeListener()
+
   if (chars.length > 0) {
-    statusText = chars.length + " people in the office today"
+    statusText = chars.length + " people in the office today — press Play or Spark chat"
   }
-
-  // Characters start idle — movement begins when sim is started
 }
 
-// What the status line says when nothing more interesting is happening.
-//
-// Walking no longer waits on the language model: the office runs on its own,
-// and loading the model is what gives the people something to say. Before,
-// nothing on screen moved at all until a few hundred megabytes had downloaded.
+function _onHide() {
+  pageHidden = true
+  wasSimRunningBeforeHide = simRunning
+  simRunning = false
+  aiEpoch = aiEpoch + 1
+  generating = false
+  thinkingCharId = null
+  speakingCharId = null
+  speechText = ""
+  speakingDelay = 0
+  if (pendingSpeaker >= 0) {
+    pendingSpeaker = -1
+    pendingListener = -1
+    approachTicks = 0
+  }
+  unbindResizeListener()
+}
+
+function _onShow() {
+  pageHidden = false
+  bindResizeListener()
+  if (!userZoomOverride) {
+    zoom = computeAutoFitZoom()
+  }
+  if (wasSimRunningBeforeHide) {
+    wasSimRunningBeforeHide = false
+    simRunning = true
+    seedCharacterDelays()
+  }
+  statusText = idleStatus()
+}
+
+function seedCharacterDelays() {
+  let i = 0
+  while (i < charIds.length) {
+    if (!charMoving[i] && charDelays[i] <= 0 && i != pendingSpeaker && i != pendingListener) {
+      charDelays[i] = 10 + i * 14 + Math.floor(Math.random() * 18)
+    }
+    i = i + 1
+  }
+}
+
 function idleStatus() {
-  if (!simRunning) return "Paused — press Play to start the day"
-  if (modelLoaded) return "Everyone is going about their day"
-  if (modelLoading) return "Fetching the model — the office carries on meanwhile"
-  return "Scripted small talk — load the AI model for real conversation"
+  let suffix = activeTopic != "" ? " · Topic: " + topicLabel(activeTopic) : ""
+  if (!simRunning) return "Paused — press Play or Spark chat" + suffix
+  if (modelLoaded) return "Qwen3-0.6B live" + (activeTopic != "" ? suffix : " — everyone is going about their day")
+  if (modelLoading) return "Downloading Qwen3-0.6B — scripted sitcom carries on meanwhile"
+  if (aiUnavailable) return "Scripted sitcom mode (local AI unavailable in this host)" + suffix
+  return "Scripted sitcom mode" + (activeTopic != "" ? suffix : " — load AI model for live LLM lines")
 }
 
-// What is putting words in their mouths, for the chat panel to own up to.
 function chatSource() {
   if (modelLoaded) return "Qwen3-0.6B"
-  if (modelLoading) return "downloading the model"
-  return "scripted small talk"
+  if (modelLoading) return "downloading model"
+  return "scripted sitcom"
 }
 
 // Map Building
@@ -926,6 +1115,9 @@ function movementTick() {
           }
         }
       }
+    } else if (i != pendingSpeaker && i != pendingListener) {
+      // Safety net: ensure an idle non-conversing coworker never stalls at delay 0
+      charDelays[i] = 12 + i * 14 + Math.floor(Math.random() * 20)
     }
     i = i + 1
   }
@@ -1024,24 +1216,66 @@ function cancelApproach() {
 
 // AI Model
 
+function hasLocalAiSupport() {
+  if (typeof softn === "undefined" || !softn) return false
+  if (!softn.ai || !softn.ai.model) return false
+  return typeof softn.ai.model.load === "function" && typeof softn.ai.model.generate === "function"
+}
+
+function fallbackToScriptedMode(reason) {
+  modelLoading = false
+  modelLoaded = false
+  modelHandle = null
+  aiUnavailable = true
+  if (!simRunning && !pageHidden) {
+    simRunning = true
+    seedCharacterDelays()
+  }
+  if (!pageHidden) {
+    let suffix = reason ? " (" + reason + ")" : ""
+    statusText = "Local AI unavailable" + suffix + " — running scripted sitcom mode"
+  }
+}
+
 function loadModel() {
   if (modelLoading || modelLoaded) return
+  if (!hasLocalAiSupport()) {
+    fallbackToScriptedMode("no local LLM runtime")
+    return
+  }
+
   modelLoading = true
+  aiUnavailable = false
   statusText = "Downloading Qwen3-0.6B (about 400 MB)..."
 
-  // A GGUF checkpoint from Hugging Face, run on this device by SoftN.
-  softn.ai.model.load("unsloth/Qwen3-0.6B-GGUF:Q4_K_M", { context: 2048 }, function(result) {
-    modelLoading = false
-    if (!result || result.error || !result.modelHandle) {
-      modelLoaded = false
-      modelHandle = null
-      statusText = "The model could not load" + (result && result.error ? " (" + result.error + ")" : "") + " — the office carries on with scripted small talk."
-      return
+  try {
+    let maybePromise = softn.ai.model.load("unsloth/Qwen3-0.6B-GGUF:Q4_K_M", { context: 2048 }, function(result) {
+      modelLoading = false
+      if (!result || result.error || !result.modelHandle) {
+        modelLoaded = false
+        modelHandle = null
+        if (!pageHidden) {
+          statusText = "Model unavailable" + (result && result.error ? " (" + result.error + ")" : "") + " — scripted sitcom carries on"
+        }
+        return
+      }
+      modelHandle = result.modelHandle
+      modelLoaded = true
+      aiUnavailable = false
+      if (!pageHidden) {
+        statusText = "Qwen3-0.6B is listening in"
+      }
+    })
+    if (maybePromise && typeof maybePromise.catch === "function") {
+      maybePromise.catch(function(err) {
+        let msg = err && err.message ? err.message : "load failed"
+        fallbackToScriptedMode(msg)
+      })
     }
-    modelHandle = result.modelHandle
-    modelLoaded = true
-    statusText = "Qwen3-0.6B is listening in"
-  })
+  } catch (err) {
+    let msg = err && err.message ? err.message : "load failed"
+    fallbackToScriptedMode(msg)
+  }
 }
 
 function toggleSimFast() {
@@ -1052,39 +1286,183 @@ function sparkBanter() {
   if (!simRunning) {
     simRunning = true
   }
+  // Seed staggered delays so every idle coworker gets moving naturally
+  seedCharacterDelays()
+  if (generating || pendingSpeaker >= 0) return
+  if (speakingDelay > 0) {
+    speakingDelay = 0
+    speakingCharId = null
+    speechText = ""
+  }
+  if (selectedCharIdx >= 0 && selectedCharIdx < charIds.length) {
+    let partner = nearestColleague(selectedCharIdx)
+    if (partner >= 0) {
+      if (withinTalkRange(selectedCharIdx, partner)) {
+        beginConversation(selectedCharIdx, partner)
+      } else {
+        startApproach(selectedCharIdx, partner)
+      }
+      return
+    }
+  }
   simulationTick()
 }
 
 function toggleSim() {
   simRunning = !simRunning
   if (simRunning) {
-    // Kick-start character movement
-    let i = 0
-    while (i < charIds.length) {
-      if (!charMoving[i] && charDelays[i] == 0) {
-        charDelays[i] = 10 + Math.floor(Math.random() * 40)
-      }
-      i = i + 1
-    }
+    seedCharacterDelays()
   } else {
+    aiEpoch = aiEpoch + 1
+    generating = false
     speakingCharId = null
     thinkingCharId = null
     speechText = ""
+    speakingDelay = 0
+    if (pendingSpeaker >= 0) {
+      pendingSpeaker = -1
+      pendingListener = -1
+      approachTicks = 0
+    }
   }
   statusText = idleStatus()
+}
+
+// Sitcom Topic Chips
+
+function topicLabel(key) {
+  if (key == "stapler") return "Missing Stapler"
+  if (key == "fridge") return "Fridge Thief"
+  if (key == "firedrill") return "Fire Drill"
+  if (key == "audit") return "Surprise Audit"
+  if (key == "cake") return "Birthday Cake"
+  if (key == "promotion") return "Promotion Rumor"
+  return "Small Talk"
+}
+
+function topicPrompt(key) {
+  if (key == "stapler") return "Jimmy hid someone's desk stapler in lime jelly again and everyone has a theory"
+  if (key == "fridge") return "somebody ate a clearly-labelled turkey sandwich out of the break room fridge"
+  if (key == "firedrill") return "an over-the-top office fire drill that turned into total sitcom chaos"
+  if (key == "audit") return "headquarters is sending a surprise auditor this afternoon and nobody's paperwork is ready"
+  if (key == "cake") return "the Party Planning Committee is arguing fiercely over what flavour birthday cake to order"
+  if (key == "promotion") return "there is a rumour that one coworker is being promoted to Assistant (to the) Regional Manager"
+  return ""
+}
+
+function setTopic(key) {
+  if (activeTopic == key && key != "") {
+    activeTopic = ""
+    statusText = idleStatus()
+    return
+  }
+  activeTopic = key
+  if (!simRunning) {
+    simRunning = true
+  }
+  seedCharacterDelays()
+  statusText = idleStatus()
+  if (!generating && pendingSpeaker < 0) {
+    if (speakingDelay > 0) {
+      speakingDelay = 0
+      speakingCharId = null
+      speechText = ""
+    }
+    simulationTick()
+  }
+}
+
+// Coworker Focus & Inspector
+
+function selectChar(idx) {
+  if (idx < 0 || idx >= charIds.length) {
+    selectedCharIdx = -1
+    return
+  }
+  if (selectedCharIdx == idx) {
+    selectedCharIdx = -1
+    return
+  }
+  selectedCharIdx = idx
+  focusViewportOnChar(idx)
+}
+
+function clearSelectedChar() {
+  selectedCharIdx = -1
+}
+
+function isCharSelected(idx) {
+  return selectedCharIdx == idx
+}
+
+function selectedCharName() {
+  return charName(selectedCharIdx)
+}
+
+function selectedCharBio() {
+  if (selectedCharIdx < 0 || selectedCharIdx >= charPersonalities.length) return ""
+  return charPersonalities[selectedCharIdx]
+}
+
+function selectedCharStatus() {
+  return charStatus(selectedCharIdx)
+}
+
+function selectedCharColor() {
+  return colorForIndex(selectedCharIdx)
+}
+
+function focusViewportOnChar(idx) {
+  if (idx < 0 || idx >= charPositions.length) return
+  if (typeof document === "undefined" || !document.querySelector) return
+  try {
+    let view = document.querySelector(".office-view")
+    if (view && (view.scrollWidth > view.clientWidth + 4 || view.scrollHeight > view.clientHeight + 4)) {
+      let pos = charPositions[idx]
+      let targetLeft = Math.max(0, Math.round(pos[0] * zoom - view.clientWidth / 2))
+      let targetTop = Math.max(0, Math.round(pos[1] * zoom - view.clientHeight / 2))
+      view.scrollLeft = targetLeft
+      view.scrollTop = targetTop
+    }
+  } catch (e) {}
+}
+
+function sparkSelectedChar() {
+  if (selectedCharIdx < 0 || selectedCharIdx >= charIds.length) return
+  if (!simRunning) {
+    simRunning = true
+  }
+  seedCharacterDelays()
+  if (generating || pendingSpeaker >= 0) return
+  if (speakingDelay > 0) {
+    speakingDelay = 0
+    speakingCharId = null
+    speechText = ""
+  }
+  let partner = nearestColleague(selectedCharIdx)
+  if (partner < 0) return
+  if (withinTalkRange(selectedCharIdx, partner)) {
+    beginConversation(selectedCharIdx, partner)
+  } else {
+    startApproach(selectedCharIdx, partner)
+  }
 }
 
 // View controls
 
 function zoomIn() {
-  zoom = Math.min(MAX_ZOOM, Math.round((zoom + 0.25) * 100) / 100)
+  userZoomOverride = true
+  zoom = Math.min(MAX_ZOOM, Math.round((zoom + 0.2) * 100) / 100)
 }
 
 function zoomOut() {
-  zoom = Math.max(MIN_ZOOM, Math.round((zoom - 0.25) * 100) / 100)
+  userZoomOverride = true
+  zoom = Math.max(MIN_ZOOM, Math.round((zoom - 0.2) * 100) / 100)
 }
 
 function recenter() {
+  userZoomOverride = false
+  zoom = computeAutoFitZoom()
   recenterKey = recenterKey + 1
 }
 
@@ -1093,11 +1471,8 @@ function zoomPercent() {
 }
 
 // Every few seconds, decide whether anyone fancies a word with anyone else.
-//
-// This only ever *starts* things. If the two are already standing together the
-// conversation happens now; otherwise the speaker sets off across the office
-// and `advanceApproach` opens the conversation when they get there.
 function simulationTick() {
+  if (pageHidden) return
   if (generating) return
   if (charIds.length < 2) return
   if (pendingSpeaker >= 0) return
@@ -1119,6 +1494,10 @@ function beginConversation(speakerIdx, listenerIdx) {
   pendingSpeaker = -1
   pendingListener = -1
   approachTicks = 0
+  if (pageHidden || !simRunning) {
+    generating = false
+    return
+  }
   generating = true
 
   // Turn to each other
@@ -1129,9 +1508,7 @@ function beginConversation(speakerIdx, listenerIdx) {
   faceToward(speakerIdx, dx, dy)
   faceToward(listenerIdx, -dx, -dy)
 
-  // Both stand still for the whole exchange — the one talking and the one
-  // being talked to. The listener wandering off mid-sentence was the thing
-  // that made these look less like conversations and more like coincidences.
+  // Both stand still for the whole exchange
   let hold = SPEECH_TICKS + 30
   charMoving[speakerIdx] = false
   charMoving[listenerIdx] = false
@@ -1147,19 +1524,23 @@ function beginConversation(speakerIdx, listenerIdx) {
   let speakerName = charNames[speakerIdx]
   let listenerName = charNames[listenerIdx]
   let speakerPersonality = charPersonalities[speakerIdx]
+  let topicSnapshot = activeTopic
 
-  if (!modelLoaded) {
-    say(speakerIdx, listenerIdx, nextSmallTalk(speakerIdx), false)
+  if (!modelLoaded || !modelHandle || !hasLocalAiSupport()) {
+    say(speakerIdx, listenerIdx, nextScriptedLine(speakerIdx, topicSnapshot), false, topicSnapshot)
     generating = false
     return
   }
 
+  let reqEpoch = aiEpoch
   thinkingCharId = charIds[speakerIdx]
   statusText = speakerName + " is thinking..."
 
   let recentContext = getRecentContext(speakerName, listenerName, 4)
+  let premise = topicPrompt(topicSnapshot)
+  let topicClause = premise != "" ? " Current office plot: " + premise + "." : ""
 
-  let systemPrompt = "You are " + speakerName + " from The Office. " + speakerPersonality + ". You are talking to " + listenerName + " in the office. Keep responses short (1-2 sentences), casual, and in character. Do not use quotation marks."
+  let systemPrompt = "You are " + speakerName + " from The Office. " + speakerPersonality + "." + topicClause + " You are talking to " + listenerName + " in the office. Reply directly in 1-2 short, witty sentences in character. Do not use quotation marks or stage directions. /no_think"
 
   let aiMessages = []
   aiMessages.push({ role: "system", content: systemPrompt })
@@ -1175,44 +1556,70 @@ function beginConversation(speakerIdx, listenerIdx) {
     c = c + 1
   }
 
-  aiMessages.push({ role: "user", content: listenerName + " is nearby. Say something to them." })
+  let userPrompt = listenerName + " is standing right next to you." + (premise != "" ? " Say something about how " + premise + "." : " Say something casual to them.") + " /no_think"
+  aiMessages.push({ role: "user", content: userPrompt })
 
-  softn.ai.model.generate(modelHandle, aiMessages, {
-    max_new_tokens: 64,
-    temperature: 0.9,
-    top_p: 0.9
-  }, function(result) {
-    if (!result || result.error || typeof result.text !== "string") {
+  try {
+    let maybeGen = softn.ai.model.generate(modelHandle, aiMessages, {
+      max_new_tokens: 96,
+      temperature: 0.85,
+      top_p: 0.9
+    }, function(result) {
+      if (pageHidden || !simRunning || reqEpoch != aiEpoch) {
+        thinkingCharId = null
+        generating = false
+        return
+      }
+      if (!result || result.error || typeof result.text !== "string") {
+        thinkingCharId = null
+        say(speakerIdx, listenerIdx, nextScriptedLine(speakerIdx, topicSnapshot), false, topicSnapshot)
+        generating = false
+        return
+      }
+      let text = cleanModelOutput(result.text, speakerName)
+
       thinkingCharId = null
+      if (text.length > 0) {
+        say(speakerIdx, listenerIdx, text, true, topicSnapshot)
+      } else {
+        say(speakerIdx, listenerIdx, nextScriptedLine(speakerIdx, topicSnapshot), false, topicSnapshot)
+      }
+
       generating = false
-      statusText = "The model could not answer" + (result && result.error ? ": " + result.error : "") + "."
-      return
+    })
+    if (maybeGen && typeof maybeGen.catch === "function") {
+      maybeGen.catch(function() {
+        if (reqEpoch != aiEpoch || pageHidden || !simRunning) {
+          thinkingCharId = null
+          generating = false
+          return
+        }
+        thinkingCharId = null
+        say(speakerIdx, listenerIdx, nextScriptedLine(speakerIdx, topicSnapshot), false, topicSnapshot)
+        generating = false
+      })
     }
-    let text = cleanModelOutput(result.text, speakerName)
-
+  } catch (err) {
     thinkingCharId = null
-    if (text.length > 0) {
-      say(speakerIdx, listenerIdx, text, true)
-    } else {
-      statusText = idleStatus()
-    }
-
+    say(speakerIdx, listenerIdx, nextScriptedLine(speakerIdx, topicSnapshot), false, topicSnapshot)
     generating = false
-  })
+  }
 }
 
-// Put a line in the log, in a bubble over the speaker's head, and on the
-// status bar. Both the scripted and the generated path end up here.
-function say(speakerIdx, listenerIdx, text, fromModel) {
+// Put a line in the log, in a bubble over the speaker's head, and on the status bar.
+function say(speakerIdx, listenerIdx, text, fromModel, topicKey) {
   if (!text || text.length == 0) return
+  if (pageHidden) return
   let speakerName = charNames[speakerIdx]
   let listenerName = charNames[listenerIdx]
+  let tLabel = topicKey && topicKey != "" ? topicLabel(topicKey) : ""
 
   db.create("office_chat", {
     speaker: speakerName,
     listener: listenerName,
     content: text,
     ai: fromModel,
+    topic: tLabel,
     timestamp: new Date().toISOString()
   })
   messageCount = messageCount + 1
@@ -1221,12 +1628,10 @@ function say(speakerIdx, listenerIdx, text, fromModel) {
   thinkingCharId = null
   speakingCharId = charIds[speakerIdx]
   speechText = text
-  statusText = speakerName + " to " + listenerName
+  statusText = speakerName + " to " + listenerName + (tLabel != "" ? " · " + tLabel : "")
   speakingDelay = SPEECH_TICKS
 }
 
-// A line every few seconds for as long as the tab is open would otherwise grow
-// the stored log without limit; only the recent history is worth keeping.
 function trimChatLog() {
   let all = db.query("office_chat")
   if (all.length <= CHAT_LOG_LIMIT) return
@@ -1239,8 +1644,6 @@ function trimChatLog() {
   messageCount = all.length - extra
 }
 
-// Walk each character's own lines in order, so nobody repeats themselves until
-// they have used the whole set, and everyone starts somewhere different.
 function nextSmallTalk(speakerIdx) {
   let lines = smallTalk[speakerIdx % smallTalk.length]
   let at = smallTalkNext[speakerIdx] % lines.length
@@ -1248,21 +1651,33 @@ function nextSmallTalk(speakerIdx) {
   return lines[at]
 }
 
-// Pick who talks to whom.
-//
-// This used to be two independent random draws, so Michael would routinely
-// deliver a line to Angela from the far corner of the building while the two
-// of them turned to face each other through three walls. The speaker is still
-// random — everyone gets a turn — but the listener is whoever is nearest, so
-// the pair you see talking are standing together.
-function pickConversationPair() {
-  let a = Math.floor(Math.random() * charIds.length)
-  let speakerPos = charPositions[a]
+function nextScriptedLine(speakerIdx, topicKey) {
+  if (!topicKey || topicKey == "") {
+    return nextSmallTalk(speakerIdx)
+  }
+  let bank = null
+  if (topicKey == "stapler") bank = topicLinesStapler
+  else if (topicKey == "fridge") bank = topicLinesFridge
+  else if (topicKey == "firedrill") bank = topicLinesFireDrill
+  else if (topicKey == "audit") bank = topicLinesAudit
+  else if (topicKey == "cake") bank = topicLinesCake
+  else if (topicKey == "promotion") bank = topicLinesPromotion
+
+  if (!bank) return nextSmallTalk(speakerIdx)
+  let charBank = bank[speakerIdx % bank.length]
+  let idx = topicTurnCounter % charBank.length
+  topicTurnCounter = topicTurnCounter + 1
+  return charBank[idx]
+}
+
+function nearestColleague(speakerIdx) {
+  if (speakerIdx < 0 || speakerIdx >= charPositions.length) return -1
+  let speakerPos = charPositions[speakerIdx]
   let best = -1
   let bestDist = 0
   let b = 0
   while (b < charIds.length) {
-    if (b != a) {
+    if (b != speakerIdx) {
       let p = charPositions[b]
       let dx = p[0] - speakerPos[0]
       let dy = p[1] - speakerPos[1]
@@ -1274,7 +1689,13 @@ function pickConversationPair() {
     }
     b = b + 1
   }
-  if (best < 0) best = (a + 1) % charIds.length
+  if (best < 0 && charIds.length > 1) best = (speakerIdx + 1) % charIds.length
+  return best
+}
+
+function pickConversationPair() {
+  let a = Math.floor(Math.random() * charIds.length)
+  let best = nearestColleague(a)
   return [a, best]
 }
 
@@ -1298,17 +1719,57 @@ function getRecentContext(speakerName, listenerName, count) {
   return reversed
 }
 
+function stripThinkBlocks(raw) {
+  if (!raw) return ""
+  let s = raw
+  let guard = 0
+  while (guard < 8) {
+    let lower = s.toLowerCase()
+    let openIdx = lower.indexOf("<think>")
+    if (openIdx < 0) break
+    let closeIdx = lower.indexOf("</think>", openIdx + 7)
+    if (closeIdx >= 0) {
+      s = s.substring(0, openIdx) + " " + s.substring(closeIdx + 8)
+    } else {
+      s = s.substring(0, openIdx)
+      break
+    }
+    guard = guard + 1
+  }
+  let strayClose = s.toLowerCase().indexOf("</think>")
+  if (strayClose >= 0) {
+    s = s.substring(strayClose + 8)
+  }
+  let noThinkIdx = s.indexOf("/no_think")
+  if (noThinkIdx >= 0) {
+    s = s.substring(0, noThinkIdx) + s.substring(noThinkIdx + 9)
+  }
+  return s.trim()
+}
+
 function cleanModelOutput(text, speakerName) {
-  let cleaned = text
+  let cleaned = stripThinkBlocks(text)
+  if (cleaned.length == 0) return ""
   let prefix1 = speakerName + ":"
-  let prefix2 = speakerName + " says"
+  let prefix2 = speakerName + " says:"
+  let prefix3 = speakerName + " says"
   if (cleaned.indexOf(prefix1) == 0) {
     cleaned = cleaned.substring(prefix1.length)
-  }
-  if (cleaned.indexOf(prefix2) == 0) {
+  } else if (cleaned.indexOf(prefix2) == 0) {
     cleaned = cleaned.substring(prefix2.length)
+  } else if (cleaned.indexOf(prefix3) == 0) {
+    cleaned = cleaned.substring(prefix3.length)
   }
   cleaned = cleaned.trim()
+  let nlIdx = cleaned.indexOf("\n")
+  if (nlIdx >= 0) {
+    let firstLine = cleaned.substring(0, nlIdx).trim()
+    if (firstLine.length > 0) {
+      cleaned = firstLine
+    } else {
+      cleaned = cleaned.substring(nlIdx + 1).trim()
+    }
+  }
   if (cleaned.length > 0) {
     let first = cleaned.charAt(0)
     if (first == "\"" || first == "'") {
@@ -1321,12 +1782,7 @@ function cleanModelOutput(text, speakerName) {
       cleaned = cleaned.substring(0, cleaned.length - 1)
     }
   }
-  cleaned = cleaned.trim()
-  let nlIdx = cleaned.indexOf("\n")
-  if (nlIdx > 0) {
-    cleaned = cleaned.substring(0, nlIdx)
-  }
-  return cleaned
+  return cleaned.trim()
 }
 
 // Helper getters for UI

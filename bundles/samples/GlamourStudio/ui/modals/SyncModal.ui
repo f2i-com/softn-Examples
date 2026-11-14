@@ -35,7 +35,7 @@
           Generate
         </Button>
         <Button variant=ghost size=sm @click=copySyncRoom if={syncRoom} style={{ flexShrink: 0, padding: "0.4rem 0.6rem", fontSize: "0.75rem" }}>
-          Copy
+          {copiedRoom ? "Copied" : "Copy"}
         </Button>
       </Stack>
       <Text size=xs color=muted>
@@ -53,7 +53,7 @@
           </Text>
         </Card>
         <Button variant=secondary size=sm @click=copySyncRoom style={{ padding: "0.4rem 0.6rem", fontSize: "0.75rem", flexShrink: 0 }}>
-          Copy
+          {copiedRoom ? "Copied" : "Copy"}
         </Button>
       </Stack>
       <Text size=xs color=muted>

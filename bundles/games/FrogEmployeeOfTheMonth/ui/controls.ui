@@ -1,0 +1,10 @@
+<Box className="fg-touch" ariaLabel="Touch game controls"><Box className="fg-dpad">
+<Button variant="ghost" className="fg-btn fg-pad fg-up" ariaLabel="up" @pointerdown={padDown("up")} @pointerup={padUp("up")} @pointerleave={padCancel("up")} @pointercancel={padCancel("up")}>↑</Button>
+<Button variant="ghost" className="fg-btn fg-pad fg-left" ariaLabel="left" @pointerdown={padDown("left")} @pointerup={padUp("left")} @pointerleave={padCancel("left")} @pointercancel={padCancel("left")}>←</Button>
+<Button variant="ghost" className="fg-btn fg-pad fg-down" ariaLabel="down" @pointerdown={padDown("down")} @pointerup={padUp("down")} @pointerleave={padCancel("down")} @pointercancel={padCancel("down")}>↓</Button>
+<Button variant="ghost" className="fg-btn fg-pad fg-right" ariaLabel="right" @pointerdown={padDown("right")} @pointerup={padUp("right")} @pointerleave={padCancel("right")} @pointercancel={padCancel("right")}>→</Button>
+</Box><Box className="fg-touch-actions">
+<Button variant="ghost" className="fg-btn fg-pad fg-use" ariaLabel="use" @pointerdown={padDown("use")} @pointerup={padUp("use")} @pointerleave={padCancel("use")} @pointercancel={padCancel("use")}>USE</Button>
+<Button variant="ghost" className="fg-btn fg-pad fg-tongue" ariaLabel="tongue" @pointerdown={padDown("tongue")} @pointerup={padUp("tongue")} @pointerleave={padCancel("tongue")} @pointercancel={padCancel("tongue")}>TONGUE</Button>
+<Button variant="ghost" className="fg-btn fg-pad fg-jump" ariaLabel="jump" @pointerdown={padDown("jump")} @pointerup={padUp("jump")} @pointerleave={padCancel("jump")} @pointercancel={padCancel("jump")}>HOP</Button>
+</Box></Box>

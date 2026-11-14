@@ -1,0 +1,9 @@
+{
+  "app": {
+    "id": "com.softn.oddjobs.pigeon",
+    "name": "Pigeon: Municipal Employee",
+    "version": "0.2.2"
+  },
+  "permissions": {},
+  "version": 1
+}

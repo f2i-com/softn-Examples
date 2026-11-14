@@ -1,0 +1,37 @@
+// Domain state. Presentation-only timers and spring bodies are not additional meters.
+let S = null;
+let profile = {notes:[],endings:[],completed:0};
+let settings = {muted:false,reducedMotion:false};
+let screen = "welcome";
+let previousScreen = "play";
+let saveStatus = "Saves stay on this device.";
+let saveText = "";
+let showBackup = false;
+let confirmNew = false;
+let lastClock = 0;
+let saveClock = 0;
+let inputInstalled = false;
+let ambientKind = "";
+let audioReady = false;
+let newDiscovery = false;
+function clamp(n,a,b) { return Math.max(a,Math.min(b,n)); }
+function clone(v) { return JSON.parse(JSON.stringify(v)); }
+function finite(v) { return typeof v === "number" && Number.isFinite(v); }
+function seedNext(s) { s.seed = (s.seed * 48271) % 2147483647; return s.seed / 2147483647; }
+function randomChoice(s,a) { return a[Math.floor(seedNext(s)*a.length)]; }
+function freshState(seed) {
+ return {version:2,seed:seed || 472091,phase:"play",stage:0,time:0,night:0,duration:110,coins:50,health:100,
+  stock:ITEMS.map(function(i){return i.stock;}),selected:0,aisle:0,totalFeeds:0,servedTotal:0,served:0,nightFeeds:0,
+  bond:0,mass:15,energy:0,heat:18,gravity:0,cheese:0,broadcast:false,discoveries:[],combos:[],history:[],
+  flags:{garden:false,union:false,cosmic:false,truce:false,tides:false,employee:false},
+  fx:{frost:0,steam:0,electric:0,rain:0,bubbles:0,orbit:0,duck:0,milk:0,radio:0,television:0,vortex:0,bicycle:0,fridge:0,moonlet:0,paper:0,mirror:0,donut:0,rave:0,bath:0,weather:0,ground:0,heart:0},
+  mood:"watching",moodTime:0,reaction:{id:0,kind:"quiet",title:"The moon is not a customer.",text:NIGHT_NOTES[0],time:8,item:-1},
+  serial:0,shot:null,offering:false,customers:[],nextCustomer:1,queueClock:3,customerLine:"The night shift is yours. So is the liability.",lineTime:8,
+  actions:0,groundings:0,refusals:0,refusedThisNight:false,lastGround:-50,stabilityTime:0,
+  lastItem:-1,repeat:0,rejections:0,freeplay:false,ending:"",log:[],props:[],milestone:0,awaitingClose:false};
+}
+function instability(s) { return clamp(Math.max(s.gravity, s.heat-12, (s.mass-25)*0.85) + (s.energy>0 ? 9 : 0),0,100); }
+function stageOfWorld(s) { let n=instability(s); return n>73 ? 3 : n>43 ? 2 : n>18 || s.totalFeeds>2 ? 1 : 0; }
+function message(s,text) { s.customerLine=text;s.lineTime=9;s.log.unshift(text); if(s.log.length>16)s.log.pop(); }
+function ensureNote(s,key) { if(s.discoveries.indexOf(key)<0){s.discoveries.push(key);return true;}return false; }
+function canPlay() { return !!S && screen === "play" && S.phase === "play"; }

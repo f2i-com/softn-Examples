@@ -1,0 +1,217 @@
+// Hand-authored geometry. No random hazard placement; all moving incidents are distance-triggered.
+function platform(x, y, w, art) { return { x: x, y: y, w: w, art: art || "plank" }; }
+function rock(x, w, h, art) { return { x: x, y: 475 - h / 2, w: w, h: h, art: art || "pebble" }; }
+function prop(art, x, y, w, h, layer) { return { art: art, x: x, y: y, w: w, h: h, layer: layer || 4 }; }
+function zone(type, x, w, y) { return { type: type, x: x, w: w, y: y || 0 }; }
+function incident(type, trigger, x, duration) { return { type: type, trigger: trigger, x: x, duration: duration || 5, t: -1, active: false, done: false }; }
+function loadLevel(index) {
+    let l = LEVELS[index];
+    S.level = index;
+    S.world = l.length;
+    S.par = l.par;
+    S.p = { x: 100, y: 453, w: 52, h: 44, vx: 0, vy: 0, grounded: true, facing: 1 };
+    S.camera = 0;
+    S.cameraY = 0;
+    S.time = 0;
+    S.boost = 100;
+    S.boosting = 0;
+    S.boostCooldown = 0;
+    S.boostDir = 1;
+    S.jumpCooldown = 0;
+    S.hitCooldown = 0;
+    S.pits = [];
+    S.platforms = [];
+    S.rocks = [];
+    S.zones = [];
+    S.events = [];
+    S.props = [];
+    S.stamps = [];
+    S.collected = [];
+    S.stampCount = 0;
+    S.checkpoints = [];
+    S.checkpointIndex = -1;
+    S.checkpoint = { x: 100, y: 453, parcel: null };
+    S.rescues = 0;
+    S.rescueTimer = 0;
+    S.started = false;
+    S.won = false;
+    S.toast = "";
+    S.toastTime = 0;
+    S.fx = [];
+    S.slime = [];
+    S.landAnim = 0;
+    S.jumpAnim = 0;
+    S.hitAnim = 0;
+    S.nearAnim = 0;
+    S.deliveryAnim = 0;
+    S.trailClock = 0;
+    S.dustClock = 0;
+    S.env = { wind: 0, heat: 0, sun: false, wet: false };
+    S.parcel = newParcel(PARCELS[l.parcel].id);
+    S.checkpoint.parcel = copy(S.parcel);
+    snailCoyote = 0;
+    snailJumpBuffer = 0;
+    accumulator = 0;
+    keys = {};
+    commands = [];
+    if (index === 0) {
+        S.pits = [{ x: 1120, w: 100 }, { x: 2100, w: 115 }];
+        S.platforms = [platform(560, 428, 190, "bark"), platform(1170, 408, 150, "leaf"), platform(1680, 415, 180, "bark"), platform(2155, 408, 180, "leaf"), platform(2680, 426, 180, "bark")];
+        S.rocks = [rock(640, 55, 38), rock(1510, 54, 44), rock(2550, 56, 45)];
+        S.zones = [zone("wet", 910, 130)];
+        S.events = [incident("sprinkler", 640, 900, 5.5), incident("bird", 1700, 2020, 4), incident("gate", 2670, 2910, 4)];
+        S.props = [prop("clover", 320, 326, 210, 298), prop("flowerpot", 810, 339, 162, 274), prop("wateringcan", 1810, 345, 275, 260), prop("flower", 2440, 300, 190, 350), prop("cottage", 3090, 318, 225, 315)];
+        S.checkpoints = [1420, 2360];
+    }
+    else if (index === 1) {
+        S.pits = [{ x: 1170, w: 100 }, { x: 2430, w: 110 }];
+        S.platforms = [platform(700, 444, 190, "stone"), platform(887, 423, 190, "stone"), platform(1070, 441, 190, "stone"), platform(1220, 419, 185, "ruler"), platform(2000, 445, 200, "stone"), platform(2220, 423, 210, "stone"), platform(2490, 420, 190, "ruler")];
+        S.rocks = [rock(465, 58, 32), rock(1620, 50, 34), rock(2950, 60, 40)];
+        S.zones = [zone("wet", 600, 540), zone("wet", 1930, 450)];
+        S.events = [incident("car", 1500, 1890, 5), incident("bird", 2800, 3130, 4)];
+        S.props = [prop("boot", 680, 301, 215, 348), prop("umbrella", 1690, 248, 320, 454), prop("boot", 2830, 285, 235, 380), prop("cottage", 3500, 319, 220, 314)];
+        S.checkpoints = [1430, 2740];
+    }
+    else if (index === 2) {
+        S.pits = [{ x: 1630, w: 125 }, { x: 2730, w: 120 }];
+        S.platforms = [platform(695, 426, 180, "bread"), platform(875, 370, 200, "bread"), platform(1130, 332, 350, "ruler"), platform(1430, 385, 210, "bread"), platform(1690, 410, 210, "spoon"), platform(2300, 420, 220, "bread"), platform(2785, 408, 190, "spoon")];
+        S.rocks = [rock(495, 54, 34, "crumb"), rock(2010, 54, 40, "crumb"), rock(3060, 60, 38, "crumb")];
+        S.zones = [zone("heat", 835, 650, 403), zone("heat", 2170, 330, 435), zone("cool", 870, 565, 0)];
+        S.events = [incident("fruit", 1780, 2130, 5.6)];
+        S.props = [prop("jar", 400, 308, 192, 334), prop("toaster", 1160, 339, 530, 272), prop("mug", 2390, 332, 236, 285), prop("fridge", 3430, 268, 260, 414)];
+        S.checkpoints = [1880, 2970];
+    }
+    else if (index === 3) {
+        S.pits = [{ x: 740, w: 190 }, { x: 1550, w: 220 }, { x: 2700, w: 230 }];
+        S.platforms = [platform(820, 388, 110, "leaf"), platform(1290, 410, 185, "cake"), platform(1620, 366, 160, "leaf"), platform(1820, 325, 150, "leaf"), platform(2230, 393, 250, "cake"), platform(2750, 385, 140, "leaf"), platform(2960, 357, 160, "leaf")];
+        S.rocks = [rock(520, 55, 44, "crumb"), rock(2110, 54, 40, "crumb"), rock(3300, 60, 45)];
+        S.zones = [];
+        S.events = [incident("gust", 1060, 1300, 7), incident("fruit", 2260, 2650, 5.8), incident("bird", 3080, 3440, 5)];
+        S.props = [prop("flower", 350, 294, 200, 362), prop("cake", 1300, 375, 220, 200), prop("teapot", 2470, 336, 326, 277), prop("cottage", 3780, 319, 225, 312)];
+        S.checkpoints = [1080, 2030, 3180];
+    }
+    else if (index === 4) {
+        S.pits = [{ x: 1430, w: 105 }, { x: 2480, w: 115 }];
+        S.platforms = [platform(630, 425, 170, "seedtray"), platform(845, 373, 210, "seedtray"), platform(1105, 410, 190, "leaf"), platform(1485, 407, 170, "leaf"), platform(2005, 427, 165, "seedtray"), platform(2215, 372, 210, "seedtray"), platform(2535, 414, 180, "leaf")];
+        S.rocks = [rock(440, 55, 40), rock(1780, 57, 41), rock(2890, 57, 43)];
+        S.zones = [zone("sun", 720, 310), zone("sun", 2100, 330), zone("sun", 3040, 180)];
+        S.events = [incident("sprinkler", 1560, 1840, 6), incident("gate", 2920, 3190, 4)];
+        S.props = [prop("fern", 360, 300, 246, 350), prop("flowerpot", 1130, 355, 170, 240), prop("fern", 1870, 301, 242, 348), prop("flower", 2770, 301, 216, 348), prop("shed", 3370, 304, 260, 342)];
+        S.checkpoints = [1630, 2740];
+    }
+    else if (index === 5) {
+        S.pits = [{ x: 940, w: 145 }, { x: 1920, w: 165 }, { x: 2990, w: 140 }];
+        S.platforms = [platform(1010, 411, 185, "ruler"), platform(1540, 425, 180, "bark"), platform(2000, 407, 205, "ruler"), platform(2590, 425, 230, "bark"), platform(3060, 408, 205, "ruler")];
+        S.rocks = [rock(620, 60, 40), rock(1630, 54, 38), rock(2610, 60, 40), rock(3510, 58, 40)];
+        S.zones = [];
+        S.events = [incident("dog", 1110, 1480, 5), incident("car", 2220, 2630, 5.8), incident("gate", 3470, 3730, 4)];
+        S.props = [prop("lamp", 420, 258, 140, 434), prop("cottage", 1320, 305, 245, 340), prop("lamp", 2310, 257, 142, 436), prop("cottage", 2930, 307, 254, 336), prop("cottage", 3950, 300, 245, 350)];
+        S.checkpoints = [1240, 2290, 3310];
+    }
+    else {
+        S.pits = [{ x: 1170, w: 110 }, { x: 2520, w: 150 }];
+        S.platforms = [platform(575, 430, 230, "book"), platform(817, 385, 210, "book"), platform(1215, 409, 210, "ruler"), platform(1890, 436, 245, "book"), platform(2130, 386, 230, "book"), platform(2595, 409, 230, "ruler"), platform(3080, 429, 240, "book")];
+        S.rocks = [rock(400, 56, 36, "eraser"), rock(1500, 60, 40, "eraser"), rock(2840, 52, 38, "eraser")];
+        S.zones = [];
+        S.events = [incident("gust", 1370, 1700, 8), incident("gust", 2750, 3050, 8)];
+        S.props = [prop("mug", 480, 320, 220, 310), prop("fan", 1800, 288, 255, 374), prop("books", 2220, 310, 360, 330), prop("fan", 3150, 290, 232, 370), prop("inbox", 3560, 405, 260, 140)];
+        S.checkpoints = [1350, 2750];
+    }
+    // Collectibles deliberately mark jump arcs or upper paths, not arbitrary locations.
+    for (let i = 0; i < S.platforms.length; i++) {
+        let pl = S.platforms[i];
+        S.stamps.push({ id: "p" + i, x: pl.x, y: pl.y - 44 });
+    }
+    for (let j = 0; j < S.checkpoints.length; j++)
+        S.stamps.push({ id: "c" + j, x: S.checkpoints[j] + 135, y: 427 });
+    S.props.push(prop("dispatch", 150, 424, 60, 102));
+    S.props.push(prop("postbox", S.world - 100, 419, 78, 112));
+    S.grounds = groundSegments();
+    sceneryCache();
+}
+function groundSegments() {
+    let result = [];
+    let start = 0;
+    for (let i = 0; i < S.pits.length; i++) {
+        result.push({ x: start, w: S.pits[i].x - start });
+        start = S.pits[i].x + S.pits[i].w;
+    }
+    result.push({ x: start, w: S.world - start + 100 });
+    return result;
+}
+function levelEnvironment() {
+    let e = { wind: 0, heat: 0, sun: false, wet: false };
+    for (let i = 0; i < S.zones.length; i++) {
+        let z = S.zones[i];
+        if (S.p.x < z.x || S.p.x > z.x + z.w)
+            continue;
+        if (z.type === "heat" && S.p.y > z.y)
+            e.heat = 1;
+        if (z.type === "sun")
+            e.sun = true;
+        if (z.type === "wet" && S.p.y > 420)
+            e.wet = true;
+    }
+    for (let j = 0; j < S.events.length; j++) {
+        let ev = S.events[j];
+        if (!ev.active)
+            continue;
+        if (ev.type === "gust" && Math.abs(S.p.x - ev.x) < 410)
+            e.wind = (S.level === 3 ? 50 : -75) * Math.sin(Math.min(1, ev.t / 0.7) * 1.57);
+        if (ev.type === "sprinkler" && ev.t > 1.1 && Math.abs(S.p.x - ev.x) < 135 && S.p.y > 380)
+            e.wet = true;
+    }
+    return e;
+}
+function levelStep(dt) {
+    for (let i = 0; i < S.events.length; i++) {
+        let e = S.events[i];
+        if (e.t < 0 && S.p.x >= e.trigger) {
+            e.t = 0;
+            e.active = true;
+            if (e.type === "sprinkler")
+                notify("A polite warning: the sprinkler has other plans.", 2.8);
+            if (e.type === "gust")
+                notify(S.parcel.id === "letter" ? "Fan ahead! Hold CARE to grip your letter." : "A helpful breeze. Terms and conditions apply.", 3);
+            if (e.type === "fruit")
+                notify("Rolling fruit has right of way. Apparently.", 2.8);
+            if (e.type === "car")
+                notify("Look both ways. Especially up.", 2.8);
+            if (e.type === "dog")
+                notify("A very large customer would like a sniff.", 2.8);
+            if (e.type === "gate")
+                notify("The gatekeeper recognises your little hat.", 2.8);
+        }
+        if (!e.active)
+            continue;
+        e.t += dt;
+        if (e.type === "sprinkler" && e.t > 1.1) {
+            sound("sprinkle", 0.14, 1.5);
+        }
+        if ((e.type === "fruit" || e.type === "car") && e.t > 1.1) {
+            let ob = eventObstacle(e);
+            if (ob && overlap(S.p, ob, 4) && S.hitCooldown <= 0) {
+                parcelImpact(0, Math.max(150, Math.abs(S.p.vx) + 80), "bump");
+                S.p.vx = -70;
+                S.p.vy = -160;
+                S.hitCooldown = 1;
+                S.hitAnim = 0.4;
+                burst(S.p.x, S.p.y, 8, "dust");
+            }
+        }
+        if (e.t >= e.duration) {
+            e.active = false;
+            e.done = true;
+        }
+    }
+}
+function eventObstacle(e) {
+    if (!e.active || e.t < 1.1)
+        return null;
+    let age = e.t - 1.1;
+    if (e.type === "fruit")
+        return { x: e.x - age * 108, y: 449, w: 48, h: 48, art: "orange" };
+    if (e.type === "car")
+        return { x: e.x - age * 146, y: 447, w: 87, h: 51, art: "toycar" };
+    return null;
+}

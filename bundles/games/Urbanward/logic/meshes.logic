@@ -1,0 +1,309 @@
+// Original procedural city kit. Parts are grouped by geometry and material;
+// per-instance palettes avoid a draw call for each facade or tree colour.
+function uwBeginMeshes() { uwBatchMap = {}; uwBatchOrder = []; uwSpecialMeshes = []; }
+function uwPart(shape, x, y, z, w, h, d, color, tag, glow) {
+    let key = tag + "/" + shape + "/" + w + "/" + h + "/" + d + "/" + (glow ? "lit" : "matte"), batch = uwBatchMap[key];
+    if (!batch) {
+        let spec = { id: "uw-" + uwBatchOrder.length, type: "instanced", shape: shape, width: w, height: h, depth: d, radius: w / 2, instances: [], palette: [], flatShading: true, metalness: tag === "glass" ? 0.22 : 0, roughness: tag === "glass" ? 0.38 : 0.86, castShadow: tag !== "ground" && tag !== "road" && tag !== "window", receiveShadow: tag !== "window" && !glow };
+        if (glow) {
+            spec.emissive = "#ffda8a";
+            spec.emissiveIntensity = lightMode === "night" ? 0.85 : lightMode === "dusk" ? 0.3 : 0;
+        }
+        batch = { spec: spec, colors: {} };
+        uwBatchMap[key] = batch;
+        uwBatchOrder.push(key);
+    }
+    let paletteIndex = batch.colors[color];
+    if (paletteIndex === undefined) {
+        paletteIndex = batch.spec.palette.length;
+        batch.colors[color] = paletteIndex;
+        batch.spec.palette.push(color);
+    }
+    batch.spec.instances.push(x, y, z, paletteIndex);
+}
+function uwBox(x, y, z, w, h, d, color, tag, glow) { uwPart("box", x, y, z, w, h, d, color, tag || "solid", !!glow); }
+function uwTree(x, y, z, variant) {
+    let colors = ["#32824d", "#62a938", "#a1ca43", "#22745a"];
+    uwBox(x, y + 0.3, z, 0.12, 0.6, 0.12, "#715c44", "trunk", false);
+    if (variant % 3 === 0) {
+        uwPart("cone", x, y + 1.08, z, 1.05, 1.65, 1.05, colors[variant % 4], "tree", false);
+        uwPart("cone", x, y + 1.6, z, 0.62, 0.9, 0.62, colors[(variant + 1) % 4], "tree", false);
+    }
+    else {
+        uwPart("dodecahedron", x, y + 0.98, z, 1.2, 1.2, 1.2, colors[variant % 4], "tree", false);
+        if (quality === "high") uwPart("dodecahedron", x + 0.27, y + 1.35, z - 0.13, 0.8, 0.8, 0.8, colors[(variant + 1) % 4], "treecrown", false);
+    }
+}
+function uwWindows(x, y, z, w, h, d, levels, powered) {
+    let glow = powered && lightMode !== "day", glass = powered ? lightMode === "day" ? "#b9e4ff" : "#ffdf94" : "#374b5a";
+    if (quality === "low") {
+        uwBox(x, y + h * 0.5, z + d / 2 + 0.018, w * 0.66, h * 0.55, 0.025, glass, "window", glow);
+        return;
+    }
+    let rows = Math.min(12, Math.max(1, levels)), columns = w > 1.15 ? 3 : 2;
+    for (let r = 0; r < rows; r = r + 1) {
+        let yy = y + 0.23 + (h - 0.3) * (r + 0.35) / rows;
+        for (let c = 0; c < columns; c = c + 1) {
+            let lit = glow && Math.abs(Math.floor(x * 7 + z * 11) + r * 3 + c * 7) % 5 !== 0;
+            let pane = glow && !lit ? "#46616c" : glass;
+            let offset = ((c + 0.5) / columns - 0.5) * w * 0.78;
+            uwBox(x + offset, yy, z + d / 2 + 0.014, 0.19, 0.17, 0.026, pane, "window", lit);
+            uwBox(x + offset, yy, z - d / 2 - 0.014, 0.19, 0.17, 0.026, pane, "window", lit);
+            if (quality === "high" || r % 2 === 0) {
+                let offZ = ((c + 0.5) / columns - 0.5) * d * 0.78;
+                uwBox(x + w / 2 + 0.014, yy, z + offZ, 0.026, 0.17, 0.19, pane, "window", lit);
+                uwBox(x - w / 2 - 0.014, yy, z + offZ, 0.026, 0.17, 0.19, pane, "window", lit);
+            }
+        }
+    }
+}
+function uwConstruction(x, y, z, t) {
+    uwBox(x, y + 0.06, z, 1.65, 0.12, 1.65, "#bcb5a3", "foundation", false);
+    let h = t.stage === 2 ? 0.65 : 1.3;
+    for (let ax = -1; ax <= 1; ax += 2)
+        for (let az = -1; az <= 1; az += 2)
+            uwBox(x + ax * 0.63, y + h / 2, z + az * 0.63, 0.09, h, 0.09, "#ba985c", "scaffold", false);
+    uwBox(x, y + h, z - 0.63, 1.35, 0.08, 0.08, "#d5b473", "scaffold", false);
+    uwBox(x, y + h, z + 0.63, 1.35, 0.08, 0.08, "#d5b473", "scaffold", false);
+    uwBox(x + 0.63, y + h, z, 0.08, 0.08, 1.35, "#d5b473", "scaffold", false);
+    if (t.level >= 2) {
+        uwBox(x - 0.65, y + 1.8, z - 0.65, 0.1, 3.6, 0.1, "#dbb350", "crane", false);
+        uwBox(x - 0.12, y + 3.55, z - 0.65, 1.65, 0.09, 0.09, "#dbb350", "crane", false);
+        uwBox(x + 0.58, y + 2.9, z - 0.65, 0.025, 1.2, 0.025, "#4c5459", "crane", false);
+    }
+}
+function uwHouse(x, y, z, t, powered) {
+    let walls = ["#fff0cb", "#efbc87", "#b4dcbf", "#f0d698", "#a4d4ee", "#edb29a", "#d6e9ef", "#fff2d7"], roofs = ["#cb7550", "#326f99", "#31877a", "#aa684b"];
+    let h = t.level === 1 ? 0.7 : 1.4, w = t.variant % 2 ? 1.28 : 1.4, d = 1.3;
+    uwBox(x, y + h / 2, z, w, h, d, t.neglect >= 4 ? "#827d70" : walls[t.variant], "house", false);
+    let era = uwArchitecture(t);
+    if (era < 2)
+        uwPart("prism", x, y + h + 0.23, z, w + 0.16, 0.5, d + 0.22, roofs[t.variant % 4], "roof", false);
+    else {
+        uwBox(x, y + h + 0.06, z, w + 0.16, 0.12, d + 0.22, "#799485", "greenroof", false);
+        uwBox(x + 0.32, y + h + 0.16, z - 0.2, 0.58, 0.04, 0.35, "#396880", "roofsolar", false);
+    }
+    uwBox(x + 0.36, y + h + 0.3, z - 0.25, 0.15, 0.6, 0.16, "#ac8671", "chimney", false);
+    uwWindows(x, y, z, w, h, d, t.level, powered && t.neglect < 4);
+    uwBox(x, y + 0.23, z + d / 2 + 0.02, 0.23, 0.46, 0.045, "#5d6d69", "door", false);
+    uwBox(x, y + 0.015, z + 0.82, 0.28, 0.03, 0.32, "#cec8b5", "path", false);
+    if (quality !== "low" && t.variant % 2 === 0)
+        uwBox(x - 0.76, y + 0.14, z, 0.08, 0.28, 1.6, "#e5ddc6", "fence", false);
+    if (quality !== "low") {
+        uwPlanter(x + 0.52, y, z + 0.82, t.variant, t.neglect < 4);
+        uwBox(x - 0.4, y + 0.12, z + 0.84, 0.035, 0.24, 0.035, "#657c7c", "mailpost", false);
+        uwBox(x - 0.4, y + 0.27, z + 0.84, 0.16, 0.12, 0.12, roofs[t.variant % 4], "mailbox", false);
+        if (t.variant % 3 === 1) {
+            uwBox(x, y + h + 0.28, z + 0.23, 0.58, 0.04, 0.35, "#396880", "roofsolar", false);
+        }
+    }
+}
+// Shared small dimensions keep neighbourhood ornament in instanced batches.
+function uwPlanter(x, y, z, variant, healthy) {
+    uwBox(x, y + 0.065, z, 0.38, 0.13, 0.16, "#ad8166", "planter", false);
+    uwBox(x, y + 0.15, z, 0.34, 0.08, 0.13, healthy ? "#65aa3e" : "#928368", "planterleaf", false);
+    if (healthy) {
+        let flowers = ["#ffc94f", "#ec8b75", "#b89ee6", "#fff2b7"];
+        uwBox(x - 0.1, y + 0.21, z, 0.09, 0.06, 0.1, flowers[variant % 4], "flowers", false);
+        uwBox(x + 0.1, y + 0.21, z, 0.09, 0.06, 0.1, flowers[(variant + 1) % 4], "flowers", false);
+    }
+}
+function uwBench(x, y, z) {
+    uwBox(x, y + 0.18, z, 0.48, 0.07, 0.18, "#a28a65", "benchseat", false);
+    uwBox(x, y + 0.31, z - 0.08, 0.48, 0.19, 0.045, "#a28a65", "benchback", false);
+    for (let side = -1; side <= 1; side += 2)
+        uwBox(x + side * 0.17, y + 0.08, z, 0.045, 0.16, 0.14, "#526b6c", "benchleg", false);
+}
+function uwUrbanBlock(x, y, z, t, powered) {
+    let level = t.level, commercial = t.zone === 2, mixed = t.zone === 4;
+    let heights = [0, 0.85, 1.8, 3.8, 7.2], h = heights[level] + (level >= 3 ? (t.variant % 3 - 1) * (level === 4 ? 1.2 : 0.5) : 0), width = level === 4 ? 1.22 : 1.55, depth = level === 4 ? 1.24 : 1.5;
+    let facades = commercial ? ["#297bbb", "#48a4d0", "#27649d", "#94cddd"] : ["#e6ba73", "#f4ddad", "#b3d9dd", "#e7aa85"];
+    let era = uwArchitecture(t);
+    let base = t.neglect >= 4 ? "#787f7b" : era === 0 ? facades[t.variant % 4] : era === 1 ? ["#d9c693", "#e3e8d7", "#4299be", "#a9d8ee"][t.variant % 4] : ["#d9efd7", "#33a9b3", "#7fceba", "#fae8b7"][t.variant % 4];
+    uwBox(x, y + h / 2, z, width, h, depth, base, commercial ? "glass" : "apartment", false);
+    uwBox(x, y + h + 0.04, z, width + 0.08, 0.08, depth + 0.08, "#f4edda", "cornice", false);
+    if (quality !== "low" && level >= 3) {
+        // Slim glazed highlights and cream corner fins give the skyline depth.
+        // Keep these off neglected lots so decline remains visible.
+        if (commercial && t.neglect < 4) {
+            uwBox(x - width * 0.27, y + h * 0.52, z + depth / 2 + 0.018, 0.12, h * 0.76, 0.018, "#83cef0", "glassreflection", false);
+            uwBox(x + width / 2 + 0.025, y + h / 2, z - depth * 0.32, 0.055, h, 0.075, "#f7eac7", "facadefin", false);
+        }
+        uwBox(x, y + 0.11, z, 1.72, 0.22, 1.72, "#b1b9ab", "towerpodium", false);
+        if (t.variant % 3 === 1) {
+            uwBox(x, y + h + 0.75, z, 0.64, 0.5, 0.64, commercial ? "#388dc0" : "#edd19a", "towercrown", false);
+            uwPart("prism", x, y + h + 1.15, z, 0.7, 0.35, 0.7, "#256d98", "crownroof", false);
+        }
+        if (commercial && t.variant % 3 === 2)
+            for (let band = 1; band <= 3; band++)
+                uwBox(x, y + h * band / 4, z, width + 0.07, 0.055, depth + 0.07, "#a5d9ef", "officebelt", false);
+    }
+    if (commercial || mixed) {
+        uwBox(x, y + 0.28, z + depth / 2 + 0.035, width * 0.85, 0.47, 0.04, "#227fb0", "shop-glass", powered && lightMode !== "day");
+        uwBox(x, y + 0.62, z + depth / 2 + 0.12, width + 0.1, 0.13, 0.35, t.variant % 2 ? "#269cb3" : "#f1bf4e", "awning", false);
+    }
+    uwWindows(x, y, z, width, h, depth, level === 4 ? 12 : level === 3 ? 6 : level === 2 ? 3 : 1, powered && t.neglect < 4);
+    if (quality !== "low" && era === 0 && t.age >= 120)
+        uwBox(x, y + h - 0.12, z + depth / 2 + 0.04, width, 0.09, 0.08, "#d6bb94", "heritageband", false);
+    if (quality !== "low" && era === 2) {
+        uwBox(x - width / 2 - 0.035, y + h / 2, z, 0.07, h, 0.5, "#789574", "livingwall", false);
+        uwBox(x - 0.25, y + h + 0.12, z + 0.32, 0.58, 0.04, 0.35, "#396880", "roofsolar", false);
+    }
+    if (level >= 2)
+        uwBox(x + 0.25, y + h + 0.17, z - 0.24, 0.43, 0.26, 0.38, "#929d9e", "hvac", false);
+    if (quality !== "low") {
+        if (commercial || mixed) {
+            uwBox(x - 0.48, y + 0.18, z + 0.89, 0.2, 0.36, 0.06, "#485f5b", "shopboard", false);
+            uwBox(x - 0.48, y + 0.23, z + 0.927, 0.13, 0.025, 0.015, "#e5ddbd", "shopletter", false);
+            uwPlanter(x + 0.45, y, z + 0.86, t.variant, t.neglect < 4);
+        }
+        if (!commercial && level >= 2) {
+            for (let floor = 1; floor <= Math.min(level, 3); floor++) {
+                let by = y + h * floor / (Math.min(level, 3) + 1);
+                uwBox(x, by, z - depth / 2 - 0.09, 0.78, 0.07, 0.22, "#e0d6c0", "balconyslab", false);
+                uwBox(x, by + 0.14, z - depth / 2 - 0.19, 0.78, 0.23, 0.035, "#718b8b", "balconyrail", false);
+            }
+        }
+        if (level >= 3 && t.variant % 2 === 1) {
+            uwPlanter(x - 0.4, y + h + 0.08, z + 0.45, t.variant, t.neglect < 4);
+            uwPlanter(x + 0.4, y + h + 0.08, z + 0.45, t.variant + 1, t.neglect < 4);
+        }
+    }
+    if (level >= 3) {
+        uwBox(x, y + h + 0.26, z, width * 0.58, 0.5, depth * 0.58, base, "setback", false);
+        uwBox(x, y + h + 0.52, z, width * 0.66, 0.07, depth * 0.66, "#dde1d8", "cornice", false);
+        if (t.variant % 3 === 0)
+            uwPart("cylinder", x - 0.25, y + h + 0.83, z + 0.2, 0.38, 0.4, 0.38, "#95887b", "roof-tank", false);
+    }
+    if (level === 4) {
+        uwBox(x, y + h + 1.2, z, 0.055, 1.4, 0.055, "#ccd7d7", "antenna", false);
+        uwBox(x, y + h + 1.9, z, 0.075, 0.075, 0.075, "#f4b47e", "beacon", powered);
+        for (let side = -1; side <= 1; side += 2)
+            uwBox(x + side * width / 2, y + h / 2, z, 0.06, h, depth + 0.06, "#cddcdb", "mullion", false);
+    }
+}
+function uwFactory(x, y, z, t, powered) {
+    let h = 0.7 + t.level * 0.28;
+    uwBox(x, y + h / 2, z, 1.65, h, 1.5, ["#9caba9", "#ac9b87", "#9c9c94", "#8a9ba2"][t.variant % 4], "warehouse", false);
+    uwPart("prism", x - 0.4, y + h + 0.12, z, 0.8, 0.32, 1.65, "#637b83", "shedroof", false);
+    uwPart("prism", x + 0.4, y + h + 0.12, z, 0.8, 0.32, 1.65, "#637b83", "shedroof", false);
+    uwBox(x, y + 0.34, z + 0.76, 0.65, 0.62, 0.045, "#59676b", "loadingbay", false);
+    if (t.variant % 3 !== 0) {
+        let chimney = 1.9 + t.level * 0.3;
+        uwPart("cylinder", x + 0.62, y + chimney / 2, z - 0.53, 0.22, chimney, 0.22, "#b47b66", "stack", false);
+        uwPart("cylinder", x + 0.62, y + chimney - 0.32, z - 0.53, 0.23, 0.16, 0.23, "#e4d9bc", "stackband", false);
+        if (powered)
+            uwSmokeSources.push({ x: x + 0.62, y: y + chimney, z: z - 0.53 });
+    }
+    if (t.level >= 2)
+        uwBox(x - 0.52, y + h + 0.36, z + 0.15, 0.5, 0.5, 0.58, "#9ebabe", "tank", false);
+    if (quality !== "low") {
+        uwBox(x - 0.63, y + 0.04, z + 0.86, 0.36, 0.08, 0.2, "#8f795b", "pallet", false);
+        uwBox(x - 0.63, y + 0.19, z + 0.86, 0.28, 0.22, 0.18, "#bcaa7e", "cargo", false);
+        for (let stripe = -1; stripe <= 1; stripe++)
+            uwBox(x + stripe * 0.22, y + 0.03, z + 0.89, 0.11, 0.02, 0.16, "#ddbf6c", "loadingmark", false);
+    }
+}
+function uwFacility(x, y, z, type, powered) {
+    let f = UW_FACILITIES[type], color = f.color;
+    uwBox(x, y + 0.025, z, 1.82, 0.05, 1.82, type === "park" ? "#8bbe59" : "#b9b7a5", "civic-pad", false);
+    if (type === "park" || type === "plaza") {
+        uwPart("cylinder", x, y + 0.17, z, 0.95, 0.24, 0.95, "#d4cfb8", "fountain", false);
+        uwPart("cylinder", x, y + 0.3, z, 0.79, 0.04, 0.79, "#39bed9", "fountainwater", powered);
+        uwPart("cone", x, y + 0.56, z, 0.16, 0.55, 0.16, "#9dddd9", "fountainjet", false);
+        uwTree(x - 0.64, y, z - 0.6, 2);
+        uwTree(x + 0.64, y, z + 0.6, 1);
+        uwBench(x + 0.57, y, z - 0.5);
+        if (quality !== "low") {
+            uwBox(x, y + 0.033, z, 0.28, 0.016, 1.8, "#ded5b9", "parkpath", false);
+            uwBench(x - 0.57, y, z + 0.5);
+            uwPlanter(x - 0.57, y, z + 0.82, 0, true);
+            uwPlanter(x + 0.57, y, z - 0.82, 2, true);
+        }
+        return;
+    }
+    if (type === "tower") {
+        for (let a = -1; a <= 1; a += 2)
+            for (let b = -1; b <= 1; b += 2)
+                uwBox(x + a * 0.39, y + 0.85, z + b * 0.39, 0.09, 1.7, 0.09, "#6e7d84", "watertowerleg", false);
+        uwPart("cylinder", x, y + 1.93, z, 1.35, 0.7, 1.35, color, "watertank", false);
+        uwPart("cone", x, y + 2.4, z, 1.43, 0.28, 1.43, "#c7dfe3", "watertankroof", false);
+        uwPart("cylinder", x, y + 1.95, z, 1.37, 0.15, 1.37, "#e8e4d3", "tankstripe", false);
+        return;
+    }
+    if (type === "wind") {
+        uwSpecialMeshes.push({ id: "wind-tower-" + x + "-" + z, type: "model", modelUrl: "assets/models/wind-tower.glb", position: { x: x, y: y, z: z }, castShadow: quality !== "low", receiveShadow: true });
+        uwSpecialMeshes.push({ id: "wind-" + x + "-" + z, type: "model", modelUrl: "assets/models/wind-rotor.glb", position: { x: x, y: y + 3.52, z: z + 0.19 }, animate: { rotateZ: 0.035 }, castShadow: quality !== "low" });
+        return;
+    }
+    if (type === "solar") {
+        for (let a = -1; a <= 1; a += 2) {
+            uwBox(x, y + 0.34, z + a * 0.39, 1.55, 0.09, 0.57, "#316b92", "solar", false);
+            uwBox(x, y + 0.16, z + a * 0.39, 0.1, 0.3, 0.1, "#b3c2c4", "solarstand", false);
+        }
+        return;
+    }
+    if (type === "lighthouse" || type === "monument") {
+        uwSpecialMeshes.push({ id: type + "-" + x + "-" + z, type: "model", modelUrl: type === "lighthouse" ? "assets/models/lighthouse.glb" : "assets/models/monument.glb", position: { x: x, y: y, z: z }, castShadow: quality !== "low", receiveShadow: true });
+        return;
+    }
+    if (type === "stop") {
+        uwBox(x, y + 0.88, z, 1.3, 0.075, 0.68, "#267eaa", "shelterroof", false);
+        uwBox(x, y + 0.45, z - 0.28, 1.18, 0.78, 0.04, "#91bbc0", "shelterglass", false);
+        for (let side = -1; side <= 1; side += 2)
+            uwBox(x + side * 0.58, y + 0.45, z - 0.25, 0.055, 0.86, 0.055, "#566f73", "shelterframe", false);
+        if (quality !== "low") {
+            uwBox(x, y + 0.28, z - 0.05, 0.85, 0.065, 0.24, "#b4a182", "busbench", false);
+            uwBox(x, y + 0.16, z - 0.05, 0.09, 0.25, 0.15, "#566f73", "busbenchleg", false);
+            uwBox(x - 0.34, y + 0.6, z - 0.248, 0.24, 0.28, 0.025, "#e5dfc9", "timetable", false);
+            uwBox(x - 0.34, y + 0.67, z - 0.23, 0.19, 0.035, 0.012, "#4d929b", "timetableheader", false);
+            uwBox(x, y + 0.825, z + 0.24, 0.85, 0.025, 0.04, "#e6d7aa", "shelterlight", powered);
+        }
+        uwBox(x + 0.68, y + 0.65, z + 0.25, 0.06, 1.3, 0.06, "#667986", "buspole", false);
+        uwBox(x + 0.68, y + 1.2, z + 0.25, 0.33, 0.3, 0.08, "#ffd353", "bussign", false);
+        return;
+    }
+    if (type === "pump") {
+        uwPart("cylinder", x - 0.42, y + 0.33, z, 0.72, 0.55, 0.72, "#b9c8bd", "watertreatment", false);
+        uwPart("cylinder", x + 0.42, y + 0.33, z, 0.72, 0.55, 0.72, "#a9c6bc", "watertreatment", false);
+        uwPart("cylinder", x - 0.42, y + 0.62, z, 0.62, 0.025, 0.62, "#6baec2", "treatmentwater", false);
+        uwBox(x, y + 0.42, z - 0.62, 1.25, 0.8, 0.35, "#92b0af", "utilityoffice", false);
+        return;
+    }
+    if (type === "hall") {
+        uwSpecialMeshes.push({ id: "hall-" + x + "-" + z, type: "model", modelUrl: "assets/models/city-hall.glb", position: { x: x, y: y, z: z }, castShadow: quality !== "low", receiveShadow: true });
+        return;
+    }
+    let h = type === "university" ? 1.55 : 0.95;
+    uwBox(x, y + h / 2, z, 1.62, h, 1.38, color, "facility", false);
+    uwBox(x, y + h + 0.06, z, 1.76, 0.14, 1.5, "#627c80", "publicroof", false);
+    uwWindows(x, y, z, 1.62, h, 1.38, 2, powered);
+    if (type === "power") {
+        for (let a = -1; a <= 1; a += 2) {
+            uwPart("cylinder", x + a * 0.48, y + 1.7, z - 0.43, 0.26, 3.4, 0.26, "#b97058", "powerstack", false);
+            uwPart("cylinder", x + a * 0.48, y + 2.8, z - 0.43, 0.27, 0.25, 0.27, "#decda8", "powerband", false);
+            if (!uwWorld.policies.clean)
+                uwSmokeSources.push({ x: x + a * 0.48, y: y + 3.4, z: z - 0.43 });
+        }
+    }
+    if (type === "clinic") {
+        uwBox(x, y + h + 0.2, z, 0.67, 0.06, 0.2, "#bb685f", "cross", false);
+        uwBox(x, y + h + 0.2, z, 0.2, 0.06, 0.67, "#bb685f", "cross", false);
+    }
+    if (type === "fire" || type === "depot")
+        for (let a = -1; a <= 1; a += 2)
+            uwBox(x + a * 0.4, y + 0.33, z + 0.71, 0.5, 0.6, 0.04, type === "fire" ? "#e6d7bc" : "#6b7c7d", "garagedoor", false);
+    if (type === "police") {
+        uwBox(x, y + h + 0.4, z, 0.045, 0.7, 0.045, "#d0d9d6", "antenna", false);
+        uwBox(x, y + 0.65, z + 0.75, 0.4, 0.18, 0.05, "#d4ba76", "badge", false);
+    }
+    if (type === "school" || type === "university") {
+        uwBox(x + 0.73, y + 1.2, z + 0.7, 0.04, 2.4, 0.04, "#d2d9d0", "flagpole", false);
+        uwBox(x + 0.5, y + 2.23, z + 0.7, 0.47, 0.27, 0.035, "#65a6b4", "flag", false);
+    }
+    if (type === "university")
+        uwPart("cone", x, y + h + 0.65, z, 1.1, 1.08, 1.1, "#8aafa6", "campusdome", false);
+    if (type === "recycler")
+        for (let a = -1; a <= 1; a += 2)
+            uwBox(x + a * 0.55, y + 0.17, z + 0.86, 0.3, 0.34, 0.24, "#5c8e77", "bin", false);
+}

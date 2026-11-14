@@ -1,6 +1,6 @@
 {
   "name": "TrainYard",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Animated HO-scale model train yard diorama with Blender PBR steam locomotive, freight hoppers, harbor tug, signal gantries, HDRI day-night cycle, GTAO/bloom lighting, chuff audio, and interactive fascia controls.",
   "main": "ui/main.ui",
   "icon": "assets/icon.svg",

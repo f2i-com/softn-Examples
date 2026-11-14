@@ -1,5 +1,5 @@
 // main.ui - DeviceKit
-// Demo app showcasing SoftN capabilities: network, camera, QR, files
+// Demo app showcasing SoftN capabilities: network, QR, camera, files, and device telemetry
 
 <logic src="../logic/main.logic" />
 
@@ -8,26 +8,50 @@
 <import QRTools from="./pages/QRTools.ui" />
 <import CameraDemo from="./pages/CameraDemo.ui" />
 <import FileBrowser from="./pages/FileBrowser.ui" />
+<import SystemTelemetry from="./pages/SystemTelemetry.ui" />
 
 <style>
 @keyframes dk-fade-up {
-  from { opacity: 0; transform: translateY(12px); }
+  from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
-}
-@keyframes dk-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
 }
 
 .dk-page-content > * {
-  animation: dk-fade-up 400ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: dk-fade-up 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.dk-page-inner {
+  max-width: 1080px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
 }
 
 button, [role="button"] {
-  transition: all 180ms cubic-bezier(0.16, 1, 0.3, 1) !important;
+  transition: all 160ms cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 button:active, [role="button"]:active {
   transform: scale(0.97) !important;
+}
+
+@media (max-width: 640px) {
+  .dk-header {
+    padding: 0.75rem 1rem !important;
+  }
+  .dk-tabs {
+    padding: 0 0.5rem !important;
+  }
+  .dk-tab-btn {
+    padding: 0.55rem 0.65rem !important;
+    font-size: 0.75rem !important;
+  }
+  .dk-page-content {
+    padding: 1rem !important;
+  }
+  .dk-url-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
 }
 </style>
 
@@ -42,100 +66,116 @@ button:active, [role="button"]:active {
     background: "#f8fafc"
   }}>
     // Top Header
-    <Box style={{
-      padding: "1rem 2rem",
+    <Box className="dk-header" style={{
+      padding: "0.875rem 1.75rem",
       borderBottom: "1px solid #e2e8f0",
       background: "#ffffff",
       display: "flex",
       alignItems: "center",
-      gap: "1rem",
+      justifyContent: "space-between",
+      gap: "0.75rem",
+      flexWrap: "wrap",
       flexShrink: 0
     }}>
-      <Box style={{
-        width: "36px",
-        height: "36px",
-        borderRadius: "10px",
-        background: "linear-gradient(135deg, #3b82f6, #6366f1)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0
-      }}>
-        <Text style={{ color: "#ffffff", fontWeight: 700, fontSize: "0.875rem" }}>DK</Text>
+      <Box style={{ display: "flex", alignItems: "center", gap: "0.75rem", minWidth: 0 }}>
+        <Box style={{
+          width: "36px",
+          height: "36px",
+          borderRadius: "10px",
+          background: "linear-gradient(135deg, #2563eb, #4f46e5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          boxShadow: "0 4px 12px rgba(37, 99, 235, 0.22)",
+          flexShrink: 0
+        }}>
+          <Text style={{ color: "#ffffff", fontWeight: 700, fontSize: "0.85rem", letterSpacing: "0.02em" }}>DK</Text>
+        </Box>
+        <Stack direction=vertical gap=xs style={{ minWidth: 0 }}>
+          <Text style={{ fontSize: "1.0625rem", fontWeight: 700, color: "#0f172a", letterSpacing: "-0.01em" }}>DeviceKit</Text>
+          <Text size=xs style={{ color: "#64748b", fontSize: "0.7rem" }}>Permission-gated capabilities & live sandbox telemetry</Text>
+        </Stack>
       </Box>
-      <Stack direction=vertical gap=xs>
-        <Text style={{ fontSize: "1.125rem", fontWeight: 600, color: "#0f172a", letterSpacing: "-0.01em" }}>DeviceKit</Text>
-        <Text size=xs style={{ color: "#94a3b8", fontSize: "0.6875rem" }}>What an app may ask for, and what it gets</Text>
-      </Stack>
+      <Badge variant={telOnline === "Online" ? "success" : "warning"} size=sm>{telOnline}</Badge>
     </Box>
 
     // Tab Navigation
-    <Box style={{
+    <Box className="dk-tabs" style={{
       display: "flex",
       flexWrap: "wrap",
       gap: "0",
       borderBottom: "1px solid #e2e8f0",
       background: "#ffffff",
-      padding: "0 1.5rem",
+      padding: "0 1.25rem",
       flexShrink: 0
     }}>
-      <Button variant=ghost @click={setPage("api")} style={{
-        padding: "0.75rem 1.25rem",
+      <Button className="dk-tab-btn" variant=ghost @click={setPage("api")} style={{
+        padding: "0.7rem 1.1rem",
         borderRadius: 0,
         fontSize: "0.8125rem",
-        fontWeight: currentPage === "api" ? 600 : 400,
-        color: currentPage === "api" ? "#3b82f6" : "#64748b",
-        borderBottom: currentPage === "api" ? "2px solid #3b82f6" : "2px solid transparent",
-        transition: "all 150ms ease"
+        fontWeight: currentPage === "api" ? 600 : 500,
+        color: currentPage === "api" ? "#2563eb" : "#64748b",
+        borderBottom: currentPage === "api" ? "2px solid #2563eb" : "2px solid transparent"
       }}>
         API Explorer
       </Button>
-      <Button variant=ghost @click={setPage("qr")} style={{
-        padding: "0.75rem 1.25rem",
+      <Button className="dk-tab-btn" variant=ghost @click={setPage("qr")} style={{
+        padding: "0.7rem 1.1rem",
         borderRadius: 0,
         fontSize: "0.8125rem",
-        fontWeight: currentPage === "qr" ? 600 : 400,
-        color: currentPage === "qr" ? "#3b82f6" : "#64748b",
-        borderBottom: currentPage === "qr" ? "2px solid #3b82f6" : "2px solid transparent",
-        transition: "all 150ms ease"
+        fontWeight: currentPage === "qr" ? 600 : 500,
+        color: currentPage === "qr" ? "#2563eb" : "#64748b",
+        borderBottom: currentPage === "qr" ? "2px solid #2563eb" : "2px solid transparent"
       }}>
         QR Tools
       </Button>
-      <Button variant=ghost @click={setPage("camera")} style={{
-        padding: "0.75rem 1.25rem",
+      <Button className="dk-tab-btn" variant=ghost @click={setPage("camera")} style={{
+        padding: "0.7rem 1.1rem",
         borderRadius: 0,
         fontSize: "0.8125rem",
-        fontWeight: currentPage === "camera" ? 600 : 400,
-        color: currentPage === "camera" ? "#3b82f6" : "#64748b",
-        borderBottom: currentPage === "camera" ? "2px solid #3b82f6" : "2px solid transparent",
-        transition: "all 150ms ease"
+        fontWeight: currentPage === "camera" ? 600 : 500,
+        color: currentPage === "camera" ? "#2563eb" : "#64748b",
+        borderBottom: currentPage === "camera" ? "2px solid #2563eb" : "2px solid transparent"
       }}>
         Camera
       </Button>
-      <Button variant=ghost @click={setPage("files")} style={{
-        padding: "0.75rem 1.25rem",
+      <Button className="dk-tab-btn" variant=ghost @click={setPage("files")} style={{
+        padding: "0.7rem 1.1rem",
         borderRadius: 0,
         fontSize: "0.8125rem",
-        fontWeight: currentPage === "files" ? 600 : 400,
-        color: currentPage === "files" ? "#3b82f6" : "#64748b",
-        borderBottom: currentPage === "files" ? "2px solid #3b82f6" : "2px solid transparent",
-        transition: "all 150ms ease"
+        fontWeight: currentPage === "files" ? 600 : 500,
+        color: currentPage === "files" ? "#2563eb" : "#64748b",
+        borderBottom: currentPage === "files" ? "2px solid #2563eb" : "2px solid transparent"
       }}>
         Files
+      </Button>
+      <Button className="dk-tab-btn" variant=ghost @click={setPage("telemetry")} style={{
+        padding: "0.7rem 1.1rem",
+        borderRadius: 0,
+        fontSize: "0.8125rem",
+        fontWeight: currentPage === "telemetry" ? 600 : 500,
+        color: currentPage === "telemetry" ? "#2563eb" : "#64748b",
+        borderBottom: currentPage === "telemetry" ? "2px solid #2563eb" : "2px solid transparent"
+      }}>
+        Capabilities
       </Button>
     </Box>
 
     // Page Content
     <Box className="dk-page-content" style={{
       flex: 1,
-      overflow: "auto",
-      padding: "1.5rem 2rem",
+      overflowY: "auto",
+      overflowX: "hidden",
+      padding: "1.5rem 1.75rem",
       minHeight: 0
     }}>
-      <ApiExplorer />
-      <QRTools />
-      <CameraDemo />
-      <FileBrowser />
+      <Box className="dk-page-inner">
+        <ApiExplorer />
+        <QRTools />
+        <CameraDemo />
+        <FileBrowser />
+        <SystemTelemetry />
+      </Box>
     </Box>
   </Box>
 </App>

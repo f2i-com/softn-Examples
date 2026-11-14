@@ -39,11 +39,12 @@ import "./gb_machine.logic"
 let romName = ""
 let romSize = ""
 let loading = false
-let hintText = "Insert a .gb or .gbc cartridge to begin. Homebrew and public-domain games work well, and the file never leaves this device."
+let hintText = "Play the built-in POCKET BREAK cartridge right away, or insert any .gb / .gbc ROM from your device."
 let fpsText = "—"
 let audioReady = false
 let audioRate = ""
 let muted = false
+let dmgPalette = "dmg"
 
 // Whether the side panel is showing as a drawer.
 //
@@ -94,28 +95,57 @@ let padTapFrames = null
 let padHeldPtr = null
 let padClickGuard = null
 
+function bindListeners() {
+  if (batPending && batPending[1] === 1) { return }
+  window.addEventListener("keydown", keyDown)
+  window.addEventListener("keyup", keyUp)
+  window.addEventListener("blur", padClear)
+  if (batPending) { batPending[1] = 1 }
+}
+
+function unbindListeners() {
+  if (!batPending || batPending[1] === 0) { return }
+  window.removeEventListener("keydown", keyDown)
+  window.removeEventListener("keyup", keyUp)
+  window.removeEventListener("blur", padClear)
+  batPending[1] = 0
+}
+
 function _init() {
   padTapFrames = new Uint8Array(8)
   padHeldPtr = new Uint8Array(8)
   padClickGuard = new Uint8Array(8)
-  batPending = new Uint8Array(1)
+  batPending = new Uint8Array(4)
   // Builds the 512 opcode closures and zeroes the machine. Once, ever —
   // calling it twice would rebuild tables the dispatch already points at.
   gbMachine_init()
 
-  // The only route to a real button hold: `@click` is a tap, and `@pointerdown`
-  // capitalises to `onPointerdown`, which React ignores. The runtime bridges
-  // whatever types are registered here to real browser events — it hardcodes no
-  // bindings — so this is what makes the keys on the bezel actually do anything.
-  //
-  // blur matters as much as the other two: a keyup delivered while the window
-  // is not focused lands on whoever took focus, so a direction held during an
-  // alt-tab would stay down forever.
-  window.addEventListener("keydown", keyDown)
-  window.addEventListener("keyup", keyUp)
-  window.addEventListener("blur", padClear)
+  let savedPal = readStore("pocket:palette")
+  if (savedPal === "pocket" || savedPal === "kiwi" || savedPal === "amber" || savedPal === "dmg") {
+    applyDmgPalette(savedPal, false)
+  }
+
+  bindListeners()
 
   gbStatus = "No cartridge"
+}
+
+function _onHide() {
+  padClear()
+  flushBattery()
+  if (gbRomLoaded && gbRunning) {
+    if (batPending) { batPending[2] = 1 }
+    gbMachine_setRunning(false)
+  }
+  unbindListeners()
+}
+
+function _onShow() {
+  bindListeners()
+  if (batPending && batPending[2] === 1 && gbRomLoaded) {
+    batPending[2] = 0
+    gbMachine_setRunning(true)
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -178,15 +208,16 @@ function acceptRom(base64) {
   flushBattery()
   batteryStatus = ""
   if (!gbMachine_loadRomBase64(base64)) {
-    // gbMachine_loadRomBase64 sets gbError itself when it can say why —
-    // a truncated file, a header that is not a cartridge. Only fill in a
-    // generic line when it did not.
     if (gbError === "") { gbError = "That file is not a supported cartridge." }
     gbStatus = "Load failed"
-    hintText = "Insert a .gb or .gbc cartridge to begin. Homebrew and public-domain games work well, and the file never leaves this device."
+    hintText = "Play the built-in POCKET BREAK cartridge right away, or insert any .gb / .gbc ROM from your device."
     return
   }
+  finishRomLoad()
+}
 
+function finishRomLoad() {
+  bindListeners()
   // Before the first frame runs: the cart has to see its own SRAM at boot, or
   // the game decides the file is corrupt and offers a new one.
   romKey = computeCartKey()
@@ -200,11 +231,40 @@ function acceptRom(base64) {
   btnB = false
   gbMachine_setButtons(0)
 
-  batPending[0] = 0
+  if (batPending) {
+    batPending[0] = 0
+    batPending[2] = 0
+  }
   saveStatus = ""
   refreshSlots()
   // Straight back to the game once a cartridge is in.
   closeMenu()
+}
+
+// Genuine hand-assembled 32 KB SM83 Game Boy ROM ("POCKET BREAK", cartridge
+// type 0x00 ROM-only, valid Nintendo logo 0x0104..0x0133, header checksum 0x06
+// and global checksum 0x5C9A). Kept inside a function local so zero characters
+// live in top-level plain state synced per frame.
+function playBuiltinCart() {
+  loading = false
+  eraseArmed = false
+  flushBattery()
+  batteryStatus = ""
+  gbError = ""
+
+  let prefixB64 = "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"
+  let prefix = Uint8Array.fromBase64(prefixB64)
+  let rom = new Uint8Array(32768)
+  rom.set(prefix, 0)
+
+  romName = "PocketBreak.gb"
+  romSize = "32 KB"
+  if (!gbMachine_loadRom(rom)) {
+    if (gbError === "") { gbError = "Could not start built-in cartridge." }
+    gbStatus = "Load failed"
+    return
+  }
+  finishRomLoad()
 }
 
 function formatSize(bytes) {
@@ -481,6 +541,7 @@ function keyUp(event) {
 
 function togglePause() {
   if (!gbRomLoaded) { return }
+  bindListeners()
   // A tap latched on the last frame before a pause would otherwise stay down
   // until the machine runs again.
   if (gbRunning) {
@@ -493,6 +554,7 @@ function togglePause() {
 
 function resetMachine() {
   if (!gbRomLoaded) { return }
+  bindListeners()
   flushBattery()
   gbMachine_reset()
   padClear()
@@ -502,6 +564,45 @@ function resetMachine() {
 function toggleMute() {
   muted = !muted
 }
+
+// Classic DMG 4-shade LCD palettes (3 surfaces x 4 shades x RGB = 36 bytes).
+function applyDmgPalette(id, persist) {
+  let shades = null
+  if (id === "pocket") {
+    shades = Uint8Array.from([
+      242, 244, 238,  176, 180, 172,  98, 102, 96,  24, 26, 24,
+      242, 244, 238,  176, 180, 172,  98, 102, 96,  24, 26, 24,
+      242, 244, 238,  176, 180, 172,  98, 102, 96,  24, 26, 24
+    ])
+  } else if (id === "kiwi") {
+    shades = Uint8Array.from([
+      228, 250, 238,  112, 208, 184,  34, 122, 118,  10, 34, 42,
+      250, 244, 228,  232, 142, 104,  148, 56, 62,   16, 22, 34,
+      228, 246, 252,  104, 184, 228,  38, 96, 156,   10, 26, 44
+    ])
+  } else if (id === "amber") {
+    shades = Uint8Array.from([
+      255, 238, 196,  236, 172, 72,   158, 86, 24,   34, 16, 6,
+      255, 238, 196,  236, 172, 72,   158, 86, 24,   34, 16, 6,
+      255, 238, 196,  236, 172, 72,   158, 86, 24,   34, 16, 6
+    ])
+  } else {
+    id = "dmg"
+    shades = Uint8Array.from([
+      224, 248, 208,  136, 192, 112,  52, 104, 86,   8, 24, 32,
+      224, 248, 208,  136, 192, 112,  52, 104, 86,   8, 24, 32,
+      224, 248, 208,  136, 192, 112,  52, 104, 86,   8, 24, 32
+    ])
+  }
+  dmgPalette = id
+  gbPpu_setDmgShades(shades.toBase64())
+  if (persist) { writeStore("pocket:palette", id) }
+}
+
+function selectPalDmg() { applyDmgPalette("dmg", true) }
+function selectPalPocket() { applyDmgPalette("pocket", true) }
+function selectPalKiwi() { applyDmgPalette("kiwi", true) }
+function selectPalAmber() { applyDmgPalette("amber", true) }
 
 // Whether a pad bit is currently down, for the template's pressed styling.
 function padHeld(bit) {
@@ -701,6 +802,9 @@ function saveSlot3() { saveSlot(3) }
 function loadSlot1() { loadSlot(1) }
 function loadSlot2() { loadSlot(2) }
 function loadSlot3() { loadSlot(3) }
+function clearSlot1() { clearSlot(1) }
+function clearSlot2() { clearSlot(2) }
+function clearSlot3() { clearSlot(3) }
 
 // A date, without Date. zipp has it, but the state sync would rather not carry
 // a Date object and the frame counter is a truthful enough clock: it is exactly

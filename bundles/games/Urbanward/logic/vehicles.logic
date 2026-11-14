@@ -1,0 +1,223 @@
+// Visual traffic is bounded and independent of simulation demand and its RNG.
+// Road-edge traffic is authoritative. These vehicles are representative only.
+function uwCarNext(car) {
+    let options = [], back = -1, nn = uwNeighbours(car.to);
+    for (let k = 0; k < nn.length; k = k + 1) {
+        if (!uwRoadPassable(car.to, nn[k]))
+            continue;
+        if (nn[k] === car.from)
+            back = nn[k];
+        else
+            options.push(nn[k]);
+    }
+    let next = options.length ? options[Math.floor(uwVRandom() * options.length)] : back;
+    if (next < 0)
+        return false;
+    car.from = car.to;
+    car.to = next;
+    car.progress = 0;
+    return true;
+}
+function uwRefreshCars() {
+    if (!uwWorld || !uwNet)
+        return;
+    let target = Math.min(quality === "low" ? 24 : quality === "high" ? 90 : 56, Math.floor(uwWorld.population / 35));
+    if (uwNet.roads.length < 2)
+        target = 0;
+    let live = [];
+    for (let i = 0; i < uwCars.length && live.length < target; i = i + 1)
+        if (uwRoadPassable(uwCars[i].from, uwCars[i].to))
+            live.push(uwCars[i]);
+    let attempts = 0;
+    while (live.length < target && attempts < target * 5) {
+        attempts++;
+        let a = uwNet.roads[Math.floor(uwVRandom() * uwNet.roads.length)], nn = uwNeighbours(a), choices = [];
+        for (let k = 0; k < nn.length; k = k + 1)
+            if (uwRoadPassable(a, nn[k]))
+                choices.push(nn[k]);
+        if (!choices.length)
+            continue;
+        let group = uwNet.groups[uwNet.roadIds[a]], bus = !!(uwWorld.transitMode === "local" && group && group.depot && live.length % 7 === 0);
+        live.push({ from: a, to: choices[Math.floor(uwVRandom() * choices.length)], progress: uwVRandom(), speed: 0.7 + uwVRandom() * 0.6, colour: Math.floor(uwVRandom() * 6), bus: bus });
+    }
+    uwCars = live;
+}
+function uwAdvanceVehicles(dt) {
+    let positions = [];
+    for (let k = 0; k < uwCars.length; k++) positions.push(uwCars[k].progress);
+    for (let k = 0; k < uwCars.length; k = k + 1) {
+        let car = uwCars[k], traffic = uwNet.traffic[car.to] || 0;
+        car.progress += dt * car.speed / (1 + Math.min(2, traffic / 100));
+        // Representative queues: followers on one directed edge cannot pass.
+        for (let j = 0; j < uwCars.length; j++) {
+            let leader = uwCars[j];
+            if (j !== k && car.from === leader.from && car.to === leader.to && positions[j] > positions[k])
+                car.progress = Math.max(positions[k], Math.min(car.progress, positions[j] - (leader.bus ? 0.55 : 0.36)));
+        }
+        if (car.progress >= 1) {
+            car.progress = 1;
+            if (!uwCarNext(car))
+                uwStaticDirty = true;
+        }
+    }
+}
+function uwDynamicBox(id, x, y, z, w, h, d, colour, glow) {
+    return { id: id, type: "box", position: { x: x, y: y, z: z }, width: w, height: h, depth: d, color: colour, emissive: glow ? colour : "#000000", emissiveIntensity: glow ? 0.6 : 0, roughness: 0.8, castShadow: false, receiveShadow: false };
+}
+function uwOutline(out, i, colour, prefix) {
+    if (i < 0 || i >= uwWorld.tiles.length)
+        return;
+    let p = uwWorldPosition(i), y = Math.max(uwGround(i), uwRoadHeight(i)) + 0.13;
+    out.push(uwDynamicBox(prefix + "a", p.x, y, p.z - 0.94, 1.94, 0.035, 0.045, colour, true));
+    out.push(uwDynamicBox(prefix + "b", p.x, y, p.z + 0.94, 1.94, 0.035, 0.045, colour, true));
+    out.push(uwDynamicBox(prefix + "c", p.x - 0.94, y, p.z, 0.045, 0.035, 1.94, colour, true));
+    out.push(uwDynamicBox(prefix + "d", p.x + 0.94, y, p.z, 0.045, 0.035, 1.94, colour, true));
+}
+function uwRenderMotion() {
+    if (!uwWorld)
+        return;
+    let motionStart = uwPerfStart();
+    let out = [], colours = ["#debc78", "#dd8b75", "#90bec8", "#d9dfd7", "#8f9fab", "#82a58e"];
+    // Moving objects stay small. Static buildings are never re-emitted each frame.
+    let useGlb = quality !== "low";
+    for (let k = 0; k < uwCars.length; k = k + 1) {
+        let car = uwCars[k], a = uwWorldPosition(car.from), b = uwWorldPosition(car.to), f = car.progress;
+        let dx = b.x - a.x, dz = b.z - a.z, x = a.x + dx * f - dz * 0.14, z = a.z + dz * f + dx * 0.14;
+        let roadY = uwRoadHeight(car.from) + (uwRoadHeight(car.to) - uwRoadHeight(car.from)) * f;
+        if (useGlb) {
+            out.push({ id: "car-" + k, type: "model", modelUrl: car.bus ? "assets/models/city-bus.glb" : "assets/models/sedan.glb", position: { x: x, y: roadY + 0.06, z: z }, rotation: { x: 0, y: Math.atan2(dx, dz), z: 0 }, appearance: { colors: { Body: car.bus ? "#69b8ac" : colours[car.colour] } }, castShadow: quality === "high", receiveShadow: false });
+            continue;
+        }
+        let y = roadY + 0.18;
+        let length = car.bus ? 0.98 : 0.59, w = dx !== 0 ? length : 0.3, d = dx !== 0 ? 0.3 : length;
+        out.push(uwDynamicBox("car-" + k, x, y, z, w, car.bus ? 0.28 : 0.2, d, car.bus ? "#69b8ac" : colours[car.colour], false));
+        out.push(uwDynamicBox("car-roof-" + k, x, y + 0.13, z, w * 0.55, 0.08, d * 0.7, "#648696", false));
+    }
+    uwRenderPedestrians(out);
+    uwRenderScheduledBuses(out);
+    uwRenderEmergency(out);
+    if (quality !== "low" && activeOverlay === "none") {
+        let points = [], limit = Math.min(uwSmokeSources.length, 24);
+        for (let k = 0; k < limit; k = k + 1) {
+            let s = uwSmokeSources[k];
+            for (let q = 0; q < 4; q = q + 1) {
+                let life = (uwVisualTime * 0.34 + q * 0.25 + k * 0.11) % 1;
+                points.push(s.x + life * 0.75, s.y + life * 1.6, s.z + Math.sin(life * 3 + k) * 0.16);
+            }
+        }
+        if (points.length)
+            out.push({ id: "smoke", type: "particles", particlePositions: points, particleSize: 0.42, particleShape: "soft", color: "#cfd7d5", opacity: 0.30 });
+    }
+    if (uwSelectedIndex >= 0)
+        uwOutline(out, uwSelectedIndex, "#f2d99b", "selected-");
+    if (uwPreviewPlan && uwPreviewPlan.edits && uwPreviewPlan.edits.length) {
+        let good = uwPreviewPlan.cost <= uwWorld.funds, limit = Math.min(128, uwPreviewPlan.edits.length);
+        for (let k = 0; k < limit; k = k + 1)
+            uwOutline(out, uwPreviewPlan.edits[k].i, good ? "#b1edc1" : "#e79b8b", "preview-" + k + "-");
+    }
+    else if (uwHoverIndex >= 0 && activeTool !== "inspect")
+        uwOutline(out, uwHoverIndex, "#d8e8be", "hover-");
+    objects = uwPackMotion(out);
+    uwPerfEnd("Motion draw lists", motionStart);
+}
+function uwRenderScheduledBuses(out) {
+    if (uwWorld.transitMode === "routes")
+        for (let r = 0; r < uwRoutes.length; r++) {
+            let route = uwRoutes[r], line = uwWorld.busRoutes[r];
+            if (!route.active || route.cycle <= 0) continue;
+            let count = Math.min(line.buses, quality === "low" ? 2 : 6);
+            for (let bus = 0; bus < count; bus++) {
+                let clock = (uwVisualTime + bus * route.cycle / count) % route.cycle, leg = route.journey[0];
+                for (let k = 0; k < route.journey.length; k++) {
+                    leg = route.journey[k];
+                    if (clock < leg.duration) break;
+                    clock -= leg.duration;
+                }
+                let f = uwClamp((clock - leg.dwell) / (leg.duration - leg.dwell), 0, 1);
+                let a = uwWorldPosition(leg.from), b = uwWorldPosition(leg.to), dx = b.x - a.x, dz = b.z - a.z;
+                let x = a.x + dx*f - dz*0.14, z = a.z + dz*f + dx*0.14;
+                let roadY = uwRoadHeight(leg.from) + (uwRoadHeight(leg.to) - uwRoadHeight(leg.from))*f;
+                if (quality !== "low") {
+                    out.push({ id: "linebus-" + r + "-" + bus, type: "model", modelUrl: "assets/models/city-bus.glb", position: { x: x, y: roadY + 0.06, z: z }, rotation: { x: 0, y: Math.atan2(dx, dz), z: 0 }, appearance: { colors: { Body: UW_ROUTE_COLORS[r] } }, castShadow: quality === "high", receiveShadow: false });
+                } else {
+                    let y = roadY + 0.22;
+                    out.push(uwDynamicBox("linebus-"+r+"-"+bus,x,y,z,dx ? 0.98 : 0.3,0.28,dx ? 0.3 : 0.98,UW_ROUTE_COLORS[r],false));
+                    out.push(uwDynamicBox("lineglass-"+r+"-"+bus,x,y+0.14,z,dx ? 0.72 : 0.27,0.09,dx ? 0.27 : 0.72,"#3c6477",false));
+                    if (lightMode !== "day")
+                        out.push(uwDynamicBox("linelamp-"+r+"-"+bus,x+dx*0.24,y,z+dz*0.24,0.08,0.08,0.08,"#ffe4a8",true));
+                }
+            }
+        }
+    if (routeHighlight >= 0 && uwRoutes[routeHighlight]) {
+        let route = uwRoutes[routeHighlight], color = UW_ROUTE_COLORS[routeHighlight];
+        for (let k = 0; k < Math.min(1024, route.path.length); k++) {
+            let p = uwWorldPosition(route.path[k]);
+            out.push(uwDynamicBox("linepath-"+k,p.x,uwRoadHeight(route.path[k])+0.09,p.z,0.24,0.025,0.24,color,true));
+        }
+        for (let k = 0; k < uwWorld.busRoutes[routeHighlight].stops.length; k++)
+            uwOutline(out,uwWorld.busRoutes[routeHighlight].stops[k],color,"linestop-"+k);
+    }
+}
+function uwRenderEmergency(out) {
+    if (quality === "low" || activeOverlay !== "none") return;
+    for (let k = 0; k < uwIncidents.length; k++) {
+        let i = uwIncidents[k], road = uwNet.access[i], p = uwWorldPosition(i);
+        if (road < 0 || uwNet.service.fire[i] <= 35) continue;
+        let a = uwWorldPosition(road), roadY = uwRoadHeight(road), y = roadY + 0.25, alongX = Math.abs(a.z - p.z) > Math.abs(a.x - p.x);
+        out.push({ id: "fireengine-" + k, type: "model", modelUrl: "assets/models/fire-truck.glb", position: { x: a.x, y: roadY + 0.06, z: a.z }, rotation: { x: 0, y: alongX ? Math.PI / 2 : 0, z: 0 }, castShadow: quality === "high", receiveShadow: false });
+        let flash = Math.floor(uwVisualTime*4)%2 === 0;
+        out.push(uwDynamicBox("firesiren-"+k,a.x,roadY+0.42,a.z,0.12,0.06,0.12,flash?"#f0c885":"#88bcd4",true));
+        let points = [];
+        for (let j = 0; j < 8; j++) {
+            let f = (j/8 + uwVisualTime*0.5)%1;
+            points.push(a.x+(p.x-a.x)*f,y+(uwGround(i)+0.8-y)*f+Math.sin(f*Math.PI)*0.8,a.z+(p.z-a.z)*f);
+        }
+        out.push({id:"firehose-"+k,type:"particles",particlePositions:points,particleSize:0.11,particleShape:"soft",color:"#b9e0e4",opacity:0.85});
+    }
+}
+function uwRenderPedestrians(out) {
+    if (quality === "low" || activeOverlay !== "none" || !uwWorld.population)
+        return;
+    let count = Math.min(quality === "high" ? 64 : 32, uwWalkSegments.length, Math.floor(uwWorld.population / 20));
+    let coats = ["#d7a16e", "#719da5", "#be8179", "#647c78", "#d0c4a4", "#8e84a5"];
+    let skin = ["#d7ab87", "#aa7b5d", "#815c48", "#e1bc99"];
+    for (let k = 0; k < count; k++) {
+        let s = uwWalkSegments[Math.floor(k * uwWalkSegments.length / count)];
+        let phase = (uwVisualTime * (0.09 + s.seed % 3 * 0.015) + s.seed * 0.137) % 2;
+        let walk = (phase < 1 ? phase : 2 - phase) * 1.3 - 0.65;
+        let x = s.x + (s.alongX ? walk : s.side * 0.86), z = s.z + (s.alongX ? s.side * 0.86 : walk);
+        let y = s.y + 0.045, stride = Math.sin(uwVisualTime * 7 + s.seed) * 0.035;
+        out.push(uwDynamicBox("walker-body-" + k, x, y + 0.24, z, 0.11, 0.17, 0.1, coats[s.seed % 6], false));
+        out.push(uwDynamicBox("walker-head-" + k, x, y + 0.375, z, 0.09, 0.1, 0.09, skin[s.seed % 4], false));
+        for (let side = -1; side <= 1; side += 2)
+            out.push(uwDynamicBox("walker-leg-" + k + "-" + side,
+                x + (s.alongX ? stride * side : side * 0.032), y + 0.085,
+                z + (s.alongX ? side * 0.032 : stride * side), 0.04, 0.17, 0.04, "#465c64", false));
+    }
+}
+// Coalesce all moving box geometry too: cars and brush outlines need only a
+// handful of draw calls, rather than one draw call for every tiny window or edge.
+function uwPackMotion(source) {
+    let buckets = {}, order = [], out = [];
+    for (let k = 0; k < source.length; k = k + 1) {
+        let a = source[k];
+        if (a.type !== "box") {
+            out.push(a);
+            continue;
+        }
+        let key = a.width + ":" + a.height + ":" + a.depth + ":" + a.emissive;
+        if (!buckets[key]) {
+            buckets[key] = { id: "uw-moving-" + key, type: "instanced", shape: "box", width: a.width, height: a.height, depth: a.depth, palette: [], instances: [], emissive: a.emissive, emissiveIntensity: a.emissiveIntensity, castShadow: false, receiveShadow: false, roughness: 0.8 };
+            order.push(key);
+        }
+        let b = buckets[key], colour = b.palette.indexOf(a.color);
+        if (colour < 0) {
+            colour = b.palette.length;
+            b.palette.push(a.color);
+        }
+        b.instances.push(a.position.x, a.position.y, a.position.z, colour);
+    }
+    for (let k = 0; k < order.length; k = k + 1)
+        out.push(buckets[order[k]]);
+    return out;
+}

@@ -1,0 +1,184 @@
+<!--
+  02 Fleet & dispatch: one row per haul truck with its cycle, payload and health, and the controls
+  that send it, hold it, park it, change how hard it drives and find it. `fleetRows` is built by
+  makeFleetRow() in logic/core/ui-state.logic; the actions are in logic/mine/fleet.logic.
+-->
+<div if={tab === 'fleet'}>
+  <div class="mm-page-head">
+    <div>
+      <span class="mm-label">EQUIPMENT & DISPATCH</span>
+      <h2>A route for every rig.</h2>
+      <p class="mm-muted">Loading bay → loaded haul → crusher → empty return. One bay at each end, one truck in each, and absolutely no cutting in.</p>
+    </div>
+    <button class="mm-primary" type="button" @click={dispatchAll}>Start fleet →</button>
+  </div>
+
+  #each (unit in fleetRows) key={unit.id}
+    <article class="mm-fleet-row" class:mm-selected={unit.selected}>
+      <span class="mm-fleet-icon" aria-hidden="true">▰</span>
+      <div class="mm-fleet-identity">
+        <span class="mm-equipment-name">{unit.name}</span>
+        <span class="mm-small">{unit.model} / {unit.crew}</span>
+        <span class="mm-phase" style={unit.style}>{unit.phase}</span>
+      </div>
+      <div class="mm-fleet-payload">
+        <span class="mm-label">PAYLOAD</span>
+        <span>{unit.payload}</span>
+        <div class="mm-meter"><div style={unit.fill}></div></div>
+        <span class="mm-small">{unit.tonnes} t delivered / {unit.loads} loads</span>
+      </div>
+      <div class="mm-fleet-health">
+        <span class="mm-small">Fuel {unit.fuel} / condition {unit.health}</span>
+        <span class="mm-small">Operator battery {unit.battery}</span>
+        <span class="mm-small">Last cycle {unit.cycle} / queue {unit.wait}</span>
+      </div>
+      <div class="mm-fleet-actions">
+        <button class="mm-primary" type="button" @click={pitDispatch(unit.id)}>{unit.action}</button>
+        <button class="mm-small-button" type="button" @click={recallTruck(unit.id)}>Return & park</button>
+        <button class="mm-small-button" type="button" @click={setPolicy(unit.id)} title="Cautious, balanced or urgent">{unit.policyLabel}</button>
+        <button class="mm-small-button" type="button" @click={selectTruck(unit.id)}>Locate</button>
+      </div>
+    </article>
+  #end
+
+  <div class="mm-callout">
+    <span class="mm-label">DON'T LIKE THE DRIVING?</span>
+    <p>Walk up to a truck and press E to drive it yourself. Load with L at Bench 1, tip with L at the crusher, and press E to get out. Then dispatch it again here. A loaded tray stays loaded. The robot will act like it is fine.</p>
+  </div>
+
+  <div class="mm-purchase-row">
+    <div>
+      <h3>Another Ironback 80</h3>
+      <p class="mm-muted">Delivered to the car park. Needs a free operator, and the site allows four trucks before the neighbours complain.</p>
+    </div>
+    <button class="mm-secondary" type="button" @click={buyTruck}>Buy one / $18,000</button>
+  </div>
+</div>
+
+<style>
+  .mm-fleet-row {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin-bottom: 12px;
+    padding: 22px 18px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  .mm-selected {
+    padding-left: 16px;
+    border-left: 3px solid #d3b067;
+  }
+  .mm-fleet-icon {
+    flex-shrink: 0;
+    width: 34px;
+    font-size: 26px;
+    color: #c6a764;
+  }
+  .mm-fleet-identity {
+    flex-shrink: 0;
+    width: 140px;
+  }
+  .mm-equipment-name {
+    display: block;
+    font-size: 23px;
+    font-weight: 500;
+    letter-spacing: -0.6px;
+  }
+  .mm-phase {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 3px 6px;
+    border: 1px solid;
+    border-radius: 3px;
+    font-size: 8px;
+    letter-spacing: 0.8px;
+    color: #d0dcc4;
+  }
+  .mm-fleet-payload {
+    flex: 1;
+    min-width: 130px;
+  }
+  .mm-fleet-payload > span:nth-child(2) {
+    display: block;
+    margin: 6px 0;
+    font-size: 15px;
+  }
+  .mm-fleet-payload .mm-small {
+    margin-top: 8px;
+    font-size: 9px;
+  }
+  .mm-fleet-health {
+    flex: 1;
+    min-width: 145px;
+  }
+  .mm-fleet-health .mm-small {
+    font-size: 10px;
+    line-height: 1.9;
+  }
+  .mm-fleet-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    min-width: 175px;
+  }
+  .mm-fleet-actions button {
+    min-height: 34px;
+    padding: 7px 10px;
+    font-size: 10px;
+    text-transform: capitalize;
+  }
+  .mm-purchase-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    margin-top: 22px;
+    padding: 23px;
+    border: 1px solid #475641;
+    border-radius: 6px;
+  }
+  .mm-purchase-row .mm-muted {
+    font-size: 12px;
+  }
+
+  @media (max-width: 1180px) {
+    .mm-fleet-row {
+      flex-wrap: wrap;
+      gap: 13px;
+    }
+    .mm-fleet-health {
+      min-width: 180px;
+    }
+    .mm-fleet-actions {
+      margin-left: auto;
+    }
+  }
+  @media (max-width: 620px) {
+    .mm-fleet-row {
+      gap: 12px;
+      padding: 15px;
+    }
+    .mm-fleet-icon {
+      display: none;
+    }
+    .mm-fleet-identity {
+      width: 120px;
+    }
+    .mm-fleet-payload {
+      min-width: 120px;
+    }
+    .mm-fleet-health {
+      flex: 1;
+      min-width: 100%;
+    }
+    .mm-fleet-actions {
+      width: 100%;
+    }
+    .mm-purchase-row {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+  }
+</style>

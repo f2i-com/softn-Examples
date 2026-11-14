@@ -1,0 +1,27 @@
+// Small original PCM cues, baked at build time. No network, speech model or AudioContext in the VM.
+function unlockAudio() { if (!soundUnlocked) { soundUnlocked = true; audioClock = 0; } }
+function playSound(name, gain) {
+    if (settings.muted || !soundUnlocked || paused || overlay) return;
+    let now = Date.now();
+    if (soundTimes[name] !== undefined && now - soundTimes[name] < 110) return;
+    soundTimes[name] = now;
+    try { softn.audio.play("assets/sfx/" + name + ".wav", { volume: clamp((gain || 0.6) * settings.volume, 0, 1) }); }
+    catch (e) { /* The complete game remains playable when audio is blocked. */ }
+}
+function stopAmbience() {
+    audioClock = 0; audioGeneration++;
+    try { softn.audio.stopAll(); } catch (e) { /* Optional host capability. */ }
+}
+function advanceAudio(dt) {
+    if (!soundUnlocked || settings.muted || !settings.ambience || paused || overlay || S.phase !== "play" || S.launchTime > 0) return;
+    audioClock += dt;
+    // Short, quiet ambient phrases instead of immortal looping handles. No callback races on reset.
+    if (audioClock < 7) return;
+    audioClock = 0;
+    let name = S.presses >= 80 ? "spacebed" : (S.presses >= 28 ? "factorybed" : (S.presses >= 19 ? "councilbed" : "roombed"));
+    if (S.presses === 0 && S.patience >= 72) name = "gardenbed";
+    playSound(name, 0.27);
+}
+function toggleSound() { settings.muted = !settings.muted; unlockAudio(); stopAmbience(); persist(); publish(); if (!settings.muted) playSound("squeak1", 0.55); }
+function cycleVolume() { settings.volume = settings.volume < 0.3 ? 0.65 : (settings.volume < 0.8 ? 1 : 0.25); unlockAudio(); persist(); publish(); }
+function toggleAmbience() { settings.ambience = !settings.ambience; stopAmbience(); persist(); publish(); }

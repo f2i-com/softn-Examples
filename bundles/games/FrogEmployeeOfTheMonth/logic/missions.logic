@@ -1,0 +1,108 @@
+// Progression predicates are authoritative: proximity alone never finishes a job.
+function spillCoffee(amount) {
+    if(!G || G.stage!==1 || G.mission.carrying!=="coffee" || amount<=0)return;
+    let old=G.mission.coffee;G.mission.coffee=clamp(old-amount,0,100);
+    if(amount>1){burst(G.p.x,G.p.y-25,"#89583c",5,60);sound("paper",0.18);}
+    if(old>=40 && G.mission.coffee<40)tell("Not enough coffee left. R returns to the paperclip with a fresh cup.",5);
+}
+function captureTarget(t) {
+    if(!t || !t.active)return false;
+    if(t.kind==="fly") {t.active=false;G.flies++;profile.flies++;G.score+=30;G.health=Math.min(100,G.health+4);
+        burst(t.x,t.y,COLORS.yellow,9,80);sound("gulp");tell("Working lunch. +30. Accounts will not reimburse flies.",2.5);if(profile.flies>=10)badge("fly");return true;}
+    if(t.kind==="report" && G.stage===0 && !G.mission.reportTongued) {
+        t.active=false;G.mission.reportTongued=true;G.mission.carrying="report";G.score+=75;
+        tell("Report retrieved with tongue. The APPROVED tray is on the right-hand desk.",5);sound("paper");return true;
+    }
+    if(t.kind==="memo" && G.stage===4 && G.mission.caught.indexOf(t.id)<0) {
+        t.active=false;G.mission.caught.push(t.id);G.score+=100;sound("gulp");confetti(t.x,t.y);
+        tell("Reply-all prevented: "+G.mission.caught.length+" / 3.",3);
+        if(G.mission.caught.length===3)completeMission();return true;
+    }return false;
+}
+function activateTongueTarget(t) {
+    if(!t || !t.active)return false;
+    if(t.kind==="jam")return pullBossJam();
+    if(t.kind==="switch" && G.stage===5) {
+        t.active=false;G.mission.projector=true;dirtyBackground=true;confetti(t.x,t.y);sound("projector");completeMission();return true;
+    }
+    if(t.kind==="brake" && G.stage===6) {
+        if(G.mission.chairTime<2) {tell("Ride the chair for two seconds first. E releases its brake while aboard.",4);return false;}
+        t.active=false;G.mission.braked=true;G.mission.chairStarted=false;sound("brake");burst(t.x,t.y,COLORS.orange,16,150);
+        tell("Brake approved. Jump to the raised safe desk on the right. E signs off.",5);return true;
+    }return false;
+}
+function nearPoint(t,r) {return t && dist({x:G.p.x,y:G.p.y-17},t)<r;}
+function interact() {
+    if(!G || screen!=="play" || G.mission.done)return;
+    let m=G.mission,w=G.world;
+    if(G.stage===0 && nearPoint(w.goal,100)) {
+        if(m.reportTongued && m.carrying==="report"){m.carrying="";sound("stamp");completeMission();}
+        else tell("This is APPROVED. The report is still on the high shelf. Your tongue is the retrieval department.",5);
+        return;
+    }
+    if(G.stage===1) {
+        let pot=findTarget("coffee");
+        if(nearPoint({x:pot.homeX,y:pot.homeY},90)) {m.carrying="coffee";m.coffee=100;pot.active=false;sound("pour");tell("Coffee acquired. Use BOTH striped bendy mats. Hold DOWN to stop bouncing.",5);return;}
+        if(nearPoint(w.goal,110)) {
+            if(m.carrying!=="coffee")tell("The meeting would like its coffee. Pot is on the first desk.",4);
+            else if(m.matIds.length<2)tell("Test both striped desk mats with the coffee: "+m.matIds.length+" / 2 soft landings.",4);
+            else if(m.coffee<40)tell("This is mostly a cup now. R returns you with a refill.",4);
+            else {if(m.coffee>=90)badge("coffee");completeMission();}return;
+        }
+    }
+    if(G.stage===2) {
+        for(let i=1;i<=2;i++) {let socket=findTarget("socket-"+i),plug=findTarget("plug-"+i);
+            if(nearPoint(socket,100)) {
+                if(plug.attached){tell("Socket "+i+" is already connected. Lovely cable management.",3);return;}
+                if(plug.wasTongued && dist(plug,socket)<125) {
+                    plug.attached=true;plug.active=false;plug.pulled=false;plug.x=socket.x;plug.y=socket.y;plug.vx=0;plug.vy=0;
+                    socket.attached=true;if(m.connected.indexOf(i)<0)m.connected.push(i);releaseTongue();sound("connect");burst(socket.x,socket.y,COLORS.green,12,100);
+                    tell("Network restored: "+m.connected.length+" / 2. Your tongue is now IT-certified.",4);
+                    if(m.connected.length===2)completeMission();return;
+                }tell("Tongue-pull PLUG "+i+" close to this socket, then press E.",4);return;
+            }
+        }
+    }
+    if(G.stage===3 && nearPoint(w.goal,110)) {
+        if(m.boatTime>=2 && (m.boatDistance||0)>=900)completeMission();
+        else tell("Please bring the company mug across the flood. LEFT / RIGHT paddles while aboard.",5);return;
+    }
+    if(G.stage===6) {
+        let chair=findPlatform("chair");
+        if(G.p.support==="chair" && G.p.grounded && !m.braked) {m.chairStarted=true;chair.vx=Math.max(90,chair.vx);tell("Brake released. Stay aboard, then charge-jump for the RED brake cord. Do not become a meeting.",6);sound("roll");return;}
+        if(nearPoint(w.goal,110)) {if(m.braked && m.chairTime>=2)completeMission();else tell("The chair is still a liability. Pull its red emergency brake cord with your tongue.",5);return;}
+    }
+    if(G.p.x<385 && G.p.y>400) {openBoard();return;}
+    speak(G.stage>=5?"Management: We are beginning to suspect you are overqualified.":"Marion: Nice work, little colleague. Please stop licking the stationery.");
+}
+function missionStep(dt) {
+    let m=G.mission,p=G.p;
+    if(G.stage===3 && p.grounded && p.support==="mug-boat") {let boat=findPlatform("mug-boat");m.boatTime+=dt;m.boatDistance=(m.boatDistance||0)+Math.max(0,boat.dx);}
+    if(G.stage===6 && p.grounded && p.support==="chair" && m.chairStarted)m.chairTime+=dt;
+    if(G.time>2 && p.x>G.world.width-440 && G.speechTime<=0 && G.visited.indexOf("coworker")<0) {
+        G.visited.push("coworker");speak(profile.done>3?"Marion: Is that the frog from the employee board?":"Marion: Morning! Your desk is the size of my stapler.");
+    }
+}
+function missionCounter() {
+    let m=G.mission;
+    if(G.stage===0)return m.reportTongued?"REPORT IN TONGUE-SAFE CUSTODY":"REPORT: TOP SHELF";
+    if(G.stage===1)return "COFFEE "+Math.round(m.coffee)+"% / SOFT MATS "+m.matIds.length+" OF 2";
+    if(G.stage===2)return "NETWORK "+m.connected.length+" / 2 CONNECTED";
+    if(G.stage===3)return "MUG VOYAGE "+Math.min(100,Math.round((m.boatDistance||0)/9))+"%";
+    if(G.stage===4)return "MEMOS "+m.caught.length+" / 3 FILED";
+    if(G.stage===5)return m.projector?"PRESENTATION: RIBBIT":"PROJECTOR: CEILING MOUNT";
+    if(G.stage===6)return m.braked?"BRAKE PULLED / FIND SAFE DESK":"CHAIR RIDE "+Math.min(2,m.chairTime).toFixed(1)+" / 2.0s";
+    return "PRINTER JAMS "+(G.boss?G.boss.cleared:0)+" / 3 CLEARED";
+}
+function completeMission() {
+    if(G.mission.done)return false;
+    G.mission.done=true;G.completePending=3.1;G.celebrate=3.1;clearInput();
+    let bonus=Math.round(G.health*4)+Math.max(0,600-Math.floor(G.time));G.score+=bonus;
+    profile.done=Math.max(profile.done,G.stage+1);profile.best=Math.max(profile.best,G.score);
+    if(profile.achievements.indexOf("first")<0)badge("first");
+    if(G.health>=85)badge("careful");if(G.stage===7){badge("printer");badge("finish");}
+    reportTitle=G.stage===7?"EMPLOYEE OF THE MONTH":"DELIVERABLE: DELIVERED";
+    reportText=JOBS[G.stage].reply;reportReward=JOBS[G.stage].reward;
+    speak(JOBS[G.stage].reply);confetti(G.p.x,G.p.y-60);sound("promote");
+    dirtyBackground=true;tell("PROMOTED. Privilege unlocked: "+reportReward+".",8);saveProgress();return true;
+}

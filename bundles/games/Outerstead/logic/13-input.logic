@@ -207,7 +207,7 @@ function onGameKey(e) {
   if(k==="b")setPanel("build");if(k==="h")chooseTool("harvest");if(k==="e")chooseTool("survey");if(k==="r")setPanel("research");if(k==="f")chooseBuild("farm");if(k==="g")toggleGrid();if(k==="p")togglePowerOverlay();if(k==="d"&&selectedType==="colonist")toggleDraft(selectedId);if(k==="?")openHelp();if(k==="home")focusCamp();refreshCamera();
 }
 function onGameBlur() {resetMapGesture();edgeX=0;edgeY=0;pointerState=null;if(backgroundPlay)return;loopAccumulator=0;if(screen==="game"&&osGame){paused=true;viewDirty=true;statusText="Paused while the app is not in focus.";}}
-function setMotion() {reducedMotion=!reducedMotion;refreshActors();}
+function setMotion() {reducedMotion=!reducedMotion;savePresentationPreferences();refreshActors();}
 function toggleSound() {
   soundEnabled=!soundEnabled;ambienceText=soundEnabled?"Sound on":"Sound off";audioResumePending=false;
   restartBackgroundAudio();savePresentationPreferences();
@@ -264,7 +264,7 @@ function syncQuietAudio() {
 
 function setEdgePan(x,y) {edgeX=x;edgeY=y;}
 function stopEdgePan() {edgeX=0;edgeY=0;}
-function toggleEdgeScroll() {edgeScroll=!edgeScroll;stopEdgePan();}
+function toggleEdgeScroll() {edgeScroll=!edgeScroll;stopEdgePan();savePresentationPreferences();}
 function tickEdgePan(dt) {
   if(dialog||screen!=="game"){stopEdgePan();return;}
   if(!edgeScroll||pointerState||(!edgeX&&!edgeY))return;

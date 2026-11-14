@@ -1,5 +1,5 @@
 // main.ui - SoftN Showcase
-// Interactive demo of charts, animations, and drag/drop components
+// Interactive demo of UI controls, charts, animations, drag/drop, and PBR 3D scenes
 
 <logic src="../logic/main.logic" />
 
@@ -10,6 +10,7 @@
 <import ChartsPage from="./pages/ChartsPage.ui" />
 <import AnimationsPage from="./pages/AnimationsPage.ui" />
 <import InteractivePage from="./pages/InteractivePage.ui" />
+<import ControlsPage from="./pages/ControlsPage.ui" />
 <import Scene3DPage from="./pages/Scene3DPage.ui" />
 
 <style>
@@ -45,6 +46,10 @@
   transition: transform 200ms ease, box-shadow 200ms ease !important;
 }
 
+.showcase-3d-stage {
+  height: 420px;
+}
+
 /* Mobile utilities */
 .softn-mobile-only {
   display: none;
@@ -58,7 +63,10 @@
     display: flex !important;
   }
   .softn-page-content {
-    padding: 1rem !important;
+    padding: 0.875rem !important;
+  }
+  .showcase-3d-stage {
+    height: 290px !important;
   }
 }
 </style>
@@ -66,32 +74,40 @@
 // Main App Layout
 <App theme={darkMode ? "dark" : "light"}>
   <Box style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%", overflow: "hidden", background: getBgColor() }}>
-    // Mobile Top Nav
+    // Mobile Top Nav (wraps cleanly at 390x844 with zero horizontal overflow)
     <Box className="softn-mobile-only" style={{
       background: getSidebarBg(),
       borderBottom: "1px solid " + getBorderColor(),
-      padding: "0.5rem",
-      gap: "0",
-      justifyContent: "center",
-      flexShrink: 0
+      padding: "0.35rem 0.5rem",
+      gap: "0.15rem",
+      flexWrap: "wrap",
+      alignItems: "center",
+      justifyContent: "space-between",
+      flexShrink: 0,
+      boxSizing: "border-box"
     }}>
       <Button variant=ghost @click={navigate("charts")} style={{
-        flex: 1, padding: "0.5rem", borderRadius: 0, fontSize: "0.75rem", fontWeight: 600,
+        padding: "0.45rem 0.5rem", borderRadius: 0, fontSize: "0.72rem", fontWeight: 600, minWidth: 0,
         color: currentPage === "charts" ? "#6366f1" : getMutedColor(),
         borderBottom: currentPage === "charts" ? "2px solid #6366f1" : "2px solid transparent"
       }}>Charts</Button>
+      <Button variant=ghost @click={navigate("controls")} style={{
+        padding: "0.45rem 0.5rem", borderRadius: 0, fontSize: "0.72rem", fontWeight: 600, minWidth: 0,
+        color: currentPage === "controls" ? "#6366f1" : getMutedColor(),
+        borderBottom: currentPage === "controls" ? "2px solid #6366f1" : "2px solid transparent"
+      }}>Controls</Button>
       <Button variant=ghost @click={navigate("animations")} style={{
-        flex: 1, padding: "0.5rem", borderRadius: 0, fontSize: "0.75rem", fontWeight: 600,
+        padding: "0.45rem 0.5rem", borderRadius: 0, fontSize: "0.72rem", fontWeight: 600, minWidth: 0,
         color: currentPage === "animations" ? "#6366f1" : getMutedColor(),
         borderBottom: currentPage === "animations" ? "2px solid #6366f1" : "2px solid transparent"
-      }}>Animations</Button>
+      }}>Motion</Button>
       <Button variant=ghost @click={navigate("interactive")} style={{
-        flex: 1, padding: "0.5rem", borderRadius: 0, fontSize: "0.75rem", fontWeight: 600,
+        padding: "0.45rem 0.5rem", borderRadius: 0, fontSize: "0.72rem", fontWeight: 600, minWidth: 0,
         color: currentPage === "interactive" ? "#6366f1" : getMutedColor(),
         borderBottom: currentPage === "interactive" ? "2px solid #6366f1" : "2px solid transparent"
-      }}>Interactive</Button>
+      }}>Drag</Button>
       <Button variant=ghost @click={navigate("scene3d")} style={{
-        flex: 1, padding: "0.5rem", borderRadius: 0, fontSize: "0.75rem", fontWeight: 600,
+        padding: "0.45rem 0.5rem", borderRadius: 0, fontSize: "0.72rem", fontWeight: 600, minWidth: 0,
         color: currentPage === "scene3d" ? "#6366f1" : getMutedColor(),
         borderBottom: currentPage === "scene3d" ? "2px solid #6366f1" : "2px solid transparent"
       }}>3D</Button>
@@ -100,26 +116,27 @@
         @click=toggleTheme
         ariaLabel={darkMode ? "Switch to light" : "Switch to dark"}
         title={darkMode ? "Switch to light" : "Switch to dark"}
-        style={{ padding: "0.5rem 0.75rem", borderRadius: 0, flexShrink: 0, color: getMutedColor() }}
+        style={{ padding: "0.45rem 0.5rem", borderRadius: 0, flexShrink: 0, color: getMutedColor() }}
       >
-        <Icon svg={darkMode ? iconSun : iconMoon} size={16} style={{ color: getMutedColor() }} />
+        <Icon svg={darkMode ? iconSun : iconMoon} size={15} style={{ color: getMutedColor() }} />
       </Button>
     </Box>
 
-    <Box style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-    // Sidebar Navigation
-    <Nav />
+    <Box style={{ display: "flex", flex: 1, overflow: "hidden", minWidth: 0 }}>
+      // Sidebar Navigation
+      <Nav />
 
-    // Main Content Area
-    <Box style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0, minHeight: 0 }}>
-      // Page Content
-      <Box className="softn-page-content" style={{ flex: 1, overflow: "auto", padding: "2rem 2.5rem", minHeight: 0, background: getBgColor() }}>
-        <ChartsPage />
-        <AnimationsPage />
-        <InteractivePage />
-        <Scene3DPage />
+      // Main Content Area
+      <Box style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0, minHeight: 0 }}>
+        // Page Content
+        <Box className="softn-page-content" style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "2rem 2.5rem", minHeight: 0, minWidth: 0, boxSizing: "border-box", background: getBgColor() }}>
+          <ChartsPage />
+          <ControlsPage />
+          <AnimationsPage />
+          <InteractivePage />
+          <Scene3DPage />
+        </Box>
       </Box>
-    </Box>
     </Box>
   </Box>
 </App>

@@ -35,12 +35,12 @@
         </div>
         <span className="om-small om-muted">Routine is gentler. Accessibility options never change your ending.</span>
         <div className="om-row"><span className="om-label">APPEARANCE</span>
-          <button className="om-face-choice" @click={() => choosePalette(0)}><img src={asset("assets/sprites/inmate0-s0.svg")} alt="Appearance 1" /></button>
-          <button className="om-face-choice" @click={() => choosePalette(1)}><img src={asset("assets/sprites/inmate1-s0.svg")} alt="Appearance 2" /></button>
-          <button className="om-face-choice" @click={() => choosePalette(2)}><img src={asset("assets/sprites/inmate2-s0.svg")} alt="Appearance 3" /></button>
-          <button className="om-face-choice" @click={() => choosePalette(3)}><img src={asset("assets/sprites/inmate3-s0.svg")} alt="Appearance 4" /></button>
-          <button className="om-face-choice" @click={() => choosePalette(4)}><img src={asset("assets/sprites/inmate4-s0.svg")} alt="Appearance 5" /></button>
-          <button className="om-face-choice" @click={() => choosePalette(5)}><img src={asset("assets/sprites/inmate5-s0.svg")} alt="Appearance 6" /></button>
+          <button className={"om-face-choice " + (characterPalette === 0 ? "is-active" : "")} aria-pressed={characterPalette === 0} @click={() => choosePalette(0)}><img src={asset("assets/sprites/inmate0-s0.svg")} alt="Appearance 1" /></button>
+          <button className={"om-face-choice " + (characterPalette === 1 ? "is-active" : "")} aria-pressed={characterPalette === 1} @click={() => choosePalette(1)}><img src={asset("assets/sprites/inmate1-s0.svg")} alt="Appearance 2" /></button>
+          <button className={"om-face-choice " + (characterPalette === 2 ? "is-active" : "")} aria-pressed={characterPalette === 2} @click={() => choosePalette(2)}><img src={asset("assets/sprites/inmate2-s0.svg")} alt="Appearance 3" /></button>
+          <button className={"om-face-choice " + (characterPalette === 3 ? "is-active" : "")} aria-pressed={characterPalette === 3} @click={() => choosePalette(3)}><img src={asset("assets/sprites/inmate3-s0.svg")} alt="Appearance 4" /></button>
+          <button className={"om-face-choice " + (characterPalette === 4 ? "is-active" : "")} aria-pressed={characterPalette === 4} @click={() => choosePalette(4)}><img src={asset("assets/sprites/inmate4-s0.svg")} alt="Appearance 5" /></button>
+          <button className={"om-face-choice " + (characterPalette === 5 ? "is-active" : "")} aria-pressed={characterPalette === 5} @click={() => choosePalette(5)}><img src={asset("assets/sprites/inmate5-s0.svg")} alt="Appearance 6" /></button>
         </div>
       #end
     </div>

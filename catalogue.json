@@ -10,21 +10,21 @@
     "id": "device-kit",
     "file": "DeviceKit.softn",
     "name": "Device Kit",
-    "description": "Sandbox capability tour: GET/POST API Explorer with JSON formatting & timing, QR reader/generator, camera capture, and local file preview",
+    "description": "Sandbox capability tour: GET/POST API Explorer, live system capability telemetry, QR reader/generator, camera studio with calibration fallback, and file inspector",
     "primary": "#3b82f6"
   },
   {
     "id": "glamour-studio",
     "file": "GlamourStudio.softn",
     "name": "Glamour Studio",
-    "description": "Luxury salon front desk with live revenue KPI, appointments, clients, staff, services, and peer-to-peer multi-device database sync",
+    "description": "Luxury salon front desk with live revenue KPIs, interactive Beauty & Lighting portrait studio, appointments, clients, staff, services, and multi-device sync",
     "primary": "#d4a574"
   },
   {
     "id": "gpu-demo",
     "file": "GPUDemo.softn",
     "name": "GPU Compute",
-    "description": "WebGPU WGSL compute bench: switch between Add, Multiply, SAXPY, and ReLU kernels across 8 to 4096 floats with dispatch timing",
+    "description": "WebGPU WGSL & CPU vector compute bench with 6 kernels across 8 to 4096 floats, live spectrum analytics, dispatch timing, and an interactive Compute Field simulation",
     "primary": "#10b981"
   },
   {
@@ -38,28 +38,28 @@
     "id": "notes",
     "file": "Notes.softn",
     "name": "Notes",
-    "description": "Notes board with site storage, local server sync, or browser storage fallback, category tags, pinned notes, copy actions, and instant search filtering",
+    "description": "Persistent Markdown notes board across site XDB, local server, or browser storage with live preview, category tags, pinned notes, undo delete, and instant search",
     "primary": "#6366f1"
   },
   {
     "id": "pocket",
     "file": "Pocket.softn",
     "name": "Pocket",
-    "description": "An 8-bit handheld emulator — CPU, PPU, APU and mappers all in .logic, drawn by PixelCanvas and heard through AudioStream",
+    "description": "8-bit handheld emulator with SM83 CPU, PPU, APU, and mappers in .logic, built-in playable Brick-Breaker cartridge, DMG palettes, save states, and PixelCanvas + AudioStream",
     "primary": "#9bbc0f"
   },
   {
     "id": "soft-dos",
     "file": "SoftDOS.softn",
     "name": "SoftDOS",
-    "description": "An x86 PC emulator written in .logic: a 16/32-bit CPU with the full 386 integer instruction set, VGA mode 13h and 80x25 text, a BIOS and DOS kernel, and a command line that runs real 8086 programs.",
+    "description": "x86 PC emulator in .logic with bundled one-click FastDOOM + Freedoom Phase 1, 386 integer CPU, VGA mode 13h & 80x25 text, Sound Blaster + AdLib, and touch controls",
     "primary": "#48d080"
   },
   {
     "id": "showcase",
     "file": "Showcase.softn",
     "name": "Component Showcase",
-    "description": "Interactive charts, animations, drag-and-drop widgets, and an articulated PBR Chrono Orrery 3D studio scene with HDR IBL, GTAO, Bloom, and SceneAnchor",
+    "description": "Interactive UI controls, charts, spring animations, drag-and-drop widgets, and an articulated PBR Chrono Orrery 3D studio scene with HDR IBL, GTAO, Bloom, and SceneAnchor",
     "primary": "#6366f1"
   },
   {
@@ -133,6 +133,13 @@
     "primary": "#f59e0b"
   },
   {
+    "id": "photo-studio",
+    "file": "PhotoStudio.softn",
+    "name": "Photo Studio",
+    "description": "Layered image editor with PNG, JPEG, GIF, BMP, and PSD import/export, 16 blend modes, brushes, selections, masks, adjustments, bitmap type, and undo history.",
+    "primary": "#b2a0ff"
+  },
+  {
     "id": "sim-lives",
     "file": "SimLives.softn",
     "name": "Sim Lives",
@@ -152,5 +159,103 @@
     "name": "Outerstead",
     "description": "First Light: a people-first frontier colony survival game on Hollow-7. Four survivors, a growing settlement, and an older world that still listens.",
     "primary": "#c5ad77"
+  },
+  {
+    "id": "convenience-store-at-the-end-of-the-universe",
+    "file": "ConvenienceStoreAtTheEndOfTheUniverse.softn",
+    "name": "Convenience Store at the End of the Universe",
+    "description": "Last Light: seven nights, six usuals, one little shop at the end of everything.",
+    "primary": "#e1bc7b"
+  },
+  {
+    "id": "do-not-press-the-duck",
+    "file": "DoNotPressTheDuck.softn",
+    "name": "Do Not Press the Duck",
+    "description": "One button. A roomful of consequences. A completely unreasonable amount of duck.",
+    "primary": "#f6ca50"
+  },
+  {
+    "id": "express-delivery-snail",
+    "file": "ExpressDeliverySnail.softn",
+    "name": "Express Delivery Snail",
+    "description": "Special Delivery — seven tiny routes, seven very particular parcels, one impossibly determined snail.",
+    "primary": "#bd7048"
+  },
+  {
+    "id": "first-drive",
+    "file": "FirstDrive.softn",
+    "name": "First drive",
+    "description": "A one-minute real-time 3D film of a lunar rover leaving its lander on the Moon in eight Blender-animated shots with sunlight, bounce light, shadows, and depth of field.",
+    "primary": "#4b6b94"
+  },
+  {
+    "id": "frog-employee-of-the-month",
+    "file": "FrogEmployeeOfTheMonth.softn",
+    "name": "Frog Employee of the Month",
+    "description": "Corporate Ascent: eight frog-scale office assignments, physical tongue traversal and a very unreasonable printer.",
+    "primary": "#80cf73"
+  },
+  {
+    "id": "lastsound3d",
+    "file": "LastSound3D.softn",
+    "name": "LastSound3D",
+    "description": "LAST SOUND: Below the Call. Fully voiced first-person survey of a blood ocean from inside a sealed pressure hull across three compartments and six photographs.",
+    "primary": "#c9a865"
+  },
+  {
+    "id": "pigeon-municipal-employee",
+    "file": "PigeonMunicipalEmployee.softn",
+    "name": "Pigeon: Municipal Employee",
+    "description": "A small bird with considerable jurisdiction. Explore Littleborough, fly, perch, collect evidence and physically process excessively official paperwork.",
+    "primary": "#64748b"
+  },
+  {
+    "id": "please-do-not-feed-the-moon",
+    "file": "PleaseDoNotFeedTheMoon.softn",
+    "name": "Please Do Not Feed the Moon",
+    "description": "A dreamy late-night convenience store. Twenty-four bad ideas. Nine hidden combinations. Seven endings.",
+    "primary": "#b8d5bd"
+  },
+  {
+    "id": "racelab",
+    "file": "RaceLab.softn",
+    "name": "RaceLab",
+    "description": "Experimental Melbourne Cup simulator with multi-trial Monte Carlo probability analysis, interactive 3D replay, and reproducible results.",
+    "primary": "#173b29"
+  },
+  {
+    "id": "scorchline",
+    "file": "Scorchline.softn",
+    "name": "Scorchline",
+    "description": "An original top-down resource-warfare RTS. Two factions, three maps and offline AI skirmishes.",
+    "primary": "#ddb479"
+  },
+  {
+    "id": "the-night-window",
+    "file": "TheNightWindow.softn",
+    "name": "The Night Window",
+    "description": "Seven graveyard shifts at Meridian-17. Inspect documents, question returning residents, and preserve a truth the terminal can rewrite across six endings.",
+    "primary": "#c7b886"
+  },
+  {
+    "id": "urbanward",
+    "file": "Urbanward.softn",
+    "name": "Urbanward",
+    "description": "An original, modular city simulation: build connected neighbourhoods, balance the books and watch a city find its identity.",
+    "primary": "#b9d9b8"
+  },
+  {
+    "id": "very-normal-post-office",
+    "file": "VeryNormalPostOffice.softn",
+    "name": "Very Normal Post Office",
+    "description": "Work Window 04: eight shifts of tactile postal inspection, questionable regulations, and very hungry mail.",
+    "primary": "#385347"
+  },
+  {
+    "id": "mine-management",
+    "file": "MineManagement.softn",
+    "name": "Mine Management",
+    "description": "One human. One mine. Questionable automation. A comedic 3D mine-site game: run the robot fleet from your PIT tablet, drive trucks and excavators, fix faults in person, and keep the emu off the haul road.",
+    "primary": "#eab65d"
   }
 ]

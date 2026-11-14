@@ -212,7 +212,11 @@ function dosInt_reset() {
   DOS_MOUSE_USED = 0;
   dosSb_reset();
   dosOpl_init();
+  DOS_SPK_ACCESS = 3;
   DOS_SPK_STATE = 0;
+  DOS_SPK_LATCH = 0;
+  DOS_SPEAKER_ON = 0;
+  DOS_SPEAKER_FREQ = 0;
   DOS_TIMER_NEXT = 0;
   DOS_TICKS = 0;
   DOS_PIC_MASK = 0x00;

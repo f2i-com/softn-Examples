@@ -2,16 +2,19 @@
 // Expanded 70x70 Open-World Reserve with Micro-Biomes, Dual Needs (Hunger + Thirst), and Evolutionary Genetics
 
 // Simulation State
+const SEASONS = ["Spring", "Summer", "Autumn", "Winter"];
 let isRunning = true;
 let simSpeed = 1;
 let simTick = 0;
 let dayCount = 1;
+let seasonOffset = 0;
 let season = "Spring";
 let seasonSky = "#8ac7f7";
 let ecosystemStatus = "Dynamic Equilibrium";
 let soundEnabled = true;
 let hasInteracted = false;
 let sfxCooldown = 0.0;
+let lastSfxTime = 0;
 let simAccum = 0.0;
 
 function getSeasonSky(s) {
@@ -23,9 +26,14 @@ function getSeasonSky(s) {
 
 function playNatureSfx(path, vol) {
   if (!soundEnabled || !hasInteracted || sfxCooldown > 0) return;
+  let now = Date.now();
+  if (now - lastSfxTime < 380) return;
   if (typeof softn !== "undefined" && softn.audio && softn.audio.play) {
-    softn.audio.play(path, { volume: vol || 0.45 });
-    sfxCooldown = 0.35;
+    try {
+      softn.audio.play(path, { volume: vol || 0.45 });
+    } catch (err) {}
+    sfxCooldown = 0.38;
+    lastSfxTime = now;
   }
 }
 
@@ -739,14 +747,32 @@ let coverCentres = [
   { x: -21, z: 21 }
 ];
 
+// Push coordinates radially outward so spawns never land inside the lake or shore
+function pushOutOfLake(x, z, minRadius) {
+  let dx = x - LAKE_X;
+  let dz = z - LAKE_Z;
+  let d = Math.hypot(dx, dz);
+  if (d < minRadius) {
+    let ang = d > 0.001 ? Math.atan2(dz, dx) : Math.random() * Math.PI * 2;
+    x = LAKE_X + Math.cos(ang) * (minRadius + 0.6);
+    z = LAKE_Z + Math.sin(ang) * (minRadius + 0.6);
+  }
+  let lim = BOUNDS - 1.0;
+  if (x > lim) x = lim;
+  if (x < -lim) x = -lim;
+  if (z > lim) z = lim;
+  if (z < -lim) z = -lim;
+  return { x: x, z: z };
+}
+
 // Build a rabbit. Movement state (heading, wander drift, hop phase) is kept
 // beside the biology so the renderer and the AI read the same numbers.
 function makeRabbit(x, z, energy, gen, traits) {
-  let posX = x !== undefined ? x : (Math.random() - 0.5) * BOUNDS * 1.85;
-  let posZ = z !== undefined ? z : (Math.random() - 0.5) * BOUNDS * 1.85;
-  if (Math.hypot(posX - LAKE_X, posZ - LAKE_Z) < SHORE_RADIUS + 1) {
-    posX = posX + (posX > LAKE_X ? SHORE_RADIUS + 2 : -(SHORE_RADIUS + 2));
-  }
+  let rawX = x !== undefined ? x : (Math.random() - 0.5) * BOUNDS * 1.85;
+  let rawZ = z !== undefined ? z : (Math.random() - 0.5) * BOUNDS * 1.85;
+  let safe = pushOutOfLake(rawX, rawZ, SHORE_RADIUS + 1.0);
+  let posX = safe.x;
+  let posZ = safe.z;
   let id = genId("prey");
   let g = gen || 1;
   if (g > maxGeneration) maxGeneration = g;
@@ -787,11 +813,11 @@ function makeRabbit(x, z, energy, gen, traits) {
 }
 
 function makeFox(x, z, energy, gen, traits) {
-  let posX = x !== undefined ? x : (Math.random() - 0.5) * BOUNDS * 1.85;
-  let posZ = z !== undefined ? z : (Math.random() - 0.5) * BOUNDS * 1.85;
-  if (Math.hypot(posX - LAKE_X, posZ - LAKE_Z) < SHORE_RADIUS + 1) {
-    posX = posX - (posX > LAKE_X ? SHORE_RADIUS + 2 : -(SHORE_RADIUS + 2));
-  }
+  let rawX = x !== undefined ? x : (Math.random() - 0.5) * BOUNDS * 1.85;
+  let rawZ = z !== undefined ? z : (Math.random() - 0.5) * BOUNDS * 1.85;
+  let safe = pushOutOfLake(rawX, rawZ, SHORE_RADIUS + 1.0);
+  let posX = safe.x;
+  let posZ = safe.z;
   let id = genId("pred");
   let g = gen || 1;
   if (g > maxGeneration) maxGeneration = g;
@@ -847,15 +873,13 @@ function initGrassGrid() {
   grassList = [];
   let numPatches = 180;
   for (let i = 0; i < numPatches; i = i + 1) {
-    let gx = (Math.random() - 0.5) * BOUNDS * 1.92;
-    let gz = (Math.random() - 0.5) * BOUNDS * 1.92;
-    if (Math.hypot(gx - LAKE_X, gz - LAKE_Z) < SHORE_RADIUS + 0.5) {
-      gx = gx + (gx > LAKE_X ? SHORE_RADIUS + 1.5 : -(SHORE_RADIUS + 1.5));
-    }
+    let rawX = (Math.random() - 0.5) * BOUNDS * 1.92;
+    let rawZ = (Math.random() - 0.5) * BOUNDS * 1.92;
+    let safe = pushOutOfLake(rawX, rawZ, SHORE_RADIUS + 0.5);
     grassList.push({
       id: "grass-" + i,
-      x: gx,
-      z: gz,
+      x: safe.x,
+      z: safe.z,
       nutrition: Math.floor(Math.random() * 3) + 1, // 1 to 3
       maxNutrition: 3,
       regrowTimer: Math.random() * 4.5
@@ -904,11 +928,22 @@ function resetScenario(type) {
   foxes = [];
   particlePuffs = [];
   simTick = 0;
+  simAccum = 0.0;
   dayCount = 1;
+  seasonOffset = 0;
+  season = "Spring";
+  seasonSky = getSeasonSky("Spring");
+  totalPreyBorn = 0;
+  totalPredBorn = 0;
+  totalHunts = 0;
   maxGeneration = 1;
+  nextEntityId = 1;
   selectedId = "";
   selectedEntity = null;
   inspectorOpen = false;
+  if (cameraMode === "follow") {
+    setCameraView("overview");
+  }
   initGrassGrid();
 
   if (type === "rabbit_boom") {
@@ -925,7 +960,22 @@ function resetScenario(type) {
     for (let i = 0; i < 8; i = i + 1) addFox();
   }
 
+  let basePrey = Math.min(100, Math.round((rabbits.length / 80) * 100));
+  let baseFox = Math.min(100, Math.round((foxes.length / 26) * 100));
+  let baseGrass = Math.min(100, Math.round((grassCount / 180) * 100));
+  sparkPreyBars = [];
+  sparkFoxBars = [];
+  sparkGrassBars = [];
+  for (let i = 0; i < 18; i = i + 1) {
+    sparkPreyBars.push(basePrey);
+    sparkFoxBars.push(baseFox);
+    sparkGrassBars.push(baseGrass);
+  }
+  buildSparkCols();
   updateStats();
+  buildMapDots();
+  objects = buildDynamicObjects();
+  lights = buildLights();
 }
 
 // ---------------------------------------------------------------------------
@@ -1033,8 +1083,7 @@ function updateEcosystem(delta) {
   simTick = simTick + 1;
   if (simTick % 220 === 0) {
     dayCount = dayCount + 1;
-    let seasons = ["Spring", "Summer", "Autumn", "Winter"];
-    season = seasons[Math.floor(dayCount / 6) % 4];
+    season = SEASONS[((Math.floor(dayCount / 6) + seasonOffset) % 4 + 4) % 4];
     seasonSky = getSeasonSky(season);
   }
 
@@ -1080,14 +1129,14 @@ function updateEcosystem(delta) {
     if (rab.state === "Grazing" || rab.state === "Resting") baseDetection = baseDetection * 0.75;
     let detectionRadius = baseDetection * rab.traits.sight;
     let nearestFox = null;
-    let minFoxDist = detectionRadius;
+    let minFoxDist = 1e9;
     for (let f = 0; f < huntingFoxes.length; f = f + 1) {
       let fox = huntingFoxes[f];
       let d = dist(rab.x, rab.z, fox.x, fox.z);
       // A chasing fox is obvious from further away; a stalking one is low
       // in the grass and gets much closer before it is noticed.
-      let reach = fox.state === "Chasing" ? minFoxDist * 1.4 : (fox.state === "Stalking" ? minFoxDist * 0.55 : minFoxDist);
-      if (d < reach) {
+      let reach = detectionRadius * (fox.state === "Chasing" ? 1.4 : (fox.state === "Stalking" ? 0.55 : 1.0));
+      if (d < reach && d < minFoxDist) {
         minFoxDist = d;
         nearestFox = fox;
       }
@@ -1445,6 +1494,11 @@ function updateEcosystem(delta) {
 function updateStats() {
   rabbitCount = rabbits.length;
   foxCount = foxes.length;
+  let mature = 0;
+  for (let g = 0; g < grassList.length; g = g + 1) {
+    if (grassList[g].nutrition > 0) mature = mature + 1;
+  }
+  grassCount = mature;
 
   // Ecological Balance Status
   if (rabbitCount === 0 && foxCount === 0) {
@@ -1602,9 +1656,10 @@ function buildDynamicObjects() {
     let fox = foxes[f];
     let isSel = fox.id === selectedId;
     let running = fox.speed > 0.02;
+    let isResting = fox.state === "Resting" || fox.state === "Sleeping";
     let stride = running ? Math.sin(fox.runPhase) * 0.65 : 0;
-    let tailWag = Math.sin(fox.runPhase * 1.4) * (fox.state === "Chasing" ? 0.35 : 0.16);
-    let headPitch = fox.state === "Stalking" ? 0.22 : (fox.state === "Feeding" ? 0.45 : 0);
+    let tailWag = isResting ? 0 : Math.sin(fox.runPhase * 1.4) * (fox.state === "Chasing" ? 0.35 : 0.16);
+    let headPitch = fox.state === "Stalking" ? 0.22 : (fox.state === "Feeding" ? 0.45 : (isResting ? 0.18 : 0));
 
     list.push({
       id: fox.id,
@@ -1619,7 +1674,7 @@ function buildDynamicObjects() {
         Leg_FR: { rotation: { x: -stride, y: 0, z: 0 } },
         Leg_BL: { rotation: { x: -stride, y: 0, z: 0 } },
         Leg_BR: { rotation: { x: stride, y: 0, z: 0 } },
-        Tail: { rotation: { x: fox.state === "Sleeping" ? -0.35 : 0.1, y: tailWag, z: 0 } }
+        Tail: { rotation: { x: isResting ? -0.35 : 0.1, y: tailWag, z: 0 } }
       },
       castShadow: true,
       receiveShadow: true,
@@ -1736,12 +1791,6 @@ function gameStep(dt) {
       simAccum = simAccum - 0.032;
       steps = steps + 1;
     }
-    for (let r = 0; r < rabbits.length; r = r + 1) {
-      if (rabbits[r].speed > 0.01) rabbits[r].hopPhase = rabbits[r].hopPhase + delta * 12.0 * simSpeed;
-    }
-    for (let f = 0; f < foxes.length; f = f + 1) {
-      if (foxes[f].speed > 0.01) foxes[f].runPhase = foxes[f].runPhase + delta * 14.0 * simSpeed;
-    }
   }
 
   updateParticles();
@@ -1800,7 +1849,10 @@ function togglePlay() {
 function stepOnce() {
   hasInteracted = true;
   updateEcosystem(0.033);
+  updateParticles();
+  buildMapDots();
   objects = buildDynamicObjects();
+  lights = buildLights();
 }
 
 function setSimSpeed(sp) {
@@ -1811,18 +1863,24 @@ function setSimSpeed(sp) {
 function toggleSoundAction() {
   hasInteracted = true;
   soundEnabled = !soundEnabled;
-  if (soundEnabled) {
-    sfxCooldown = 0;
+  if (!soundEnabled) {
+    if (typeof softn !== "undefined" && softn.audio && softn.audio.stopAll) {
+      try {
+        softn.audio.stopAll();
+      } catch (err) {}
+    }
+  } else {
     playNatureSfx("assets/sfx/chirp.wav", 0.4);
   }
 }
 
 function cycleSeasonAction() {
   hasInteracted = true;
-  let seasons = ["Spring", "Summer", "Autumn", "Winter"];
-  let idx = seasons.indexOf(season);
-  season = seasons[(idx + 1) % 4];
+  seasonOffset = (seasonOffset + 1) % 4;
+  let baseIdx = Math.floor(dayCount / 6) % 4;
+  season = SEASONS[(baseIdx + seasonOffset) % 4];
   seasonSky = getSeasonSky(season);
+  lights = buildLights();
   playNatureSfx("assets/sfx/chirp.wav", 0.42);
 }
 
@@ -1865,6 +1923,8 @@ function setCameraView(mode) {
 
 function triggerSpringBloom() {
   hasInteracted = true;
+  let baseIdx = Math.floor(dayCount / 6) % 4;
+  seasonOffset = (0 - baseIdx + 4) % 4;
   season = "Spring";
   seasonSky = getSeasonSky(season);
   for (let g = 0; g < grassList.length; g = g + 1) {
@@ -1874,10 +1934,14 @@ function triggerSpringBloom() {
   spawnPuff(0, 4.0, 0, "#22c55e", 40);
   playNatureSfx("assets/sfx/chirp.wav", 0.5);
   updateStats();
+  objects = buildDynamicObjects();
+  lights = buildLights();
 }
 
 function triggerColdSnap() {
   hasInteracted = true;
+  let baseIdx = Math.floor(dayCount / 6) % 4;
+  seasonOffset = (3 - baseIdx + 4) % 4;
   season = "Winter";
   seasonSky = getSeasonSky(season);
   for (let g = 0; g < grassList.length; g = g + 1) {
@@ -1888,40 +1952,49 @@ function triggerColdSnap() {
   spawnPuff(0, 4.0, 0, "#93c5fd", 40);
   playNatureSfx("assets/sfx/alert.wav", 0.45);
   updateStats();
+  objects = buildDynamicObjects();
+  lights = buildLights();
 }
 
 function spawnPreyAction() {
   hasInteracted = true;
   addRabbit();
-  spawnPuff(0, 1.5, 0, "#f8fafc", 10);
+  let newest = rabbits[rabbits.length - 1];
+  spawnPuff(newest ? newest.x : 0, 1.5, newest ? newest.z : 0, "#f8fafc", 10);
   playNatureSfx("assets/sfx/hop.wav", 0.45);
   updateStats();
+  buildMapDots();
+  objects = buildDynamicObjects();
 }
 
 function spawnPredatorAction() {
   hasInteracted = true;
   addFox();
-  spawnPuff(0, 1.5, 0, "#ea580c", 10);
+  let newest = foxes[foxes.length - 1];
+  spawnPuff(newest ? newest.x : 0, 1.5, newest ? newest.z : 0, "#ea580c", 10);
   playNatureSfx("assets/sfx/alert.wav", 0.45);
   updateStats();
+  buildMapDots();
+  objects = buildDynamicObjects();
 }
 
 function plantGrassAction() {
-  let gx = (Math.random() - 0.5) * BOUNDS * 1.85;
-  let gz = (Math.random() - 0.5) * BOUNDS * 1.85;
-  if (isInsideLake(gx, gz)) {
-    gx = gx + (gx > LAKE_X ? LAKE_RADIUS + 1.8 : -(LAKE_RADIUS + 1.8));
-  }
+  hasInteracted = true;
+  let rawX = (Math.random() - 0.5) * BOUNDS * 1.85;
+  let rawZ = (Math.random() - 0.5) * BOUNDS * 1.85;
+  let safe = pushOutOfLake(rawX, rawZ, SHORE_RADIUS + 0.5);
   grassList.push({
     id: genId("grass"),
-    x: gx,
-    z: gz,
+    x: safe.x,
+    z: safe.z,
     nutrition: 3,
     maxNutrition: 3,
     regrowTimer: 0
   });
-  spawnPuff(gx, 1.2, gz, "#22c55e", 12);
+  spawnPuff(safe.x, 1.2, safe.z, "#22c55e", 12);
+  playNatureSfx("assets/sfx/chirp.wav", 0.35);
   updateStats();
+  objects = buildDynamicObjects();
 }
 
 function closeInspector() {
@@ -1933,18 +2006,19 @@ function closeInspector() {
 // In-World 3D Raycast Click
 function handleSceneClick(hit) {
   hasInteracted = true;
-  if (!hit || !hit.objectId) {
+  if (!hit || (!hit.objectId && !hit.rootObjectId)) {
     closeInspector();
     return;
   }
   let id = hit.rootObjectId || hit.objectId;
-  let targetId = id.split("-tuft")[0].split("-body")[0].split("-head")[0].split("-ear")[0].split("-tail")[0];
+  let targetId = id.split("-tuft")[0].split("-body")[0].split("-head")[0].split("-ear")[0].split("-tail")[0].split("-halo")[0];
 
   for (let r = 0; r < rabbits.length; r = r + 1) {
     if (rabbits[r].id === targetId || id.indexOf(rabbits[r].id) !== -1) {
       selectedId = rabbits[r].id;
       selectedEntity = rabbits[r];
       inspectorOpen = true;
+      buildMapDots();
       return;
     }
   }
@@ -1954,6 +2028,7 @@ function handleSceneClick(hit) {
       selectedId = foxes[f].id;
       selectedEntity = foxes[f];
       inspectorOpen = true;
+      buildMapDots();
       return;
     }
   }
@@ -1961,10 +2036,38 @@ function handleSceneClick(hit) {
   closeInspector();
 }
 
+function onKeyDown(e) {
+  if (!e) return;
+  let tag = String(e.targetTag || (e.target && e.target.tagName) || "").toUpperCase();
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  let k = e.key || "";
+  if (k === " ") {
+    if (e.preventDefault) e.preventDefault();
+    togglePlay();
+  } else if (k === "m" || k === "M") {
+    toggleSoundAction();
+  } else if (k === "Escape" && inspectorOpen) {
+    closeInspector();
+  }
+}
+
+if (typeof window !== "undefined") {
+  if (typeof window.__ppCleanup === "function") {
+    try { window.__ppCleanup(); } catch (err) {}
+  }
+  window.addEventListener("keydown", onKeyDown);
+  window.__ppCleanup = function() {
+    window.removeEventListener("keydown", onKeyDown);
+  };
+}
+
 function _onHide() {
   isRunning = false;
+  if (typeof window !== "undefined" && typeof window.__ppCleanup === "function") {
+    try { window.__ppCleanup(); } catch (err) {}
+  }
   if (typeof softn !== "undefined" && softn.audio && softn.audio.stopAll) {
-    softn.audio.stopAll();
+    try { softn.audio.stopAll(); } catch (err) {}
   }
 }
 

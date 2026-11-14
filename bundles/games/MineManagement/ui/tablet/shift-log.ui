@@ -1,0 +1,53 @@
+<!--
+  06 Shift log: the radio, written down. The latest eighteen messages (logRows in
+  logic/core/ui-state.logic, from notify() in logic/core/state.logic).
+-->
+<div if={tab === 'log'}>
+  <div class="mm-page-head">
+    <div>
+      <span class="mm-label">RADIO & EVENT HISTORY</span>
+      <h2>For the incident report.</h2>
+      <p class="mm-muted">The latest eighteen messages from your surprisingly chatty workforce, Head Office and one emu-adjacent sensor.</p>
+    </div>
+  </div>
+  <section class="mm-card">
+    #each (entry in logRows) key={entry.id}
+      <div class="mm-log-row"><span class="mm-log-clock">{entry.clock}</span><span class="mm-log-name">{entry.speaker}</span><span>{entry.message}</span></div>
+    #empty
+      <p class="mm-empty">Radio silence. Enjoy it while it lasts.</p>
+    #end
+  </section>
+</div>
+
+<style>
+  .mm-log-row {
+    display: grid;
+    grid-template-columns: 53px 120px 1fr;
+    gap: 15px;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--line);
+    font-size: 12px;
+    line-height: 1.65;
+  }
+  .mm-log-clock {
+    font: 10px monospace;
+    color: #9bcbc6;
+  }
+  .mm-log-name {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.7px;
+    color: #dbc087;
+  }
+  @media (max-width: 620px) {
+    .mm-log-row {
+      grid-template-columns: 40px 1fr;
+      gap: 6px 12px;
+      padding: 14px;
+    }
+    .mm-log-row > span:last-child {
+      grid-column: 2;
+      font-size: 11px;
+    }
+  }
+</style>

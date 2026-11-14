@@ -1,0 +1,267 @@
+// Presentation models only. Game rules live in their dedicated logic modules.
+function uwUpdateToolCards() {
+    let all = [], cards = [], keys = Object.keys(UW_FACILITIES);
+    for (let k = 0; k < UW_BASE_TOOLS.length; k = k + 1)
+        all.push(uwToolSpec(UW_BASE_TOOLS[k].id));
+    for (let k = 0; k < keys.length; k = k + 1)
+        all.push(uwToolSpec(keys[k]));
+    for (let k = 0; k < all.length; k = k + 1) {
+        let t = all[k];
+        if (t.category !== category)
+            continue;
+        cards.push({ id: t.id, name: t.name, icon: "assets/icons/" + t.id + ".svg", cost: uwMoney(t.cost), upkeep: t.upkeep ? uwMoney(t.upkeep) + " / mo" : "", description: t.description, active: activeTool === t.id });
+    }
+    toolCards = cards;
+    toolTitle = uwToolSpec(activeTool).name;
+    let tabs = [];
+    for (let k = 0; k < UW_TOOL_GROUPS.length; k = k + 1) {
+        let t = UW_TOOL_GROUPS[k];
+        tabs.push({ id: t.id, name: t.name, icon: "assets/icons/" + t.id + ".svg", active: category === t.id });
+    }
+    categoryTabs = tabs;
+    let overlays = [];
+    for (let k = 0; k < UW_OVERLAYS.length; k = k + 1) {
+        let t = UW_OVERLAYS[k];
+        overlays.push({ id: t.id, name: t.name, active: activeOverlay === t.id });
+    }
+    overlayCards = overlays;
+}
+function uwInspectSnapshot() {
+    if (uwSelectedIndex < 0 || !uwWorld.tiles[uwSelectedIndex]) {
+        selected = { exists: false, title: "Select a neighbourhood", subtitle: "Every lot has a story.", description: "Use Inspect, then click a building, road or open lot. Its connections and services will appear here.", rows: [], district: -1 };
+        return;
+    }
+    let i = uwSelectedIndex, t = uwWorld.tiles[i], p = uwXZ(i), road = uwNet.access[i], f = t.build ? UW_FACILITIES[t.build] : null, rows = [];
+    let title = f ? f.name : t.road ? (t.wet ? "Bridge" : t.road === 2 ? "Avenue" : "Local road") : t.wet ? "Open water" : t.zone ? UW_ZONE_NAMES[t.zone] + " lot" : t.tree ? "Woodland" : "Open ground";
+    rows.push({ label: "Grid address", value: p.x + ", " + p.z });
+    rows.push({ label: "Road access", value: road >= 0 ? "Connected · network " + (uwNet.roadIds[road] + 1) : "No nearby road" });
+    rows.push({ label: "Electricity", value: uwPercent(uwNet.power[i] * 100) });
+    rows.push({ label: "Water", value: uwPercent(uwNet.water[i] * 100) });
+    if (t.zone) {
+        rows.push({ label: "Development", value: t.stage ? "Construction · " + t.stage + " months" : UW_LEVEL_NAMES[t.level] });
+        rows.push({ label: "Density allowance", value: t.density === 2 ? "High density" : "Low density" });
+        if (t.level) {
+            rows.push({ label: "Architecture", value: ["Founding era · brick and pitched roofs", "Modern era · concrete and glass", "Green era · planted roofs and facades"][uwArchitecture(t)] });
+            rows.push({ label: "Since last redevelopment", value: Math.floor(t.age / 12) + " years, " + t.age % 12 + " months" });
+            rows.push({ label: "Building condition", value: t.neglect >= 4 ? "Declining · " + t.neglect + " months of neglect" : uwNet.value[i] >= 65 ? "Prosperous" : "Established" });
+        }
+        if (t.zone === 1 || t.zone === 4)
+            rows.push({ label: "Residents / capacity", value: t.pop + " / " + uwBuildingCapacity(t) });
+        if (t.zone !== 1)
+            rows.push({ label: "Job capacity", value: String(uwJobCapacity(t)) });
+    }
+    if (f) {
+        rows.push({ label: "Monthly base cost", value: uwMoney(f.upkeep) });
+        if (f.power)
+            rows.push({ label: "Rated power", value: uwComma(f.power) + " units" });
+        if (f.water)
+            rows.push({ label: "Rated water", value: uwComma(f.water) + " units" });
+    }
+    rows.push({ label: "Land value", value: uwPercent(uwNet.value[i]) });
+    rows.push({ label: "Pollution", value: uwPercent(uwNet.pollution[i]) });
+    rows.push({ label: "School / clinic", value: uwPercent(uwNet.service.school[i]) + " / " + uwPercent(uwNet.service.health[i]) });
+    rows.push({ label: "Fire protection", value: uwPercent(uwNet.service.fire[i]) });
+    if (road >= 0)
+        rows.push({ label: "Road load / capacity", value: Math.round(uwNet.traffic[road]) + "%" });
+    if (t.fire || t.flood)
+        rows.unshift({ label: "Incident", value: t.fire ? "Active fire" : "Flooded · " + t.flood + " months" });
+    let description = f ? f.description : t.zone ? (t.level === 0 ? "Development needs demand, nearby road access and connected power and water. Unbuilt zones produce no tax income." : "Residents and businesses respond to services, employment, land value, pollution and tax. Upgrades happen organically.") : t.road ? "Roads carry transport and shared utility ducts. A broken crossing can isolate jobs, water and electricity at once." : "Open terrain can become infrastructure, a neighbourhood or a place left deliberately green.";
+    selected = { exists: true, title: title, subtitle: uwWorld.districtNames[uwDistrictOf(i)], description: description, rows: rows, district: uwDistrictOf(i) };
+    let d = uwWorld.districtStats[uwDistrictOf(i)];
+    selectedDistrict = { id: d.id, name: d.name, identity: d.identity, description: d.description, population: uwComma(d.population), value: uwPercent(d.value), focus: d.focus };
+    if (uwRenameDistrictId !== d.id) {
+        renameText = d.name;
+        uwRenameDistrictId = d.id;
+    }
+}
+function uwBuildMinimap() {
+    let cells = [], n = uwWorld.n;
+    for (let z = 0; z < 16; z = z + 1)
+        for (let x = 0; x < 16; x = x + 1) {
+            let i = uwIndex(Math.min(n - 1, Math.floor((x + 0.5) * n / 16)), Math.min(n - 1, Math.floor((z + 0.5) * n / 16))), t = uwWorld.tiles[i];
+            let c = t.wet ? "#6596a4" : t.road ? "#d6d2b9" : t.build ? "#d7b97d" : t.zone ? ["#8c9e77", "#82b498", "#87afc3", "#b79b66", "#afa4c0"][t.zone] : t.tree ? "#677f64" : "#9eac82";
+            cells.push({ id: i, colour: c, title: "Jump to " + uwXZ(i).x + ", " + uwXZ(i).z });
+        }
+    minimapCells = cells;
+}
+function uwRefreshUI() {
+    let uiStart = uwPerfStart();
+    uwUpdateToolCards();
+    if (!uwWorld || !uwNet)
+        return;
+    let w = uwWorld, f = uwForecast(), obj = uwObjectiveData(), next = "A city worth staying in";
+    for (let k = 0; k < obj.length; k = k + 1)
+        if (w.objectives.indexOf(obj[k].id) < 0 && !obj[k].done) {
+            next = obj[k].title;
+            break;
+        }
+    let labels = ["New charter", "First neighbours", "Growing town", "Borough charter", "City status", "Regional capital"];
+    hud = { city: w.name, date: uwDate(w.month), money: uwMoney(w.funds), population: uwComma(w.population), approval: uwPercent(w.happiness), balance: (f.net >= 0 ? "+" : "") + uwMoney(f.net), balanceGood: f.net >= 0,
+        power: uwComma(uwNet.powerSupply) + " / " + uwComma(uwNet.powerDemand), water: uwComma(uwNet.waterSupply) + " / " + uwComma(uwNet.waterDemand), employment: uwPercent(w.workers ? w.employed / w.workers * 100 : 100), traffic: Math.round(uwNet.congestion) + "%",
+        demandR: w.demand[0], demandC: w.demand[1], demandI: w.demand[2], milestone: labels[Math.min(5, w.awards.length)], weather: w.weather, goal: next, batches: uwRendererStats.batches, instances: uwRendererStats.instances };
+    metrics = [
+        { label: "Jobs available", value: uwComma(w.jobs), detail: uwComma(w.employed) + " filled by local workers" },
+        { label: "Employment", value: hud.employment, detail: "Road-connected households" },
+        { label: "Power supply / demand", value: hud.power, detail: uwComma(uwNet.connectedPower) + " residents fully supplied" },
+        { label: "Water supply / demand", value: hud.water, detail: uwComma(uwNet.connectedWater) + " residents fully supplied" },
+        { label: "Education", value: uwPercent(uwNet.education), detail: "Population-weighted coverage" },
+        { label: "Health access", value: uwPercent(uwNet.health), detail: "Road-based clinic coverage" },
+        { label: "Congestion pressure", value: hud.traffic, detail: "Excess road load, not vehicle count" },
+        { label: "Waste collection", value: uwPercent(uwNet.waste), detail: "Connected recycling services" }
+    ];
+    budgetRows = [{ label: "Residential taxes", value: uwMoney(f.taxR), positive: true }, { label: "Commercial taxes", value: uwMoney(f.taxC), positive: true }, { label: "Industrial taxes", value: uwMoney(f.taxI), positive: true },
+        { label: "Roads and bridge maintenance", value: uwMoney(f.roads), positive: false }, { label: "Electricity and water", value: uwMoney(f.utilities), positive: false }, { label: "Civic services", value: uwMoney(f.services), positive: false }, { label: "Scheduled bus operations", value: uwMoney(f.buses), positive: false }, { label: "City policies", value: uwMoney(f.policies), positive: false }, { label: "Principal and interest", value: uwMoney(f.debt), positive: false }];
+    taxRows = [{ id: 0, label: "Residential", value: w.tax[0] }, { id: 1, label: "Commercial", value: w.tax[1] }, { id: 2, label: "Industrial", value: w.tax[2] }];
+    fundingRows = [{ id: "roads", label: "Road maintenance", value: w.funding.roads }, { id: "power", label: "Electricity output", value: w.funding.power }, { id: "water", label: "Water output", value: w.funding.water }, { id: "services", label: "Civic services", value: w.funding.services }];
+    let policies = [];
+    for (let k = 0; k < UW_POLICIES.length; k = k + 1) {
+        let p = UW_POLICIES[k];
+        policies.push({ id: p.id, name: p.name, text: p.text, cost: uwMoney(p.cost) + " / mo", active: w.policies[p.id] });
+    }
+    policyRows = policies;
+    let districts = [];
+    if (!w.districtStats)
+        uwUpdateDistricts(false);
+    for (let k = 0; k < w.districtStats.length; k = k + 1) {
+        let d = w.districtStats[k];
+        districts.push({ id: d.id, name: d.name, identity: d.identity, population: uwComma(d.population), value: uwPercent(d.value), description: d.description });
+    }
+    districtRows = districts;
+    let objectives = [];
+    for (let k = 0; k < obj.length; k = k + 1)
+        objectives.push({ id: obj[k].id, title: obj[k].title, text: obj[k].text, done: w.objectives.indexOf(obj[k].id) >= 0 || obj[k].done });
+    objectiveRows = objectives;
+    advisorRows = uwGetAdvisors();
+    newsRows = w.news.slice(0, 24);
+    let maxPop = 1;
+    for (let k = 0; k < w.history.length; k = k + 1)
+        maxPop = Math.max(maxPop, w.history[k].population);
+    let hist = [];
+    for (let k = w.history.length - 1; k >= Math.max(0, w.history.length - 24); k = k - 1) {
+        let h = w.history[k];
+        hist.push({ date: uwDate(h.month), population: uwComma(h.population), balance: uwMoney(h.balance), approval: uwPercent(h.approval), width: Math.max(1, Math.round(h.population / maxPop * 100)) + "%" });
+    }
+    historyRows = hist;
+    let scenarioNames = { charter: "Free charter", growth: "Five-year growth challenge", recovery: "River recovery", showcase: "Live Oceanview demonstration" };
+    settings = { disasters: w.disasters, autoLight: autoLight, debt: uwMoney(w.debt), scenario: scenarioNames[w.scenario], map: w.n + " × " + w.n, seed: String(w.seed) };
+    choiceCard = w.pendingChoice ? { open: true, id: w.pendingChoice, title: w.pendingChoice === "grant" ? "An offer from industry" : "A citywide celebration", text: w.pendingChoice === "grant" ? "Accept $6,000, set industrial tax to 8% and suspend clean-industry standards. You may revise those settings later." : "Spend $900 on a community festival for a five-point household happiness bonus lasting six months.", left: w.pendingChoice === "grant" ? "Accept the grant" : "Fund the festival", right: "Keep the current plan" } : { open: false, title: "", text: "", left: "", right: "", id: "" };
+    uwUpdateRatings();
+    uwInspectSnapshot();
+    uwBuildMinimap();
+    uwTransitSnapshot();
+    uwStorySnapshot();
+    uwPerfEnd("UI snapshot", uiStart);
+}
+function uwOpenModal(name) {
+    modal = name;
+    if (name === "performance") uwPerformanceSnapshot();
+    if (name === "transit") uwTransitSnapshot();
+    uwDragStart = -1;
+    uwPreviewPlan = null;
+    previewText = "";
+    if (name === "saves")
+        uwReadSaveRows();
+    uwRenderMotion();
+}
+function uwCloseModal() { modal = ""; }
+function uwSetPanel(name) { panel = name; showInspector = true; if (name === "district" && uwSelectedIndex < 0)
+    uwFocusDistrict(5);
+else
+    uwRefreshUI(); }
+function uwToggleInspector() { showInspector = !showInspector; mobilePanel = ""; }
+function uwMobilePanel(name) { mobilePanel = mobilePanel === name ? "" : name; if (mobilePanel === "details") showInspector = true; }
+function uwMobileNavigate() { mobilePanel = ""; uwSelectTool("inspect"); }
+function uwTogglePause() { if (!started || sessionError)
+    return; paused = !paused; }
+function uwSetSpeed(speed) { gameSpeed = Number(speed) === 4 ? 4 : Number(speed) === 2 ? 2 : 1; paused = false; }
+function uwToggleAutoLight() { autoLight = !autoLight; settings = { disasters: settings.disasters, autoLight: autoLight, debt: settings.debt, scenario: settings.scenario, map: settings.map, seed: settings.seed }; }
+function uwMapJump(index) { if (!uwWorld || !uwInt(Number(index), 0, uwWorld.tiles.length - 1))
+    return; let p = uwWorldPosition(Number(index)); uwCamX = p.x; uwCamZ = p.z; uwZoom = Math.min(uwZoom, 0.7); uwUpdateCamera(); }
+function uwShowDistrict() { uwSetPanel("district"); }
+function uwSceneReady() { sceneReady = true; }
+function uwRequestNewCity() { if (started)
+    modal = "newcity";
+else
+    welcomeOpen = true; }
+function uwNewCityScreen() { welcomeOpen = true; paused = true; modal = ""; }
+function uwResumeCity() { if (started) {
+    welcomeOpen = false;
+    modal = "";
+} }
+function uwSetTerrain(kind) { if (["river", "coast", "lake"].indexOf(kind) >= 0)
+    mapKind = kind; }
+function uwSetMapSize(size) { mapSize = Number(size) === 64 ? 64 : 48; }
+function uwSetScenario(scenario) { if (["charter", "growth", "recovery"].indexOf(scenario) >= 0)
+    scenarioChoice = scenario; }
+function uwSelectByCoordinates(build) {
+    if (!uwWorld)
+        return;
+    let x = Number(cursorX), z = Number(cursorZ);
+    if (!uwInt(x, 0, uwWorld.n - 1) || !uwInt(z, 0, uwWorld.n - 1)) {
+        uwNotify("Enter whole-number coordinates from 0 to " + (uwWorld.n - 1) + ".", "bad");
+        return;
+    }
+    let i = uwIndex(x, z);
+    uwSelectedIndex = i;
+    if (build && activeTool !== "inspect")
+        uwCommitAction(i, i, activeTool);
+    else {
+        panel = "lot";
+        uwMapJump(i);
+        uwRefreshUI();
+        uwRenderMotion();
+    }
+}
+function uwHandleKey(event) {
+    if (!event || event.targetEditable || ["INPUT", "TEXTAREA", "SELECT"].indexOf(String(event.targetTag).toUpperCase()) >= 0 || event.ctrlKey || event.metaKey || event.altKey)
+        return;
+    let key = String(event.key).toLowerCase();
+    if (key === "escape") {
+        if (modal)
+            uwCloseModal();
+        else
+            uwSelectTool("inspect");
+        return;
+    }
+    if (!started || welcomeOpen || modal)
+        return;
+    if (key === " ")
+        uwTogglePause();
+    else if (key === "w" || key === "arrowup")
+        uwPan(0, -5);
+    else if (key === "s" || key === "arrowdown")
+        uwPan(0, 5);
+    else if (key === "a" || key === "arrowleft")
+        uwPan(-5, 0);
+    else if (key === "d" || key === "arrowright")
+        uwPan(5, 0);
+    else if (key === "q")
+        uwRotate(-1);
+    else if (key === "e")
+        uwRotate(1);
+    else if (key === "+" || key === "=")
+        uwZoomBy(0.85);
+    else if (key === "-")
+        uwZoomBy(1.18);
+    else if (key === "1")
+        uwSetSpeed(1);
+    else if (key === "2")
+        uwSetSpeed(2);
+    else if (key === "3")
+        uwSetSpeed(4);
+    else if (key === "r") {
+        uwSelectCategory("transport");
+        uwSelectTool("road");
+    }
+    else if (key === "b")
+        uwSelectTool("bulldoze");
+    else if (key === "i")
+        uwSelectTool("inspect");
+    else if (key === "z")
+        uwUndoLast();
+    else if (key === "n")
+        uwCycleLight();
+    else if (key === "h" || key === "?")
+        uwOpenModal("help");
+}
+function uwVisitDistrict(id) { modal = ""; showInspector = true; uwFocusDistrict(id); uwRenderMotion(); }

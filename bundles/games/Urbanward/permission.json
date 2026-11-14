@@ -1,0 +1,9 @@
+{
+  "permissions": {},
+  "version": 1,
+  "app": {
+    "id": "com.softn.urbanward",
+    "name": "Urbanward",
+    "version": "0.3.0"
+  }
+}

@@ -6,7 +6,8 @@
   },
   "permissions": {
     "files": {
-      "enabled": true
+      "enabled": true,
+      "scopes": ["user_selected"]
     }
   }
 }

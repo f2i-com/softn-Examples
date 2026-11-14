@@ -1,0 +1,282 @@
+<!--
+  Title screen. Shown while screen === 'title', over the slowly orbiting mine (see updateCamera in
+  logic/world/camera.logic). The seed decides the site's ground, weather and favourite fault.
+-->
+<section class="mm-intro" if={screen === 'title'} aria-label="Title screen">
+  <header class="mm-intro-top">
+    <nav class="mm-title-credits" aria-label="Credits">
+      <a href="https://www.lance.name/" target="_blank" rel="noopener noreferrer">Created by Lance</a>
+      <a href="https://www.softn.com/" target="_blank" rel="noopener noreferrer">Powered by SoftN</a>
+    </nav>
+    <span>NOW WITH EXTRA EMU / v{VERSION}</span>
+  </header>
+
+  <div class="mm-title-block">
+    <div class="mm-kicker"><span class="mm-dot"></span><span>RED DUST MINE / REOPENING (PROBABLY)</span></div>
+    <h1 class="mm-logo-title">MINE<br>MANAGEMENT<span class="mm-title-period">.</span></h1>
+    <p class="mm-tagline">One human. One mine.<br>Questionable automation.</p>
+    <p class="mm-intro-copy">
+      Run the fleet from your tablet. Drive the machines yourself. Fix whatever Gary has put a cone
+      on. Shoo the emu.<br>Head Office says you'll be fine. Head Office has never been here.
+    </p>
+
+    <div class="mm-seed-row">
+      <span class="mm-label">SHIFT SEED</span>
+      <input class="mm-seed-input" type="text" :bind={seedText} maxlength="80" aria-label="Shift seed">
+      <button class="mm-small-button" type="button" @click={randomSeed}>Shuffle</button>
+    </div>
+    <p class="mm-seed-preview">{seedPreview}</p>
+
+    <div class="mm-title-actions">
+      <button class="mm-primary mm-start" type="button" @click={newGame} disabled={!ready}>
+        {!ready ? 'Preparing the site...' : resetConfirm ? 'Replace saved mine and start' : 'Open the gate  →'}
+      </button>
+      <button class="mm-secondary" type="button" if={canContinue} @click={continueGame} disabled={!ready}>Continue shift</button>
+    </div>
+    <p class="mm-small">{saveNote}</p>
+
+    <div class="mm-title-chips">
+      <span>FIRST-PERSON CHAOS</span>
+      <span>ROBOT WORKFORCE</span>
+      <span>ONE (1) EMU</span>
+    </div>
+  </div>
+
+  <footer class="mm-intro-bottom">
+    <div>
+      <p class="mm-pit-word">PIT <span>SOFTWARE</span></p>
+      <p class="mm-small">Game simulation edition</p>
+    </div>
+    <p class="mm-small">Est. 2026, reopened shortly after<br>Head Office says you'll be fine.</p>
+  </footer>
+</section>
+
+<style>
+  .mm-intro {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 20px;
+    overflow-y: auto;
+    padding: 38px 5vw;
+    background:
+      linear-gradient(90deg, #111e25f5 0%, #111e25e3 26%, #111e2575 55%, #111e2500 85%),
+      linear-gradient(0deg, #111e25bb, transparent 35%);
+  }
+  .mm-intro-top,
+  .mm-intro-bottom {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .mm-intro-top {
+    font: 10px monospace;
+    letter-spacing: 1.6px;
+    color: #d2d9c8;
+  }
+  .mm-intro-top > span:last-child {
+    white-space: nowrap;
+  }
+  .mm-title-credits {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 22px;
+  }
+  .mm-title-credits a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    color: #d6e4d7;
+    font: 500 12px/1.4 "Segoe UI", Inter, sans-serif;
+    letter-spacing: 0.2px;
+    text-decoration: underline;
+    text-decoration-color: #76978c;
+    text-underline-offset: 4px;
+  }
+  .mm-title-credits a:hover {
+    color: #efbc5e;
+    text-decoration-color: currentColor;
+  }
+  .mm-title-block {
+    max-width: 650px;
+    margin: 30px 0;
+  }
+  .mm-kicker {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 10px;
+    letter-spacing: 1.8px;
+    color: #ebc487;
+  }
+  .mm-game .mm-logo-title {
+    margin: 25px 0;
+    font-size: clamp(58px, 6.2vw, 90px);
+    font-weight: 800;
+    line-height: 0.98;
+    letter-spacing: -0.055em;
+  }
+  .mm-title-period {
+    color: var(--gold);
+  }
+  .mm-tagline {
+    font-size: 24px;
+    line-height: 1.42;
+    letter-spacing: -0.5px;
+    color: #e9e6d3;
+  }
+  .mm-intro-copy {
+    margin-top: 20px;
+    font-size: 13px;
+    line-height: 1.8;
+    color: #c3cfd0;
+  }
+  .mm-seed-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 450px;
+    margin-top: 30px;
+  }
+  .mm-seed-input {
+    width: 205px;
+    min-width: 90px;
+    height: 35px;
+    padding: 6px 10px;
+    background: #18272e;
+    border: 1px solid #50636c;
+    border-radius: 4px;
+    color: #e0e7d3;
+    font: 12px monospace;
+  }
+  .mm-seed-preview {
+    margin: 8px 0 12px;
+    font: 11px monospace;
+    color: #9ed5c3;
+  }
+  .mm-title-actions {
+    display: flex;
+    gap: 12px;
+    margin: 18px 0 10px;
+  }
+  .mm-primary.mm-start {
+    min-width: 215px;
+    padding: 15px 25px;
+    font-size: 14px;
+  }
+  .mm-title-chips {
+    display: flex;
+    gap: 18px;
+    margin-top: 30px;
+    font-size: 9px;
+    letter-spacing: 1px;
+    color: #c2cbcc;
+  }
+  .mm-title-chips > span {
+    padding-top: 10px;
+    border-top: 1px solid #5e7278;
+  }
+  .mm-pit-word {
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    line-height: 1.1;
+  }
+  .mm-pit-word span {
+    margin-left: 5px;
+    font-size: 10px;
+    font-weight: 450;
+    letter-spacing: 2.2px;
+  }
+  .mm-intro-bottom > .mm-small {
+    text-align: right;
+  }
+
+  @media (max-width: 900px) {
+    .mm-intro {
+      padding: 24px;
+    }
+    .mm-game .mm-logo-title {
+      font-size: clamp(38px, 8vw, 65px);
+    }
+  }
+  @media (max-width: 700px) {
+    .mm-intro-top {
+      align-items: flex-start;
+    }
+    .mm-title-credits {
+      display: block;
+    }
+    .mm-title-credits a {
+      display: flex;
+      font-size: 11px;
+    }
+    .mm-pit-word {
+      font-size: 17px;
+    }
+  }
+  @media (max-width: 620px) {
+    .mm-intro {
+      padding: 22px;
+      background: linear-gradient(90deg, #111e25ec, #111e2588);
+    }
+    .mm-intro-top {
+      font-size: 8px;
+      letter-spacing: 0.8px;
+    }
+    .mm-title-block {
+      margin: 20px 0;
+    }
+    .mm-game .mm-logo-title {
+      margin: 24px 0;
+      font-size: 43px;
+      letter-spacing: -2.5px;
+    }
+    .mm-tagline {
+      font-size: 21px;
+    }
+    .mm-intro-copy {
+      font-size: 12px;
+    }
+    .mm-title-actions {
+      flex-wrap: wrap;
+    }
+    .mm-title-chips {
+      gap: 10px;
+      margin-top: 20px;
+      font-size: 7px;
+    }
+    .mm-seed-row .mm-label {
+      font-size: 8px;
+      letter-spacing: 0.5px;
+    }
+    .mm-intro-bottom .mm-small {
+      font-size: 9px;
+    }
+  }
+  @media (max-height: 680px) and (min-width: 621px) {
+    .mm-intro {
+      padding: 20px 36px;
+    }
+    .mm-title-block {
+      margin: 15px 0;
+    }
+    .mm-game .mm-logo-title {
+      margin: 18px 0;
+      font-size: 56px;
+    }
+    .mm-tagline {
+      font-size: 20px;
+    }
+    .mm-intro-copy,
+    .mm-seed-row,
+    .mm-title-chips {
+      margin-top: 14px;
+    }
+  }
+</style>

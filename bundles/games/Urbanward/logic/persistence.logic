@@ -1,0 +1,256 @@
+// Versioned portable saves. Checksum detects accidental corruption, not tampering.
+// Load is transactional: validation completes before the current city is replaced.
+function uwChecksum(text) {
+    let n = 17;
+    for (let k = 0; k < text.length; k = k + 1)
+        n = (n * 131 + text.charCodeAt(k)) % 2147483647;
+    return String(n);
+}
+function uwSnapshot() {
+    let w = uwWorld;
+    if (!w)
+        throw new Error("There is no city to save.");
+    let tiles = [];
+    for (let k = 0; k < w.tiles.length; k = k + 1)
+        tiles.push(uwTileTuple(w.tiles[k]));
+    return {
+        n: w.n, seed: w.seed, kind: w.kind, name: w.name, scenario: w.scenario, month: w.month,
+        funds: w.funds, debt: w.debt, happiness: w.happiness, tax: w.tax.slice(0),
+        funding: uwDeepCopy(w.funding), policies: uwDeepCopy(w.policies),
+        districtNames: w.districtNames.slice(0), districtFocus: w.districtFocus.slice(0),
+        news: uwDeepCopy(w.news), history: uwDeepCopy(w.history), awards: w.awards.slice(0), objectives: w.objectives.slice(0),
+        disasters: w.disasters, weather: w.weather, weatherMonths: w.weatherMonths, bailout: w.bailout,
+        totalBuilt: w.totalBuilt, elapsedGoal: w.elapsedGoal, pendingChoice: w.pendingChoice, festival: w.festival || 0,
+        busRoutes: uwDeepCopy(w.busRoutes), transitMode: w.transitMode,
+        storyMemory: uwDeepCopy(w.storyMemory), petitions: uwDeepCopy(w.petitions),
+        tiles: tiles, rng: uwRng, monthAccumulator: uwMonthAccumulator,
+        view: { x: uwCamX, z: uwCamZ, zoom: uwZoom, angle: viewAngle, light: lightMode, quality: quality }
+    };
+}
+function uwEncodeSave() {
+    let payload = uwSnapshot(), text = JSON.stringify(payload);
+    return JSON.stringify({ format: "urbanward-save", version: UW_VERSION, checksum: uwChecksum(text), payload: payload });
+}
+function uwRequire(ok, message) { if (!ok)
+    throw new Error(message); }
+function uwPlain(value) { return value !== null && typeof value === "object" && !Array.isArray(value); }
+function uwSafeString(value, max) { return typeof value === "string" && value.length <= max; }
+function uwValidateSave(text) {
+    uwRequire(typeof text === "string" && text.length > 20 && text.length <= 3000000, "Save text is empty or exceeds the 3 MB limit.");
+    let envelope = JSON.parse(text);
+    uwRequire(uwPlain(envelope) && envelope.format === "urbanward-save", "This is not an Urbanward save.");
+    uwRequire(envelope.version === 1 || envelope.version === UW_VERSION, "Unsupported save version. This build reads versions 1 and 2.");
+    let p = envelope.payload;
+    uwRequire(uwPlain(p) && envelope.checksum === uwChecksum(JSON.stringify(p)), "Save checksum mismatch. Copy the entire exported text.");
+    uwRequire((p.n === 48 || p.n === 64) && uwInt(p.seed, 1, 2147483646), "Invalid map size or seed.");
+    uwRequire(["river", "coast", "lake"].indexOf(p.kind) >= 0, "Unknown terrain type.");
+    uwRequire(["charter", "growth", "recovery", "showcase"].indexOf(p.scenario) >= 0, "Unknown scenario.");
+    uwRequire(uwSafeString(p.name, 40) && p.name.trim().length > 0, "Invalid city name.");
+    uwRequire(uwInt(p.month, 0, 120000) && uwFinite(p.funds) && Math.abs(p.funds) < 1e12 && uwFinite(p.debt) && p.debt >= 0 && p.debt <= 60000, "Invalid calendar or treasury.");
+    uwRequire(uwFinite(p.happiness) && p.happiness >= 0 && p.happiness <= 100, "Invalid approval.");
+    uwRequire(Array.isArray(p.tax) && p.tax.length === 3, "Invalid taxes.");
+    for (let k = 0; k < 3; k = k + 1)
+        uwRequire(uwInt(p.tax[k], 3, 18), "Tax rate out of range.");
+    uwRequire(uwPlain(p.funding) && uwPlain(p.policies), "Missing funding or policies.");
+    let fundingKeys = ["roads", "power", "water", "services"];
+    for (let k = 0; k < fundingKeys.length; k = k + 1)
+        uwRequire(uwInt(p.funding[fundingKeys[k]], 40, 120), "Funding out of range.");
+    for (let k = 0; k < UW_POLICIES.length; k = k + 1)
+        uwRequire(typeof p.policies[UW_POLICIES[k].id] === "boolean", "Invalid policy setting.");
+    uwRequire(Array.isArray(p.districtNames) && p.districtNames.length === 16 && Array.isArray(p.districtFocus) && p.districtFocus.length === 16, "Invalid districts.");
+    for (let k = 0; k < 16; k = k + 1) {
+        uwRequire(uwSafeString(p.districtNames[k], 36) && p.districtNames[k].trim().length > 0, "Invalid district name.");
+        uwRequire(["balanced", "green", "employment", "heritage"].indexOf(p.districtFocus[k]) >= 0, "Invalid district focus.");
+    }
+    uwRequire(Array.isArray(p.tiles) && p.tiles.length === p.n * p.n, "Tile count does not match map dimensions.");
+    let decoded = [];
+    for (let k = 0; k < p.tiles.length; k = k + 1) {
+        let a = p.tiles[k];
+        uwRequire(Array.isArray(a) && a.length === 17, "Invalid tile at " + k + ".");
+        uwRequire(uwInt(a[0], 0, 5) && uwInt(a[1], 0, 1) && uwInt(a[2], 0, 1) && uwInt(a[3], 0, 2) && uwInt(a[4], 0, 4) && uwInt(a[5], 1, 2), "Invalid terrain or zoning at " + k + ".");
+        uwRequire(uwInt(a[6], 0, 4) && uwInt(a[7], 0, 2) && typeof a[8] === "string" && (a[8] === "" || Object.prototype.hasOwnProperty.call(UW_FACILITIES, a[8])), "Unknown building at " + k + ".");
+        uwRequire(uwInt(a[9], 0, 245) && uwInt(a[10], 0, 10000000) && uwInt(a[11], 0, 7) && uwInt(a[12], 0, 1) && uwInt(a[13], 0, 1) && uwInt(a[14], 0, 4) && uwInt(a[15], 0, 10000000) && uwInt(a[16], 0, 3), "Invalid building state at " + k + ".");
+        let t = uwTileFromTuple(a);
+        uwRequire(t.wet ? t.h === 0 && t.tree === 0 && !t.zone && !t.build : t.h >= 1, "Inconsistent terrain at " + k + ".");
+        uwRequire(!(t.road && (t.zone || t.build || t.level || t.stage || t.tree)) && !(t.build && (t.zone || t.level || t.stage)), "Overlapping infrastructure at " + k + ".");
+        uwRequire((t.zone > 0 || (t.level === 0 && t.stage === 0 && t.pop === 0)) && t.pop <= uwBuildingCapacity(t), "Invalid population or growth at " + k + ".");
+        decoded.push(t);
+    }
+    uwRequire(uwInt(p.rng, 1, 2147483646) && uwFinite(p.monthAccumulator) && p.monthAccumulator >= 0 && p.monthAccumulator < UW_MONTH_SECONDS, "Invalid simulation clock.");
+    uwRequire(typeof p.disasters === "boolean" && typeof p.bailout === "boolean" && typeof p.elapsedGoal === "boolean", "Invalid scenario flags.");
+    uwRequire(["Clear", "Light rain", "Still air", "Severe storm"].indexOf(p.weather) >= 0 && uwInt(p.weatherMonths, 0, 12) && uwInt(p.festival, 0, 6), "Invalid weather or festival.");
+    uwRequire(["", "grant", "festival"].indexOf(p.pendingChoice) >= 0 && uwInt(p.totalBuilt, 0, 100000000), "Invalid council state.");
+    uwRequire(Array.isArray(p.awards) && p.awards.length <= 5 && Array.isArray(p.objectives) && p.objectives.length <= 7, "Invalid milestones.");
+    for (let k = 0; k < p.awards.length; k = k + 1)
+        uwRequire([100, 500, 1500, 5000, 12000].indexOf(p.awards[k]) >= 0 && p.awards.indexOf(p.awards[k]) === k, "Invalid award.");
+    for (let k = 0; k < p.objectives.length; k = k + 1)
+        uwRequire(uwInt(p.objectives[k], 0, 6) && p.objectives.indexOf(p.objectives[k]) === k, "Invalid objective.");
+    uwRequire(Array.isArray(p.news) && p.news.length <= 36 && Array.isArray(p.history) && p.history.length <= 72, "Invalid history length.");
+    for (let k = 0; k < p.news.length; k = k + 1) {
+        let a = p.news[k];
+        uwRequire(uwPlain(a) && uwSafeString(a.date, 30) && uwSafeString(a.title, 180) && uwSafeString(a.body, 1200) && uwSafeString(a.kind, 30), "Invalid newspaper item.");
+    }
+    for (let k = 0; k < p.history.length; k = k + 1) {
+        let a = p.history[k];
+        uwRequire(uwPlain(a) && uwInt(a.month, 0, p.month) && uwInt(a.population, 0, p.n * p.n * 245) && uwFinite(a.balance) && Math.abs(a.balance) < 1e12 && uwFinite(a.approval) && a.approval >= 0 && a.approval <= 100, "Invalid history record.");
+    }
+    uwRequire(uwPlain(p.view) && uwFinite(p.view.x) && Math.abs(p.view.x) <= p.n && uwFinite(p.view.z) && Math.abs(p.view.z) <= p.n && uwFinite(p.view.zoom) && p.view.zoom >= 0.25 && p.view.zoom <= 1.7 && uwInt(p.view.angle, 0, 3), "Invalid camera.");
+    uwRequire(["day", "dusk", "night"].indexOf(p.view.light) >= 0 && ["low", "balanced", "high"].indexOf(p.view.quality) >= 0, "Invalid presentation settings.");
+    // Copy only allowlisted data. Never merge untrusted keys into live state.
+    let w = uwMakeWorld(p.n, p.seed, p.kind, p.name, p.scenario);
+    let scalar = ["month", "funds", "debt", "happiness", "disasters", "weather", "weatherMonths", "bailout", "totalBuilt", "elapsedGoal", "pendingChoice", "festival"];
+    for (let k = 0; k < scalar.length; k = k + 1)
+        w[scalar[k]] = p[scalar[k]];
+    w.tax = p.tax.slice(0);
+    w.districtNames = p.districtNames.slice(0);
+    w.districtFocus = p.districtFocus.slice(0);
+    for (let k = 0; k < fundingKeys.length; k = k + 1)
+        w.funding[fundingKeys[k]] = p.funding[fundingKeys[k]];
+    for (let k = 0; k < UW_POLICIES.length; k = k + 1)
+        w.policies[UW_POLICIES[k].id] = p.policies[UW_POLICIES[k].id];
+    w.news = p.news;
+    w.history = p.history;
+    w.awards = p.awards;
+    w.objectives = p.objectives;
+    w.tiles = decoded;
+    if (envelope.version === 2) {
+        uwRequire(["local", "routes"].indexOf(p.transitMode) >= 0 && Array.isArray(p.busRoutes) && p.busRoutes.length <= 8, "Invalid bus network.");
+        for (let k = 0; k < p.busRoutes.length; k++) {
+            let line = p.busRoutes[k];
+            uwRequire(uwPlain(line) && uwSafeString(line.name, 36) && line.name.trim().length > 0 && uwInt(line.buses, 1, 6) && typeof line.enabled === "boolean", "Invalid bus line.");
+            uwRequire(Array.isArray(line.stops) && line.stops.length >= 2 && line.stops.length <= 12, "Invalid line stops.");
+            for (let j = 0; j < line.stops.length; j++)
+                uwRequire(uwInt(line.stops[j], 0, p.n * p.n - 1) && line.stops.indexOf(line.stops[j]) === j, "Invalid or duplicate bus stop.");
+            // Missing facilities are allowed: a demolished stop suspends a saved line.
+            w.busRoutes.push({ name: line.name, buses: line.buses, stops: line.stops.slice(0), enabled: line.enabled });
+        }
+        w.transitMode = p.transitMode;
+        uwRequire(Array.isArray(p.storyMemory) && (p.storyMemory.length === 0 || p.storyMemory.length === 16) && Array.isArray(p.petitions) && p.petitions.length <= 16, "Invalid city stories.");
+        for (let k = 0; k < p.storyMemory.length; k++) {
+            let a = p.storyMemory[k];
+            uwRequire(uwPlain(a) && uwFinite(a.value) && a.value >= 0 && a.value <= 100 && uwFinite(a.university) && a.university >= 0 && a.university <= 100 && uwInt(a.last, -24, p.month), "Invalid story memory.");
+            w.storyMemory.push({ value: a.value, university: a.university, last: a.last });
+        }
+        for (let k = 0; k < p.petitions.length; k++) {
+            let a = p.petitions[k];
+            uwRequire(uwPlain(a) && uwInt(a.district, 0, 15) && ["traffic", "renewal", "heritage"].indexOf(a.kind) >= 0 && uwInt(a.month, 0, p.month) && uwInt(a.checked, a.month, p.month) && typeof a.resolved === "boolean" && uwInt(a.progress, 0, 3), "Invalid petition.");
+            uwRequire(uwInt(a.roads, 0, p.n*p.n) && uwInt(a.lots, 0, p.n*p.n) && uwInt(a.commercial, 0, p.n*p.n), "Invalid petition targets.");
+            w.petitions.push({ district: a.district, kind: a.kind, month: a.month, checked: a.checked, resolved: a.resolved, progress: a.progress, roads: a.roads, lots: a.lots, commercial: a.commercial });
+        }
+        uwRequire(w.petitions.filter(a => !a.resolved).length <= 4, "Too many active petitions.");
+        for (let k = 0; k < w.petitions.length; k++)
+            if (!w.petitions[k].resolved)
+                uwRequire(w.petitions.filter(a => !a.resolved && a.district === w.petitions[k].district).length === 1, "Duplicate district petition.");
+    }
+    return { world: w, rng: p.rng, accumulator: p.monthAccumulator, view: p.view };
+}
+function uwApplySave(text) {
+    let decoded = uwValidateSave(text);
+    // Do not touch the current game until all validation has passed.
+    uwWorld = decoded.world;
+    uwRng = decoded.rng;
+    uwVisualRng = uwWorld.seed + 271;
+    uwMonthAccumulator = decoded.accumulator;
+    uwCamX = decoded.view.x;
+    uwCamZ = decoded.view.z;
+    uwZoom = decoded.view.zoom;
+    viewAngle = decoded.view.angle;
+    lightMode = decoded.view.light;
+    quality = decoded.view.quality;
+    uwUndo = [];
+    canUndo = false;
+    uwCars = [];
+    uwNewRoute();
+    uwResetPerformance();
+    uwSelectedIndex = -1;
+    uwRenameDistrictId = -1;
+    uwHoverIndex = -1;
+    uwPreviewPlan = null;
+    uwDragStart = -1;
+    started = true;
+    welcomeOpen = false;
+    paused = true;
+    activeTool = "inspect";
+    sessionError = "";
+    uwRecalculate();
+    uwComputeDemand();
+    uwUpdateDistricts(false);
+    uwUpdateCamera();
+    uwApplyLighting();
+    uwRenderStatic();
+    uwRefreshUI();
+}
+function uwSaveSlot(slot, automatic) {
+    if (!uwWorld || ["1", "2", "3", "auto"].indexOf(String(slot)) < 0)
+        return;
+    try {
+        let text = uwEncodeSave();
+        localStorage.setItem(UW_SAVE_PREFIX + slot, text);
+        saveStatus = "Saved " + uwWorld.name + " · " + uwDate(uwWorld.month) + " to " + (slot === "auto" ? "autosave" : "slot " + slot) + ".";
+        uwReadSaveRows();
+        if (!automatic)
+            uwNotify(saveStatus, "good");
+    }
+    catch (e) {
+        saveStatus = "Save failed: " + String(e) + ". Export the city text to keep a portable copy.";
+        uwNotify(saveStatus, "bad");
+    }
+}
+function uwLoadSlot(slot) {
+    if (["1", "2", "3", "auto"].indexOf(String(slot)) < 0)
+        return;
+    try {
+        let text = localStorage.getItem(UW_SAVE_PREFIX + slot);
+        if (!text)
+            throw new Error("That slot is empty.");
+        uwApplySave(text);
+        modal = "";
+        uwNotify("City loaded and paused. Press Play when ready.", "good");
+    }
+    catch (e) {
+        saveStatus = "Load failed: " + String(e);
+        uwNotify(saveStatus, "bad");
+    }
+}
+function uwReadSaveRows() {
+    let rows = [], slots = ["1", "2", "3", "auto"];
+    for (let k = 0; k < slots.length; k = k + 1) {
+        let slot = slots[k], row = { slot: slot, title: slot === "auto" ? "Autosave" : "Slot " + slot, detail: "Empty", available: false };
+        try {
+            let text = localStorage.getItem(UW_SAVE_PREFIX + slot);
+            if (text) {
+                let env = JSON.parse(text), p = env.payload;
+                if (env.format !== "urbanward-save" || (env.version !== 1 && env.version !== UW_VERSION) || !p || !uwSafeString(p.name, 40) || !uwInt(p.month, 0, 120000) || env.checksum !== uwChecksum(JSON.stringify(p)))
+                    throw new Error("Invalid save");
+                row.detail = p.name + " · " + uwDate(p.month) + " · " + p.n + " × " + p.n;
+                row.available = true;
+            }
+        }
+        catch (e) {
+            row.detail = "Unavailable or damaged";
+        }
+        rows.push(row);
+    }
+    saveRows = rows;
+}
+function uwExportSave() {
+    try {
+        saveText = uwEncodeSave();
+        saveStatus = "Select all the text below and copy it to a text file. This version 2 save needs Urbanward 0.2 or later. Older version 1 saves can still be imported.";
+    }
+    catch (e) {
+        saveStatus = "Export failed: " + String(e);
+    }
+}
+function uwImportSave() {
+    try {
+        uwApplySave(String(saveText).trim());
+        modal = "";
+        saveStatus = "Portable city imported successfully.";
+        uwNotify(saveStatus, "good");
+    }
+    catch (e) {
+        saveStatus = "Import rejected: " + String(e) + " Your current city was not replaced.";
+        uwNotify(saveStatus, "bad");
+    }
+}

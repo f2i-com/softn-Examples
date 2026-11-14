@@ -1,53 +1,143 @@
-// AI Chat — a chat with Qwen3-0.6B, run on this device by SoftN, with conversation history
+// AI Chat — private on-device Qwen3-0.6B chat with conversation history
+
+let MODEL_SPEC = "unsloth/Qwen3-0.6B-GGUF:Q4_K_M"
 
 // Model state
 let modelLoaded = false
 let modelHandle = ""
 let modelLoading = false
+let loadError = ""
 let statusText = "Model not downloaded yet"
+let pendingPrompt = ""
 
 // Conversation state
 let conversations = []
+let filteredConversations = []
+let searchQuery = ""
 let activeConversationId = ""
 let chatMessages = []
 
-// Input state
+// Input & generation state
 let inputText = ""
 let generating = false
+let generatingConvId = ""
 
-// Settings. Each number keeps a text twin so a half-typed value ("0.") is
-// not snapped back to the last good number under the user's cursor.
+// Settings
 let showSettings = false
+let thinkingMode = false
+let systemPrompt = "You are a helpful, clear, and concise assistant."
 let temperature = 0.7
-let maxTokens = 256
-let topP = 0.8
+let maxTokens = 512
+let topP = 0.85
 let temperatureText = "0.7"
-let maxTokensText = "256"
-let topPText = "0.8"
+let maxTokensText = "512"
+let topPText = "0.85"
 let settingsError = ""
 let settingsErrorField = ""
 
-// Two-step delete: the first click arms a conversation, the second deletes
-// it. The arm expires after three ticks of the one-second Loop.
+// Two-step delete & click-bubbling guard
 let confirmDeleteId = ""
 let confirmDeleteTicks = 0
+let suppressSelectUntil = 0
 
-// UI state
-let showSidebar = false
+// Copy feedback & expanded reasoning tracking
+let showSidebar = true
 let isMobile = false
 let copiedMsgId = ""
+let copiedTicks = 0
+let expandedThinkId = ""
 
-function copyReply(id, content) {
-  if (!content) return
+function copyReply(id, msg) {
+  let clean = getMsgAnswer(msg)
+  if (!clean) clean = (msg && msg.data && msg.data.content) ? msg.data.content : ""
+  if (!clean) return
   try {
     if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(content)
+      navigator.clipboard.writeText(clean)
     }
   } catch (e) {}
   copiedMsgId = id
+  copiedTicks = 0
+}
+
+// ── Reasoning (<think>...</think>) Parser ──
+
+function extractThinkParts(raw) {
+  let text = String(raw || "")
+  let openIdx = text.indexOf("<think>")
+  if (openIdx < 0) {
+    return { think: "", answer: text.trim() }
+  }
+  let closeIdx = text.indexOf("</think>", openIdx + 7)
+  if (closeIdx < 0) {
+    let partialThink = text.substring(openIdx + 7).trim()
+    let prefix = text.substring(0, openIdx).trim()
+    return {
+      think: partialThink,
+      answer: prefix || "(Reasoning finished at token limit — increase Max tokens in Settings for longer answers.)"
+    }
+  }
+  let thinkBody = text.substring(openIdx + 7, closeIdx).trim()
+  let rest = (text.substring(0, openIdx) + " " + text.substring(closeIdx + 8)).trim()
+  return {
+    think: thinkBody,
+    answer: rest || thinkBody
+  }
+}
+
+function hasMsgThink(msg) {
+  if (!msg || !msg.data || msg.data.role !== "assistant") return false
+  let parts = extractThinkParts(msg.data.content)
+  return parts.think.length > 0
+}
+
+function getMsgThink(msg) {
+  if (!msg || !msg.data) return ""
+  return extractThinkParts(msg.data.content).think
+}
+
+function getMsgAnswer(msg) {
+  if (!msg || !msg.data) return ""
+  if (msg.data.role !== "assistant") return msg.data.content || ""
+  return extractThinkParts(msg.data.content).answer
+}
+
+function toggleThink(id) {
+  if (expandedThinkId === id) {
+    expandedThinkId = ""
+  } else {
+    expandedThinkId = id
+  }
+}
+
+function isThinkOpen(msg) {
+  return !!msg && expandedThinkId === msg.id
 }
 
 // ── Helpers ──
+
+function applyConversationFilter() {
+  let q = searchQuery.trim().toLowerCase()
+  if (!q) {
+    filteredConversations = conversations
+    return
+  }
+  let out = []
+  let i = 0
+  while (i < conversations.length) {
+    let title = String(conversations[i].data.title || "").toLowerCase()
+    if (title.indexOf(q) >= 0) {
+      out.push(conversations[i])
+    }
+    i = i + 1
+  }
+  filteredConversations = out
+}
+
+function setSearchQuery(val) {
+  searchQuery = val || ""
+  applyConversationFilter()
+}
 
 function refreshConversations() {
   let rows = db.query("conversations")
@@ -60,20 +150,21 @@ function refreshConversations() {
     return 0
   })
   conversations = rows
+  applyConversationFilter()
 }
 
 function reloadChatMessages() {
   let allMsgs = db.query("messages")
-  chatMessages = []
-  if (allMsgs) {
+  let next = []
+  if (allMsgs && activeConversationId) {
     let i = 0
     while (i < allMsgs.length) {
       if (allMsgs[i].data.conversationId === activeConversationId) {
-        chatMessages.push(allMsgs[i])
+        next.push(allMsgs[i])
       }
       i = i + 1
     }
-    chatMessages.sort(function(a, b) {
+    next.sort(function(a, b) {
       let ta = a.data.timestamp || ""
       let tb = b.data.timestamp || ""
       if (ta < tb) return -1
@@ -81,62 +172,133 @@ function reloadChatMessages() {
       return 0
     })
   }
+  chatMessages = next
 }
 
-// ── Init ──
+function scrollChatToBottom() {
+  try {
+    setTimeout(function() {
+      let el = document.querySelector(".chat-scroll-area")
+      if (el) el.scrollTop = el.scrollHeight
+    }, 30)
+  } catch (e) {}
+}
+
+// ── Init & Lifecycle ──
+
+function syncViewport() {
+  try {
+    let nextMobile = window.innerWidth < 680
+    if (nextMobile !== isMobile) {
+      isMobile = nextMobile
+      showSidebar = !nextMobile
+    }
+  } catch (e) {}
+}
 
 function _init() {
   refreshConversations()
-  // Enter sends, Shift+Enter breaks the line. A template handler is never
-  // handed the key, so this is a window listener; the composer is the only
-  // textarea on the page.
-  if (!window.__aicKeyBound) {
-    window.__aicKeyBound = true
-    window.addEventListener("keydown", function (e) {
-      if (e.key !== "Enter" || e.shiftKey || e.targetTag !== "textarea") { return }
-      e.preventDefault()
-      if (canSend()) { sendMessage() }
-    }, true)
+  if (conversations.length > 0 && !activeConversationId) {
+    activeConversationId = conversations[0].id
+    reloadChatMessages()
   }
-  // Detect mobile on init
+
   try {
-    isMobile = window.innerWidth < 640
+    isMobile = window.innerWidth < 680
     showSidebar = !isMobile
-  } catch(e) {
+
+    if (window.__aicKeyHandler) {
+      window.removeEventListener("keydown", window.__aicKeyHandler, true)
+    }
+    window.__aicKeyHandler = function(e) {
+      let tag = e.targetTag || (e.target && e.target.tagName ? String(e.target.tagName).toLowerCase() : "")
+      if (e.key !== "Enter" || e.shiftKey || tag !== "textarea") return
+      if (e.target && e.target.classList && e.target.classList.contains("sys-prompt-input")) return
+      e.preventDefault()
+      if (canSend()) sendMessage()
+    }
+    window.addEventListener("keydown", window.__aicKeyHandler, true)
+
+    if (window.__aicResizeHandler) {
+      window.removeEventListener("resize", window.__aicResizeHandler)
+    }
+    window.__aicResizeHandler = function() { syncViewport() }
+    window.addEventListener("resize", window.__aicResizeHandler)
+  } catch (e) {
     showSidebar = true
   }
+}
+
+function _onHide() {
+  try {
+    if (window.__aicKeyHandler) {
+      window.removeEventListener("keydown", window.__aicKeyHandler, true)
+      window.__aicKeyHandler = null
+    }
+    if (window.__aicResizeHandler) {
+      window.removeEventListener("resize", window.__aicResizeHandler)
+      window.__aicResizeHandler = null
+    }
+  } catch (e) {}
 }
 
 // ── Model Management ──
 
 function loadModel() {
   if (modelLoading || modelLoaded) return
+  loadError = ""
+  if (typeof softn === "undefined" || !softn.ai || !softn.ai.model || typeof softn.ai.model.load !== "function") {
+    loadError = "Local AI runtime is unavailable in this environment. Make sure AI permissions are allowed and WebGPU/WASM is supported."
+    statusText = "Local AI unavailable"
+    return
+  }
   modelLoading = true
-  statusText = "Downloading the model (about 400 MB)... a few minutes the first time"
-  // A GGUF checkpoint from Hugging Face; SoftN keeps its quantized weights as
-  // they are on the GPU. Room for 2048 tokens of conversation and reply, of
-  // which a reply may take up to half.
-  softn.ai.model.load("unsloth/Qwen3-0.6B-GGUF:Q4_K_M", { context: 2048 }, function(result) {
-    if (!result || result.error || !result.modelHandle) {
+  statusText = "Downloading Qwen3-0.6B (~400 MB)…"
+  try {
+    softn.ai.model.load(MODEL_SPEC, { context: 2048 }, function(result) {
+      if (!result || result.error || !result.modelHandle) {
+        modelLoading = false
+        modelLoaded = false
+        let reason = result && result.error ? String(result.error) : "no model handle returned"
+        loadError = "Could not load Qwen3-0.6B: " + reason
+        statusText = "Download failed — tap Retry"
+        pendingPrompt = ""
+        return
+      }
+      modelHandle = result.modelHandle
+      modelLoaded = true
       modelLoading = false
-      modelLoaded = false
-      statusText = "Could not download the model: " + (result && result.error ? result.error : "no model handle") + ". Try again."
-      return
-    }
-    modelHandle = result.modelHandle
-    modelLoaded = true
+      loadError = ""
+      statusText = "Qwen3-0.6B ready · on-device"
+      if (pendingPrompt) {
+        let queued = pendingPrompt
+        pendingPrompt = ""
+        inputText = queued
+        sendMessage()
+      }
+    })
+  } catch (err) {
     modelLoading = false
-    statusText = "Ready. Everything runs on this device."
-  })
+    modelLoaded = false
+    loadError = "Could not start model download: " + String(err && err.message ? err.message : err)
+    statusText = "Model load error"
+    pendingPrompt = ""
+  }
 }
 
 function unloadModel() {
-  if (!modelLoaded) return
-  softn.ai.model.release(modelHandle, function() {
+  if (!modelLoaded || generating) return
+  try {
+    softn.ai.model.release(modelHandle, function() {
+      modelLoaded = false
+      modelHandle = ""
+      statusText = "Model unloaded from memory"
+    })
+  } catch (e) {
     modelLoaded = false
     modelHandle = ""
     statusText = "Model unloaded"
-  })
+  }
 }
 
 // ── Conversation CRUD ──
@@ -155,7 +317,6 @@ function newConversation() {
   chatMessages = []
   inputText = ""
   confirmDeleteId = ""
-  // Close sidebar on mobile after creating
   if (isMobile) showSidebar = false
 }
 
@@ -169,6 +330,7 @@ function conversationExists(id) {
 }
 
 function selectConversation(conv) {
+  if (Date.now() < suppressSelectUntil) return
   let id = ""
   if (typeof conv === "string") {
     id = conv
@@ -176,21 +338,20 @@ function selectConversation(conv) {
     id = conv.id
   }
   if (!id || id === activeConversationId) {
-    // On mobile, just close sidebar if tapping same conversation
     if (isMobile) showSidebar = false
     return
   }
-  // A click that bubbles up from a just-deleted row must not select a ghost.
   if (!conversationExists(id)) return
   activeConversationId = id
   reloadChatMessages()
-  inputText = ""
-  // Close sidebar on mobile after selecting
+  confirmDeleteId = ""
   if (isMobile) showSidebar = false
+  scrollChatToBottom()
 }
 
 function deleteConversation(id) {
   if (!id) return
+  suppressSelectUntil = Date.now() + 150
   let allMsgs = db.query("messages")
   if (allMsgs) {
     let i = 0
@@ -206,15 +367,36 @@ function deleteConversation(id) {
   confirmDeleteId = ""
   confirmDeleteTicks = 0
   if (activeConversationId === id) {
-    activeConversationId = ""
-    chatMessages = []
+    if (conversations.length > 0) {
+      activeConversationId = conversations[0].id
+      reloadChatMessages()
+    } else {
+      activeConversationId = ""
+      chatMessages = []
+    }
   }
 }
 
-// First click arms the row ("Delete?"), a second click within three seconds
-// deletes it. Any other click leaves the arm to expire on its own.
+function clearActiveConversation() {
+  if (!activeConversationId || generating) return
+  let allMsgs = db.query("messages")
+  if (allMsgs) {
+    let i = 0
+    while (i < allMsgs.length) {
+      if (allMsgs[i].data.conversationId === activeConversationId) {
+        db.delete(allMsgs[i].id)
+      }
+      i = i + 1
+    }
+  }
+  db.update(activeConversationId, { title: "New chat", updatedAt: new Date().toISOString() })
+  refreshConversations()
+  reloadChatMessages()
+}
+
 function requestDelete(id) {
   if (!id) return
+  suppressSelectUntil = Date.now() + 150
   if (confirmDeleteId === id) {
     deleteConversation(id)
     return
@@ -223,12 +405,20 @@ function requestDelete(id) {
   confirmDeleteTicks = 0
 }
 
-function tickDeleteConfirm() {
-  if (!confirmDeleteId) return
-  confirmDeleteTicks = confirmDeleteTicks + 1
-  if (confirmDeleteTicks >= 3) {
-    confirmDeleteId = ""
-    confirmDeleteTicks = 0
+function tickUiTimers() {
+  if (confirmDeleteId) {
+    confirmDeleteTicks = confirmDeleteTicks + 1
+    if (confirmDeleteTicks >= 4) {
+      confirmDeleteId = ""
+      confirmDeleteTicks = 0
+    }
+  }
+  if (copiedMsgId) {
+    copiedTicks = copiedTicks + 1
+    if (copiedTicks >= 2) {
+      copiedMsgId = ""
+      copiedTicks = 0
+    }
   }
 }
 
@@ -236,114 +426,168 @@ function isConfirmingDelete(conv) {
   return !!conv && conv.id === confirmDeleteId
 }
 
-// ── Message Handling ──
+// ── Message Generation ──
+
+function runGenerationForConversation(targetConvId) {
+  if (!targetConvId || !modelLoaded || generating) return
+  let allMsgs = db.query("messages") || []
+  let thread = []
+  let i = 0
+  while (i < allMsgs.length) {
+    if (allMsgs[i].data.conversationId === targetConvId) {
+      thread.push(allMsgs[i])
+    }
+    i = i + 1
+  }
+  thread.sort(function(a, b) {
+    let ta = a.data.timestamp || ""
+    let tb = b.data.timestamp || ""
+    if (ta < tb) return -1
+    if (ta > tb) return 1
+    return 0
+  })
+
+  let aiMessages = []
+  let sys = systemPrompt.trim()
+  let modeDirective = thinkingMode ? " /think" : " /no_think"
+  if (sys) {
+    aiMessages.push({ role: "system", content: sys + modeDirective })
+  } else {
+    aiMessages.push({ role: "system", content: "You are a helpful assistant." + modeDirective })
+  }
+
+  let j = 0
+  while (j < thread.length) {
+    let m = thread[j]
+    if (m.data.content) {
+      let cleanContent = m.data.role === "assistant" ? getMsgAnswer(m) : m.data.content
+      aiMessages.push({ role: m.data.role, content: cleanContent })
+    }
+    j = j + 1
+  }
+
+  generating = true
+  generatingConvId = targetConvId
+  statusText = thinkingMode ? "Reasoning on device…" : "Generating reply…"
+  scrollChatToBottom()
+
+  try {
+    softn.ai.model.generate(modelHandle, aiMessages, {
+      max_new_tokens: maxTokens,
+      temperature: temperature,
+      top_p: topP,
+      top_k: 20,
+      do_sample: temperature > 0
+    }, function(result) {
+      generating = false
+      generatingConvId = ""
+      if (!result || result.error) {
+        statusText = "Generation error: " + (result && result.error ? result.error : "unknown error")
+        return
+      }
+      if (!conversationExists(targetConvId)) {
+        statusText = "Qwen3-0.6B ready · on-device"
+        return
+      }
+      let responseText = result.text || ""
+      let respNow = new Date().toISOString()
+      db.create("messages", {
+        conversationId: targetConvId,
+        role: "assistant",
+        content: responseText,
+        timestamp: respNow
+      })
+      db.update(targetConvId, { updatedAt: respNow })
+      refreshConversations()
+      if (activeConversationId === targetConvId) {
+        reloadChatMessages()
+        scrollChatToBottom()
+      }
+      statusText = "Qwen3-0.6B ready · on-device"
+    })
+  } catch (err) {
+    generating = false
+    generatingConvId = ""
+    statusText = "Generation failed: " + String(err && err.message ? err.message : err)
+  }
+}
 
 function sendMessage() {
-  if (!inputText) return
+  let trimmed = inputText ? inputText.trim() : ""
+  if (!trimmed) return
   if (!modelLoaded) {
-    statusText = "Download the model first"
+    pendingPrompt = trimmed
+    inputText = ""
+    loadModel()
     return
   }
   if (generating) return
 
-  // Save input before newConversation() clears it
-  let userContent = inputText
-
-  // Auto-create conversation if none active
   if (!activeConversationId) {
     newConversation()
   }
-
+  let targetConvId = activeConversationId
   let now = new Date().toISOString()
 
   db.create("messages", {
-    conversationId: activeConversationId,
+    conversationId: targetConvId,
     role: "user",
-    content: userContent,
-    imageDataUrl: "",
+    content: trimmed,
     timestamp: now
   })
 
-  // Auto-title from first user message
-  let convRows = db.query("conversations")
+  let convRows = db.query("conversations") || []
   let i = 0
   while (i < convRows.length) {
-    if (convRows[i].id === activeConversationId) {
-      if (convRows[i].data.title === "New chat" && userContent) {
-        let title = userContent
-        if (title.length > 40) {
-          title = title.substring(0, 37) + "..."
-        }
-        db.update(activeConversationId, { title: title, updatedAt: now })
+    if (convRows[i].id === targetConvId) {
+      if (convRows[i].data.title === "New chat") {
+        let title = trimmed.length > 42 ? trimmed.substring(0, 39) + "…" : trimmed
+        db.update(targetConvId, { title: title, updatedAt: now })
       } else {
-        db.update(activeConversationId, { updatedAt: now })
+        db.update(targetConvId, { updatedAt: now })
       }
       break
     }
     i = i + 1
   }
 
+  inputText = ""
   refreshConversations()
   reloadChatMessages()
-
-  inputText = ""
-
-  generating = true
-  statusText = "Generating..."
-
-  // The model reads text: an image kept from an older chat stays on screen
-  // and its message goes to the model as its words. The oldest turns are let
-  // go by the runtime when a conversation outgrows the model's room.
-  let aiMessages = []
-  let j = 0
-  while (j < chatMessages.length) {
-    let m = chatMessages[j]
-    if (m.data.content) {
-      aiMessages.push({ role: m.data.role, content: m.data.content })
-    }
-    j = j + 1
-  }
-
-  softn.ai.model.generate(modelHandle, aiMessages, {
-    max_new_tokens: maxTokens,
-    temperature: temperature,
-    top_p: topP,
-    top_k: 20,
-    do_sample: true
-  }, function(result) {
-    if (!result || result.error) {
-      generating = false
-      statusText = "The model could not answer: " + (result && result.error ? result.error : "unknown error")
-      return
-    }
-    let responseText = result.text || ""
-    let respNow = new Date().toISOString()
-    db.create("messages", {
-      conversationId: activeConversationId,
-      role: "assistant",
-      content: responseText,
-      imageDataUrl: "",
-      timestamp: respNow
-    })
-    reloadChatMessages()
-    generating = false
-    statusText = "Ready. Everything runs on this device."
-  })
+  runGenerationForConversation(targetConvId)
 }
 
-// Start a conversation with a pre-filled prompt (for suggestion cards)
+function regenerateLastReply() {
+  if (!modelLoaded || generating || !activeConversationId || chatMessages.length === 0) return
+  let last = chatMessages[chatMessages.length - 1]
+  if (last && last.data.role === "assistant") {
+    db.delete(last.id)
+    reloadChatMessages()
+  }
+  runGenerationForConversation(activeConversationId)
+}
+
+function isLastAssistantMsg(msg) {
+  if (!msg || chatMessages.length === 0 || generating) return false
+  let last = chatMessages[chatMessages.length - 1]
+  return last.id === msg.id && msg.data.role === "assistant"
+}
+
 function startWithPrompt(text) {
-  if (!modelLoaded || generating) return
+  if (generating) return
+  if (!modelLoaded) {
+    pendingPrompt = text
+    loadModel()
+    return
+  }
   inputText = text
   sendMessage()
 }
 
-// Check if send is possible
 function canSend() {
-  return inputText && modelLoaded && !generating
+  let trimmed = inputText ? inputText.trim() : ""
+  return trimmed.length > 0 && !generating && !modelLoading
 }
-
-// ── Input Handlers ──
 
 function updateInput(val) {
   inputText = val
@@ -353,6 +597,18 @@ function updateInput(val) {
 
 function toggleSettings() {
   showSettings = !showSettings
+}
+
+function toggleThinkingMode() {
+  thinkingMode = !thinkingMode
+  if (thinkingMode && maxTokens < 512) {
+    maxTokens = 512
+    maxTokensText = "512"
+  }
+}
+
+function setSystemPrompt(val) {
+  systemPrompt = val
 }
 
 function clearSettingsError(field) {
@@ -366,7 +622,7 @@ function setTemperature(val) {
   temperatureText = "" + val
   let n = parseFloat(val)
   if (isNaN(n) || n < 0 || n > 2) {
-    settingsError = "Temperature must be a number from 0 to 2. Still using " + temperature + "."
+    settingsError = "Temperature must be 0–2 (using " + temperature + ")."
     settingsErrorField = "temperature"
     return
   }
@@ -377,8 +633,8 @@ function setTemperature(val) {
 function setMaxTokens(val) {
   maxTokensText = "" + val
   let n = parseInt(val)
-  if (isNaN(n) || n < 1 || n > 1024) {
-    settingsError = "Max tokens must be a whole number from 1 to 1024. Still using " + maxTokens + "."
+  if (isNaN(n) || n < 16 || n > 1536) {
+    settingsError = "Max tokens must be 16–1536 (using " + maxTokens + ")."
     settingsErrorField = "maxTokens"
     return
   }
@@ -390,7 +646,7 @@ function setTopP(val) {
   topPText = "" + val
   let n = parseFloat(val)
   if (isNaN(n) || n < 0 || n > 1) {
-    settingsError = "Top-P must be a number from 0 to 1. Still using " + topP + "."
+    settingsError = "Top-P must be 0–1 (using " + topP + ")."
     settingsErrorField = "topP"
     return
   }
@@ -398,7 +654,7 @@ function setTopP(val) {
   clearSettingsError("topP")
 }
 
-// ── UI ──
+// ── UI Helpers ──
 
 function toggleSidebar() {
   showSidebar = !showSidebar
@@ -408,14 +664,24 @@ function closeSidebar() {
   showSidebar = false
 }
 
-// ── Template Helpers ──
-
 function isActiveConv(conv) {
   return conv.id === activeConversationId
 }
 
 function getConvTitle(conv) {
   return conv.data.title || "Untitled"
+}
+
+function getActiveTitle() {
+  if (!activeConversationId) return "AI Chat"
+  let i = 0
+  while (i < conversations.length) {
+    if (conversations[i].id === activeConversationId) {
+      return conversations[i].data.title || "New chat"
+    }
+    i = i + 1
+  }
+  return "AI Chat"
 }
 
 function getConvTime(conv) {
@@ -432,8 +698,8 @@ function getConvTime(conv) {
     if (hrs < 24) return hrs + "h"
     let days = Math.floor(hrs / 24)
     if (days < 7) return days + "d"
-    return d.getMonth() + 1 + "/" + d.getDate()
-  } catch(e) {
+    return (d.getMonth() + 1) + "/" + d.getDate()
+  } catch (e) {
     return ""
   }
 }
@@ -450,7 +716,7 @@ function getMsgTime(msg) {
     if (h === 0) h = 12
     let mStr = m < 10 ? "0" + m : "" + m
     return h + ":" + mStr + " " + ampm
-  } catch(e) {
+  } catch (e) {
     return ""
   }
 }
@@ -463,14 +729,6 @@ function isAssistantMsg(msg) {
   return msg.data.role === "assistant"
 }
 
-function hasImage(msg) {
-  return msg.data.imageDataUrl && msg.data.imageDataUrl !== ""
-}
-
 function hasContent(msg) {
   return msg.data.content && msg.data.content !== ""
-}
-
-function msgCount() {
-  return chatMessages.length
 }

@@ -380,6 +380,14 @@
       toastType = "warning"
       return
     }
+    if (authorityMode) {
+      authorityMode = false
+      authorityCode = ""
+      authorityTicket = ""
+      authorityRevision = 0
+      authorityTurnDeadlineMs = 0
+      authorityForget()
+    }
     localStorage.setItem("poker-player-name", playerName)
     // Stop any existing sync before starting a new room
     let existingRoom = db.getSavedSyncRoom()
@@ -450,6 +458,132 @@
     db.create("poker_table", tableData)
 
     currentPage = "table"
+  }
+
+  function quickPlayBots() {
+    let trimmedName = ("" + (playerName || "")).replace(/^\s+|\s+$/g, "")
+    if (!trimmedName) {
+      playerName = "Player"
+    } else {
+      playerName = trimmedName
+    }
+    if (authorityMode) {
+      authorityMode = false
+      authorityCode = ""
+      authorityTicket = ""
+      authorityRevision = 0
+      authorityTurnDeadlineMs = 0
+      authorityForget()
+    }
+    localStorage.setItem("poker-player-name", playerName)
+    let existingRoom = db.getSavedSyncRoom()
+    if (existingRoom) {
+      db.stopSync(existingRoom)
+    } else if (syncRoom) {
+      db.stopSync(syncRoom)
+    }
+    hasExternalRoom = false
+    generateRoomCode()
+    syncConnecting = false
+    syncConnected = false
+    syncPeers = 0
+
+    // Clean up stale records from previous sessions
+    let oldTables = db.query("poker_table")
+    let oti = 0
+    while (oti < oldTables.length) {
+      db.hardDelete("poker_table", oldTables[oti].id)
+      oti = oti + 1
+    }
+    let oldPlayers = db.query("poker_players")
+    let opi = 0
+    while (opi < oldPlayers.length) {
+      db.hardDelete("poker_players", oldPlayers[opi].id)
+      opi = opi + 1
+    }
+    let oldActions = db.query("poker_actions")
+    let oai = 0
+    while (oai < oldActions.length) {
+      db.hardDelete("poker_actions", oldActions[oai].id)
+      oai = oai + 1
+    }
+
+    mySeat = -1
+    myRecordMissingTicks = 0
+    botSeats = []
+    players = []
+    tableId = ""
+    showResultsModal = false
+    showLeaveModal = false
+    showdownAutoDelay = 0
+    showdownAutoDeadlineMs = 0
+    showdownStartedAtMs = 0
+    soundWatchInitialized = false
+    soundLastHandNumber = 0
+    soundLastCommunityCount = 0
+    soundLastActionKey = ""
+    soundLastActionScanSig = ""
+    slowLaneTickCounter = 0
+    lastHostRepairAtMs = 0
+
+    let tableRec = db.create("poker_table", {
+      gamePhase: TableStateClass.phaseWaiting(),
+      handNumber: 0,
+      dealerSeat: 0,
+      currentTurnSeat: -1,
+      currentBet: 0,
+      pot: 0,
+      deck: [],
+      deckPosition: 0,
+      communityCards: [],
+      smallBlind: 10,
+      bigBlind: 20,
+      lastFullRaise: 20,
+      lastBigBlindSeat: -1,
+      resultSummary: ""
+    })
+    if (tableRec && tableRec.id) {
+      tableId = tableRec.id
+    }
+
+    // Seat human at Seat 0 and populate 3 bots (Seats 1, 2, 3)
+    db.create("poker_players", {
+      peerId: peerId,
+      name: playerName,
+      seat: 0,
+      chips: 1000,
+      holeCards: [],
+      bet: 0,
+      handContribution: 0,
+      status: TableStateClass.statusWaiting(),
+      hasActed: false,
+      avatarUrl: walletAvatarUrl || ""
+    })
+    mySeat = 0
+    let bs = 1
+    while (bs <= 3) {
+      db.create("poker_players", {
+        peerId: "bot-" + bs,
+        name: "Bot " + (bs + 1),
+        seat: bs,
+        chips: 1000,
+        holeCards: [],
+        bet: 0,
+        handContribution: 0,
+        status: TableStateClass.statusWaiting(),
+        hasActed: false,
+        avatarUrl: ""
+      })
+      bs = bs + 1
+    }
+
+    refreshFromDB()
+    wasHostLastTick = true
+    hostAutomationPauseUntilMs = 0
+    startHand()
+    currentPage = "table"
+    toastMessage = "Solo table dealt vs 3 bots — good luck!"
+    toastType = "success"
   }
 
   function joinRoom() {
@@ -600,12 +734,24 @@
     if (!syncRoom) return
     if (typeof navigator !== "undefined" && navigator && navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(syncRoom)
-      toastMessage = "Room code copied!"
+      toastMessage = (authorityMode ? "Table code copied!" : "Room code copied!")
       toastType = "success"
       return
     }
     toastMessage = "Clipboard unavailable — the code is " + syncRoom
     toastType = "warning"
+  }
+
+  function copyAuthorityUrl() {
+    if (!authorityUrl) return
+    if (typeof navigator !== "undefined" && navigator && navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(authorityUrl)
+      toastMessage = "Server address copied!"
+      toastType = "success"
+      return
+    }
+    toastMessage = "Server: " + authorityUrl
+    toastType = "info"
   }
 
   function buildDebugSnapshotText() {
@@ -690,10 +836,35 @@
     soundLastActionScanSig = ""
   }
 
+  function ensureSoundCtx() {
+    if (soundCtx) {
+      try {
+        if (soundCtx.state === "suspended" && typeof soundCtx.resume === "function") {
+          soundCtx.resume()
+        }
+      } catch (e) {}
+      return soundCtx
+    }
+    if (typeof window === "undefined") return null
+    try {
+      let Ctor = window.AudioContext || window.webkitAudioContext
+      if (Ctor) {
+        soundCtx = new Ctor()
+        if (soundCtx && soundCtx.state === "suspended" && typeof soundCtx.resume === "function") {
+          soundCtx.resume()
+        }
+      }
+    } catch (e) {
+      soundCtx = null
+    }
+    return soundCtx
+  }
+
   function initSound() {
     if (!soundEnabled) return
     soundLastError = ""
-    soundDiag = "BridgeAudio+Element fallback"
+    soundDiag = "BridgeAudio+WebAudio+Element"
+    ensureSoundCtx()
     initWavSounds()
   }
 
@@ -753,19 +924,47 @@
   function playTone(freq, durationMs, vol) {
     if (!soundEnabled) return
     initSound()
-    if (!soundCtx) return
-    let now = soundCtx.currentTime
-    let osc = soundCtx.createOscillator()
-    let gain = soundCtx.createGain()
-    osc.type = "triangle"
-    osc.frequency.setValueAtTime(freq, now)
-    gain.gain.setValueAtTime(0.0001, now)
-    gain.gain.exponentialRampToValueAtTime(vol, now + 0.01)
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + (durationMs / 1000))
-    osc.connect(gain)
-    gain.connect(soundCtx.destination)
-    osc.start(now)
-    osc.stop(now + (durationMs / 1000) + 0.01)
+    let ctx = ensureSoundCtx()
+    if (!ctx) return
+    try {
+      let now = ctx.currentTime
+      let osc = ctx.createOscillator()
+      let gain = ctx.createGain()
+      osc.type = "triangle"
+      osc.frequency.setValueAtTime(freq, now)
+      gain.gain.setValueAtTime(0.0001, now)
+      gain.gain.exponentialRampToValueAtTime(vol, now + 0.01)
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + (durationMs / 1000))
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(now)
+      osc.stop(now + (durationMs / 1000) + 0.01)
+    } catch (e) {}
+  }
+
+  function playFoldSound() {
+    if (!soundEnabled) return
+    initSound()
+    let ctx = ensureSoundCtx()
+    if (ctx) {
+      try {
+        let now = ctx.currentTime
+        let osc = ctx.createOscillator()
+        let gain = ctx.createGain()
+        osc.type = "triangle"
+        osc.frequency.setValueAtTime(340, now)
+        osc.frequency.exponentialRampToValueAtTime(185, now + 0.085)
+        gain.gain.setValueAtTime(0.0001, now)
+        gain.gain.exponentialRampToValueAtTime(0.12, now + 0.012)
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.095)
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        osc.start(now)
+        osc.stop(now + 0.105)
+        return
+      } catch (e) {}
+    }
+    playWavSound("check")
   }
 
   function playDealSound() {
@@ -801,10 +1000,15 @@
         playTone(620, 26, 0.11)
       }
     } else if (actionType === "fold") {
-      playTone(320, 40, 0.1)
+      playFoldSound()
     } else if (actionType === "check") {
       if (!playWavSound("check")) {
         playTone(500, 18, 0.12)
+      }
+    } else if (actionType === "showdown") {
+      if (!playWavSound("raise")) {
+        playTone(660, 50, 0.12)
+        playTone(880, 75, 0.12)
       }
     }
   }
@@ -822,6 +1026,7 @@
   }
 
   function refreshSyncStatus() {
+    if (authorityMode) return
     let status = db.getSyncStatus(syncRoom)
     if (status) {
       syncConnected = status.connected
@@ -1469,7 +1674,7 @@
           soundLastCommunityCount = communityCards.length
         }
         let actionScanSig = "h=" + handNumber + "|ph=" + gamePhase + "|turn=" + currentTurnSeat + "|pot=" + pot + "|cb=" + currentBet + "|cc=" + communityCards.length
-        if (runSlowLane && actionScanSig !== soundLastActionScanSig) {
+        if (actionScanSig !== soundLastActionScanSig) {
           let allActions = db.query("poker_actions")
           let sai = 0
           let latestKey = soundLastActionKey
@@ -1800,4 +2005,16 @@
     }
     return count
   }
+
+  function _onHide() {
+    soundPlaySrc = ""
+    if (soundCtx) {
+      try {
+        if (soundCtx.state === "running" && typeof soundCtx.suspend === "function") {
+          soundCtx.suspend()
+        }
+      } catch (e) {}
+    }
+  }
+
 

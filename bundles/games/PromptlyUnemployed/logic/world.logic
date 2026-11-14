@@ -177,11 +177,16 @@ function updateCamera() {
     sy = (myRand() - 0.5) * shakeAmt
   }
   let bob = Math.sin(bobPhase) * 0.028 * bobAmt
+  let pitch = -0.01
+  if (typeof window !== "undefined" && typeof window.__scene3dPitch === "number" && !isNaN(window.__scene3dPitch)) {
+    pitch = Math.max(-0.85, Math.min(0.85, window.__scene3dPitch))
+  }
+  let cosP = Math.cos(pitch)
   cameraPos = { x: playerX + sx, y: 1.6 + sy + bob, z: playerZ }
   cameraLookAt = {
-    x: playerX + Math.sin(playerAngle) * 5,
-    y: 1.55,
-    z: playerZ + Math.cos(playerAngle) * 5
+    x: cameraPos.x + Math.sin(playerAngle) * cosP * 5,
+    y: cameraPos.y + Math.sin(pitch) * 5,
+    z: cameraPos.z + Math.cos(playerAngle) * cosP * 5
   }
 }
 
@@ -287,7 +292,7 @@ function meetingDriftTick() {
   }
   let tx = 6, ty = 1.7, tz = 0.2
   if (dlgSpeaker === "PAX") { tx = 9.6; ty = 1.9; tz = 0.6 }
-  else if (dlgSpeaker === "Clive") { tx = 4.2; ty = 1.4; tz = 4.4 }
+  else if (dlgSpeaker === "Clive") { tx = 2.6; ty = 1.45; tz = 1.6 }
   let dx = tx - cameraPos.x, dy = ty - cameraPos.y, dz = tz - cameraPos.z
   let wantYaw = Math.atan2(dx, dz)
   let wantPitch = Math.atan2(dy, Math.sqrt(dx * dx + dz * dz)) * 0.6
@@ -295,9 +300,17 @@ function meetingDriftTick() {
   let d = wantYaw - yaw
   while (d > Math.PI) { d = d - Math.PI * 2 }
   while (d < -Math.PI) { d = d + Math.PI * 2 }
-  window.__scene3dYaw = yaw + d * 0.035
+  let nextYaw = yaw + d * 0.035
   let pitch = window.__scene3dPitch !== undefined ? window.__scene3dPitch : 0
-  window.__scene3dPitch = pitch + (wantPitch - pitch) * 0.035
+  let nextPitch = Math.max(-0.85, Math.min(0.85, pitch + (wantPitch - pitch) * 0.035))
+  window.__scene3dYaw = nextYaw
+  window.__scene3dPitch = nextPitch
+  let cosP = Math.cos(nextPitch)
+  cameraLookAt = {
+    x: cameraPos.x + Math.sin(nextYaw) * cosP * 5,
+    y: cameraPos.y + Math.sin(nextPitch) * 5,
+    z: cameraPos.z + Math.cos(nextYaw) * cosP * 5
+  }
 }
 
 // ---- Actors ---------------------------------------------------------------
@@ -552,10 +565,11 @@ function hotspotTick() {
 }
 
 function onSceneClick(info) {
+  if (interactionLocked()) { return }
   // Tapping the world during a cutscene hands control back, the same as any
   // movement key would.
   if (cutActive) { skipCutscene(); return }
-  if (!info || !info.objectId || interactionLocked()) { return }
+  if (!info || !info.objectId) { return }
   for (let i = 0; i < hotspots.length; i++) {
     let h = hotspots[i]
     if (!hotspotObjectMatches(h.id, info.objectId)) { continue }
@@ -721,6 +735,42 @@ function neonExit(id, x, y, z, dir, color, s) {
     let st = strokes[i]
     out.push({ id: id + "_s" + i, type: "box",
       position: { x: x + rx * st[0] * k + rx * 0, y: y + st[1] * k, z: z + rz * st[0] * k },
+      rotation: { x: 0, y: dir, z: st[4] },
+      width: st[2] * k, height: st[3] * k, depth: 0.1,
+      color: "#f8fafc", emissive: color, emissiveIntensity: 2.2 })
+  }
+  return out
+}
+
+// UNKNOWN in neon: seven letters centered symmetrically across [-1.14, +1.14]
+// in the sign's local plane so the calm dream door actually spells UNKNOWN.
+function neonUnknown(id, x, y, z, dir, color, s) {
+  let rx = Math.cos(dir), rz = -Math.sin(dir)
+  let k = s || 1
+  let out = [
+    { id: id + "_bk", type: "box", position: { x: x, y: y, z: z }, rotation: { x: 0, y: dir, z: 0 },
+      width: 2.56 * k, height: 0.66 * k, depth: 0.06, color: "#0a0e17" }
+  ]
+  let strokes = [
+    // U (center -1.02)
+    [-1.12, 0.01, 0.048, 0.34, 0],  [-0.92, 0.01, 0.048, 0.34, 0],  [-1.02, -0.155, 0.24, 0.05, 0],
+    // N (center -0.69)
+    [-0.79, 0.00, 0.048, 0.36, 0],  [-0.69, 0.00, 0.046, 0.39, 0.54],  [-0.59, 0.00, 0.048, 0.36, 0],
+    // K (center -0.36)
+    [-0.46, 0.00, 0.048, 0.36, 0],  [-0.35, 0.085, 0.046, 0.24, -0.78],  [-0.35, -0.085, 0.046, 0.24, 0.78],
+    // N (center -0.03)
+    [-0.13, 0.00, 0.048, 0.36, 0],  [-0.03, 0.00, 0.046, 0.39, 0.54],  [0.07, 0.00, 0.048, 0.36, 0],
+    // O (center +0.30)
+    [0.20, 0.00, 0.048, 0.36, 0],   [0.40, 0.00, 0.048, 0.36, 0],   [0.30, 0.155, 0.24, 0.05, 0],   [0.30, -0.155, 0.24, 0.05, 0],
+    // W (center +0.66)
+    [0.555, 0.00, 0.046, 0.37, 0.19],  [0.625, -0.07, 0.044, 0.23, -0.31],  [0.695, -0.07, 0.044, 0.23, 0.31],  [0.765, 0.00, 0.046, 0.37, -0.19],
+    // N (center +1.02)
+    [0.92, 0.00, 0.048, 0.36, 0],   [1.02, 0.00, 0.046, 0.39, 0.54],  [1.12, 0.00, 0.048, 0.36, 0]
+  ]
+  for (let i = 0; i < strokes.length; i++) {
+    let st = strokes[i]
+    out.push({ id: id + "_u" + i, type: "box",
+      position: { x: x + rx * st[0] * k, y: y + st[1] * k, z: z + rz * st[0] * k },
       rotation: { x: 0, y: dir, z: st[4] },
       width: st[2] * k, height: st[3] * k, depth: 0.1,
       color: "#f8fafc", emissive: color, emissiveIntensity: 2.2 })
@@ -1080,6 +1130,12 @@ function buildBoxes() {
   hotspots = hs
   objs = objs.concat(hotspotMarkers())
   sceneStatic = objs
+  ensureActors("boxes", [
+    actorAt("col1", "", 6, 12, 1.57, "#4f6180", "#d4b394", { hair: "#6b4b2a", path: [[21, 12], [6, 12]], sp: 0.03 }),
+    actorAt("col2", "", 14, 16, 1.57, "#5b5470", "#8a5a3a", { hair: "#22262e", path: [[20, 16], [14, 16]], sp: 0.026 }),
+    actorAt("guard", "Guard", 26.4, 15.2, -1.5, "#2b3550", "#8a5a3a", { hair: "#1b2130", cap: "#1b2130" }),
+    actorAt("priya_s3", "Priya", 24.2, 15.1, -1.9, "#7c3aed", "#8a5a3a", { hair: "#1f2937" })
+  ])
   objects = actorObjs()
 }
 
@@ -1326,7 +1382,8 @@ function buildMeeting() {
   hotspots = [
     { id: "mcol0_t", x: 3.4, z: 2.5, r: 6, label: "", minor: true },
     { id: "mcol2_t", x: 6.9, z: 2.5, r: 6, label: "", minor: true },
-    { id: "mcol4_t", x: 4.2, z: 4.4, r: 6, label: "", minor: true }
+    { id: "mcol4_t", x: 4.2, z: 4.4, r: 6, label: "", minor: true },
+    { id: "clive", x: 2.6, z: 1.6, r: 6, label: "", minor: true }
   ]
   meetingStatic = meetingStatic.concat(hotspotMarkers())
   sceneStatic = meetingStatic
@@ -1531,8 +1588,8 @@ function buildFlat() {
   if (hasItem("mug")) {
     objs.push({ id: "mug", type: "cylinder", position: { x: 1.55, y: 0.92, z: 2.1 }, radius: 0.07, height: 0.12, color: "#f8fafc" })
   }
-  if (priyaHere) {
-    objs.push({ id: "priya_box", type: "box", position: { x: 6.8, y: 0.25, z: 12.6 }, width: 0.6, height: 0.5, depth: 0.5, color: "#8a6f4d" })
+  if (priyaHere && priyaMode !== "alone") {
+    objs.push({ id: "priya_box", type: "box", position: { x: 6.85, y: 0.25, z: 12.2 }, width: 0.6, height: 0.5, depth: 0.5, color: "#8a6f4d" })
   }
   objs.push({ id: "flpatch", type: "plane", position: { x: 12, y: 0.006, z: 4 }, rotation: { x: -Math.PI / 2, y: 0, z: 0 }, width: 6, height: 4, color: "#463930" })
   flatStatic = objs
@@ -1553,7 +1610,10 @@ function buildFlat() {
     { id: "hs_phone",  x: 16, z: 2, r: 1.9, label: phoneRinging ? "Phone — Mum calling" : "Phone" },
     { id: "hs_luma",   x: 14, z: 8, r: 2.0, label: budgetDone ? "The old LUMA project" : "Old side project (later)" }
   ]
-  if (priyaHere) { hotspots.push({ id: "hs_priya", x: 6, z: 12.6, r: 2.2, label: scopeDone ? "Priya" : (priyaMode === "" ? "The door — Priya" : "Priya — the Scope Board") }) }
+  if (priyaHere) {
+    let priyaLabel = scopeDone ? (priyaMode === "alone" ? "The door" : "Priya") : (priyaMode === "" ? "The door — Priya" : (priyaMode === "alone" ? "The Scope Board" : "Priya — the Scope Board"))
+    hotspots.push({ id: "hs_priya", x: 6, z: 12.1, r: 2.2, label: priyaLabel })
+  }
   if (hasItem("doug")) { hotspots.push({ id: "doug", x: 2.6, z: 1.9, r: 1.8, label: "Doug", minor: true }) }
   hotspots.push({ id: "window", x: 9, z: 1.1, r: 2.0, label: "The window", minor: true })
   hotspots.push({ id: "bed", x: 14.5, z: 10.5, r: 2.2, label: "The bed", minor: true })
@@ -1562,10 +1622,10 @@ function buildFlat() {
   blockers = []
   clearConfetti()
   let cast = []
-  if (priyaHere) {
-    cast.push(actorAt("priya", "Priya", 6, 12.6, Math.PI, "#7c3aed", "#8a5a3a", { hair: "#1f2937" }))
+  if (priyaHere && priyaMode !== "alone") {
+    cast.push(actorAt("priya", "Priya", 6, 12.1, Math.atan2(2 - 6, 12 - 12.1), "#7c3aed", "#8a5a3a", { hair: "#1f2937" }))
   }
-  ensureActors(priyaHere ? "flat-priya" : "flat", cast)
+  ensureActors("flat-" + (priyaHere ? "1" : "0") + "-" + priyaMode, cast)
   objects = actorObjs()
 }
 
@@ -1738,10 +1798,10 @@ function buildBakery() {
     cast.push(actorAt("cust1", "", 6, 3, 1.57, "#7a8ba8", "#d4b394", { hair: "#4a3628", path: [[18, 3], [6, 3]], sp: 0.024 }))
     cast.push(actorAt("cust2", "", 19, 12, -1.57, "#a8707a", "#8a5a3a", { hair: "#22262e", path: [[19, 4], [19, 12]], sp: 0.022 }))
     if (priyaMode !== "alone" && priyaMode !== "") {
-      cast.push(actorAt("priya2", "Priya", 14, 4.6, -0.6, "#7c3aed", "#8a5a3a", { hair: "#1f2937" }))
+      cast.push(actorAt("priya2", "Priya", 3.2, 7.6, -0.19, "#7c3aed", "#8a5a3a", { hair: "#1f2937" }))
     }
   }
-  ensureActors(bakeryDay ? "bakeryday" : "bakery", cast)
+  ensureActors(bakeryDay ? ("bakeryday-" + priyaMode) : "bakery", cast)
   objects = actorObjs()
 }
 
@@ -1835,7 +1895,11 @@ function buildDream() {
   objs.push({ id: "hs_dreamdoor", type: "box", position: { x: 20, y: 1.05, z: 10 }, width: 0.1, height: 2.05, depth: 1.6,
     color: dreamCalm ? "#f8fafc" : "#1b2436",
     emissive: dreamCalm ? "#f8fafc" : "#7dd3fc", emissiveIntensity: dreamCalm ? 1.7 : 0.6 })
-  objs = objs.concat(neonExit("ddoor_sign", 19.83, 2.57, 10, -Math.PI / 2, dreamCalm ? "#a5f3fc" : "#f87171", 0.62))
+  if (dreamCalm) {
+    objs = objs.concat(neonUnknown("ddoor_sign", 19.85, 2.55, 10, -Math.PI / 2, "#a5f3fc", 0.62))
+  } else {
+    objs = objs.concat(neonExit("ddoor_sign", 19.85, 2.55, 10, -Math.PI / 2, "#f87171", 0.62))
+  }
   if (dreamCalm) {
     objs.push({ id: "doorshaft", type: "plane", position: { x: 18.4, y: 1.2, z: 10 },
       rotation: { x: 0, y: Math.PI / 2, z: 0.12 }, width: 3.6, height: 2.6, color: "#f8fafc", opacity: 0.13 })

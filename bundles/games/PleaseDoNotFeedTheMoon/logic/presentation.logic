@@ -1,0 +1,101 @@
+// View models only: no feeding, stock mutations, recipes or ending rules here.
+let V = {};
+let TEXT_STYLE={color:"inherit",fontSize:"inherit",fontWeight:"inherit",lineHeight:"inherit"};
+let hintIndex=0;
+function at(x,y,w,h) { let out={left:(x/12.8)+"%",top:(y/7.2)+"%"};if(w)out.width=(w/12.8)+"%";if(h)out.height=(h/7.2)+"%";return out; }
+function money(n){return "$"+Math.floor(n);}
+function shiftClock(s) {
+ if(s.night>=s.duration)return "OVERTIME";
+ let n=Math.floor(23*60+s.night/s.duration*7*60)%1440;
+ let h=Math.floor(n/60),m=n%60;return (h<10?"0":"")+h+":"+(m<10?"0":"")+m;
+}
+function ledgerRows() {
+ let rows=[];
+ for(let i=profile.notes.length-1;i>=0;i--){
+  let key=profile.notes[i],r={id:key,number:(i+1<10?"0":"")+(i+1),title:"",text:"",ingredients:"",art:"",special:false};
+  if(key.indexOf("item:")===0){let it=itemById(Number(key.slice(5)));if(!it)continue;r.title=it.title;r.text=it.text;r.ingredients=it.name;r.art="assets/items/"+it.art+".svg";}
+  else if(key==="rejection"){r.title="A firm astronomical no";r.text="Repeated snacks and overheated batteries can come straight back. Rejected offerings interrupt a combination; returned stock is not lost.";r.ingredients="RETURN TO SENDER";}
+  else {for(let j=0;j<RECIPES.length;j++){let c=RECIPES[j];if(key==="combo:"+c.id){r.title=c.title;r.text=c.text;r.ingredients=c.ingredients.map(function(id){return ITEMS[id].name;}).join(" + ");r.special=true;r.art="assets/items/"+ITEMS[c.ingredients[2]].art+".svg";}}}
+  if(r.title)rows.push(r);
+ }return rows;
+}
+function buildParticles(s) {
+ let parts=[],t=settings.reducedMotion?0:s.time,types=[];
+ if(s.heat<10||s.fx.frost>0)types.push("snow");
+ if(s.heat>46||s.fx.steam>0)types.push("steam");
+ if(s.fx.rain>0||s.fx.weather>0)types.push("rain");
+ if(s.fx.electric>0)types.push("spark");
+ if(s.fx.bubbles>0)types.push("bubble");
+ if(s.fx.paper>0||s.flags.union)types.push("paper");
+ if(s.fx.ground>0)types.push("salt");
+ for(let k=0;k<types.length;k++)for(let i=0;i<(settings.reducedMotion?4:9);i++){
+  let kind=types[k],phase=((t*(kind==="rain"?.3:.1)+i*.131+k*.17)%1);
+  let x=320+((i*131+k*79)%760)+Math.sin(t*.9+i)*12;
+  let y=kind==="snow" ? 72+phase*420 : kind==="rain" ? 510-phase*400 : kind==="paper" ? 535-phase*390 : 510-phase*365;
+  let st=at(x,y);st.opacity=String(Math.sin(phase*Math.PI)*.7+.15);st.transform="rotate("+(kind==="paper"?Math.sin(t+i)*35:kind==="rain"?-9:0)+"deg)";
+  if(kind==="bubble"){st.width=(10+i%4*9)+"px";st.height=(10+i%4*9)+"px";}
+  parts.push({id:kind+i,kind:"particle "+kind,style:st});
+ }return parts;
+}
+function buildOrbiters(s,size) {
+ let a=[],t=settings.reducedMotion?0:s.time,kind="",ids=[];
+ if(s.fx.orbit>0)ids=ids.concat([2,2,2]);
+ if(s.fx.duck>0||s.fx.bath>0)ids=ids.concat([4,4,4]);
+ if(s.fx.moonlet>0)ids.push(11);
+ if(s.fx.bicycle>0)ids.push(9);
+ if(s.fx.vortex>0)ids=ids.concat([18,20]);
+ if(s.fx.paper>0)ids.push(18);
+ for(let i=0;i<ids.length;i++){
+  let angle=t*(s.fx.rave>0?1.5:.48)+i*2.05,radius=size*.57;
+  let x=640+Math.cos(angle)*radius,y=234+Math.sin(angle)*radius*.35;
+  let st=at(x,y,ids[i]===11?62:52);st.transform="translate(-50%,-50%) rotate("+(Math.sin(angle)*19)+"deg)";st.zIndex=Math.sin(angle)>0?8:3;
+  a.push({id:i,art:"assets/items/"+ITEMS[ids[i]].art+".svg",style:st});
+ }return a;
+}
+function publish() {
+ if(!S)return;
+ let s=S,t=settings.reducedMotion?0:s.time,n=instability(s),world=stageOfWorld(s);
+ let mood=s.moodTime>0?s.mood:s.offering?"anticipating":s.energy>0?"awake":s.bond>65?"tender":"watching";
+ if(s.shot&&!s.shot.returning)mood="anticipating";
+ let size=278+s.mass*2.9,look=s.offering?-5:s.bond>40?Math.sin(t*.35)*3:0;
+ let mx=640+(s.bond>50?Math.sin(t*.33)*9:0),my=226+Math.sin(t*.55)*4;
+ let moonStyle=at(mx,my,size);moonStyle.transform="translate(-50%,-50%) rotate("+(s.energy>0?Math.sin(t*12)*.8:Math.sin(t*.36)*1.1)+"deg)";
+ let squash=!settings.reducedMotion&&s.shot&&!s.shot.returning?1+Math.sin(Math.min(1,s.shot.t/.85)*Math.PI)*.06:1;
+ let shot=null;if(s.shot){let p=clamp(s.shot.t/(s.shot.returning?.7:.85),0,1);if(s.shot.returning)p=1-p;let st=at(733+(mx-733)*p,615+(my-615)*p-(settings.reducedMotion?0:Math.sin(p*Math.PI)*125),s.shot.item===10?120:64);st.transform="translate(-50%,-50%) rotate("+(settings.reducedMotion?0:p*220)+"deg)";shot={art:"assets/items/"+ITEMS[s.shot.item].art+".svg",style:st};}
+ let loose=[];for(let i=0;i<s.props.length;i++){let p=s.props[i];if(p.caught)continue;let px=p.x,py=p.y;
+ if(settings.reducedMotion){let lift=clamp((s.gravity-12)/78,0,1);px=p.hx+(654-p.hx)*lift*.7;py=p.hy-lift*(200+Math.sin(p.id*2)*50);if(s.fx.ground>0){px=p.hx;py=p.hy;}}
+ let st=at(px,py,45);st.transform="translate(-50%,-50%) rotate("+(settings.reducedMotion?0:p.angle)+"deg)";loose.push({id:p.id,art:"assets/items/"+ITEMS[p.item].art+".svg",label:"Catch "+ITEMS[p.item].name,style:st,catchable:s.gravity>=23});}
+ let stock=[];for(let i=0;i<ITEMS.length;i++){let it=ITEMS[i];if(it.aisle===s.aisle){stock.push({id:it.id,name:it.name,art:"assets/items/"+it.art+".svg",stock:s.stock[i],label:it.name+", "+s.stock[i]+" in stock",className:"product"+(s.selected===i?" selected":"")+(s.stock[i]===0?" empty":""),disabled:!unlocked(s,i)});}}
+ let customers=[];for(let i=0;i<s.customers.length;i++){let c=s.customers[i];customers.push({id:c.id,name:c.name,order:ITEMS[c.item].name,art:"assets/items/"+ITEMS[c.item].art+".svg",className:"customer customer-"+i,style:{transform:settings.reducedMotion?"none":"translateY("+(-Math.max(0,s.gravity-32)*.3+Math.sin(t*1.1+i)*Math.max(0,s.gravity-35)*.06)+"px) rotate("+(s.gravity>50?Math.sin(t+i)*3:0)+"deg)"},urgent:c.patience<18});}
+ let growth=[];if(s.flags.garden)for(let g=0;g<(s.combos.indexOf("moon-garden")>=0?11:5);g++){let angle=-2.5+g*.45;growth.push({id:g,style:{left:(50+Math.cos(angle)*48)+"%",top:(50+Math.sin(angle)*48)+"%",width:"15%",transform:"translate(-50%,-70%) rotate("+(angle*180/Math.PI+90)+"deg)"}});}
+ let stars=[];for(let k=0;k<26;k++)stars.push({id:k,style:{left:(23+(k*17.173)%58)+"%",top:(7+(k*11.21)%44)+"%",width:(k%4===0?3:2)+"px",height:(k%4===0?3:2)+"px",opacity:String(.25+(k%5)*.13),animationDelay:(k*.071)+"s"}});
+ let clue=clueFor(s);if(hintIndex>0){let unfound=RECIPES.filter(function(r){return s.combos.indexOf(r.id)<0;});if(unfound.length)clue=unfound[hintIndex%unfound.length].hint;}
+ V={
+  rootClass:"moon-root "+(settings.reducedMotion?"motion-reduced ":"")+(screen!=="play"?"still ":"")+"world-level-"+world+(s.energy>0?" caffeinated":"")+(s.fx.rave>0?" midnight-fm":"")+(s.flags.cosmic?" cosmic":"")+(s.flags.union?" unionised":""),
+  roomStyle:{"--gravity":String(s.gravity/100),"--warmth":String(s.heat/100),"--tide":(s.gravity*.27)+"px","--flicker":String(s.heat>50?.72:.95)},
+  moonStyle:moonStyle,moonShape:{transform:"scale("+squash+","+(2-squash)+")"},faceStyle:{transform:"translate("+look+"%,"+(s.offering?7:0)+"%)"},moonClass:"moon-disc mood-"+mood,
+  glowStyle:{opacity:String(.15+s.heat*.005),background:s.heat>48?"radial-gradient(circle,#e7a47888,transparent 67%)":"radial-gradient(circle,#b3d9c063,transparent 68%)"},
+  frostStyle:{opacity:String(clamp((12-s.heat)/16+(s.fx.frost>0?.28:0),0,.8))},fogStyle:{opacity:String(clamp((s.heat-36)/90,0,.72))},
+  heatTint:{background:s.heat>35?"#e3986b":"#83c6d0",opacity:String(s.heat>35?(s.heat-35)/115:s.heat<12?.2:0)},
+  shelfStyle:{transform:settings.reducedMotion?"none":"rotate("+(s.gravity>30?Math.sin(t*.7)*s.gravity*.04:0)+"deg) translateY("+(-Math.max(0,s.gravity-55)*.4)+"px)"},
+  fridgeStyle:{transform:settings.reducedMotion?"none":"translateY("+(s.fx.fridge>0?-22-Math.sin(t)*6:-Math.max(0,s.gravity-60)*.6)+"px) rotate("+(s.fx.fridge>0?-4:Math.sin(t*.6)*s.gravity*.015)+"deg)"},
+  drinkStyle:{transform:"rotate("+(-s.gravity*.28+(settings.reducedMotion?0:Math.sin(t*1.8)*s.gravity*.11))+"deg)"},
+  shopTilt:{transform:settings.reducedMotion?"none":"rotate("+(s.fx.bicycle>0?Math.sin(t*1.8)*.7:s.gravity>78?Math.sin(t*.8)*.15:0)+"deg)"},
+  mirrorStyle:{opacity:s.fx.mirror>0||s.flags.cosmic?"0.65":"0",transform:"scaleX(-1) rotate(8deg)"},
+  moonRingStyle:{transform:"translate(-50%,-50%) rotate("+(s.fx.bicycle>0?t*28:-16)+"deg)",opacity:s.fx.milk>0||s.fx.bicycle>0||s.fx.ground>0?"0.65":"0"},
+  shot:shot,loose:loose,products:stock,customers:customers,growth:growth,stars:stars,particles:buildParticles(s),orbiters:buildOrbiters(s,size),
+  selected:ITEMS[s.selected],selectedArt:"assets/items/"+ITEMS[s.selected].art+".svg",selectedStock:s.stock[s.selected],
+  offerText:s.shot?"An offering in transit…":s.stock[s.selected]===0?"An empty shelf. Try the delivery crate.":s.offering?"It has noticed the "+ITEMS[s.selected].name.toLowerCase()+".":"Choose something from the shelf. Then offer it to the moon.",
+  feedLabel:s.shot?"Watch the window…":"Feed the moon",canFeed:screen==="play"&&!s.shot&&s.stock[s.selected]>0&&unlocked(s,s.selected),
+  clock:shiftClock(s),register:money(s.coins),night:"NIGHT "+(s.stage+1)+" / 7",nightName:NIGHT_NAMES[s.stage],canClose:closeReady(s),backroom:unlocked(s,10),
+  temperature:Math.round(2+s.heat*.24)+"°",shopCondition:n>73?"PLEASE HOLD ON":n>43?"CHECK THE CEILING":s.heat<10?"MIND THE FROST":s.bond>65?"SOMEONE IS WATCHING OVER YOU":"OPEN ALL NIGHT",
+  line:s.lineTime>0?s.customerLine:s.offering?"It is looking at the "+ITEMS[s.selected].name.toLowerCase()+" in your hand.":"Tap a customer to sell their order. Tap a floating product to catch it.",
+  noteCount:profile.notes.length,noteLabel:(newDiscovery?"New receipt · ":"Employee log · ")+profile.notes.length,
+  notebook:screen==="journal"?ledgerRows():[],clue:clue,endings:profile.endings.length,
+  groundReady:s.time-s.lastGround>=12,groundLabel:s.time-s.lastGround>=12?"HOLD TOGETHER":"RESETTING…",
+  newReceipt:newDiscovery,ending:endingData(s.ending),hasProgress:s.time>0||s.totalFeeds>0||s.servedTotal>0,
+  neonText:s.flags.union?"FAIR PAY / ALL PHASES":s.flags.cosmic?"YOU ARE ON THE OTHER SIDE":"OPEN / 24 HOURS",
+  reactionTitle:s.reaction.title,reactionText:s.reaction.text,reactionVisible:s.reaction.time>0,
+  shutter:s.refusedThisNight&&s.totalFeeds===0,freeplay:s.freeplay
+ };
+}

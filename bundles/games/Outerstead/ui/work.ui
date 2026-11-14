@@ -26,9 +26,12 @@
 </div>
 <div className="os-help-grid" style={{ marginTop: "22px" }}><div className="os-card"><span className="os-label">SCHEDULES</span><span className="os-prose">Day: favour sleep from 21:00 to 05:00. Night: favour sleep from 08:00 to 16:00. Flexible: sleep when exhausted. Severe hunger interrupts normal work regardless of schedule.</span></div><div className="os-card"><span className="os-label">BLOCKED WORK</span><span className="os-prose">Check a structure's power, the recipe's materials, a reachable approach, and at least one available worker. Drafted settlers do not perform ordinary jobs.</span></div></div>
 
-<div className="os-panel-section">
-  <p>Auto steward gathers known nearby resources to reserve targets, queues practical research, and schedules preventive repairs. Urgent treatment and food work get extra priority within enabled categories. Idle settlers collect available equipment, socialise, play games, or take short safe walks, checking for new work throughout their break. Place buildings yourself; colonists build, farm, cook, repair and haul according to their work priorities. Needs and drafted orders take precedence.</p>
-  <button className="os-btn" @click={toggleAutoMode}>{autoMode ? "Disable auto steward" : "Enable auto steward"}</button>
-  <button className="os-btn" @click={toggleProfiler}>{perfEnabled ? "Stop profiler" : "Profile simulation"}</button>
-  <p>{performanceText}</p>
+<div className="os-card os-stack" style={{ marginTop: "14px" }}>
+  <span className="os-label">AUTO STEWARD AND PERFORMANCE</span>
+  <span className="os-prose">Auto steward gathers known nearby resources to reserve targets, queues practical research, and schedules preventive repairs. Urgent treatment and food work get extra priority within enabled categories. Idle settlers collect available equipment, socialise, play games, or take short safe walks, checking for new work throughout their break. Place buildings yourself; colonists build, farm, cook, repair and haul according to their work priorities. Needs and drafted orders take precedence.</span>
+  <div className="os-row">
+    <button className="os-btn os-tab" @click={toggleAutoMode}>{autoMode ? "Disable auto steward" : "Enable auto steward"}</button>
+    <button className="os-btn os-tab" @click={toggleProfiler}>{perfEnabled ? "Stop profiler" : "Profile simulation"}</button>
+  </div>
+  #if (performanceText)<span className="os-tiny os-dim">{performanceText}</span>#end
 </div>

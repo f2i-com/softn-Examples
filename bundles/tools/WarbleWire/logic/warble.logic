@@ -1750,8 +1750,69 @@ function pcmToWavBytes(pcm, sampleRate) {
   return bytes
 }
 
+function _bytesToBase64(bytes) {
+  if (bytes && typeof bytes.toBase64 === "function") {
+    return bytes.toBase64()
+  }
+  let chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+  let out = []
+  let len = bytes.length
+  let i = 0
+  while (i < len) {
+    let b0 = bytes[i]
+    let has1 = (i + 1) < len
+    let has2 = (i + 2) < len
+    let b1 = has1 ? bytes[i + 1] : 0
+    let b2 = has2 ? bytes[i + 2] : 0
+    let n = (b0 << 16) | (b1 << 8) | b2
+    out.push(
+      chars.charAt((n >> 18) & 63) +
+      chars.charAt((n >> 12) & 63) +
+      (has1 ? chars.charAt((n >> 6) & 63) : "=") +
+      (has2 ? chars.charAt(n & 63) : "=")
+    )
+    i = i + 3
+  }
+  return out.join("")
+}
+
+function _bytesFromBase64(b64) {
+  if (typeof Uint8Array.fromBase64 === "function") {
+    return Uint8Array.fromBase64(b64)
+  }
+  let clean = String(b64 || "").replace(/[\r\n\s]/g, "")
+  if (clean.length === 0) return new Uint8Array(0)
+  if (typeof atob === "function") {
+    let bin = atob(clean)
+    let out = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i = i + 1) {
+      out[i] = bin.charCodeAt(i) & 0xff
+    }
+    return out
+  }
+  let chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+  let pad = clean.endsWith("==") ? 2 : (clean.endsWith("=") ? 1 : 0)
+  let outLen = Math.floor((clean.length * 3) / 4) - pad
+  let out = new Uint8Array(Math.max(0, outLen))
+  let p = 0
+  let i = 0
+  while (i < clean.length) {
+    let c0 = chars.indexOf(clean.charAt(i))
+    let c1 = chars.indexOf(clean.charAt(i + 1))
+    let c2 = clean.charAt(i + 2) === "=" ? 0 : chars.indexOf(clean.charAt(i + 2))
+    let c3 = clean.charAt(i + 3) === "=" ? 0 : chars.indexOf(clean.charAt(i + 3))
+    if (c0 < 0 || c1 < 0 || c2 < 0 || c3 < 0) throw new Error("bad-base64")
+    let n = (c0 << 18) | (c1 << 12) | (c2 << 6) | c3
+    if (p < outLen) { out[p] = (n >> 16) & 0xff; p = p + 1 }
+    if (p < outLen) { out[p] = (n >> 8) & 0xff; p = p + 1 }
+    if (p < outLen) { out[p] = n & 0xff; p = p + 1 }
+    i = i + 4
+  }
+  return out
+}
+
 function wavDataUrl(pcm, sampleRate) {
-  return "data:audio/wav;base64," + pcmToWavBytes(pcm, sampleRate).toBase64()
+  return "data:audio/wav;base64," + _bytesToBase64(pcmToWavBytes(pcm, sampleRate))
 }
 
 function _ascii4(bytes, offset) {
@@ -1771,7 +1832,7 @@ function pcmFromWavDataUrl(dataUrl) {
 
   let bytes = null
   try {
-    bytes = Uint8Array.fromBase64(dataUrl.slice(marker + 7))
+    bytes = _bytesFromBase64(dataUrl.slice(marker + 7))
   } catch (error) {
     return { ok: false, reason: "bad-base64", pcm: null, sampleRate: 0 }
   }
@@ -1841,6 +1902,20 @@ function pcmFromWavDataUrl(dataUrl) {
       let base = dataOffset + frame * channels
       for (let channel = 0; channel < channels; channel = channel + 1) {
         sum = sum + (bytes[base + channel] - 128) / 128
+      }
+      pcm[frame] = sum / channels
+    }
+  } else if (audioFormat === 1 && bitsPerSample === 24) {
+    let frames = Math.floor(dataLength / (3 * channels))
+    pcm = new Float32Array(frames)
+    for (let frame = 0; frame < frames; frame = frame + 1) {
+      let sum = 0
+      let base = dataOffset + frame * 3 * channels
+      for (let channel = 0; channel < channels; channel = channel + 1) {
+        let off = base + channel * 3
+        let raw = bytes[off] | (bytes[off + 1] << 8) | (bytes[off + 2] << 16)
+        if (raw & 0x800000) { raw = raw - 0x1000000 }
+        sum = sum + raw / 8388608
       }
       pcm[frame] = sum / channels
     }

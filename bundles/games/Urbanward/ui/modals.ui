@@ -1,0 +1,21 @@
+<import BudgetPanel from="./budget.ui" />
+<import SavesPanel from="./saves.ui" />
+<import FieldGuide from="./help.ui" />
+<import CityPanels from="./city-panels.ui" />
+<div className="uw-modal-backdrop">
+  <div className="uw-modal" role="dialog" aria-modal="true" aria-label="Urbanward city management">
+    <div className="uw-modal-header"><span className="uw-modal-title">URBANWARD / CITY HALL</span><button className="uw-small-button" title="Close · Escape" @click={uwCloseModal}>Close ×</button></div>
+    <div className="uw-modal-content">
+      #if (modal === "budget")
+        <BudgetPanel />
+      #end
+      #if (modal === "saves")
+        <SavesPanel />
+      #end
+      #if (modal === "help")
+        <FieldGuide />
+      #end
+      <CityPanels />
+    </div>
+  </div>
+</div>

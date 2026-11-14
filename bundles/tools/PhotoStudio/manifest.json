@@ -1,8 +1,8 @@
 {
   "name": "PhotoStudio",
-  "version": "0.3.0",
-  "description": "Layered image editor with PNG, JPEG, GIF, BMP and PSD import/export, running entirely inside the Softn sandbox. Brushes, selections, masks, blend modes, adjustments, transforms and bitmap type, with undo history.",
-  "author": "Photo Studio contributors",
+  "version": "1.0.0",
+  "description": "Layered image editor with PNG, JPEG, GIF, BMP and PSD import/export, running entirely inside the SoftN sandbox. Brushes, selections, masks, blend modes, adjustments, transforms and bitmap type, with undo history.",
+  "author": "SoftN",
   "main": "ui/main.ui",
   "icon": "assets/icon.svg",
   "files": {
@@ -24,7 +24,7 @@
     "xdb": []
   },
   "config": {
-    "window": { "title": "Photo Studio", "width": 1440, "height": 960, "minWidth": 360, "minHeight": 520, "resizable": true },
+    "window": { "title": "Photo Studio", "width": 1280, "height": 800, "minWidth": 360, "minHeight": 520, "resizable": true },
     "theme": { "mode": "dark", "primary": "#b2a0ff" },
     "execution": "main"
   }

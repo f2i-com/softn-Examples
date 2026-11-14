@@ -1,0 +1,36 @@
+<div className="uw-viewport">
+  <div className="uw-scene">
+    <Scene3D fill={true} staticObjects={staticObjects} objects={objects} lights={lights} camera={camera} sky={skyName} antialias={true} shadows={quality !== "low"} maxPixelRatio={quality === "high" ? 2 : quality === "low" ? 1 : 1.5} environment={{ url: envUrl, background: false }} environmentIntensity={lightMode === "night" ? 0.35 : lightMode === "dusk" ? 0.55 : 0.68} toneMapping="agx" toneMappingExposure={exposure} effects={quality === "low" ? {} : { ambientOcclusion: { radius: 0.6, intensity: 0.42 }, bloom: { strength: lightMode === "night" ? 0.24 : 0.14, radius: 0.4, threshold: 0.92 } }} orbitControls={activeTool === "inspect"} @click={uwSceneClick} @pointerdown={uwSceneDown} @pointermove={uwSceneMove} @pointerup={uwSceneUp} @hover={uwSceneHover} @ready={uwSceneReady} />
+  </div>
+  <div className="uw-map-header">
+    <div className="uw-map-badge"><span className="uw-micro">{hud.milestone}</span><span className="uw-map-title">{hud.city}</span><span className="uw-map-sub">{hud.goal}</span></div>
+    <div className="uw-view-controls">
+      <button title="Rotate left · Q" @click={() => uwRotate(-1)}>↶</button>
+      <button title="Rotate right · E" @click={() => uwRotate(1)}>↷</button>
+      <button title="Zoom in · +" @click={() => uwZoomBy(0.85)}>+</button>
+      <button title="Zoom out · -" @click={() => uwZoomBy(1.18)}>−</button>
+      <button title="Pan north · W" @click={() => uwPan(0,-5)}>↑</button>
+      <button title="Pan west · A" @click={() => uwPan(-5,0)}>←</button>
+      <button title="Pan south · S" @click={() => uwPan(0,5)}>↓</button>
+      <button title="Pan east · D" @click={() => uwPan(5,0)}>→</button>
+      <button title="Reset view" @click={uwResetCamera}>⌂</button>
+      <button title="Day / dusk / night · N" @click={uwCycleLight}>◐</button>
+    </div>
+  </div>
+  #if (previewText !== "")
+    <div className="uw-preview-price"><span>{previewText}</span></div>
+  #end
+  #if (sessionError !== "")
+    <div className="uw-map-error"><span>{sessionError}</span><button className="uw-button uw-gap" @click={() => uwOpenModal("saves")}>Open save tools</button></div>
+  #end
+  <div className="uw-overlay-strip">
+    #each (overlay in overlayCards)
+      <button className={overlay.active ? "uw-overlay-chip uw-active" : "uw-overlay-chip"} @click={() => uwSetOverlay(overlay.id)}>{overlay.name}</button>
+    #end
+  </div>
+  <div className="uw-map-bottom">
+    <span className="uw-mobile-notice" role="status">{uiNotice}</span>
+    <span className="uw-build-label">{activeTool === "inspect" ? hoverLabel || "Inspect · drag to explore · + / − to zoom" : toolTitle}</span>
+    <span className="uw-map-help">{activeOverlay === "none" ? "WASD pan · Q/E rotate · Space pause · I inspect · R roads · B bulldoze · Z undo" : overlayLegend}</span>
+  </div>
+</div>

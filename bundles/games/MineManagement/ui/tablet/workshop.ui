@@ -1,0 +1,74 @@
+<!--
+  04 Workshop: permanent upgrades for the site (logic/mine/purchases.logic) and where to go for
+  routine service. Upgrades make the haul cycle faster; broken things still need fixing by hand.
+-->
+<div if={tab === 'workshop'}>
+  <div class="mm-page-head">
+    <div>
+      <span class="mm-label">CAPITAL IMPROVEMENTS</span>
+      <h2>Spend less time apologising.</h2>
+      <p class="mm-muted">Permanent upgrades for the site. Faults still need a human with a field kit; that part of the job is not for sale.</p>
+    </div>
+    <span class="mm-money-large">{hud.money}</span>
+  </div>
+
+  <div class="mm-upgrade-grid">
+    #each (item in upgradeRows) key={item.id}
+      <article class="mm-upgrade-card">
+        <span class="mm-label">INSTALLED LEVEL {item.level}</span>
+        <h3>{item.name}</h3>
+        <p class="mm-muted">{item.detail}</p>
+        <button class="mm-secondary" type="button" @click={buyUpgrade(item.id)} disabled={item.max}>{item.max ? 'Fully upgraded' : 'Install / ' + item.cost}</button>
+      </article>
+    #end
+  </div>
+
+  <section class="mm-card mm-service-guide">
+    <h3>Field services</h3>
+    <p>Workshop: $450 restores the whole fleet's condition. Fuel farm: $160 refuels everything. Charging bay: $120 tops up every robot. Go to the marker, get out, press E (or Interact) and do the three steps in the field kit.</p>
+    <div class="mm-place-links">
+      <button type="button" @click={markPlace('workshop')}>Mark the workshop</button>
+      <button type="button" @click={markPlace('fuel')}>Mark the fuel farm</button>
+      <button type="button" @click={markPlace('charger')}>Mark the charging bay</button>
+      <button type="button" @click={markPlace('relay')}>Mark the repeater</button>
+    </div>
+  </section>
+</div>
+
+<style>
+  .mm-upgrade-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 17px;
+  }
+  .mm-upgrade-card {
+    padding: 22px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  .mm-upgrade-card .mm-label {
+    font-size: 8px;
+  }
+  .mm-upgrade-card .mm-muted {
+    min-height: 44px;
+    margin: 10px 0 19px;
+    font-size: 12px;
+  }
+  .mm-service-guide {
+    margin-top: 22px;
+    padding: 22px;
+    font-size: 12px;
+    line-height: 1.8;
+    color: #c1cfb8;
+  }
+  .mm-service-guide .mm-place-links {
+    padding: 14px 0 0;
+    border: 0;
+  }
+  @media (max-width: 620px) {
+    .mm-upgrade-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

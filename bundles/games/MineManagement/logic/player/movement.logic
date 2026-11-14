@@ -1,0 +1,274 @@
+// The player's movement, one 20 Hz simulation step at a time: walking, driving the ute or a haul
+// truck, and working the manual excavator. An arcade controller with terrain collision, not a
+// rigid-body or excavatable-terrain simulator.
+// S.player.mode picks the branch of updatePlayer; S.player.vehicle says which machine:
+//   'foot'       walk and jump here (vehicle 0); E and the field kit: interactions.logic,
+//                field-kit.logic
+//   'ute'        the vehicle branch here and vehicleHandling (vehicle 0); airtime: stunts.logic
+//   'truck'      the same vehicle branch (vehicle = truck id); haul help: haul-assist.logic;
+//                loading and tipping: mine/bays.logic
+//   'excavator'  swing and boom here (vehicle = minus the excavator id); digging and discharge:
+//                mine/bays.logic and mine/excavators.logic
+// Also: getting in and out, interactions.logic; keys, input.logic; touch pads,
+// touch-controls.logic; collision, world/collision.logic (clearanceScore, sweepVehicle); body
+// tilt, settleVehicle in world/vehicles.logic; where the camera sits, world/camera.logic.
+// Units: metres, m/s, radians. Heading 0 faces +z (south) and a heading h moves along
+// (sin h, cos h); a growing heading or yaw turns left, so positive steer (A) is left.
+// Owns no state: it moves S.player, S.ute, the driven truck and S.manualExcavator.
+
+// ---------- Ground checks ----------
+
+// True if a circle of `radius` at (x, z) touches a SOLIDS box ([centre x, centre z, width, depth])
+// or a BERMS segment ([x1, z1, x2, z2, half-width]), both in world/terrain-data.logic, or is
+// past the site edge. Movement itself uses clearanceScore; this is only the cone laydown check
+// in field-kit.logic now.
+function hitsSolid(x, z, radius) {
+  for (var i = 0; i < SOLIDS.length; i++) {
+    var b = SOLIDS[i];
+    if (Math.abs(x - b[0]) < b[2] / 2 + radius && Math.abs(z - b[1]) < b[3] / 2 + radius) return true;
+  }
+  for (var k = 0; k < BERMS.length; k++) {
+    var b = BERMS[k],
+      dx = b[2] - b[0],
+      dz = b[3] - b[1],
+      f = clamp(((x - b[0]) * dx + (z - b[1]) * dz) / (dx * dx + dz * dz || 1), 0, 1);
+    if (Math.hypot(x - b[0] - dx * f, z - b[1] - dz * f) < b[4] + radius) return true;
+  }
+  // The edge of the site, as in clearanceScore.
+  return Math.abs(x) > 226 || Math.abs(z) > 226;
+}
+
+// True if the ground between two points is steeper than `limit` (metres of rise per metre
+// travelled), allowing a 6 cm step. Uses heightAt: the terrain without the jump humps.
+function slopeBlocked(x, z, nx, nz, limit) {
+  var d = Math.hypot(nx - x, nz - z);
+  return d > 0.001 && Math.abs(heightAt(nx, nz) - heightAt(x, z)) > d * limit + 0.06;
+}
+
+// Walk an entity on foot (the player) by (dx, dz) in steps of 0.3 m or less, trying x and z
+// separately so a walker slides along walls. A move is taken if the new spot is clear, or less
+// overlapped than the current one (so someone stuck inside a footprint can walk out), and no
+// steeper than `grade`. Then stands the entity on the ground (jump humps included). Returns true
+// if anything blocked it.
+// The footprint is bodyBounds' 0.7 m 'foot' box (world/collision.logic): `radius` is not used.
+function moveGround(entity, dx, dz, radius, grade) {
+  if (Math.abs(dx) + Math.abs(dz) < 0.00001) return false;
+  var steps = Math.max(1, Math.ceil(Math.hypot(dx, dz) / 0.3)),
+    blocked = false;
+  for (var i = 0; i < steps; i++) {
+    var x = entity.x + dx / steps,
+      z = entity.z + dz / steps,
+      score = clearanceScore(entity, 'foot', entity.x, entity.z, 0, true);
+    var sx = clearanceScore(entity, 'foot', x, entity.z, 0, true);
+    if ((sx < 0.001 || sx < score - 0.0001) && !slopeBlocked(entity.x, entity.z, x, entity.z, grade))
+      entity.x = x;
+    else blocked = true;
+    score = clearanceScore(entity, 'foot', entity.x, entity.z, 0, true);
+    var sz = clearanceScore(entity, 'foot', entity.x, z, 0, true);
+    if ((sz < 0.001 || sz < score - 0.0001) && !slopeBlocked(entity.x, entity.z, entity.x, z, grade))
+      entity.z = z;
+    else blocked = true;
+  }
+  entity.y = groundAt(entity.x, entity.z);
+  return blocked;
+}
+
+// ---------- The player, every step ----------
+
+// One simulation step of the player's controls (from stepSimulation, mine/simulation.logic).
+// Nothing moves while the tablet, the PIT export or the field kit is open, except a player
+// carrying a cone. forward and steer run -1..1, from the keys plus the touch drive pad.
+function updatePlayer(dt) {
+  var p = S.player;
+  if (tablet || exportOpen || (repairJob && !carryingCone())) return;
+  var forward = clamp(
+    (controlActive('w') || controlActive('arrowup') ? 1 : 0) -
+      (controlActive('s') || controlActive('arrowdown') ? 1 : 0) +
+      driveAxis.forward,
+    -1,
+    1
+  );
+  var steer = clamp((controlActive('a') ? 1 : 0) - (controlActive('d') ? 1 : 0) + driveAxis.steer, -1, 1);
+  var look = lookValues();
+  // In a machine the mouse looks around it: whatever the mouse moved since the last step goes into
+  // the free-look offsets (touch-controls.logic), and the view is re-aimed from the machine's
+  // heading below. On foot the mouse look is the view itself.
+  if (p.mode !== 'foot') {
+    cameraYawOffset = wrapAngle(cameraYawOffset + wrapAngle(look.yaw - p.yaw));
+    cameraPitchOffset = clamp(cameraPitchOffset + look.pitch - p.pitch, -0.65, 0.65);
+  }
+  p.yaw = look.yaw;
+  p.pitch = look.pitch;
+  if (p.mode === 'foot') {
+    // On foot the arrow keys turn the view (1.8 rad/s); in a vehicle they steer.
+    var turn = (keys.arrowleft ? 1 : 0) - (keys.arrowright ? 1 : 0);
+    if (turn) setLook(p.yaw + turn * dt * 1.8, p.pitch);
+    // Run (Shift, or the touch Run toggle) at 8.5 m/s, walk at 4.8 m/s.
+    var speed = controlActive('shift') || runEnabled ? 8.5 : 4.8;
+    // A diagonal is no faster than straight ahead.
+    var length = Math.max(1, Math.hypot(forward, steer));
+    var dx = ((Math.sin(p.yaw) * forward + Math.cos(p.yaw) * steer) * speed * dt) / length;
+    var dz = ((Math.cos(p.yaw) * forward - Math.sin(p.yaw) * steer) * speed * dt) / length;
+    var oldX = p.x,
+      oldZ = p.z;
+    // A walker climbs grades up to 2 (2 m of rise per metre).
+    moveGround(p, dx, dz, 0.35, 2);
+    p.speed = Math.hypot(p.x - oldX, p.z - oldZ) / dt;
+    // A jump: p.jump is the height above the ground and p.vy its speed, under 13 m/s² gravity.
+    if (!p.grounded) {
+      p.vy -= 13 * dt;
+      p.jump += p.vy * dt;
+      if (p.jump <= 0) {
+        p.jump = 0;
+        p.vy = 0;
+        p.grounded = true;
+      }
+    }
+  } else if (p.mode === 'ute' || p.mode === 'truck') {
+    var v = p.mode === 'ute' ? S.ute : getTruck(p.vehicle);
+    if (!v) return;
+    // The wheel turns towards the requested lock at rate 7 per second rather than snapping.
+    var requestedSteer = clamp(steer + (keys.arrowleft ? 1 : 0) - (keys.arrowright ? 1 : 0), -1, 1);
+    p.steer = lerp(p.steer, requestedSteer, Math.min(1, dt * 7));
+    var steering = p.steer;
+    var limits = vehicleHandling(v, p.mode);
+    var max = limits.max;
+    var acc = limits.acceleration;
+    // Space (or the touch Hold brake), or the park brake (haul-assist.logic).
+    var brake = controlActive(' ') || v.parkBrake;
+    // Held still while a bucket pass, a full-tray request or a tip is under way (mine/bays.logic).
+    if (v.manualTip || v.manualLoad || v.fillRequested) {
+      v.speed = 0;
+      p.speed = 0;
+      return;
+    }
+    // Out of fuel: no throttle, but it still rolls and brakes.
+    if (v.fuel <= 0) forward = 0;
+    // Immobilised: a critical ute incident, a truck fault, or a closed road (mine/incidents.logic).
+    if (
+      (p.mode === 'ute' && incidentMods.ute === 0) ||
+      (p.mode === 'truck' && (v.fault || siteRoadFactor(v) === 0))
+    ) {
+      v.speed = 0;
+      p.speed = 0;
+      return;
+    }
+    // In the air the wheels have nothing to push on: speed and heading carry on as they were.
+    // Otherwise: braking eases the speed to zero; pressing against the direction of travel brakes
+    // first, and only below 0.15 m/s does it drive the other way; reverse tops out at 42 % of the
+    // forward limit; with no pedal the vehicle rolls to a stop.
+    if (v.air) {
+    } else if (brake) {
+      v.speed = lerp(v.speed, 0, Math.min(1, dt * 9));
+      if (Math.abs(v.speed) < 0.025) v.speed = 0;
+    } else if (forward * v.speed < 0 && Math.abs(v.speed) > 0.15) {
+      v.speed = lerp(v.speed, 0, Math.min(1, dt * 6));
+      if (Math.abs(v.speed) <= 0.15) v.speed = 0;
+    } else if (forward) v.speed = clamp(v.speed + forward * acc * dt, -max * 0.42, max);
+    else v.speed = lerp(v.speed, 0, Math.min(1, dt * 1.2));
+    // Turn rate at full lock in rad/s: ute 1.2, truck 0.62. It builds from nothing at a standstill
+    // to full at 3 m/s, eases off with speed, is zero in the air and is mirrored when reversing.
+    var turning =
+      (((p.mode === 'ute' ? 1.2 : 0.62) * Math.min(1, Math.abs(v.speed) / 3)) /
+        (1 + Math.abs(v.speed) * 0.025)) *
+      (v.air ? 0 : 1);
+    var heading = v.heading + steering * dt * turning * (v.speed >= 0 ? 1 : -1),
+      distance = v.speed * dt,
+      oldX = v.x,
+      oldZ = v.z,
+      prevY = v.y;
+    var blocked = sweepVehicle(
+      v,
+      p.mode,
+      Math.sin(heading) * distance,
+      Math.cos(heading) * distance,
+      heading
+    );
+    // A vehicle stops dead on contact. Over 5 m/s it is dented (0.2 health per m/s, never below
+    // 1) and bonks (fun/banter.logic); over 2.5 m/s the camera only shakes.
+    v.obstructed = blocked;
+    if (blocked) {
+      var hit = Math.abs(v.speed);
+      if (hit > 5) {
+        v.health = Math.max(1, v.health - hit * 0.2);
+        bonk(v, hit);
+      } else if (hit > 2.5) addShake(0.12);
+      v.speed = 0;
+    }
+    // The ute can leave the ground (stunts.logic); a truck keeps to it.
+    if (p.mode === 'ute') uteVertical(v, dt, Number.isFinite(prevY) ? prevY : v.y);
+    else v.y = groundAt(v.x, v.z);
+    // The distance actually covered, negative in reverse.
+    var actual = Math.hypot(v.x - oldX, v.z - oldZ) * (distance < 0 ? -1 : 1);
+    // Fuel is a percentage, burnt only while moving: ute 0.018 per second, truck 0.03.
+    if (Math.abs(actual) > 0.001) v.fuel = Math.max(0, v.fuel - dt * (p.mode === 'ute' ? 0.018 : 0.03));
+    // Wheel spin angle: distance over the wheel radius (0.61 m ute, 1.7 m truck).
+    v.wheel = (v.wheel || 0) + actual / (p.mode === 'ute' ? 0.61 : 1.7);
+    if (p.mode === 'truck') v.odometer += Math.abs(actual);
+    funCount('km', Math.abs(actual) / 1000);
+    // Airborne, the nose slowly drops (positive bodyPitch is nose down, as in settleVehicle).
+    if (!v.air) settleVehicle(v, p.mode, steering, dt);
+    else {
+      v.bodyPitch = lerp(v.bodyPitch || 0, 0.1, Math.min(1, dt * 2));
+    }
+    // The player rides along.
+    p.x = v.x;
+    p.y = v.y;
+    p.z = v.z;
+    p.speed = Math.abs(v.speed);
+    // Steering remains stable even when the mouse moves. On foot the mouse is free-look.
+    // The view follows the heading plus the free look, pitched down: -0.23 chase, -0.055 cab.
+    setLook(v.heading + cameraYawOffset, (cameraMode === 'chase' ? -0.23 : -0.055) + cameraPitchOffset);
+  } else if (p.mode === 'excavator') {
+    // The controls lock during a dig or discharge cycle (mine/bays.logic, mine/excavators.logic).
+    if (S.manualExcavator.dig || S.manualExcavator.dump) return;
+    // A and D swing the upper body (rad). D swings towards the ore face, and digging needs the
+    // swing at -0.95 or beyond; A swings back over the loading bay, and discharging needs it
+    // within ±0.35 (mine/bays.logic).
+    S.manualExcavator.yaw = clamp(S.manualExcavator.yaw + steer * dt, -1.65, 0.3);
+    // W and S (the touch pad's RAISE and LOWER) move the boom angle.
+    S.manualExcavator.anim = clamp(S.manualExcavator.anim - forward * dt, -0.25, 0.55);
+    p.speed = 0;
+    setLook(
+      excavatorLocation(Math.abs(p.vehicle)).heading + S.manualExcavator.yaw + cameraYawOffset,
+      (cameraMode === 'chase' ? -0.24 : -0.18) + cameraPitchOffset
+    );
+  }
+}
+
+// ---------- Vehicle limits ----------
+
+// Compact operational approximations, not OEM-calibrated vehicle physics.
+// Returns { max: top speed in m/s, acceleration in m/s², grade: the slope over the next 5 m in
+// the direction of travel (0.1 is 10 % uphill) }. Rain or dust, climbing, steep descents, a
+// heavy tray and incidents all lower the limits. refreshUI also reads the grade for the HUD.
+function vehicleHandling(v, mode) {
+  var load = mode === 'truck' ? clamp(v.payload / v.capacity, 0, 1) : 0;
+  var distance = 5,
+    dx = Math.sin(v.heading) * distance,
+    dz = Math.cos(v.heading) * distance;
+  var direction = v.speed < -0.1 ? -1 : 1;
+  var grade = (heightAt(v.x + dx * direction, v.z + dz * direction) - heightAt(v.x, v.z)) / distance;
+  var weather = S.weather === 'rain' ? 0.7 : S.weather === 'dust' ? 0.82 : 1;
+  // Each 10 % of climb costs 24 % of speed and acceleration, down to 45 %.
+  var uphill = clamp(1 - Math.max(0, grade) * 2.4, 0.45, 1);
+  // Descents steeper than 8 % cut top speed to 82 %.
+  var downhill = grade < -0.08 ? 0.82 : 1;
+  // Top speed: ute 22 m/s (79 km/h); truck 11 m/s empty, 9 m/s full. Last factor: a ute incident
+  // (incidentMods.ute), or for a truck the road and its own incidents (siteRoadFactor).
+  return {
+    max:
+      (mode === 'ute' ? 22 : 11 - load * 2) *
+      weather *
+      uphill *
+      downhill *
+      (mode === 'ute' ? incidentMods.ute : siteRoadFactor(v)),
+    acceleration: (mode === 'ute' ? 6.8 : 3.2 / (1 + load * 0.65)) * uphill,
+    grade: grade
+  };
+}
+
+// The ute or truck the player is driving; null on foot or in the excavator.
+function manualVehicle() {
+  return S.player.mode === 'ute' ? S.ute : S.player.mode === 'truck' ? getTruck(S.player.vehicle) : null;
+}

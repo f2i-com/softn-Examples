@@ -1,0 +1,20 @@
+// Bundled original PCM effects. Capability/browser denial never stops gameplay.
+function sound(name,volume) {
+ if(settings.muted || !sessionReady)return;
+ let now=Date.now(),gap=name==="wings"?240:(name==="steps"?170:100);
+ if(soundTimes[name] && now-soundTimes[name]<gap)return;
+ soundTimes[name]=now;
+ try { softn.audio.play("assets/sfx/"+name+".wav",{volume:volume===undefined?0.3:volume}); } catch(err) {}
+}
+function startAmbience() {
+ if(ambientStarted || settings.muted || !sessionReady)return;
+ try {softn.audio.play("assets/sfx/city.wav",{volume:0.10,loop:true});ambientStarted=true;}catch(err){}
+}
+function stopAudio() { try{softn.audio.stopAll();}catch(err){}ambientStarted=false; }
+function toggleSound() {settings.muted=!settings.muted;stopAudio();if(!settings.muted)startAmbience();persist();publish();}
+
+let officeSoundClock=0;
+function stepAudio(dt) {
+ officeSoundClock-=dt;
+ if(officeSoundClock<=0 && S.p.x<570 && S.p.y<450) {officeSoundClock=8; sound("office",0.13);}
+}

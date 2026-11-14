@@ -13,6 +13,7 @@
 <import Clients from="./pages/Clients.ui" />
 <import Staff from="./pages/Staff.ui" />
 <import Services from="./pages/Services.ui" />
+<import Studio from="./pages/Studio.ui" />
 
 // Import modals
 <import AddAppointmentModal from="./modals/AddAppointmentModal.ui" />
@@ -201,8 +202,11 @@ hr, [class*="divider"] {
     display: flex !important;
   }
   .softn-page-content {
-    padding: 1rem !important;
-    padding-bottom: 5rem !important;
+    padding: 0.875rem !important;
+    padding-bottom: 4.75rem !important;
+  }
+  .softn-smart-cards {
+    grid-template-columns: 1fr !important;
   }
 }
 
@@ -249,13 +253,14 @@ hr, [class*="divider"] {
       <Header />
 
       // Page Content
-      <Box className="softn-page-content" style={{ flex: 1, overflow: "auto", padding: "2rem 2.5rem", minHeight: 0, background: getBgColor(), transition: "background 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+      <Box className="softn-page-content" style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "2rem 2.5rem", minHeight: 0, minWidth: 0, boxSizing: "border-box", background: getBgColor(), transition: "background 0.3s cubic-bezier(0.16, 1, 0.3, 1)" }}>
         // Page Components
         <Dashboard />
         <Appointments />
         <Clients />
         <Staff />
         <Services />
+        <Studio />
       </Box>
     </Box>
   </Box>
@@ -266,73 +271,74 @@ hr, [class*="divider"] {
     bottom: 0,
     left: 0,
     right: 0,
-    height: "4rem",
+    height: "3.75rem",
     background: darkMode ? "rgba(12, 10, 9, 0.97)" : "rgba(255, 255, 255, 0.97)",
     borderTop: "1px solid " + getBorderColor(),
     backdropFilter: "blur(12px)",
     alignItems: "center",
     justifyContent: "space-around",
     zIndex: 1000,
-    padding: "0"
+    padding: "0 2px",
+    boxSizing: "border-box"
   }}>
     <Button variant=ghost @click={navigate("dashboard")} style={{
       flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
-      gap: "2px", padding: "0.5rem 0", borderRadius: 0, minWidth: 0,
+      gap: "2px", padding: "0.45rem 2px", borderRadius: 0, minWidth: 0,
       color: currentPage === "dashboard" ? getAccentColor() : getMutedColor(),
       borderTop: currentPage === "dashboard" ? "2px solid " + getAccentColor() : "2px solid transparent",
-      opacity: currentPage === "dashboard" ? 1 : 0.5
+      opacity: currentPage === "dashboard" ? 1 : 0.65
     }}>
-      <Text style={{ fontSize: "0.65rem", fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>Home</Text>
+      <Text style={{ fontSize: "0.6rem", fontWeight: 600, letterSpacing: "0.02em", textTransform: "uppercase" }}>Home</Text>
     </Button>
 
     <Button variant=ghost @click={navigate("appointments")} style={{
       flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
-      gap: "2px", padding: "0.5rem 0", borderRadius: 0, minWidth: 0,
+      gap: "2px", padding: "0.45rem 2px", borderRadius: 0, minWidth: 0,
       color: currentPage === "appointments" ? getAccentColor() : getMutedColor(),
       borderTop: currentPage === "appointments" ? "2px solid " + getAccentColor() : "2px solid transparent",
-      opacity: currentPage === "appointments" ? 1 : 0.5
+      opacity: currentPage === "appointments" ? 1 : 0.65
     }}>
-      <Text style={{ fontSize: "0.65rem", fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>Appts</Text>
+      <Text style={{ fontSize: "0.6rem", fontWeight: 600, letterSpacing: "0.02em", textTransform: "uppercase" }}>Appts</Text>
     </Button>
 
     <Button variant=ghost @click={navigate("clients")} style={{
       flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
-      gap: "2px", padding: "0.5rem 0", borderRadius: 0, minWidth: 0,
+      gap: "2px", padding: "0.45rem 2px", borderRadius: 0, minWidth: 0,
       color: currentPage === "clients" ? getAccentColor() : getMutedColor(),
       borderTop: currentPage === "clients" ? "2px solid " + getAccentColor() : "2px solid transparent",
-      opacity: currentPage === "clients" ? 1 : 0.5
+      opacity: currentPage === "clients" ? 1 : 0.65
     }}>
-      <Text style={{ fontSize: "0.65rem", fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>Clients</Text>
+      <Text style={{ fontSize: "0.6rem", fontWeight: 600, letterSpacing: "0.02em", textTransform: "uppercase" }}>Clients</Text>
     </Button>
 
     <Button variant=ghost @click={navigate("staff")} style={{
       flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
-      gap: "2px", padding: "0.5rem 0", borderRadius: 0, minWidth: 0,
+      gap: "2px", padding: "0.45rem 2px", borderRadius: 0, minWidth: 0,
       color: currentPage === "staff" ? getAccentColor() : getMutedColor(),
       borderTop: currentPage === "staff" ? "2px solid " + getAccentColor() : "2px solid transparent",
-      opacity: currentPage === "staff" ? 1 : 0.5
+      opacity: currentPage === "staff" ? 1 : 0.65
     }}>
-      <Text style={{ fontSize: "0.65rem", fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>Staff</Text>
+      <Text style={{ fontSize: "0.6rem", fontWeight: 600, letterSpacing: "0.02em", textTransform: "uppercase" }}>Staff</Text>
     </Button>
 
     <Button variant=ghost @click={navigate("services")} style={{
       flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
-      gap: "2px", padding: "0.5rem 0", borderRadius: 0, minWidth: 0,
+      gap: "2px", padding: "0.45rem 2px", borderRadius: 0, minWidth: 0,
       color: currentPage === "services" ? getAccentColor() : getMutedColor(),
       borderTop: currentPage === "services" ? "2px solid " + getAccentColor() : "2px solid transparent",
-      opacity: currentPage === "services" ? 1 : 0.5
+      opacity: currentPage === "services" ? 1 : 0.65
     }}>
-      <Text style={{ fontSize: "0.65rem", fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>Services</Text>
+      <Text style={{ fontSize: "0.6rem", fontWeight: 600, letterSpacing: "0.02em", textTransform: "uppercase" }}>Services</Text>
     </Button>
 
-    <Button variant=ghost @click=openDataModal style={{
+    <Button variant=ghost @click={navigate("studio")} style={{
       flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
-      gap: "2px", padding: "0.5rem 0", borderRadius: 0, minWidth: 0,
-      color: showDataModal ? getAccentColor() : getMutedColor(),
-      borderTop: showDataModal ? "2px solid " + getAccentColor() : "2px solid transparent",
-      opacity: showDataModal ? 1 : 0.5
+      gap: "2px", padding: "0.45rem 2px", borderRadius: 0, minWidth: 0,
+      color: currentPage === "studio" ? getAccentColor() : getMutedColor(),
+      borderTop: currentPage === "studio" ? "2px solid " + getAccentColor() : "2px solid transparent",
+      opacity: currentPage === "studio" ? 1 : 0.65
     }}>
-      <Text style={{ fontSize: "0.65rem", fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>Settings</Text>
+      <Text style={{ fontSize: "0.6rem", fontWeight: 600, letterSpacing: "0.02em", textTransform: "uppercase" }}>Studio</Text>
     </Button>
   </Box>
 

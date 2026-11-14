@@ -1,0 +1,860 @@
+// The field kit: fixing things in person, as a three-step mini-game, drawn by
+// app/ui/screens/field-kit.ui from fieldView. Every job follows a recipe (fieldRecipes).
+// Flow: E beside an alert or service point -> interact (interactions.logic) -> startRepair ->
+// beginFieldRepair, which opens repairJob (site-rounds checks come in through startInspection,
+// mine/rounds.logic). Each step completes by fieldAction (buttons and E), fieldAttach (the drag
+// board) or a hold timed by advanceFieldRepair. fieldAdvance then moves on and saves; after the
+// third step finishFieldRepair charges the cost and applies the fix.
+// State: repairJob, isRepairing and repairPct (core/state.logic); fieldView and the hold and drag
+// flags here. Progress lives on the alert, alert.work = { step, dropX, dropZ }, which is saved, so
+// a closed kit or a reload resumes where it left off (except a service point's one-off job, whose
+// alert is not in S.alerts). validSite (mine/chapters.logic) checks it.
+// Also here: the winch, and objects the 3D scene draws for field jobs (appendFieldObjects).
+
+// ---------- Entry points ----------
+
+// interact calls startRepair; stepSimulation calls advanceRepair every step.
+function startRepair(alert, touch) {
+  beginFieldRepair(alert, touch);
+}
+
+function advanceRepair(dt) {
+  advanceFieldRepair(dt);
+}
+
+// The HUD's action line during a job (refreshUI): the current step's label. The four-stage lists
+// below are for jobs that are not physical; beginFieldRepair makes every job physical, so they
+// are not used at present.
+function serviceStage() {
+  if (!repairJob) return '';
+  if (repairJob.physical) return fieldStep() ? fieldStep().label : '';
+  var kind = repairJob.alert.kind;
+  var stages =
+    kind === 'cone'
+      ? ['Confirm stop', 'Clear obstruction', 'Check route', 'Release truck']
+      : kind === 'fuel'
+        ? ['Secure vehicle', 'Connect supply', 'Refuel', 'Check & disconnect']
+        : kind === 'relay'
+          ? ['Check power', 'Inspect link', 'Restore signal', 'Verify telemetry']
+          : ['Isolate equipment', 'Inspect & service', 'Restore guards', 'Test & release'];
+  return stages[Math.min(3, Math.floor((repairJob.elapsed / repairJob.duration) * 4))];
+}
+
+// ---------- Kit state ----------
+
+// The kit's hold button is pressed. (Holding E works too: advanceFieldRepair reads keys.e.)
+var fieldHeld = false;
+
+// A drag on the board started on the left socket and is still going.
+var fieldDragging = false;
+
+// Where the dragged part is across the board, 0..1.
+var fieldDragX = 0;
+
+// The view model for field-kit.ui, rebuilt by refreshFieldUI and refreshFieldMechanism. Only
+// feedback (the last message for the player) survives a rebuild.
+var fieldView = { visible: false };
+
+// ---------- Recipes ----------
+
+// Deliberately simplified game puzzles, not real equipment maintenance procedures.
+// Each recipe is exactly three steps of { label, hint, action }, mostly inspect, prepare, then
+// verify by holding; jam ends by dragging the obstruction clear and cone by placing the cone.
+// label is the step's title (and the HUD's action line), hint the instruction under it (and the
+// HUD's detail), and action the control that completes it:
+//   inspect, isolate, kit, reference, plan, pickup, place   a button, or E (fieldAction)
+//   drag   drag the part from the left socket to the right one, or its button (fieldAttach)
+//   hold   hold the button, or E, for repairJob.duration (advanceFieldRepair)
+// field-kit.ui draws the buttons for each action, so a new action needs its button there.
+// Three steps are wired in: fieldAdvance finishes at step 3, progress divides by 3, the
+// readouts key on steps 0 and 1, field-kit.ui says "OF 3", and validSite allows alert.work.step
+// 0 to 2 (validRounds 0 to 3 for round jobs). A longer recipe means changing all of them.
+// Incidents name their recipe in mine/incidents.logic; fieldRecipe picks one for other alerts.
+var fieldRecipes = {
+  panel: [
+    {
+      label: 'Open and inspect panel',
+      hint: 'Open the inspection cover. Find the marked circuit.',
+      action: 'inspect'
+    },
+    {
+      label: 'Isolate the marked circuit',
+      hint: 'Switch the amber circuit to ISOLATED before testing.',
+      action: 'isolate'
+    },
+    {
+      label: 'Hold to reset and test',
+      hint: 'Hold the test control until the readiness check completes.',
+      action: 'hold'
+    }
+  ],
+  fuel: [
+    {
+      label: 'Inspect cap and coupling',
+      hint: 'Open the cap and inspect the marked connection.',
+      action: 'inspect'
+    },
+    {
+      label: 'Connect the fuel hose',
+      hint: 'Drag the hose from the left socket to the right coupling, or use Attach.',
+      action: 'drag'
+    },
+    {
+      label: 'Hold to pump and disconnect',
+      hint: 'Keep the pump control held. The coupling releases after the flow check.',
+      action: 'hold'
+    }
+  ],
+  battery: [
+    {
+      label: 'Open battery compartment',
+      hint: 'Inspect the compartment before exchanging the pack.',
+      action: 'inspect'
+    },
+    {
+      label: 'Slide in the replacement pack',
+      hint: 'Drag the pack into the right-hand socket, or use Attach.',
+      action: 'drag'
+    },
+    {
+      label: 'Latch and verify the pack',
+      hint: 'Hold the latch control until the electrical check completes.',
+      action: 'hold'
+    }
+  ],
+  cone: [
+    {
+      label: 'Inspect the obstruction',
+      hint: 'The affected truck stays secured while you clear the lane.',
+      action: 'inspect'
+    },
+    {
+      label: 'Pick up the cone',
+      hint: 'Take the cone. A turquoise marker shows the laydown point.',
+      action: 'pickup'
+    },
+    {
+      label: 'Carry and place the cone',
+      hint: 'Walk to the marked laydown point, then place the cone. WASD or the movement pad works.',
+      action: 'place'
+    }
+  ],
+  jam: [
+    {
+      label: 'Open the inspection cover',
+      hint: 'Find the obstruction behind the marked cover.',
+      action: 'inspect'
+    },
+    { label: 'Isolate before clearing', hint: 'Switch the amber circuit to ISOLATED.', action: 'isolate' },
+    {
+      label: 'Pull out the obstruction',
+      hint: 'Drag the jammed part from left to the clear area on the right, or use Clear.',
+      action: 'drag'
+    }
+  ],
+  mechanical: [
+    {
+      label: 'Inspect the service marks',
+      hint: 'The amber marks identify the joint or damaged section.',
+      action: 'inspect'
+    },
+    {
+      label: 'Choose the service kit',
+      hint: 'Select the fitted service kit. Tape does not fix this fault.',
+      action: 'kit'
+    },
+    {
+      label: 'Hold to secure and verify',
+      hint: 'Hold the service control to secure the part and verify readiness.',
+      action: 'hold'
+    }
+  ],
+  survey: [
+    {
+      label: 'Read the local instrument',
+      hint: 'Reference check: 24. The local reading needs independent verification.',
+      action: 'inspect'
+    },
+    {
+      label: 'Compare with the reference',
+      hint: 'Select the measured reference value: 24.',
+      action: 'reference'
+    },
+    {
+      label: 'Hold to calibrate and verify',
+      hint: 'Hold until the reference check is stable.',
+      action: 'hold'
+    }
+  ],
+  talk: [
+    {
+      label: 'Read the handover',
+      hint: 'The handover names the signed route and the agreed queue order.',
+      action: 'inspect'
+    },
+    {
+      label: 'Agree the operating plan',
+      hint: 'Confirm the signed plan. An unverified shortcut adds uncertainty.',
+      action: 'plan'
+    },
+    {
+      label: 'Confirm the radio readback',
+      hint: 'Hold the radio control while the operator reads the plan back.',
+      action: 'hold'
+    }
+  ],
+  winch: [
+    {
+      label: 'Look at how stuck it is',
+      hint: 'Walk round it. Look at the wheels. Make the face everyone makes.',
+      action: 'inspect'
+    },
+    {
+      label: 'Hook the cable to the anchor',
+      hint: 'Drag the hook from the winch drum to the anchor, or use Hook the anchor.',
+      action: 'drag'
+    },
+    {
+      label: 'Hold to winch it out',
+      hint: 'Hold the winch control (or E). It is slow, it is loud, and it works.',
+      action: 'hold'
+    }
+  ]
+};
+
+// The wrong answers on offer, each a button in field-kit.ui beside the right one: Duct tape on
+// a kit step, Assume: 42 on a reference step, Approve Oscar's shortcut on a plan step. A wrong
+// choice costs nothing and loses no progress: the step stays where it is and one of these lines
+// is shown (pick() draws on flavour(), so the jokes never move the simulation's random sequence).
+// Tape is also counted (S.fun.tape) for the end-of-shift awards, fun/awards.logic. E always
+// sends the right answer.
+var WRONG_CHOICE = {
+  tape: [
+    'You taped it. It is now a taped problem. Try the fitted kit.',
+    'Tape applied. The fault is unmoved, but it looks shinier.',
+    'Gary has seen the tape. Gary is drafting a sign about tape.'
+  ],
+  guess: [
+    'Forty-two is the answer to something, just not this. The reference says 24.',
+    'Assuming is how the last crew left. Use the reference value.'
+  ],
+  shortcut: [
+    'Oscar is thrilled. Dot is not. Confirm the signed plan instead.',
+    'The shortcut goes through a fence. Oscar has known this for weeks.'
+  ]
+};
+
+// The recipe for an alert: an incident's own, otherwise by the alert's kind. validSite uses it
+// too.
+function fieldRecipe(a) {
+  var d = incidentSpec(a.eventId);
+  return d
+    ? d.recipe
+    : a.kind === 'inspection'
+      ? 'survey'
+      : a.kind === 'cone'
+        ? 'cone'
+        : a.kind === 'fuel'
+          ? 'fuel'
+          : a.kind === 'battery' || a.kind === 'charger'
+            ? 'battery'
+            : a.kind === 'workshop'
+              ? 'mechanical'
+              : 'panel';
+}
+
+// ---------- Running a job ----------
+
+// The current step's recipe entry, or null with no job open.
+function fieldStep() {
+  return repairJob ? fieldRecipes[repairJob.recipe][repairJob.alert.work.step] : null;
+}
+
+// On the cone recipe's last step the player walks about holding the cone: movement and the touch
+// pads stay live, the 2 m tether is lifted, and field-kit.ui shrinks the kit to a strip.
+function carryingCone() {
+  return !!(repairJob && repairJob.recipe === 'cone' && repairJob.alert.work.step === 2);
+}
+
+// Close the kit (its Close button, walking away, a finished job, leaving play). Finished steps
+// stay on alert.work. Back in the world (still playing, tablet down), the mouse goes back to the
+// view: the kit released it to show the cursor, and without this the mouse would stop looking
+// round until the player clicked the view.
+function cancelField() {
+  var wasOpen = !!repairJob;
+  fieldHeld = false;
+  fieldDragging = false;
+  repairJob = null;
+  isRepairing = false;
+  repairPct = 0;
+  refreshFieldUI();
+  if (wasOpen && screen === 'play' && !tablet) takeMouse();
+}
+
+// Open the kit on an alert, resuming at alert.work.step. Needs the player on foot within 9 m (or
+// a service point's own reach, a.reach),
+// playing, with the tablet down and no job open. Plain fuel jobs and the charging rack also wait
+// until a critical fuel-supply or battery-rack incident is fixed (incidentMods). Starting on an
+// incident holds its equipment at once (stage 2, as if it had escalated). The cost is fixed now.
+// repairJob = { alert, recipe, physical (always true), elapsed (s held on a hold step), duration
+// (the hold, 1.5 s), cost ($), touch (not read), x, z (where the player stood: moving more than
+// 2 m away cancels), winched (m, winch jobs only) }.
+function beginFieldRepair(a, touch) {
+  if (
+    repairJob ||
+    screen !== 'play' ||
+    tablet ||
+    S.player.mode !== 'foot' ||
+    dist2(S.player, a) > (a.reach || 9)
+  )
+    return;
+  if (!a.eventId && a.kind === 'fuel' && !incidentMods.fuel) {
+    notify('FUEL FARM', 'Restore the fuel-supply field alert before ordering a refuel.');
+    return;
+  }
+  if (!a.eventId && a.kind === 'charger' && !incidentMods.battery) {
+    notify('CHARGING', 'Restore the rack field alert before servicing the batteries.');
+    return;
+  }
+  ensureSite();
+  ensureMemos();
+  // An incident's own cost, otherwise by kind ($).
+  var d = incidentSpec(a.eventId),
+    cost = d
+      ? d.cost
+      : a.kind === 'inspection' || a.kind === 'cone'
+        ? 0
+        : a.kind === 'crusher'
+          ? 180
+          : a.kind === 'relay'
+            ? 90
+            : a.kind === 'workshop'
+              ? 450
+              : a.kind === 'fuel'
+                ? 160
+                : 120;
+  // A Head Office memo can make repairs cheaper for the shift (fun/memos.logic).
+  cost = Math.round(cost * S.memoFx.repair);
+  if (!a.work) a.work = { step: 0 };
+  if (a.eventId) {
+    a.stage = 2;
+    syncIncidentEffects();
+  }
+  repairJob = {
+    alert: a,
+    recipe: fieldRecipe(a),
+    physical: true,
+    elapsed: 0,
+    duration: 1.5,
+    cost: cost,
+    touch: touch,
+    x: S.player.x,
+    z: S.player.z
+  };
+  fieldHeld = false;
+  fieldDragging = false;
+  fieldView.feedback = '';
+  isRepairing = true;
+  repairPct = (a.work.step / 3) * 100;
+  releaseMouse();
+  keys = {};
+  // Back to a cone job that was being carried: mark its laydown point again.
+  if (carryingCone()) setWaypoint(a.work.dropX, a.work.dropZ, 'Cone laydown / place here');
+  refreshUI();
+}
+
+// The kit works only on foot and in play, with no tablet or export open.
+function fieldAllowed() {
+  return !!repairJob && screen === 'play' && !tablet && !exportOpen && S.player.mode === 'foot';
+}
+
+// A step is done: move on and save the progress, or finish after the third. Clearing keys.e
+// keeps the E press that finished this step from starting the next step's hold at once (holding
+// E on counts again once the key auto-repeats).
+function fieldAdvance() {
+  if (!fieldAllowed()) return;
+  var a = repairJob.alert;
+  a.work.step++;
+  repairJob.elapsed = 0;
+  fieldHeld = false;
+  fieldDragging = false;
+  fieldView.feedback = '';
+  keys.e = false;
+  sfx('click');
+  if (a.work.step >= 3) {
+    finishFieldRepair();
+    return;
+  }
+  saveGame(true);
+  refreshUI();
+}
+
+// A step's button, or E (which always sends the right action). Anything else is a wrong choice
+// (WRONG_CHOICE): the step stays, with feedback. hold and drag steps have their own controls,
+// so here they stop. pickup first finds a clear laydown point; place needs the player on it.
+function fieldAction(action) {
+  if (!fieldAllowed()) return;
+  var step = fieldStep();
+  if (!step) return;
+  if (action !== step.action) {
+    if (action === 'tape') funCount('tape');
+    fieldView.feedback = WRONG_CHOICE[action]
+      ? pick(WRONG_CHOICE[action])
+      : 'Check the marked instruction first. The field kit is very particular.';
+    sfx('click');
+    refreshFieldUI();
+    return;
+  }
+  if (action === 'hold' || action === 'drag') return;
+  if (action === 'pickup') {
+    // The laydown point: 13 m to one side of the truck, else the other, wherever it is clear.
+    var a = repairJob.alert,
+      t = a.truckId ? getTruck(a.truckId) : null,
+      heading = t ? t.heading : 0,
+      chosen = null;
+    for (var side of [1, -1]) {
+      var p = { x: a.x + Math.cos(heading) * side * 13, z: a.z - Math.sin(heading) * side * 13 };
+      if (clearanceScore(S.player, 'foot', p.x, p.z, 0, true) < 0.001 && !hitsSolid(p.x, p.z, 0.5)) {
+        chosen = p;
+        break;
+      }
+    }
+    if (!chosen) {
+      fieldView.feedback = 'No clear laydown point. Clear nearby equipment first.';
+      return;
+    }
+    // Saved before the step advances: validSite requires a laydown point on a cone's last step.
+    a.work.dropX = chosen.x;
+    a.work.dropZ = chosen.z;
+    setWaypoint(chosen.x, chosen.z, 'Cone laydown / place here');
+  }
+  if (action === 'place') {
+    // Within 2.8 m of the marker, standing on clear ground.
+    var w = repairJob.alert.work;
+    if (dist2(S.player, { x: w.dropX, z: w.dropZ }) > 2.8) {
+      fieldView.feedback = 'Carry the cone to the turquoise laydown marker first.';
+      return;
+    }
+    if (clearanceScore(S.player, 'foot', S.player.x, S.player.z, 0, true) > 0.001) {
+      fieldView.feedback = 'Step into the clear laydown area.';
+      return;
+    }
+  }
+  fieldAdvance();
+}
+
+// ---------- Hold and drag controls ----------
+
+// A drag step is done: a good drop on the board, or the button beside it (Attach, Clear, Hook).
+function fieldAttach() {
+  if (fieldAllowed() && fieldStep().action === 'drag') fieldAdvance();
+}
+
+// The hold button (pointerdown; up, cancel and leave end it). Letting go starts the hold again.
+function fieldHoldStart() {
+  if (fieldAllowed() && fieldStep().action === 'hold') {
+    fieldHeld = true;
+    repairJob.elapsed = 0;
+  }
+}
+
+function fieldHoldEnd() {
+  fieldHeld = false;
+  if (repairJob) repairJob.elapsed = 0;
+}
+
+// The pointer's place on the drag board, as fractions 0..1 of its width and height (SoftN's
+// e.targetLeft/Top/Width/Height give the board's box), or null if the event cannot say.
+function fieldPoint(e) {
+  if (
+    !e ||
+    !Number.isFinite(e.targetWidth) ||
+    e.targetWidth <= 0 ||
+    !Number.isFinite(e.targetHeight) ||
+    e.targetHeight <= 0
+  )
+    return null;
+  var x = (e.clientX - e.targetLeft) / e.targetWidth,
+    y = (e.clientY - e.targetTop) / e.targetHeight;
+  return Number.isFinite(x) && Number.isFinite(y) ? { x: x, y: y } : null;
+}
+
+// A drag counts only from the left socket (the board's left 32 %, between 15 % and 85 % down),
+// a little more than the socket field-kit.ui draws.
+function fieldDragStart(e) {
+  if (!fieldAllowed() || fieldStep().action !== 'drag' || !e || e.button !== 0) return;
+  var p = fieldPoint(e);
+  fieldDragging = !!(p && p.x < 0.32 && p.x >= 0 && p.y > 0.15 && p.y < 0.85);
+  fieldDragX = 0;
+  refreshFieldUI();
+}
+
+function fieldDragMove(e) {
+  if (!fieldDragging) return;
+  var p = fieldPoint(e);
+  if (!p || e.buttons === 0) {
+    fieldDragCancel();
+    return;
+  }
+  fieldDragX = clamp(p.x, 0, 1);
+  refreshFieldUI();
+}
+
+// ...and lands only on the right socket (the right 28 %, same height); anywhere else is a miss.
+function fieldDragEnd(e) {
+  if (!fieldDragging) return;
+  var p = fieldPoint(e);
+  fieldDragging = false;
+  if (p && p.x > 0.72 && p.x < 1 && p.y > 0.15 && p.y < 0.85) fieldAttach();
+  else {
+    fieldView.feedback = 'Connection missed. Start at the left socket and release in the right socket.';
+    refreshFieldUI();
+  }
+}
+
+function fieldDragCancel() {
+  fieldDragging = false;
+  fieldDragX = 0;
+  refreshFieldUI();
+}
+
+// ---------- Every step, and finishing ----------
+
+// Every simulation step with a job open. Closes the kit if the player can no longer use it,
+// if a site-rounds check is interrupted (a fault on that system, or for the loader check a
+// relocation or another excavator), or if the player strays over 2 m from where they started
+// (not while carrying the cone). On a hold step, times the hold (E or the button; letting go
+// starts again) and the winch pulls meanwhile. Keeps repairPct up to date.
+function advanceFieldRepair(dt) {
+  if (!repairJob) return;
+  if (!fieldAllowed()) {
+    cancelField();
+    return;
+  }
+  if (
+    repairJob.alert.kind === 'inspection' &&
+    (roundBlocked(repairJob.alert.roundId) ||
+      (repairJob.alert.roundId === 'loader' &&
+        (S.deployment.remaining > 0 || repairJob.alert.checkMachine !== S.activeExcavator)))
+  ) {
+    notify('SITE ROUNDS', 'A fault interrupted this check. Repair it before resuming.');
+    cancelField();
+    return;
+  }
+  if (!carryingCone() && dist2(S.player, repairJob) > 2) {
+    cancelField();
+    return;
+  }
+  if (fieldStep().action === 'hold' && (fieldHeld || keys.e)) {
+    repairJob.elapsed += dt;
+    if (repairJob.recipe === 'winch') winchStep(dt);
+    if (repairJob.elapsed >= repairJob.duration) {
+      fieldAdvance();
+      return;
+    }
+  } else repairJob.elapsed = 0;
+  repairPct = ((repairJob.alert.work.step + clamp(repairJob.elapsed / repairJob.duration, 0, 1)) / 3) * 100;
+}
+
+// After the third step. Site-rounds checks are recorded by finishInspection (mine/rounds.logic).
+// Anything else: charge the cost (there is no funds check), apply the fix, remove the alert and
+// let the incident code tidy up, then save. `active` means the alert is still in S.alerts. A
+// service point's one-off alert never is: it is charged and applied, but counts no repair and
+// uses no spare kit.
+function finishFieldRepair() {
+  if (!repairJob) return;
+  var job = repairJob,
+    a = job.alert;
+  if (a.kind === 'inspection') {
+    finishInspection(a);
+    return;
+  }
+  var active = S.alerts.some(function (q) {
+    return q.key === a.key;
+  });
+  // Persistent alert steps make cancellation/reload safe; an already removed job cannot pay twice.
+  if (a.eventId && !active) {
+    cancelField();
+    return;
+  }
+  // A spare kit (S.site.spares, bought in the contractor chapter) takes $40 off.
+  var cost = job.cost;
+  if (active && cost > 0 && S.site.spares > 0) {
+    S.site.spares--;
+    cost = Math.max(0, cost - 40);
+  }
+  S.cash -= cost;
+  S.costs += cost;
+  // A plain (non-incident) crusher or relay alert puts the plant or the repeater back on.
+  if (!a.eventId) {
+    if (a.kind === 'crusher') S.crusher = true;
+    if (a.kind === 'relay') S.relay = true;
+  }
+  // A job on a truck: a plain fault is cleared, a fuel job fills the tank, a battery job sets the
+  // operator's battery to 70 %, and the truck is patched up to at least 80 health.
+  if (a.truckId) {
+    var t = getTruck(a.truckId);
+    if (t) {
+      if (!a.eventId) t.fault = '';
+      if (a.kind === 'fuel') t.fuel = 100;
+      if (a.kind === 'battery') {
+        var b = botFor(t);
+        if (b) b.battery = 70;
+      }
+      t.health = Math.max(80, t.health);
+    }
+  }
+  // The service points. Workshop: every truck and the ute to full health. Fuel farm: everything
+  // refuelled and the plain fuel alerts cleared. Charging rack: every robot to 100 % and the
+  // plain battery alerts cleared.
+  if (a.kind === 'workshop') {
+    for (var t of S.trucks) t.health = 100;
+    S.ute.health = 100;
+  }
+  if (a.kind === 'fuel' && !a.truckId && incidentMods.fuel) {
+    S.ute.fuel = 100;
+    for (var t of S.trucks) t.fuel = 100;
+    S.alerts = S.alerts.filter(function (q) {
+      return q.eventId || q.kind !== 'fuel';
+    });
+  }
+  if (a.kind === 'charger' && incidentMods.battery) {
+    for (var b of S.robots) b.battery = 100;
+    S.alerts = S.alerts.filter(function (q) {
+      return q.eventId || q.kind !== 'battery';
+    });
+  }
+  ensureProgress();
+  // A real alert: count the repair, remove the alert, and let resolveIncident
+  // (mine/incidents.logic) return spilt ore, write the journal and settle chapter tasks and crew
+  // reactions.
+  if (active) {
+    S.shiftStats.repairs++;
+    S.career.repairs++;
+    S.alerts = S.alerts.filter(function (q) {
+      return q.key !== a.key;
+    });
+    resolveIncident(a);
+  }
+  // The ute's own incidents leave it fit to drive.
+  if (a.eventId === 'ute_battery' || a.eventId === 'bogged_ute') {
+    S.ute.health = Math.max(S.ute.health, 85);
+    S.ute.fuel = Math.max(S.ute.fuel, 20);
+  }
+  S.tutorial.repair = true;
+  // Clears whatever marker is up, not only this job's.
+  S.waypoint = null;
+  notify('FIELD SERVICE', a.title + ' complete. ' + money(cost) + ' charged.', 'success');
+  cancelField();
+  updateProgress();
+  advanceSiteLife(0);
+  sfx('success');
+  refreshUI();
+  saveGame(true);
+}
+
+// ---------- The kit's view (fieldView) ----------
+
+// Rebuild fieldView for field-kit.ui: from refreshUI, and at once after kit actions. Only the
+// feedback message carries over from the previous view.
+function refreshFieldUI() {
+  if (!repairJob) {
+    fieldView = { visible: false };
+    return;
+  }
+  var j = repairJob,
+    step = fieldStep(),
+    d = incidentSpec(j.alert.eventId),
+    feedback = fieldView.feedback || '';
+  fieldView = {
+    visible: true,
+    title: j.alert.title,
+    detail: d ? d.detail : 'Service the marked equipment.',
+    recipe: j.recipe,
+    step: j.alert.work.step + 1,
+    label: step ? step.label : 'Complete',
+    hint: step ? step.hint : '',
+    action: step ? step.action : '',
+    cost: money(j.cost),
+    // A fault keeps its finished steps on the alert; a service job (not in S.alerts) starts over.
+    kept: S.alerts.indexOf(j.alert) >= 0,
+    carry: carryingCone(),
+    feedback: feedback,
+    // The part follows the pointer between 10 % and 82 % across the board.
+    dragStyle: { left: (fieldDragging ? clamp(fieldDragX * 100, 10, 82) : 10) + '%' },
+    progress: { width: repairPct + '%' },
+    // While carrying the cone: the bearing and metres to the laydown point.
+    distance: carryingCone()
+      ? waypointBearing() +
+        ' / ' +
+        Math.round(dist2(S.player, { x: j.alert.work.dropX, z: j.alert.work.dropZ })) +
+        ' m'
+      : ''
+  };
+}
+
+// The little mechanism's animation (from refreshUI): the readout, the cover (open after the
+// first step), the gauge needle and the tool (moving with the hold), and the pilot lamp (amber,
+// then green on the last step). With Reduced motion (motion false) nothing transitions or
+// wobbles.
+function refreshFieldMechanism() {
+  if (!repairJob || !fieldView.visible) return;
+  var j = repairJob,
+    p = clamp(j.elapsed / j.duration, 0, 1),
+    step = j.alert.work.step;
+  fieldView.readout =
+    step === 0
+      ? 'COVER CLOSED'
+      : step === 1
+        ? 'INSPECTION OPEN'
+        : fieldStep().action === 'hold'
+          ? 'VERIFY / ' + Math.round(p * 100) + '%'
+          : 'READY TO CLEAR';
+  // Survey and talk jobs have readouts of their own.
+  if (j.recipe === 'survey')
+    fieldView.readout =
+      step === 0 ? 'LOCAL REFERENCE' : step === 1 ? 'REFERENCE 24' : 'STABLE / ' + Math.round(p * 100) + '%';
+  if (j.recipe === 'talk')
+    fieldView.readout =
+      step === 0
+        ? 'HANDOVER RECEIVED'
+        : step === 1
+          ? 'AWAITING AGREEMENT'
+          : 'READBACK / ' + Math.round(p * 100) + '%';
+  fieldView.coverStyle = {
+    transform: 'perspective(400px) rotateY(' + (step > 0 ? -108 : 0) + 'deg)',
+    transition: motion ? 'transform .22s ease-out' : 'none'
+  };
+  fieldView.needleStyle = {
+    transform: 'rotate(' + (-45 + p * 90) + 'deg)',
+    transition: motion ? 'transform .1s linear' : 'none'
+  };
+  fieldView.toolStyle = {
+    transform: 'rotate(' + (motion && j.elapsed > 0 ? Math.sin(j.elapsed * 12) * 18 : 0) + 'deg)',
+    transition: motion ? 'transform .12s linear' : 'none'
+  };
+  fieldView.lampStyle = {
+    background: step >= 2 ? '#8fddba' : '#e6b763',
+    opacity: step >= 2 ? 0.55 + p * 0.45 : 1
+  };
+}
+
+// ---------- The winch ----------
+
+// The winch drags a bogged vehicle forward while the control is held, if the way is clear. It
+// is the recipe of the stuck_truck and bogged_ute incidents (mine/incidents.logic).
+
+// The vehicle on the end of the cable: the alert's truck, else the ute.
+function winchVehicle() {
+  var a = repairJob.alert;
+  return a.truckId ? getTruck(a.truckId) : S.ute;
+}
+
+// One step of winching (from advanceFieldRepair while the hold is held): forward along the
+// heading at 0.75 m/s, only into clear ground, and at most 2.2 m each time the kit is opened.
+// An unbroken hold lasts repairJob.duration (1.5 s), so it pulls about 1.1 m.
+function winchStep(dt) {
+  var v = winchVehicle();
+  if (!v) return;
+  repairJob.winched = repairJob.winched || 0;
+  if (repairJob.winched >= 2.2) return;
+  var step = Math.min(0.75 * dt, 2.2 - repairJob.winched),
+    nx = v.x + Math.sin(v.heading) * step,
+    nz = v.z + Math.cos(v.heading) * step;
+  if (clearanceScore(v, v === S.ute ? 'ute' : 'truck', nx, nz, v.heading, true) < 0.001) {
+    v.x = nx;
+    v.z = nz;
+    v.y = groundAt(nx, nz);
+    repairJob.winched += step;
+    // Dust in bursts: a quarter of a second in every three quarters.
+    if (Math.floor(S.time * 4) % 3 === 0) burst('dust', v.x, v.y + 0.2, v.z, 0.5);
+  }
+}
+
+// Once the cable is hooked (the last step), draw the stake 10 m beyond the vehicle's hook point
+// and the cable to it, shaking while the winch pulls. front is how far the hook point sits ahead
+// of the vehicle's centre: 2.7 m on the ute, 5.6 m on a truck.
+function appendWinchObjects(objects) {
+  if (!repairJob || repairJob.recipe !== 'winch' || repairJob.alert.work.step < 2) return;
+  var v = winchVehicle();
+  if (!v) return;
+  var front = v === S.ute ? 2.7 : 5.6,
+    hx = Math.sin(v.heading),
+    hz = Math.cos(v.heading);
+  var ax = v.x + hx * (front + 10),
+    az = v.z + hz * (front + 10),
+    ay = groundAt(ax, az),
+    sx = v.x + hx * front,
+    sz = v.z + hz * front,
+    sy = v.y + 1.1;
+  objects.push({
+    id: 'winch-stake',
+    type: 'cylinder',
+    position: vec(ax, ay + 0.5, az),
+    radius: 0.12,
+    height: 1.1,
+    color: '#d8a540'
+  });
+  var dx = ax - sx,
+    dy = ay + 0.8 - sy,
+    dz = az - sz,
+    len = Math.hypot(dx, dy, dz),
+    wobble = fieldHeld || keys.e ? Math.sin(S.time * 40) * 0.03 : 0;
+  var wire = box('wire', 0, 0, 0, 0.05, 0.05, len, '#262b2c');
+  wire.rotation = vec(-Math.atan2(dy, Math.hypot(dx, dz)), 0, 0);
+  objects.push(
+    group('winch-cable', (sx + ax) / 2, (sy + ay + 0.8) / 2 + wobble, (sz + az) / 2, Math.atan2(dx, dz), [
+      wire
+    ])
+  );
+}
+
+// ---------- Scene objects ----------
+
+// What the 3D scene adds for field work (from world/scene.logic): the winch, spilt ore beside a
+// spilled_payload incident, the cone in the player's hand, and two pieces of chapter scenery
+// (mine/chapters.logic): the contractor's van at the workshop on shift 4, and the abandoned
+// survey ute and its crate from shift 5. clearanceScore (world/collision.logic) has a matching
+// collider for each piece of scenery: move them together.
+function appendFieldObjects(objects) {
+  appendWinchObjects(objects);
+  for (var a of S.alerts) {
+    if (a.eventId === 'spilled_payload' && a.ore > 0)
+      objects.push({
+        id: 'spilled-' + a.key,
+        type: 'cone',
+        position: vec(a.x + 4, heightAt(a.x + 4, a.z) + 0.35, a.z),
+        radius: 1.4,
+        height: 0.7,
+        color: '#947a52'
+      });
+  }
+  if (carryingCone()) {
+    // Fixed to the camera: down and to the right, 0.9 m in front of the eye.
+    var held = group('carried-cone', 0.36, -0.36, -0.9, 0, [
+      {
+        id: 'held-cone-body',
+        type: 'cone',
+        position: vec(0, 0.18, 0),
+        radius: 0.14,
+        height: 0.4,
+        color: '#ed9f43'
+      },
+      box('held-cone-base', 0, -0.03, 0, 0.34, 0.045, 0.34, '#31383b'),
+      box('held-cone-glove', -0.12, -0.04, 0.05, 0.12, 0.1, 0.15, '#887459')
+    ]);
+    held.attach = 'camera';
+    objects.push(held);
+  }
+  if (S.shift === 4) {
+    var van = model('contractor-ute', 'ute', -88, heightAt(-88, 145), 145);
+    van.rotation = vec(0, Math.PI / 2, 0);
+    objects.push(van);
+  }
+  if (S.shift >= 5) {
+    var old = model('survey-ute', 'ute', -84, heightAt(-84, 178), 178);
+    old.rotation = vec(0, -0.35, 0);
+    objects.push(old);
+    objects.push(box('survey-crate', -81, heightAt(-81, 180) + 0.5, 180, 1.4, 1, 1, '#778c83'));
+  }
+}

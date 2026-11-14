@@ -1,0 +1,223 @@
+// Shared road ducts plus explicit power lines / water mains. Capacity is per network.
+function uwUtilityGraph(kind) {
+    let ids = uwZero(uwWorld.tiles.length, -1), groups = [], conductor = uwZero(uwWorld.tiles.length, false);
+    for (let i = 0; i < conductor.length; i = i + 1) {
+        let t = uwWorld.tiles[i];
+        conductor[i] = !t.flood && !t.fire && (t.road > 0 || (kind === "power" ? t.wire > 0 : t.pipe > 0));
+    }
+    for (let i = 0; i < conductor.length; i = i + 1) {
+        if (!conductor[i] || ids[i] >= 0)
+            continue;
+        let id = groups.length, queue = [i], head = 0;
+        ids[i] = id;
+        while (head < queue.length) {
+            let a = queue[head++], nn = uwNeighbours(a);
+            for (let k = 0; k < nn.length; k = k + 1) {
+                let b = nn[k];
+                if (conductor[b] && ids[b] < 0) {
+                    ids[b] = id;
+                    queue.push(b);
+                }
+            }
+        }
+        groups.push({ supply: 0, demand: 0, ratio: 0 });
+    }
+    let attach = uwZero(conductor.length, -1);
+    for (let i = 0; i < conductor.length; i = i + 1) {
+        let j = uwNearNetwork(i, ids);
+        if (j >= 0)
+            attach[i] = ids[j];
+    }
+    return { ids: ids, groups: groups, attach: attach };
+}
+function uwUtilityDemand(t, kind) {
+    let facility = t.build ? UW_FACILITIES[t.build] : null;
+    if (facility)
+        return kind === "power" ? facility.demand || 0 : (facility.power ? 7 : 5);
+    if (!t.level && !t.stage)
+        return 0;
+    let base = t.stage > 0 ? 3 : 2;
+    return Math.ceil(base + t.pop * (kind === "power" ? 0.19 : 0.25) + uwJobCapacity(t) * (kind === "power" ? 0.28 : 0.18));
+}
+function uwComputeUtility(kind) {
+    let graph = uwUtilityGraph(kind), values = uwZero(uwWorld.tiles.length, 0), totalDemand = 0, totalSupply = 0;
+    for (let i = 0; i < uwWorld.tiles.length; i = i + 1) {
+        let t = uwWorld.tiles[i], g = graph.attach[i], demand = uwUtilityDemand(t, kind);
+        totalDemand += demand;
+        if (g < 0)
+            continue;
+        graph.groups[g].demand += demand;
+        let f = t.build ? UW_FACILITIES[t.build] : null;
+        if (!f || t.fire || t.flood)
+            continue;
+        let supply = kind === "power" ? f.power || 0 : f.water || 0;
+        if (kind === "water" && uwNet.power[i] < 0.25)
+            supply = 0;
+        if (kind === "power" && t.build === "wind")
+            supply *= uwWorld.weather === "Still air" ? 0.45 : 0.85;
+        if (kind === "power" && t.build === "solar")
+            supply *= 0.72 + Math.sin((uwWorld.month % 12) / 12 * Math.PI * 2) * 0.18;
+        if (uwWorld.weather === "Severe storm" && kind === "power")
+            supply *= 0.72;
+        supply *= Math.max(0.2, uwWorld.funding[kind === "power" ? "power" : "water"] / 100);
+        graph.groups[g].supply += supply;
+        totalSupply += supply;
+    }
+    for (let g = 0; g < graph.groups.length; g = g + 1) {
+        let c = graph.groups[g];
+        c.ratio = c.supply > 0 ? Math.min(1, c.supply / Math.max(1, c.demand)) : 0;
+    }
+    let served = 0;
+    for (let i = 0; i < values.length; i = i + 1) {
+        let g = graph.attach[i];
+        if (g >= 0)
+            values[i] = graph.groups[g].ratio;
+        if (values[i] > 0.8)
+            served += uwWorld.tiles[i].pop;
+    }
+    if (kind === "power") {
+        uwNet.power = values;
+        uwNet.powerGraph = graph;
+        uwNet.powerSupply = Math.round(totalSupply);
+        uwNet.powerDemand = Math.round(totalDemand);
+        uwNet.connectedPower = served;
+    }
+    else {
+        uwNet.water = values;
+        uwNet.waterGraph = graph;
+        uwNet.waterSupply = Math.round(totalSupply);
+        uwNet.waterDemand = Math.round(totalDemand);
+        uwNet.connectedWater = served;
+    }
+}
+function uwSpreadLocal(field, i, strength, radius) {
+    let p = uwXZ(i);
+    for (let z = Math.max(0, p.z - radius); z <= Math.min(uwWorld.n - 1, p.z + radius); z = z + 1)
+        for (let x = Math.max(0, p.x - radius); x <= Math.min(uwWorld.n - 1, p.x + radius); x = x + 1) {
+            let d = Math.sqrt((x - p.x) * (x - p.x) + (z - p.z) * (z - p.z));
+            if (d <= radius)
+                field[z * uwWorld.n + x] += strength * (1 - d / (radius + 1));
+        }
+}
+function uwComputeServices() {
+    let types = ["school", "health", "police", "fire", "culture", "university", "waste", "transit"], count = uwWorld.tiles.length, services = {}, activeDepots = {};
+    for (let i = 0; i < count; i = i + 1) {
+        let t = uwWorld.tiles[i], road = uwNet.access[i];
+        if (t.build === "depot" && !t.fire && !t.flood && road >= 0 && uwNet.power[i] > 0.4)
+            activeDepots[uwNet.roadIds[road]] = true;
+    }
+    for (let g = 0; g < uwNet.groups.length; g = g + 1)
+        uwNet.groups[g].depot = !!activeDepots[g];
+    uwComputeRoutes();
+    for (let k = 0; k < types.length; k = k + 1) {
+        let key = types[k], rangeGroups = {}, ranges = [], field = uwZero(count, 0);
+        for (let i = 0; i < count; i = i + 1) {
+            let t = uwWorld.tiles[i], f = t.build ? UW_FACILITIES[t.build] : null, road = uwNet.access[i];
+            if (!f || f.service !== key || road < 0 || t.fire || t.flood || uwNet.power[i] < 0.35)
+                continue;
+            if (key === "transit" && !activeDepots[uwNet.roadIds[road]])
+                continue;
+            let r = String(f.range);
+            if (!rangeGroups[r]) {
+                rangeGroups[r] = [];
+                ranges.push(f.range);
+            }
+            rangeGroups[r].push(road);
+        }
+        // Group equal catchments, but never lend a town hall's range to a library.
+        for (let r = 0; r < ranges.length; r = r + 1) {
+            let radius = ranges[r], paths = uwRoadDistances(rangeGroups[String(radius)], radius, false);
+            for (let i = 0; i < count; i = i + 1) {
+                let road = uwNet.access[i];
+                if (road >= 0 && paths.dist[road] <= radius)
+                    field[i] = Math.max(field[i], Math.min(100, Math.max(0, 100 - paths.dist[road] / radius * 75) * uwWorld.funding.services / 100));
+            }
+        }
+        services[key] = field;
+    }
+    if (uwWorld.transitMode === "routes") services.transit = uwRouteService();
+    let parks = uwZero(count, 0), pollution = uwZero(count, 0), treeCount = 0;
+    for (let i = 0; i < count; i = i + 1) {
+        let t = uwWorld.tiles[i], f = t.build ? UW_FACILITIES[t.build] : null;
+        if (f && f.service === "park" && !t.fire && !t.flood)
+            uwSpreadLocal(parks, i, 65, f.range);
+        if (t.tree) {
+            treeCount += 1;
+            uwSpreadLocal(parks, i, 4, 2);
+        }
+        let amount = f ? f.pollution || 0 : t.zone === 3 && t.level > 0 ? 9 + t.level * 5 : 0;
+        if (t.zone === 3 && uwWorld.policies.clean)
+            amount *= 0.65;
+        if (t.zone === 3 && t.level >= 3 && services.university[i] > 30)
+            amount *= 0.65;
+        if (amount > 0)
+            uwSpreadLocal(pollution, i, amount, 5);
+    }
+    for (let i = 0; i < count; i = i + 1) {
+        let t = uwWorld.tiles[i];
+        let waste = t.pop > 0 ? (1 - services.waste[i] / 100) * 7 : 0;
+        if (uwWorld.policies.recycling)
+            waste *= 0.75;
+        pollution[i] = uwClamp(pollution[i] + waste + (uwNet.traffic[i] || 0) * 0.035 - Math.min(10, parks[i] * 0.12), 0, 100);
+        parks[i] = uwClamp(parks[i] * (uwWorld.policies.trees ? 1.2 : 1), 0, 100);
+    }
+    services.park = parks;
+    uwNet.service = services;
+    uwNet.pollution = pollution;
+    uwWorld.totalTrees = treeCount;
+}
+function uwComputeLandValue() {
+    let total = 0, education = 0, health = 0, waste = 0, pop = 0;
+    for (let i = 0; i < uwWorld.tiles.length; i = i + 1) {
+        let t = uwWorld.tiles[i], s = uwNet.service, road = uwNet.access[i], waterside = false, nn = uwNeighbours(i);
+        for (let k = 0; k < nn.length; k = k + 1)
+            if (uwWorld.tiles[nn[k]].wet)
+                waterside = true;
+        let value = 24 + s.park[i] * 0.26 + s.school[i] * 0.12 + s.health[i] * 0.1 + s.police[i] * 0.07 + s.culture[i] * 0.06 + s.transit[i] * 0.09 + (waterside ? 8 : 0) - uwNet.pollution[i] * 0.43;
+        if (road < 0)
+            value -= 18;
+        else
+            value -= Math.max(0, uwNet.traffic[road] - 75) * 0.08;
+        if (uwNet.power[i] < 0.8 || uwNet.water[i] < 0.8)
+            value -= 14;
+        if (uwWorld.districtFocus[uwDistrictOf(i)] === "green")
+            value += 4;
+        uwNet.value[i] = uwClamp(value, 0, 100);
+        if (t.pop > 0) {
+            pop += t.pop;
+            education += (s.school[i] * 0.7 + s.university[i] * 0.3) * t.pop;
+            health += s.health[i] * t.pop;
+            waste += s.waste[i] * t.pop;
+        }
+        total += value;
+    }
+    uwNet.education = pop ? education / pop : 0;
+    uwNet.health = pop ? health / pop : 0;
+    uwNet.waste = pop ? waste / pop : 0;
+}
+function uwRecalculate() {
+    if (!uwWorld)
+        return;
+    // Derived state is rebuilt from a zero-flow baseline. Repeated queries and
+    // save/load cannot alter routing or future simulation outcomes.
+    let networkStart = uwPerfStart(), phase = uwPerfStart();
+    uwNet = null;
+    uwBuildRoadGraph();
+    uwPerfEnd("Road graph", phase);
+    phase = uwPerfStart();
+    uwComputeUtility("power");
+    uwComputeUtility("water");
+    uwPerfEnd("Utilities", phase);
+    phase = uwPerfStart();
+    uwComputeServices();
+    uwPerfEnd("Services and bus routes", phase);
+    phase = uwPerfStart();
+    uwComputeTraffic();
+    uwPerfEnd("Commuting traffic", phase);
+    phase = uwPerfStart();
+    uwComputeServices();
+    uwComputeLandValue();
+    uwPerfEnd("Services and land value", phase);
+    uwPerfEnd("Network total", networkStart);
+    uwNetworkDirty = false;
+}

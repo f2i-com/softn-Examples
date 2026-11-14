@@ -1,0 +1,109 @@
+// Entry point only. SoftN composes helper .logic files in manifest order first.
+// Simulation runs in monthly steps; rendering and representative cars are separate.
+function _init() {
+    uwUpdateToolCards();
+    uwReadSaveRows();
+    if (!uwInputInstalled) {
+        try {
+            window.addEventListener("keydown", uwHandleKey);
+            uwInputInstalled = true;
+        }
+        catch (e) { }
+        // All controls remain available through visible buttons if keyboard capture
+        // is unavailable. Never capture text inputs, browser shortcuts or Tab.
+        try {
+            softn.input.captureKeys(["KeyW", "KeyA", "KeyS", "KeyD", "KeyQ", "KeyE", "Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
+        }
+        catch (e) { }
+    }
+}
+function uwAdvanceMonth() {
+    if (!uwWorld)
+        return;
+    if (uwWorld.month >= 120000) {
+        paused = true;
+        uwNotify("The supported simulation calendar has reached its limit. Your city can still be explored and saved.", "info");
+        return;
+    }
+    let monthStart = uwPerfStart();
+    uwUndo = [];
+    canUndo = false;
+    uwPreviewPlan = null;
+    previewText = "";
+    uwWorld.month += 1;
+    uwAdvanceEvents();
+    uwRecalculate();
+    uwComputeDemand();
+    let growthStart = uwPerfStart();
+    uwGrowCity();
+    uwPerfEnd("Development", growthStart);
+    uwRecalculate();
+    uwComputeDemand();
+    uwComputeHappiness();
+    uwUpdateDistricts(true);
+    uwCloseAccounts();
+    uwCheckMilestones();
+    uwCheckGoals();
+    uwAdvanceStories();
+    uwPeriodicNews();
+    uwWorld.history.push({ month: uwWorld.month, population: uwWorld.population, balance: uwWorld.monthly.net, approval: uwWorld.happiness });
+    if (uwWorld.history.length > uwHistoryMax)
+        uwWorld.history.shift();
+    // Lighting eligibility, utility overlays and development all update monthly.
+    uwStaticDirty = true;
+    uwRenderStatic();
+    uwRefreshUI();
+    if (uwWorld.month % 6 === 0)
+        uwSaveSlot("auto", true);
+    uwPerfEnd("Month total", monthStart);
+}
+function uwStepMonth() {
+    if (!started || sessionError)
+        return;
+    paused = true;
+    try {
+        uwAdvanceMonth();
+    }
+    catch (e) {
+        sessionError = "Simulation stopped: " + String(e);
+        uwNotify(sessionError + ". Export a save before restarting.", "bad");
+    }
+}
+function uwTick(dt) {
+    if (!started || welcomeOpen || !uwWorld || sessionError)
+        return;
+    let delta = uwFinite(dt) ? uwClamp(dt, 0, 0.2) : 0.1;
+    try {
+        if (!modal && !paused) {
+            uwMonthAccumulator += delta * gameSpeed;
+            let processed = 0;
+            while (uwMonthAccumulator >= UW_MONTH_SECONDS && processed < 2 && !paused) {
+                uwMonthAccumulator -= UW_MONTH_SECONDS;
+                uwAdvanceMonth();
+                processed++;
+            }
+        }
+        // Cosmetic movement remains alive while the simulation is paused.
+        if (!modal) {
+            uwVisualTime += delta;
+            uwVisualAccumulator += delta;
+            if (uwVisualAccumulator >= 0.095) {
+                uwAdvanceVehicles(uwVisualAccumulator);
+                uwVisualAccumulator = 0;
+                uwRenderMotion();
+            }
+            if (autoLight) {
+                uwAutoLightClock += delta;
+                if (uwAutoLightClock >= 45) {
+                    uwAutoLightClock = 0;
+                    uwCycleLight();
+                }
+            }
+        }
+    }
+    catch (e) {
+        paused = true;
+        sessionError = "Simulation stopped: " + String(e);
+        uwNotify(sessionError + ". Export a save and preserve the error for diagnosis.", "bad");
+    }
+}

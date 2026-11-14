@@ -1,0 +1,29 @@
+<div className="uw-toolbox">
+  <div className="uw-tool-top">
+    <button className={activeTool === "inspect" ? "uw-small-button uw-active" : "uw-small-button"} title="Inspect and navigate · I" @click={() => uwSelectTool("inspect")}><img className="uw-action-glyph" src={asset("assets/icons/inspect.svg")} alt="" />Inspect</button>
+    <button className={activeTool === "bulldoze" ? "uw-small-button uw-active" : "uw-small-button"} title="Bulldoze · B" @click={() => uwSelectTool("bulldoze")}><img className="uw-action-glyph" src={asset("assets/icons/bulldoze.svg")} alt="" />Clear</button>
+  </div>
+  <div className="uw-categories">
+    #each (tab in categoryTabs)
+      <button className={tab.active ? "uw-category-tab uw-active" : "uw-category-tab"} title={tab.name} aria-pressed={tab.active} @click={() => uwSelectCategory(tab.id)}><img className="uw-category-glyph" src={asset(tab.icon)} alt="" /><span className="uw-label">{tab.name}</span></button>
+    #end
+  </div>
+  <div className="uw-tool-list">
+    #each (tool in toolCards)
+      <button className={tool.active ? "uw-tool-card uw-active" : "uw-tool-card"} title={tool.description} aria-pressed={tool.active} @click={() => uwSelectTool(tool.id)}>
+        <img className="uw-tool-glyph" src={asset(tool.icon)} alt="" /><div className="uw-tool-copy"><span className="uw-tool-card-title">{tool.name}</span><span className="uw-tool-card-cost">{tool.upkeep}</span></div>
+        <span className="uw-tool-card-price">{tool.cost}</span>
+      </button>
+    #end
+  </div>
+  <div className="uw-tool-footer">
+    <span className="uw-micro">Brush size</span>
+    <div className="uw-brush-row">
+      <button className={brushSize === 1 ? "uw-small-button uw-active" : "uw-small-button"} @click={() => uwSetBrush(1)}>1</button>
+      <button className={brushSize === 3 ? "uw-small-button uw-active" : "uw-small-button"} @click={() => uwSetBrush(3)}>3</button>
+      <button className={brushSize === 5 ? "uw-small-button uw-active" : "uw-small-button"} @click={() => uwSetBrush(5)}>5</button>
+      <button className="uw-small-button" disabled={!canUndo} title="Undo construction · Z · expires next month" @click={uwUndoLast}>Undo</button>
+    </div>
+    <span className="uw-tool-description">{toolHint}</span>
+  </div>
+</div>

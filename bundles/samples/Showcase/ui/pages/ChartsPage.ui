@@ -277,11 +277,11 @@
             <Text size=xs style={{ color: getMutedColor() }}>Slices pull out on hover</Text>
           </Box>
         </Stack>
-        <Box style={{ display: "flex", justifyContent: "center" }}>
+        <Box style={{ display: "flex", justifyContent: "center", overflowX: "auto", minWidth: 0 }}>
           <PieChart
-            width={280}
-            height={280}
-            innerRadius={55}
+            width={260}
+            height={260}
+            innerRadius={52}
             interactive={true}
             centerLabel="Budget"
             data={[
@@ -309,10 +309,10 @@
             <Text size=xs style={{ color: getMutedColor() }}>Two people across six axes, hover a point for its value</Text>
           </Box>
         </Stack>
-        <Box style={{ display: "flex", justifyContent: "center" }}>
+        <Box style={{ display: "flex", justifyContent: "center", overflowX: "auto", minWidth: 0 }}>
           <RadarChart
-            width={320}
-            height={300}
+            width={290}
+            height={280}
             interactive={true}
             axes={["Design", "Frontend", "Backend", "Testing", "Writing", "Ops"]}
             series={[

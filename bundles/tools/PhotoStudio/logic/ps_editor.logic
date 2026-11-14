@@ -17,13 +17,16 @@ let PS_COMP32 = null;
 let PS_HISTORY = [], PS_HIST_INDEX = -1, PS_SEQ = 0, PS_SAVED = 0;
 let PS_TX = null;
 let PS_STROKE = null;
+let PS_MOVE_ACTIVE = false;
 let PS_CLONE = null;
 let PS_WARNINGS = [];
-let PS_FRAME = 1, PS_PRESENTED = 0;
+let PS_FRAME = 1, PS_PRESENTED = 0, PS_LAST_FRAME_MS = 0;
 let PS_DIRTY = null;
-let PS_COMPOSITE_BUDGET = 350000;      // layer-pixels per compositing slice; the starting guess, adapted to the measured rate by psAdaptBudget
-let PS_BUDGET_MIN = 60000, PS_BUDGET_MAX = 4000000;
-let PS_SLICE_TARGET_MS = 12;           // what one slice may take, leaving the rest of a frame for input and presentation
+let PS_COMPOSITE_BUDGET = 750000;      // layer-pixels per compositing slice; adapted to the measured rate by psAdaptBudget
+let PS_BUDGET_MIN = 120000, PS_BUDGET_MAX = 1400000;
+let PS_SLICE_TARGET_MS = 8;            // what one slice may take, leaving headroom inside the 50M instruction budget
+let PS_UNDER_COMP = null, PS_UNDER_COMP32 = null, PS_UNDER_ACTIVE = -1, PS_UNDER_W = 0, PS_UNDER_H = 0;
+let PS_EDIT_SEQ = 1;
 
 // Fit the slice to the machine rather than the machine to the slice. A fixed
 // pixel budget was a guess about one engine on one computer: the same 350,000
@@ -55,12 +58,24 @@ function psDirty() { return PS_HISTORY.length ? PS_HISTORY[PS_HIST_INDEX].token 
 function psCanUndo() { return PS_HIST_INDEX > 0; }
 function psCanRedo() { return PS_HIST_INDEX < PS_HISTORY.length - 1; }
 function psLayerFactory(name, data, extra) {
-  let l = { id: psUid(), name: String(name || "Layer").slice(0, 255), data: data, mask: null, maskEnabled: true, visible: true, locked: false, opacity: 1, blend: "normal", kind: "raster", text: null };
+  let l = { id: psUid(), name: String(name || "Layer").slice(0, 255), data: data, mask: null, maskEnabled: true, visible: true, locked: false, opacity: 1, blend: "normal", kind: "raster", text: null, _rev: ++PS_EDIT_SEQ, _maskRev: 0, _u32: null };
   if (extra) { let keys = Object.keys(extra); for (let i = 0; i < keys.length; i++) l[keys[i]] = extra[keys[i]]; }
   return l;
 }
 function psCloneMeta(l) {
-  return { id: l.id, name: l.name, data: l.data, mask: l.mask, maskEnabled: l.maskEnabled, visible: l.visible, locked: l.locked, opacity: l.opacity, blend: l.blend, kind: l.kind, text: l.text ? Object.assign({}, l.text) : null };
+  return { id: l.id, name: l.name, data: l.data, mask: l.mask, maskEnabled: l.maskEnabled, visible: l.visible, locked: l.locked, opacity: l.opacity, blend: l.blend, kind: l.kind, text: l.text ? Object.assign({}, l.text) : null, _rev: l._rev || 0, _maskRev: l._maskRev || 0, _u32: null };
+}
+function psTouchLayer(l, mask) {
+  if (!l) return;
+  if (mask) l._maskRev = ++PS_EDIT_SEQ;
+  else { l._rev = ++PS_EDIT_SEQ; l._u32 = null; }
+}
+function psLayerU32(l) {
+  let d = l.data;
+  if (!l._u32 || l._u32.buffer !== d.buffer || l._u32.byteOffset !== d.byteOffset) {
+    l._u32 = new Uint32Array(d.buffer, d.byteOffset, d.byteLength >> 2);
+  }
+  return l._u32;
 }
 function psBudget(w, h, layerCount, maskCount) {
   let n = psCheckDims(w, h);
@@ -82,7 +97,7 @@ function psRestore(s) {
   PS_LAYERS = [];
   for (let i = 0; i < s.layers.length; i++) PS_LAYERS.push(psCloneMeta(s.layers[i]));
   PS_ACTIVE = s.active; PS_SEL = s.sel; PS_MASKMODE = s.maskMode;
-  PS_STROKE = null;
+  PS_STROKE = null; PS_MOVE_ACTIVE = false; psClearUnderCache();
   if (sizeChanged || !PS_COMP) psAllocComposite();
   psInvalidateAll();
   psSelectionChanged();
@@ -108,6 +123,7 @@ function psEditable(mask) {
   let id = l.id + ":" + key;
   if (!PS_TX.cloned[id]) { l[key] = l[key].slice(); PS_TX.cloned[id] = true; }
   if (key === "data") { l.kind = "raster"; l.text = null; }
+  psTouchLayer(l, key === "mask");
   return l[key];
 }
 function psCommit() {
@@ -220,29 +236,132 @@ function psBlendNonSeparable(mode, cb, cs) {
   return psSetLum([cb[0], cb[1], cb[2]], psLum(cs[0], cs[1], cs[2]));
 }
 
+function psClearUnderCache() { PS_UNDER_ACTIVE = -1; }
+function psBuildUnderCache(activeIdx) {
+  PS_UNDER_ACTIVE = -1;
+  if (activeIdx <= 0 || PS_W <= 0 || PS_H <= 0) return;
+  let visibleUnder = 0, weightedUnder = 0;
+  for (let i = 0; i < activeIdx; i++) {
+    let l = PS_LAYERS[i];
+    if (!l.visible || l.opacity <= 0) continue;
+    visibleUnder++;
+    weightedUnder += (l.blend === "normal" && !l.mask) ? 1 : 3;
+  }
+  if (PS_W * PS_H * Math.max(0, weightedUnder - 1) > 2200000) return;
+  let bytes = PS_W * PS_H * 4;
+  if (!PS_UNDER_COMP || PS_UNDER_COMP.length !== bytes) {
+    PS_UNDER_COMP = new Uint8Array(bytes);
+    PS_UNDER_COMP32 = new Uint32Array(PS_UNDER_COMP.buffer);
+  }
+  PS_UNDER_W = PS_W; PS_UNDER_H = PS_H;
+  if (visibleUnder === 0) {
+    PS_UNDER_COMP32.fill(0);
+  } else {
+    psCompositeLayersInto(PS_LAYERS.slice(0, activeIdx), PS_UNDER_COMP, 0, PS_H);
+  }
+  PS_UNDER_ACTIVE = activeIdx;
+}
+
 // Composite rows [y0, y1) of columns [x0, x1) from the layer stack into PS_COMP.
 function psCompositeRect(x0, y0, x1, y1) {
   let w = PS_W, comp = PS_COMP, comp32 = PS_COMP32;
-  // Clear.
-  for (let y = y0; y < y1; y++) { let row = y * w; for (let x = x0; x < x1; x++) comp32[row + x] = 0; }
+  let startLi = 0;
+  let hasContent = false;
+  if (PS_UNDER_ACTIVE > 0 && comp32 === PS_COMP32 && PS_UNDER_COMP32 && PS_UNDER_W === w && PS_UNDER_H === PS_H) {
+    if (x0 === 0 && x1 === w) {
+      comp32.set(PS_UNDER_COMP32.subarray(y0 * w, y1 * w), y0 * w);
+    } else {
+      for (let y = y0; y < y1; y++) { let row = y * w; comp32.set(PS_UNDER_COMP32.subarray(row + x0, row + x1), row + x0); }
+    }
+    startLi = PS_UNDER_ACTIVE;
+    hasContent = true;
+  } else {
+    if (x0 === 0 && x1 === w) {
+      comp32.fill(0, y0 * w, y1 * w);
+    } else {
+      for (let y = y0; y < y1; y++) { let row = y * w; for (let x = x0; x < x1; x++) comp32[row + x] = 0; }
+    }
+  }
   let cbv = [0, 0, 0], csv = [0, 0, 0];
-  for (let li = 0; li < PS_LAYERS.length; li++) {
+  for (let li = startLi; li < PS_LAYERS.length; li++) {
     let l = PS_LAYERS[li];
     if (!l.visible || l.opacity <= 0) continue;
-    let src = l.data, mask = l.mask && l.maskEnabled ? l.mask : null;
+    let src = l.data, src32 = psLayerU32(l), mask = l.mask && l.maskEnabled ? l.mask : null;
     let opacity = l.opacity, mode = PS_BLEND_INDEX[l.blend] || 0;
+    // Fast path 1: first visible layer on an empty target with normal blend, 100% opacity and no mask.
+    if (!hasContent && mode === 0 && opacity >= 1 && !mask) {
+      if (x0 === 0 && x1 === w) {
+        comp32.set(src32.subarray(y0 * w, y1 * w), y0 * w);
+      } else {
+        for (let y = y0; y < y1; y++) { let row = y * w; comp32.set(src32.subarray(row + x0, row + x1), row + x0); }
+      }
+      hasContent = true;
+      continue;
+    }
+    hasContent = true;
+    // Fast path 2: normal blend mode (integer Uint32 fast path for opaque pixels and opaque backdrop).
+    if (mode === 0) {
+      let fullOp = opacity >= 1 && !mask;
+      for (let y = y0; y < y1; y++) {
+        let row = y * w;
+        for (let x = x0; x < x1; x++) {
+          let p = row + x;
+          let word = src32[p];
+          if (word === 0) continue;
+          let sa = word >>> 24;
+          if (sa === 0) continue;
+          if (fullOp && sa === 255) { comp32[p] = word; continue; }
+          let a = sa * opacity;
+          if (mask) a = a * mask[p] / 255;
+          if (a <= 0.25) continue;
+          let dWord = comp32[p];
+          let da = dWord >>> 24;
+          if (da === 0) {
+            let aI = (a + 0.5) | 0;
+            comp32[p] = (aI << 24) | (word & 0x00ffffff);
+            continue;
+          }
+          if (da === 255) {
+            let aI = (a + 0.5) | 0;
+            if (aI >= 255) { comp32[p] = 0xff000000 | (word & 0x00ffffff); continue; }
+            let invA = 255 - aI;
+            let sr = word & 255, sg = (word >>> 8) & 255, sb = (word >>> 16) & 255;
+            let dr = dWord & 255, dg = (dWord >>> 8) & 255, db = (dWord >>> 16) & 255;
+            let or = ((sr * aI + dr * invA + 128) * 257) >>> 16;
+            let og = ((sg * aI + dg * invA + 128) * 257) >>> 16;
+            let ob = ((sb * aI + db * invA + 128) * 257) >>> 16;
+            comp32[p] = 0xff000000 | (ob << 16) | (og << 8) | or;
+            continue;
+          }
+          let i = p * 4;
+          let sr = word & 255, sg = (word >>> 8) & 255, sb = (word >>> 16) & 255;
+          let aS = a / 255, aD = da / 255;
+          let oa = aS + aD * (1 - aS);
+          let wS = aS / oa, wD = 1 - wS;
+          comp[i] = (sr * wS + comp[i] * wD + 0.5) | 0;
+          comp[i + 1] = (sg * wS + comp[i + 1] * wD + 0.5) | 0;
+          comp[i + 2] = (sb * wS + comp[i + 2] * wD + 0.5) | 0;
+          comp[i + 3] = (oa * 255 + 0.5) | 0;
+        }
+      }
+      continue;
+    }
+    // General W3C blend modes (multiply, screen, overlay, HSL, etc.).
     for (let y = y0; y < y1; y++) {
       let row = y * w;
       for (let x = x0; x < x1; x++) {
-        let p = row + x, i = p * 4;
-        let sa = src[i + 3];
+        let p = row + x;
+        let word = src32[p];
+        if (word === 0) continue;
+        let sa = word >>> 24;
         if (sa === 0) continue;
         let a = sa * opacity;
         if (mask) a = a * mask[p] / 255;
         if (a <= 0) continue;
+        let i = p * 4;
         let da = comp[i + 3];
-        let sr = src[i], sg = src[i + 1], sb = src[i + 2];
-        if (mode !== 0 && da > 0) {
+        let sr = word & 255, sg = (word >>> 8) & 255, sb = (word >>> 16) & 255;
+        if (da > 0) {
           let ab = da / 255;
           if (mode < 12) {
             let br = psBlendChannel(mode, comp[i] / 255, sr / 255), bg = psBlendChannel(mode, comp[i + 1] / 255, sg / 255), bb = psBlendChannel(mode, comp[i + 2] / 255, sb / 255);
@@ -265,20 +384,31 @@ function psCompositeRect(x0, y0, x1, y1) {
   }
 }
 
-// Incremental flush: composites part of the dirty rectangle within the budget. Returns true when clean.
+let PS_LAST_FLUSH_WORK = 0;
+
+// Incremental flush: composites one bounded slice of dirty rows. Returns true when clean.
 function psFlushDirty() {
+  PS_LAST_FLUSH_WORK = 0;
   if (!PS_DIRTY || !PS_COMP) return true;
-  let d = PS_DIRTY;
-  let layers = Math.max(1, psVisibleLayerCount());
-  let width = d.x1 - d.x0;
-  let rows = Math.max(1, Math.floor(PS_COMPOSITE_BUDGET / Math.max(1, width * layers)));
-  let y1 = Math.min(d.y1, d.y0 + rows);
-  let work = (y1 - d.y0) * width * layers;
-  let started = Date.now();
+  let startLi = PS_UNDER_ACTIVE > 0 ? PS_UNDER_ACTIVE : 0;
+  let effectiveLayers = 0;
+  for (let i = startLi; i < PS_LAYERS.length; i++) {
+    let l = PS_LAYERS[i];
+    if (!l.visible || l.opacity <= 0) continue;
+    effectiveLayers += (l.blend === "normal" && !l.mask) ? 1 : 3;
+  }
+  if (effectiveLayers < 1) effectiveLayers = 1;
   psOverlayUnapply();
+  let d = PS_DIRTY;
+  let width = d.x1 - d.x0;
+  let rows = Math.max(1, Math.floor(PS_COMPOSITE_BUDGET / Math.max(1, width * effectiveLayers)));
+  let y1 = Math.min(d.y1, d.y0 + rows);
+  let work = (y1 - d.y0) * width * effectiveLayers;
+  let started = Date.now();
   psCompositeRect(d.x0, d.y0, d.x1, y1);
   psAdaptBudget(started, work);
   if (y1 >= d.y1) PS_DIRTY = null; else d.y0 = y1;
+  PS_LAST_FLUSH_WORK = work;
   psOverlayApply();
   PS_FRAME++;
   return PS_DIRTY === null;
@@ -287,10 +417,61 @@ function psFlushDirty() {
 // Frame producer for <PixelCanvas getFrame>.
 function frameSource() {
   if (!PS_COMP) return null;
-  psFlushDirty();
+  let now = Date.now();
+  if (PS_MOVE_ACTIVE && now - PS_LAST_FRAME_MS < 26) return null;
+  if (PS_STROKE && now - PS_LAST_FRAME_MS < 18) return null;
+  let clean = psFlushDirty();
+  if (!clean && now - PS_LAST_FRAME_MS < 120) return null;
+  if (PS_LAST_FLUSH_WORK > 240000) return null;
   if (PS_FRAME === PS_PRESENTED) return null;
   PS_PRESENTED = PS_FRAME;
-  return { w: PS_W, h: PS_H, format: "rgba", pixels: PS_COMP.toBase64(), frame: PS_FRAME };
+  PS_LAST_FRAME_MS = Date.now();
+  return { w: PS_W, h: PS_H, format: "rgba", pixels: psToBase64(PS_COMP), frame: PS_FRAME };
+}
+
+// Fast small-resolution composite directly from PS_LAYERS for Navigator preview when PS_DIRTY is still flushing.
+function psCompositeThumb(maxW, maxH) {
+  if (PS_W <= 0 || PS_H <= 0) return { w: 1, h: 1, format: "rgba", pixels: psToBase64(new Uint8Array(4)), frame: 1 };
+  let s = Math.min(maxW / PS_W, maxH / PS_H, 1);
+  let tw = Math.max(1, Math.round(PS_W * s)), th = Math.max(1, Math.round(PS_H * s));
+  let out = new Uint8Array(tw * th * 4);
+  let out32 = new Uint32Array(out.buffer);
+  let sxMap = new Int32Array(tw);
+  for (let x = 0; x < tw; x++) sxMap[x] = Math.min(PS_W - 1, Math.floor((x + 0.5) * PS_W / tw));
+  for (let li = 0; li < PS_LAYERS.length; li++) {
+    let l = PS_LAYERS[li];
+    if (!l.visible || l.opacity <= 0) continue;
+    let src32 = psLayerU32(l), mask = l.mask && l.maskEnabled ? l.mask : null, op = l.opacity;
+    for (let y = 0; y < th; y++) {
+      let syRow = Math.min(PS_H - 1, Math.floor((y + 0.5) * PS_H / th)) * PS_W;
+      let dRow = y * tw;
+      for (let x = 0; x < tw; x++) {
+        let sp = syRow + sxMap[x];
+        let word = src32[sp];
+        if (word === 0) continue;
+        let sa = word >>> 24;
+        if (sa === 0) continue;
+        let a = sa * op;
+        if (mask) a = a * mask[sp] / 255;
+        let aI = (a + 0.5) | 0;
+        if (aI <= 0) continue;
+        let dp = dRow + x;
+        let dWord = out32[dp];
+        let da = dWord >>> 24;
+        if (da === 0) { out32[dp] = (aI << 24) | (word & 0x00ffffff); continue; }
+        if (aI >= 255) { out32[dp] = 0xff000000 | (word & 0x00ffffff); continue; }
+        let invA = 255 - aI;
+        let sr = word & 255, sg = (word >>> 8) & 255, sb = (word >>> 16) & 255;
+        let dr = dWord & 255, dg = (dWord >>> 8) & 255, db = (dWord >>> 16) & 255;
+        let oa = aI + ((da * invA + 128) * 257 >>> 16);
+        let or = ((sr * aI + dr * invA + 128) * 257) >>> 16;
+        let og = ((sg * aI + dg * invA + 128) * 257) >>> 16;
+        let ob = ((sb * aI + db * invA + 128) * 257) >>> 16;
+        out32[dp] = (Math.min(255, oa) << 24) | (ob << 16) | (og << 8) | or;
+      }
+    }
+  }
+  return { w: tw, h: th, format: "rgba", pixels: psToBase64(out), frame: ++PS_EDIT_SEQ };
 }
 // A clean composite without overlays (exports). Composites synchronously in slices via a job.
 function psCleanCompositeJob(done, fail) {
@@ -417,7 +598,7 @@ function psNewDocument(width, height, name, background) {
     new Uint32Array(data.buffer).fill(word);
   }
   PS_LAYERS = [psLayerFactory("Background", data)];
-  PS_ACTIVE = PS_LAYERS[0].id; PS_SEL = null; PS_MASKMODE = false; PS_WARNINGS = []; PS_CLONE = null; PS_STROKE = null;
+  PS_ACTIVE = PS_LAYERS[0].id; PS_SEL = null; PS_MASKMODE = false; PS_WARNINGS = []; PS_CLONE = null; PS_STROKE = null; PS_MOVE_ACTIVE = false; psClearUnderCache();
   PS_OVL_GESTURE = null; PS_OVL_CLONE = null; PS_OVL_SEL = null;
   psAllocComposite();
   psInvalidateAll();
@@ -455,18 +636,28 @@ function psLayerAction(action, value, done) {
     } else if (action === "Raise layer") { if (index < PS_LAYERS.length - 1) { let t = PS_LAYERS[index]; PS_LAYERS[index] = PS_LAYERS[index + 1]; PS_LAYERS[index + 1] = t; psInvalidateAll(); } }
     else if (action === "Lower layer") { if (index > 0) { let t = PS_LAYERS[index]; PS_LAYERS[index] = PS_LAYERS[index - 1]; PS_LAYERS[index - 1] = t; psInvalidateAll(); } }
     else if (action === "Rename layer") l.name = String(value || "Layer").slice(0, 255);
-    else if (action === "Layer visibility") { l.visible = !l.visible; psInvalidateAll(); }
-    else if (action === "Layer lock") l.locked = !l.locked;
+    else if (action === "Layer visibility") {
+      let tl = l;
+      if (value) { for (let i = 0; i < PS_LAYERS.length; i++) if (PS_LAYERS[i].id === value) tl = PS_LAYERS[i]; }
+      tl.visible = !tl.visible;
+      psInvalidateAll();
+    }
+    else if (action === "Layer lock") {
+      let tl = l;
+      if (value) { for (let i = 0; i < PS_LAYERS.length; i++) if (PS_LAYERS[i].id === value) tl = PS_LAYERS[i]; }
+      tl.locked = !tl.locked;
+    }
     else if (action === "Layer opacity") { l.opacity = psClamp(Number(value), 0, 1); psInvalidateAll(); }
     else if (action === "Layer blend") { if (PS_BLEND_INDEX[value] === undefined) psFail("Unknown blend mode."); l.blend = value; psInvalidateAll(); }
     else if (action === "Add mask") {
       if (l.locked) psFail("Unlock the layer first.");
       psBudget(PS_W, PS_H, PS_LAYERS.length, psMaskCount() + (l.mask ? 0 : 1));
       if (PS_SEL) l.mask = PS_SEL.slice(); else { l.mask = new Uint8Array(PS_W * PS_H); l.mask.fill(255); }
+      psTouchLayer(l, true);
       l.maskEnabled = true; PS_MASKMODE = true; psInvalidateAll();
     }
     else if (action === "Toggle mask") { if (!l.mask) psFail("Add a layer mask first."); l.maskEnabled = !l.maskEnabled; psInvalidateAll(); }
-    else if (action === "Delete mask") { if (l.locked) psFail("Unlock the layer first."); l.mask = null; PS_MASKMODE = false; psInvalidateAll(); }
+    else if (action === "Delete mask") { if (l.locked) psFail("Unlock the layer first."); l.mask = null; psTouchLayer(l, true); PS_MASKMODE = false; psInvalidateAll(); }
     else psFail("Unknown layer command: " + action);
   });
   if (done) done();
@@ -480,7 +671,7 @@ function psLayerActionJob(action, done) {
     try { data = psEditable(false); } catch (e) { psRollback(); throw e; }
     let mask = l.mask;
     psEnqueue("Applying mask", psRowStepper(PS_H, psRowsFor(PS_W, PS_STEP_PIXELS), function (y0, y1) { psApplyMaskRows(data, PS_W, y0, y1, mask); }),
-      function () { l.mask = null; PS_MASKMODE = false; psInvalidateAll(); psCommit(); if (done) done(); }, function (e) { psRollback(); psReportError(e); });
+      function () { l.mask = null; psTouchLayer(l, false); psTouchLayer(l, true); PS_MASKMODE = false; psInvalidateAll(); psCommit(); if (done) done(); }, function (e) { psRollback(); psReportError(e); });
     return;
   }
   if (action === "Merge down") {
@@ -505,10 +696,10 @@ function psLayerActionJob(action, done) {
 }
 // Composite an arbitrary layer list into `out` (rows), reusing the main compositor on a temporary stack.
 function psCompositeLayersInto(stack, out, y0, y1) {
-  let saveLayers = PS_LAYERS, saveComp = PS_COMP, saveComp32 = PS_COMP32;
-  PS_LAYERS = stack; PS_COMP = out; PS_COMP32 = new Uint32Array(out.buffer);
+  let saveLayers = PS_LAYERS, saveComp = PS_COMP, saveComp32 = PS_COMP32, saveUnder = PS_UNDER_ACTIVE;
+  PS_LAYERS = stack; PS_COMP = out; PS_COMP32 = new Uint32Array(out.buffer); PS_UNDER_ACTIVE = -1;
   try { psCompositeRect(0, y0, PS_W, y1); }
-  finally { PS_LAYERS = saveLayers; PS_COMP = saveComp; PS_COMP32 = saveComp32; }
+  finally { PS_LAYERS = saveLayers; PS_COMP = saveComp; PS_COMP32 = saveComp32; PS_UNDER_ACTIVE = saveUnder; }
 }
 
 // ---------------------------------------------------------------------------
@@ -702,11 +893,11 @@ function psResize(width, height, resample, anchor, nearest, done) {
       } else {
         steps.push(psRowStepper(height, psRowsFor(width, PS_STEP_PIXELS), function (y0, y1) { psShiftInto(src, oldW, oldH, out, width, height, dx, dy, y0, y1, ch); }));
       }
-      steps.push(function () { task.layer[task.key] = out; if (task.key === "data") { task.layer.kind = "raster"; task.layer.text = null; } return true; });
+      steps.push(function () { task.layer[task.key] = out; psTouchLayer(task.layer, task.key === "mask"); if (task.key === "data") { task.layer.kind = "raster"; task.layer.text = null; } return true; });
     })(tasks[t]);
   }
   psEnqueue(resample ? "Resampling" : "Resizing canvas", psSequence(steps), function () {
-    PS_W = width; PS_H = height; PS_SEL = null; psAllocComposite(); psInvalidateAll(); psSelectionChanged(); psCommit(); psEmit("document"); if (done) done();
+    PS_W = width; PS_H = height; PS_SEL = null; psClearUnderCache(); psAllocComposite(); psInvalidateAll(); psSelectionChanged(); psCommit(); psEmit("document"); if (done) done();
   }, function (e) { psRollback(); psReportError(e); });
 }
 // Copy src (sw x sh) into out (dw x dh) at offset (dx, dy), rows [y0, y1) of out.
@@ -717,7 +908,7 @@ function psShiftInto(src, sw, sh, out, dw, dh, dx, dy, y0, y1, ch) {
     let xs = Math.max(0, dx), xe = Math.min(dw, dx + sw);
     if (xe <= xs) continue;
     let so = (sy * sw + (xs - dx)) * ch, oo = (y * dw + xs) * ch, count = (xe - xs) * ch;
-    for (let k = 0; k < count; k++) out[oo + k] = src[so + k];
+    out.set(src.subarray(so, so + count), oo);
   }
 }
 function psCrop(rect, done) {
@@ -731,11 +922,11 @@ function psCrop(rect, done) {
     (function (l) {
       let out = new Uint8Array(w * h * 4), src = l.data;
       steps.push(psRowStepper(h, psRowsFor(w, PS_STEP_PIXELS), function (y0, y1) { psShiftInto(src, oldW, oldH, out, w, h, -x, -y, y0, y1, 4); }));
-      steps.push(function () { l.data = out; if (l.text) l.text = Object.assign({}, l.text, { x: l.text.x - x, y: l.text.y - y }); return true; });
-      if (l.mask) { let mo = new Uint8Array(w * h), ms = l.mask; steps.push(psRowStepper(h, psRowsFor(w, PS_STEP_PIXELS), function (y0, y1) { psShiftInto(ms, oldW, oldH, mo, w, h, -x, -y, y0, y1, 1); })); steps.push(function () { l.mask = mo; return true; }); }
+      steps.push(function () { l.data = out; psTouchLayer(l, false); if (l.text) l.text = Object.assign({}, l.text, { x: l.text.x - x, y: l.text.y - y }); return true; });
+      if (l.mask) { let mo = new Uint8Array(w * h), ms = l.mask; steps.push(psRowStepper(h, psRowsFor(w, PS_STEP_PIXELS), function (y0, y1) { psShiftInto(ms, oldW, oldH, mo, w, h, -x, -y, y0, y1, 1); })); steps.push(function () { l.mask = mo; psTouchLayer(l, true); return true; }); }
     })(PS_LAYERS[i]);
   }
-  psEnqueue("Cropping", psSequence(steps), function () { PS_W = w; PS_H = h; PS_SEL = null; psAllocComposite(); psInvalidateAll(); psSelectionChanged(); psCommit(); psEmit("document"); if (done) done(); }, function (e) { psRollback(); psReportError(e); });
+  psEnqueue("Cropping", psSequence(steps), function () { PS_W = w; PS_H = h; PS_SEL = null; psClearUnderCache(); psAllocComposite(); psInvalidateAll(); psSelectionChanged(); psCommit(); psEmit("document"); if (done) done(); }, function (e) { psRollback(); psReportError(e); });
 }
 function psTransform(opts, done) {
   let l = psActive();
@@ -766,7 +957,7 @@ function psTransform(opts, done) {
   steps.push(psRowStepper(h, psRowsFor(w, PS_STEP_PIXELS), function (y0, y1) { psUnpremultiplyRows(out, w, y0, y1); }));
   let maskOut = null;
   if (l.mask) { let ms = l.mask; maskOut = new Uint8Array(w * h); steps.push(psRowStepper(h, psRowsFor(w, PS_STEP_HEAVY_PIXELS), function (y0, y1) { psTransformRows(ms, w, h, maskOut, y0, y1, inv, 1); })); }
-  psEnqueue("Transforming", psSequence(steps), function () { l.data = out; if (maskOut) l.mask = maskOut; l.kind = "raster"; l.text = null; psInvalidateAll(); psCommit(); if (done) done(); }, function (e) { psRollback(); psReportError(e); });
+  psEnqueue("Transforming", psSequence(steps), function () { l.data = out; psTouchLayer(l, false); if (maskOut) { l.mask = maskOut; psTouchLayer(l, true); } l.kind = "raster"; l.text = null; psInvalidateAll(); psCommit(); if (done) done(); }, function (e) { psRollback(); psReportError(e); });
 }
 // Move tool: preview shifts of the whole layer relative to the transaction start.
 function psShiftLayer(dx, dy) {
@@ -776,30 +967,47 @@ function psShiftLayer(dx, dy) {
   for (let i = 0; i < PS_TX.before.layers.length; i++) if (PS_TX.before.layers[i].id === l.id) original = PS_TX.before.layers[i];
   if (!original) return;
   dx = Math.round(dx); dy = Math.round(dy);
+  if (PS_TX.lastDx === dx && PS_TX.lastDy === dy) return;
+  PS_TX.lastDx = dx; PS_TX.lastDy = dy;
+  if (!PS_MOVE_ACTIVE) {
+    PS_MOVE_ACTIVE = true;
+    psBuildUnderCache(psActiveIndex());
+  }
   let w = PS_W, h = PS_H;
-  if (w * h > PS_STEP_PIXELS * 2) {
-    // Large document: shift only when the pointer settles (called from pointerup path with commit).
+  if (w * h > 2200000) {
     PS_TX.pendingShift = { dx: dx, dy: dy, original: original };
     return;
   }
-  let out = new Uint8Array(w * h * 4);
+  let out = PS_TX.shiftBuf;
+  if (!out || out.length !== w * h * 4) { out = new Uint8Array(w * h * 4); PS_TX.shiftBuf = out; }
+  else out.fill(0);
   psShiftRows(original.data, w, h, out, dx, dy, 0, h, 4);
   l.data = out;
-  if (original.mask) { let mo = new Uint8Array(w * h); psShiftRows(original.mask, w, h, mo, dx, dy, 0, h, 1); l.mask = mo; }
+  psTouchLayer(l, false);
+  if (original.mask) {
+    let mo = PS_TX.shiftMaskBuf;
+    if (!mo || mo.length !== w * h) { mo = new Uint8Array(w * h); PS_TX.shiftMaskBuf = mo; }
+    else mo.fill(0);
+    psShiftRows(original.mask, w, h, mo, dx, dy, 0, h, 1);
+    l.mask = mo;
+    psTouchLayer(l, true);
+  }
   if (original.text) l.text = Object.assign({}, original.text, { x: original.text.x + dx, y: original.text.y + dy });
   psInvalidateAll();
 }
 function psFinishShift(done) {
   let l = psActive();
+  PS_MOVE_ACTIVE = false;
+  psClearUnderCache();
   let pending = PS_TX ? PS_TX.pendingShift : null;
-  if (!pending) { psCommit(); if (done) done(); return; }
+  if (!pending) { psTouchLayer(l, false); if (l && l.mask) psTouchLayer(l, true); psInvalidateAll(); psCommit(); if (done) done(); return; }
   let w = PS_W, h = PS_H, original = pending.original, dx = pending.dx, dy = pending.dy;
   let out = new Uint8Array(w * h * 4);
   let steps = [psRowStepper(h, psRowsFor(w, PS_STEP_PIXELS), function (y0, y1) { psShiftRows(original.data, w, h, out, dx, dy, y0, y1, 4); })];
   let mo = null;
   if (original.mask) { mo = new Uint8Array(w * h); steps.push(psRowStepper(h, psRowsFor(w, PS_STEP_PIXELS), function (y0, y1) { psShiftRows(original.mask, w, h, mo, dx, dy, y0, y1, 1); })); }
   psEnqueue("Moving layer", psSequence(steps), function () {
-    l.data = out; if (mo) l.mask = mo;
+    l.data = out; psTouchLayer(l, false); if (mo) { l.mask = mo; psTouchLayer(l, true); }
     if (original.text) l.text = Object.assign({}, original.text, { x: original.text.x + dx, y: original.text.y + dy });
     psInvalidateAll(); psCommit(); if (done) done();
   }, function (e) { psRollback(); psReportError(e); });
@@ -816,13 +1024,15 @@ function psAddText(text, settings, editing, done) {
   } catch (e) { psRollback(); throw e; }
   l.kind = "text"; l.text = Object.assign({ text: text }, settings);
   let step = psTextRasterStep(l.data, w, h, l.text);
-  psEnqueue("Rendering text", step, function () { psInvalidateAll(); psCommit(); if (done) done(); }, function (e) { psRollback(); psReportError(e); });
+  psEnqueue("Rendering text", step, function () { psTouchLayer(l, false); psInvalidateAll(); psCommit(); if (done) done(); }, function (e) { psRollback(); psReportError(e); });
 }
 
 // ---------------------------------------------------------------------------
 // Brushes
 // ---------------------------------------------------------------------------
 let PS_BRUSH_TOOLS = { brush: 1, pencil: 1, eraser: 1, clone: 1, blur: 1, sharpen: 1, smudge: 1, dodge: 1, burn: 1, sponge: 1 };
+let PS_DAB_COV = new Float32Array(4096);
+let PS_DAB_TMP = new Uint8Array(16384);
 function psBeginStroke(tool, x, y, pressure, options) {
   let l = psActive();
   if (tool === "clone" && !PS_CLONE) psFail("Alt-click the canvas to choose a clone source first.");
@@ -832,7 +1042,8 @@ function psBeginStroke(tool, x, y, pressure, options) {
   let isMask = PS_MASKMODE && !!l.mask && target === l.mask;
   let source = null;
   for (let i = 0; i < PS_TX.before.layers.length; i++) if (PS_TX.before.layers[i].id === l.id) source = isMask ? PS_TX.before.layers[i].mask : PS_TX.before.layers[i].data;
-  PS_STROKE = { tool: tool, last: { x: x, y: y, p: pressure }, opts: Object.assign({}, options), target: target, isMask: isMask, source: source,
+  psBuildUnderCache(psActiveIndex());
+  PS_STROKE = { tool: tool, layer: l, last: { x: x, y: y, p: pressure }, opts: Object.assign({}, options), target: target, isMask: isMask, source: source,
     cloneOff: PS_CLONE ? { x: PS_CLONE.x - x, y: PS_CLONE.y - y } : null, smudge: null, smudgeSize: 0, rgb: psHexToRgb(options.color), maskValue: 255 };
   let rgb = PS_STROKE.rgb;
   PS_STROKE.maskValue = (rgb[0] + rgb[1] + rgb[2]) < 384 ? 0 : 255;
@@ -844,10 +1055,12 @@ function psExtendStroke(x, y, pressure) {
   let last = s.last;
   let dist = Math.hypot(x - last.x, y - last.y);
   let size = Math.max(1, s.opts.size);
-  let spacing = Math.max(0.7, size * 0.14);
+  let hard = s.tool === "pencil" ? 1 : psClamp(s.opts.hardness, 0, 1);
+  let spacing = Math.max(0.85, size * (hard > 0.85 ? 0.15 : 0.2));
   let steps = Math.ceil(dist / spacing);
+  if (steps < 1) return;
   let area = (size + 4) * (size + 4);
-  let maxDabs = Math.max(1, Math.floor(PS_STEP_HEAVY_PIXELS / area));
+  let maxDabs = Math.max(1, Math.floor((PS_STEP_HEAVY_PIXELS * 3) / area));
   if (steps > maxDabs) steps = maxDabs;
   if (steps > 2048) steps = 2048;
   for (let i = 1; i <= steps; i++) {
@@ -856,8 +1069,15 @@ function psExtendStroke(x, y, pressure) {
   }
   s.last = { x: x, y: y, p: pressure };
 }
-function psEndStroke() { if (!PS_STROKE) return; PS_STROKE = null; psCommit(); }
-function psCancelStroke() { if (!PS_STROKE) return; PS_STROKE = null; psRollback(); }
+function psEndStroke() {
+  if (!PS_STROKE) return;
+  let s = PS_STROKE;
+  PS_STROKE = null;
+  psClearUnderCache();
+  psTouchLayer(s.layer, s.isMask);
+  psCommit();
+}
+function psCancelStroke() { if (!PS_STROKE) return; PS_STROKE = null; psClearUnderCache(); psRollback(); }
 
 function psDab(cx, cy, pressure) {
   let s = PS_STROKE, o = s.opts;
@@ -870,45 +1090,79 @@ function psDab(cx, cy, pressure) {
   if (x1 < x0 || y1 < y0) return;
   let target = s.target, sel = PS_SEL, opacity = o.opacity, tool = s.tool, isMask = s.isMask;
   let inner = r * hard;
+  let outer = r + 0.5, outer2 = outer * outer;
+  let solidR = Math.min(inner, r - 0.5);
+  let solid2 = solidR > 0 ? solidR * solidR : -1;
+  let invSpan = 1 / Math.max(0.0001, r - inner);
   let cr = s.rgb[0], cg = s.rgb[1], cb = s.rgb[2];
-  let bw = x1 - x0 + 1, bh = y1 - y0 + 1;
-  // Precompute coverage for the box.
-  let cov = new Float32Array(bw * bh);
+  let bw = x1 - x0 + 1, bh = y1 - y0 + 1, boxLen = bw * bh;
+  if (PS_DAB_COV.length < boxLen) PS_DAB_COV = new Float32Array(Math.max(boxLen, PS_DAB_COV.length * 2));
+  let cov = PS_DAB_COV;
   let any = false;
   for (let y = y0; y <= y1; y++) {
+    let dy = y + 0.5 - cy, dy2 = dy * dy;
+    let cRow = (y - y0) * bw, sRow = y * w;
     for (let x = x0; x <= x1; x++) {
-      let dx = x + 0.5 - cx, dy = y + 0.5 - cy;
-      let d = Math.sqrt(dx * dx + dy * dy);
+      let dx = x + 0.5 - cx;
+      let d2 = dx * dx + dy2;
+      let k = cRow + (x - x0);
+      if (d2 >= outer2) { cov[k] = 0; continue; }
       let c;
-      if (d > r + 0.5) c = 0;
-      else {
-        c = d <= inner ? 1 : 1 - (d - inner) / Math.max(0.0001, r - inner);
-        let aa = r + 0.5 - d; if (aa < c) c = aa;
-        if (c < 0) c = 0; else if (c > 1) c = 1;
+      if (d2 <= solid2) {
+        c = 1;
+      } else {
+        let d = Math.sqrt(d2);
+        c = d <= inner ? 1 : 1 - (d - inner) * invSpan;
+        let aa = outer - d; if (aa < c) c = aa;
+        if (c <= 0) { cov[k] = 0; continue; }
+        if (c > 1) c = 1;
       }
-      if (sel) c *= sel[y * w + x] / 255;
+      if (sel) c *= sel[sRow + x] / 255;
       c *= opacity;
-      cov[(y - y0) * bw + (x - x0)] = c;
+      cov[k] = c;
       if (c > 0) any = true;
     }
   }
   if (!any) return;
   if (isMask) {
     let mv = tool === "eraser" ? 0 : s.maskValue;
-    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { let c = cov[(y - y0) * bw + (x - x0)]; if (c <= 0) continue; let p = y * w + x; target[p] = (target[p] + (mv - target[p]) * c + 0.5) | 0; }
+    for (let y = y0; y <= y1; y++) {
+      let cRow = (y - y0) * bw, sRow = y * w;
+      for (let x = x0; x <= x1; x++) { let c = cov[cRow + (x - x0)]; if (c <= 0) continue; let p = sRow + x; target[p] = (target[p] + (mv - target[p]) * c + 0.5) | 0; }
+    }
     psInvalidate(x0, y0, x1 + 1, y1 + 1);
     return;
   }
   if (tool === "brush" || tool === "pencil") {
-    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-      let a = cov[(y - y0) * bw + (x - x0)]; if (a <= 0) continue;
-      let i = (y * w + x) * 4, da = target[i + 3] / 255, oa = a + da * (1 - a), wS = a / oa, wD = 1 - wS;
-      target[i] = (cr * wS + target[i] * wD + 0.5) | 0; target[i + 1] = (cg * wS + target[i + 1] * wD + 0.5) | 0; target[i + 2] = (cb * wS + target[i + 2] * wD + 0.5) | 0; target[i + 3] = (oa * 255 + 0.5) | 0;
+    for (let y = y0; y <= y1; y++) {
+      let cRow = (y - y0) * bw, sRow = y * w;
+      for (let x = x0; x <= x1; x++) {
+        let a = cov[cRow + (x - x0)]; if (a <= 0) continue;
+        let i = (sRow + x) * 4, daByte = target[i + 3];
+        if (daByte === 0) {
+          target[i] = cr; target[i + 1] = cg; target[i + 2] = cb; target[i + 3] = (a * 255 + 0.5) | 0;
+          continue;
+        }
+        if (daByte === 255) {
+          let aI = (a * 255 + 0.5) | 0;
+          if (aI >= 255) { target[i] = cr; target[i + 1] = cg; target[i + 2] = cb; continue; }
+          let invA = 255 - aI;
+          target[i] = ((cr * aI + target[i] * invA + 128) * 257) >>> 16;
+          target[i + 1] = ((cg * aI + target[i + 1] * invA + 128) * 257) >>> 16;
+          target[i + 2] = ((cb * aI + target[i + 2] * invA + 128) * 257) >>> 16;
+          continue;
+        }
+        let da = daByte / 255, oa = a + da * (1 - a), wS = a / oa, wD = 1 - wS;
+        target[i] = (cr * wS + target[i] * wD + 0.5) | 0; target[i + 1] = (cg * wS + target[i + 1] * wD + 0.5) | 0; target[i + 2] = (cb * wS + target[i + 2] * wD + 0.5) | 0; target[i + 3] = (oa * 255 + 0.5) | 0;
+      }
     }
   } else if (tool === "eraser") {
-    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-      let a = cov[(y - y0) * bw + (x - x0)]; if (a <= 0) continue;
-      let i = (y * w + x) * 4; target[i + 3] = (target[i + 3] * (1 - a) + 0.5) | 0; if (target[i + 3] === 0) { target[i] = 0; target[i + 1] = 0; target[i + 2] = 0; }
+    for (let y = y0; y <= y1; y++) {
+      let cRow = (y - y0) * bw, sRow = y * w;
+      for (let x = x0; x <= x1; x++) {
+        let a = cov[cRow + (x - x0)]; if (a <= 0) continue;
+        let i = (sRow + x) * 4; target[i + 3] = (target[i + 3] * (1 - a) + 0.5) | 0; if (target[i + 3] === 0) { target[i] = 0; target[i + 1] = 0; target[i + 2] = 0; }
+      }
     }
   } else if (tool === "clone") {
     let src = s.source, ox = Math.round(s.cloneOff.x), oy = Math.round(s.cloneOff.y);
@@ -936,8 +1190,9 @@ function psDab(cx, cy, pressure) {
       sm[k] += (target[i] - sm[k]) * 0.15; sm[k + 1] += (target[i + 1] - sm[k + 1]) * 0.15; sm[k + 2] += (target[i + 2] - sm[k + 2]) * 0.15; sm[k + 3] += (target[i + 3] - sm[k + 3]) * 0.15;
     }
   } else {
-    // Local filters: compute into a temp box from the current target, then mix by coverage.
-    let tmp = new Uint8Array(bw * bh * 4);
+    // Local filters: compute into a reused temp box from the current target, then mix by coverage.
+    if (PS_DAB_TMP.length < boxLen * 4) PS_DAB_TMP = new Uint8Array(Math.max(boxLen * 4, PS_DAB_TMP.length * 2));
+    let tmp = PS_DAB_TMP;
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
       let i = (y * w + x) * 4, k = ((y - y0) * bw + (x - x0)) * 4;
       let r0 = target[i], g0 = target[i + 1], b0 = target[i + 2];
@@ -980,16 +1235,29 @@ function psThumbnail(data, w, h, tw, th, ch) {
   let scale = Math.min(tw / w, th / h);
   let ow = Math.max(1, Math.round(w * scale)), oh = Math.max(1, Math.round(h * scale));
   let out = new Uint8Array(ow * oh * 4);
+  let sxMap = new Int32Array(ow);
+  for (let x = 0; x < ow; x++) sxMap[x] = Math.min(w - 1, Math.floor((x + 0.5) * w / ow));
+  if (ch === 4 && (data.byteOffset & 3) === 0) {
+    let src32 = new Uint32Array(data.buffer, data.byteOffset, data.byteLength >> 2);
+    let out32 = new Uint32Array(out.buffer);
+    for (let y = 0; y < oh; y++) {
+      let srow = Math.min(h - 1, Math.floor((y + 0.5) * h / oh)) * w;
+      let drow = y * ow;
+      for (let x = 0; x < ow; x++) out32[drow + x] = src32[srow + sxMap[x]];
+    }
+    return { w: ow, h: oh, format: "rgba", pixels: psToBase64(out) };
+  }
   for (let y = 0; y < oh; y++) {
-    let sy = Math.min(h - 1, Math.floor((y + 0.5) * h / oh));
+    let sy = Math.min(h - 1, Math.floor((y + 0.5) * h / oh)) * w;
+    let drow = y * ow;
     for (let x = 0; x < ow; x++) {
-      let sx = Math.min(w - 1, Math.floor((x + 0.5) * w / ow));
-      let o = (y * ow + x) * 4;
-      if (ch === 4) { let i = (sy * w + sx) * 4; out[o] = data[i]; out[o + 1] = data[i + 1]; out[o + 2] = data[i + 2]; out[o + 3] = data[i + 3]; }
-      else { let v = data[sy * w + sx]; out[o] = v; out[o + 1] = v; out[o + 2] = v; out[o + 3] = 255; }
+      let sx = sxMap[x];
+      let o = (drow + x) * 4;
+      if (ch === 4) { let i = (sy + sx) * 4; out[o] = data[i]; out[o + 1] = data[i + 1]; out[o + 2] = data[i + 2]; out[o + 3] = data[i + 3]; }
+      else { let v = data[sy + sx]; out[o] = v; out[o + 1] = v; out[o + 2] = v; out[o + 3] = 255; }
     }
   }
-  return { w: ow, h: oh, format: "rgba", pixels: out.toBase64() };
+  return { w: ow, h: oh, format: "rgba", pixels: psToBase64(out) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1000,7 +1268,7 @@ function psOpenRaster(name, w, h, data, warnings) {
   psBudget(w, h, 1, 0);
   PS_W = w; PS_H = h; PS_NAME = String(name || "Untitled").replace(/\.[^.]+$/, "").slice(0, 120) || "Untitled";
   PS_LAYERS = [psLayerFactory("Background", data)];
-  PS_ACTIVE = PS_LAYERS[0].id; PS_SEL = null; PS_MASKMODE = false; PS_WARNINGS = warnings ? warnings.slice() : []; PS_CLONE = null; PS_STROKE = null;
+  PS_ACTIVE = PS_LAYERS[0].id; PS_SEL = null; PS_MASKMODE = false; PS_WARNINGS = warnings ? warnings.slice() : []; PS_CLONE = null; PS_STROKE = null; PS_MOVE_ACTIVE = false; psClearUnderCache();
   PS_OVL_GESTURE = null; PS_OVL_CLONE = null; PS_OVL_SEL = null;
   psAllocComposite(); psInvalidateAll(); psResetHistory("Open image"); psEmit("document");
 }
@@ -1095,13 +1363,13 @@ function psProjectJob(done, fail) {
     }
     let l = layers[index++];
     psPngEncodeJob(l.data, w, h, function (png) {
-      let entry = { name: l.name, visible: l.visible, locked: l.locked, opacity: l.opacity, blend: l.blend, image: "data:image/png;base64," + png.toBase64(), mask: null, maskEnabled: l.maskEnabled, text: l.text, kind: l.kind };
+      let entry = { name: l.name, visible: l.visible, locked: l.locked, opacity: l.opacity, blend: l.blend, image: "data:image/png;base64," + psToBase64(png), mask: null, maskEnabled: l.maskEnabled, text: l.text, kind: l.kind };
       if (l.mask) {
         // Masks are stored as white RGBA with the mask in alpha, as the native edition wrote them.
         let mrgba = new Uint8Array(w * h * 4);
         let m = l.mask;
         for (let p = 0; p < w * h; p++) { let i = p * 4; mrgba[i] = 255; mrgba[i + 1] = 255; mrgba[i + 2] = 255; mrgba[i + 3] = m[p]; }
-        psPngEncodeJob(mrgba, w, h, function (mpng) { entry.mask = "data:image/png;base64," + mpng.toBase64(); out.push(entry); next(); }, fail);
+        psPngEncodeJob(mrgba, w, h, function (mpng) { entry.mask = "data:image/png;base64," + psToBase64(mpng); out.push(entry); next(); }, fail);
       } else { out.push(entry); next(); }
     }, fail);
   }

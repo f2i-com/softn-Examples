@@ -1,0 +1,42 @@
+{
+  "id": "racelab",
+  "name": "RaceLab",
+  "version": "0.16.0",
+  "main": "ui/main.ui",
+  "files": {
+    "ui": [
+      "ui/main.ui"
+    ],
+    "logic": [
+      "logic/main.logic"
+    ],
+    "assets": [
+      "assets/cup2026-field.json",
+      "assets/cup2026-research.json",
+      "assets/env/sunny-meadow.hdr",
+      "assets/historical-cups.json",
+      "assets/icon.svg",
+      "assets/models/grandstand.glb",
+      "assets/models/racehorse.glb",
+      "assets/models/starting-gate.glb",
+      "assets/models/winning-post.glb",
+      "assets/raceday-2026-11-03.json",
+      "assets/raceday-field-2026-11-03.json",
+      "assets/raceday-history-2026-11-03.json",
+      "assets/research-annotations-v2.json"
+    ],
+    "xdb": [
+      "xdb/scenarios.xdb",
+      "xdb/market_snapshots.xdb",
+      "xdb/research_reviews.xdb"
+    ]
+  },
+  "config": {
+    "theme": {
+      "mode": "dark"
+    }
+  },
+  "description": "Experimental Melbourne Cup simulator with multi-trial probability analysis, interactive 3D replay and reproducible results.",
+  "author": "Lance Baker",
+  "icon": "assets/icon.svg"
+}

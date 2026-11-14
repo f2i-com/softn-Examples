@@ -49,9 +49,17 @@ let vx = 0.0
 let vz = 0.0
 let startTime = 0
 let elapsedMs = 0
+let pauseStartedAt = 0
+let pausedAccumMs = 0
+let pauseStamp = 0
 let bestMs = 0
 let exitX = 13
 let exitZ = 13
+let exitSeen = false
+let hintRevealTimer = 0.0
+let hintCellC = -1
+let hintCellR = -1
+let mapCollapsed = false
 let rngSeed = 1
 let lastLocked = false
 let bobPhase = 0.0
@@ -115,7 +123,7 @@ function isLikelyTouch() {
   if (typeof window === "undefined") { return false }
   let coarse = false
   try { coarse = !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches) } catch (err) {}
-  return (typeof navigator !== "undefined" && navigator.maxTouchPoints > 0) || coarse || window.innerWidth <= 860
+  return coarse || window.innerWidth <= 760
 }
 
 function _init() {
@@ -124,14 +132,13 @@ function _init() {
   pad = { presses: {} }
   touchSprint = false
   touchMode = isLikelyTouch()
+  mapCollapsed = false
   if (typeof window !== "undefined") {
     window.__mzTouch = touchMode
     window.__scene3dLocked = false
     window.__scene3dWantLock = false
     window.__scene3dReleaseLock = false
-    function onTouch() { window.__mzTouch = true; touchMode = true }
-    window.addEventListener("touchstart", onTouch, { passive: true })
-    window.__mzCleanup = function () { window.removeEventListener("touchstart", onTouch) }
+    window.__mzCleanup = null
   }
   loadBestForSize(mazeSize)
   try {
@@ -151,7 +158,7 @@ function _init() {
 
 function _onHide() {
   pad = { presses: {} }
-  if (started && !paused && !won) { paused = true }
+  if (started && !paused && !won) { pauseGame() }
   if (typeof window !== "undefined" && window.__mzCleanup) {
     window.__mzCleanup()
     window.__mzCleanup = null
@@ -161,7 +168,16 @@ function _onHide() {
 function onControlPress(action) {
   if (action === "mute") { toggleMute(); return }
   if (action === "pause" && started && !won) {
-    if (paused) { resumeGame() } else { pauseGame() }
+    if (paused) {
+      if (Date.now() - pauseStamp < 220) { return }
+      resumeGame()
+    } else {
+      pauseGame()
+    }
+    return
+  }
+  if (action === "hint" && started && !paused && !won) {
+    pulseRuneHint()
   }
 }
 
@@ -524,6 +540,19 @@ function spawn() {
   updateCamera()
 }
 
+function revealAround(cc, cr) {
+  let dirs = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]
+  let i = 0
+  while (i < dirs.length) {
+    let nc = cc + dirs[i][0]
+    let nr = cr + dirs[i][1]
+    if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
+      visited[nr * COLS + nc] = 1
+    }
+    i = i + 1
+  }
+}
+
 function startGame() {
   carveMaze()
   placeRunes()
@@ -531,8 +560,15 @@ function startGame() {
   spawn()
   startTime = Date.now()
   elapsedMs = 0
-  steps = 0
-  lastCell = -1
+  pauseStartedAt = 0
+  pausedAccumMs = 0
+  steps = 1
+  lastCell = 1 * COLS + 1
+  revealAround(1, 1)
+  hintRevealTimer = 0.0
+  hintCellC = -1
+  hintCellR = -1
+  exitSeen = false
   bobPhase = 0
   won = false
   paused = false
@@ -546,11 +582,27 @@ function startGame() {
   buildMap()
 }
 
-function pauseGame() { paused = true }
+function pauseGame() {
+  if (paused) { return }
+  paused = true
+  pauseStartedAt = Date.now()
+  pauseStamp = Date.now()
+  if (typeof window !== "undefined") { window.__scene3dReleaseLock = true }
+}
+
 function resumeGame() {
+  if (paused && pauseStartedAt > 0) {
+    pausedAccumMs = pausedAccumMs + (Date.now() - pauseStartedAt)
+    pauseStartedAt = 0
+  }
   paused = false
   if (!touchMode && typeof window !== "undefined") { window.__scene3dWantLock = true }
 }
+
+function toggleMap() {
+  mapCollapsed = !mapCollapsed
+}
+
 function toggleTouchMode() {
   touchMode = !touchMode
   if (typeof window !== "undefined") {
@@ -562,6 +614,8 @@ function toggleTouchSprint() { touchSprint = !touchSprint }
 function pulseRuneHint() {
   let tx = exitX * CELL
   let tz = exitZ * CELL
+  let hc = exitX
+  let hr = exitZ
   let label = portalOpen ? "Exit Portal" : "Rune"
   if (!portalOpen) {
     let bestD = 1e9
@@ -570,11 +624,15 @@ function pulseRuneHint() {
       let rn = runes[ri]
       if (!rn.collected) {
         let d = (rn.x - px) * (rn.x - px) + (rn.z - pz) * (rn.z - pz)
-        if (d < bestD) { bestD = d; tx = rn.x; tz = rn.z }
+        if (d < bestD) { bestD = d; tx = rn.x; tz = rn.z; hc = rn.c; hr = rn.r }
       }
       ri = ri + 1
     }
   }
+  hintCellC = hc
+  hintCellR = hr
+  hintRevealTimer = 3.0
+  buildMap()
   let ang = Math.atan2(tx - px, tz - pz) - yaw
   while (ang > Math.PI) { ang = ang - Math.PI * 2 }
   while (ang < -Math.PI) { ang = ang + Math.PI * 2 }
@@ -585,6 +643,7 @@ function pulseRuneHint() {
 }
 function backToTitle() {
   started = false; won = false; paused = false
+  pauseStartedAt = 0
   if (typeof window !== "undefined") { window.__scene3dReleaseLock = true }
 }
 
@@ -625,10 +684,18 @@ function frameStep(rawDt) {
   }
 
   let locked = typeof window !== "undefined" ? !!window.__scene3dLocked : false
-  if (lastLocked && !locked && !touchMode && !won) { paused = true }
+  if (lastLocked && !locked && !touchMode && !won) { pauseGame() }
   lastLocked = locked
-  if (typeof window !== "undefined" && window.__mzTouch) { touchMode = true }
   if (paused || won) { return }
+
+  if (hintRevealTimer > 0.0) {
+    hintRevealTimer = Math.max(0.0, hintRevealTimer - dt)
+    if (hintRevealTimer <= 0.0) {
+      hintCellC = -1
+      hintCellR = -1
+      buildMap()
+    }
+  }
 
   if (typeof window !== "undefined") {
     if (window.__scene3dYaw !== undefined) { yaw = window.__scene3dYaw }
@@ -669,10 +736,10 @@ function frameStep(rawDt) {
     if (cell !== lastCell) {
       lastCell = cell
       if (visited[cell] === 0) {
-        visited[cell] = 1
         steps = steps + 1
         playSfx("found", 0.15)
       }
+      revealAround(cc, cr)
       buildMap()
     }
   }
@@ -701,7 +768,7 @@ function frameStep(rawDt) {
     ri = ri + 1
   }
 
-  elapsedMs = Date.now() - startTime
+  elapsedMs = Math.max(0, Date.now() - startTime - pausedAccumMs)
   timeText = clock(elapsedMs)
   let dx = px - exitX * CELL
   let dz = pz - exitZ * CELL
@@ -736,11 +803,13 @@ function finish() {
 function buildMap() {
   let items = []
   let r = 0
+  exitSeen = visited[exitZ * COLS + exitX] === 1 || (hintRevealTimer > 0 && hintCellC === exitX && hintCellR === exitZ)
   while (r < ROWS) {
     let c = 0
     while (c < COLS) {
       let val = maze[r * COLS + c]
       let seen = visited[r * COLS + c] === 1
+      let hinted = hintRevealTimer > 0 && c === hintCellC && r === hintCellR
       let here = Math.floor(px / CELL + 0.5) === c && Math.floor(pz / CELL + 0.5) === r
       let isExit = r === exitZ && c === exitX
       let hasRune = false
@@ -750,9 +819,9 @@ function buildMap() {
         ri = ri + 1
       }
       if (here) { items.push("#38bdf8") }
+      else if (!seen && !hinted) { items.push("#111622") }
       else if (isExit) { items.push(portalOpen ? "#4ade80" : "#fbbf24") }
       else if (hasRune) { items.push("#22d3ee") }
-      else if (!seen) { items.push("#111622") }
       else if (val === 1) { items.push("#475569") }
       else { items.push("#1e293b") }
       c = c + 1

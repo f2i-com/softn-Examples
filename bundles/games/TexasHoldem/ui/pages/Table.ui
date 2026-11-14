@@ -48,8 +48,8 @@
     <Box className="poker-topbar-right" style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "6px", flex: "1 1 0", minWidth: 0, flexWrap: "wrap" }}>
       <Button @click={toggleSound} style={{ background: soundEnabled ? "rgba(34,197,94,0.2)" : "rgba(255,255,255,0.08)", color: soundEnabled ? "#86efac" : "rgba(255,255,255,0.7)", border: "1px solid rgba(255,255,255,0.18)", borderRadius: "6px", padding: "5px 9px", fontSize: "10px", fontWeight: "700", cursor: "pointer", whiteSpace: "nowrap" }}>{soundEnabled ? "Sound On" : "Sound Off"}</Button>
       <Box style={{ display: "flex", alignItems: "center", gap: "4px", whiteSpace: "nowrap" }}>
-        <Box style={{ width: "8px", height: "8px", borderRadius: "50%", background: syncConnected ? "#22c55e" : (syncConnecting ? "#eab308" : "#ef4444"), boxShadow: syncConnected ? "0 0 6px rgba(34,197,94,0.5)" : "none" }} />
-        <Text style={{ color: "rgba(255,255,255,0.45)", fontSize: "clamp(10px, 1.5vw, 11px)" }}>{syncConnected ? syncPeers + " peers" : (syncConnecting ? "connecting..." : "offline")}</Text>
+        <Box style={{ width: "8px", height: "8px", borderRadius: "50%", background: syncConnected ? "#22c55e" : (syncConnecting ? "#eab308" : (botSeats.length > 0 ? "#c8aa6e" : "#78716c")), boxShadow: syncConnected ? "0 0 6px rgba(34,197,94,0.5)" : "none" }} />
+        <Text style={{ color: "rgba(255,255,255,0.48)", fontSize: "clamp(10px, 1.5vw, 11px)" }}>{syncTopbarStatusText()}</Text>
       </Box>
       <Text className="poker-topbar-hide-mobile" if={handNumber > 0} style={{ color: "rgba(255,255,255,0.35)", fontSize: "clamp(10px, 1.5vw, 11px)" }}>{"Hand #" + handNumber}</Text>
       <Button className="poker-topbar-hide-mobile" variant="ghost" if={isHost && gamePhase !== "waiting" && !authorityMode} @click={forceReset} title="Reset the table" style={{ background: "transparent", color: "rgba(239,68,68,0.75)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: "6px", padding: "4px 10px", fontSize: "10px", fontWeight: "600", cursor: "pointer" }}>Reset</Button>
@@ -77,6 +77,7 @@
     // Felt table
     <Box className="poker-felt" style={{
       position: "relative",
+      boxSizing: "border-box",
       width: "min(98%, 920px)", height: "100%", maxHeight: "520px", minHeight: "200px",
       borderRadius: "50% / 40%", zIndex: 10,
       background: "radial-gradient(ellipse at center, #1a5c2a 0%, #14472a 50%, #0d3518 100%)",
@@ -94,7 +95,7 @@
     </Box>
 
     // === SEAT 0 - bottom center ===
-    <Box style={{ position: "absolute", bottom: "clamp(-26px, -2.5vw, -12px)", left: "50%", transform: "translateX(-50%)" }}>
+    <Box className="poker-seat-pos poker-seat-pos-bottom" style={{ position: "absolute", bottom: "clamp(-26px, -2.5vw, -12px)", left: "50%", transform: "translateX(-50%)" }}>
       // Empty seat
       <Box className="poker-seat-empty" if={!seatHasPlayer(0)} @click={takeSeat(0)} style={{ width: "clamp(84px, 13vw, 108px)", display: "flex", flexDirection: "column", alignItems: "center", cursor: mySeat === -1 ? "pointer" : "default", opacity: mySeat === -1 ? 0.7 : 0.3 }}>
         <Box style={{ width: "clamp(38px, 5.3vw, 46px)", height: "clamp(38px, 5.3vw, 46px)", minWidth: "38px", minHeight: "38px", aspectRatio: "1 / 1", flexShrink: 0, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: "2px dashed rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -125,8 +126,8 @@
         <Box if={seatBet(0) > 0} style={{ background: "rgba(0,0,0,0.6)", borderRadius: "10px", padding: "2px 8px", marginTop: "2px", animation: seatBetAnim(0) }}>
           <Text style={{ color: "#fbbf24", fontSize: "clamp(10px, 1.5vw, 11px)", fontWeight: "bold" }}>{"Bet: $" + seatBet(0)}</Text>
         </Box>
-        <Box if={seatShowStatus(0)} style={{ background: statusBadgeColor(seatStatus(0)), borderRadius: "8px", padding: "1px 6px", marginTop: "2px" }}>
-          <Text style={{ color: "#fff", fontSize: "9px", fontWeight: "bold", textTransform: "uppercase" }}>{seatStatus(0)}</Text>
+        <Box if={seatActionBadgeText(0)} style={{ background: seatActionBadgeBg(0), borderRadius: "8px", padding: "1px 6px", marginTop: "2px" }}>
+          <Text style={{ color: "#fff", fontSize: "9px", fontWeight: "bold", textTransform: "uppercase" }}>{seatActionBadgeText(0)}</Text>
         </Box>
         <Box if={isDealerSeat(0)} style={{ position: "absolute", top: "30px", right: "-2px", width: "22px", height: "22px", borderRadius: "50%", background: "#fbbf24", display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #fff" }}>
           <Text style={{ color: "#1c1917", fontSize: "9px", fontWeight: "900" }}>D</Text>
@@ -141,7 +142,7 @@
     </Box>
 
     // === SEAT 1 - bottom right ===
-    <Box style={{ position: "absolute", bottom: "clamp(8px, 1.8vw, 16px)", right: "clamp(-20px, -2vw, -6px)" }}>
+    <Box className="poker-seat-pos poker-seat-pos-br" style={{ position: "absolute", bottom: "clamp(8px, 1.8vw, 16px)", right: "clamp(-20px, -2vw, -6px)" }}>
       <Box className="poker-seat-empty" if={!seatHasPlayer(1)} @click={takeSeat(1)} style={{ width: "clamp(84px, 13vw, 108px)", display: "flex", flexDirection: "column", alignItems: "center", cursor: mySeat === -1 ? "pointer" : "default", opacity: mySeat === -1 ? 0.7 : 0.3 }}>
         <Box style={{ width: "clamp(38px, 5.3vw, 46px)", height: "clamp(38px, 5.3vw, 46px)", minWidth: "38px", minHeight: "38px", aspectRatio: "1 / 1", flexShrink: 0, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: "2px dashed rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <Text style={{ color: "rgba(255,255,255,0.25)", fontSize: "20px" }}>+</Text>
@@ -170,8 +171,8 @@
         <Box if={seatBet(1) > 0} style={{ background: "rgba(0,0,0,0.6)", borderRadius: "10px", padding: "2px 8px", marginTop: "2px", animation: seatBetAnim(1) }}>
           <Text style={{ color: "#fbbf24", fontSize: "clamp(10px, 1.5vw, 11px)", fontWeight: "bold" }}>{"Bet: $" + seatBet(1)}</Text>
         </Box>
-        <Box if={seatShowStatus(1)} style={{ background: statusBadgeColor(seatStatus(1)), borderRadius: "8px", padding: "1px 6px", marginTop: "2px" }}>
-          <Text style={{ color: "#fff", fontSize: "9px", fontWeight: "bold", textTransform: "uppercase" }}>{seatStatus(1)}</Text>
+        <Box if={seatActionBadgeText(1)} style={{ background: seatActionBadgeBg(1), borderRadius: "8px", padding: "1px 6px", marginTop: "2px" }}>
+          <Text style={{ color: "#fff", fontSize: "9px", fontWeight: "bold", textTransform: "uppercase" }}>{seatActionBadgeText(1)}</Text>
         </Box>
         <Box if={isDealerSeat(1)} style={{ position: "absolute", top: "30px", right: "-2px", width: "22px", height: "22px", borderRadius: "50%", background: "#fbbf24", display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #fff" }}>
           <Text style={{ color: "#1c1917", fontSize: "9px", fontWeight: "900" }}>D</Text>
@@ -186,7 +187,7 @@
     </Box>
 
     // === SEAT 2 - top right ===
-    <Box style={{ position: "absolute", top: "clamp(-8px, -1vw, -2px)", right: "clamp(-20px, -2vw, -6px)" }}>
+    <Box className="poker-seat-pos poker-seat-pos-tr" style={{ position: "absolute", top: "clamp(-8px, -1vw, -2px)", right: "clamp(-20px, -2vw, -6px)" }}>
       <Box className="poker-seat-empty" if={!seatHasPlayer(2)} @click={takeSeat(2)} style={{ width: "clamp(84px, 13vw, 108px)", display: "flex", flexDirection: "column", alignItems: "center", cursor: mySeat === -1 ? "pointer" : "default", opacity: mySeat === -1 ? 0.7 : 0.3 }}>
         <Box style={{ width: "clamp(38px, 5.3vw, 46px)", height: "clamp(38px, 5.3vw, 46px)", minWidth: "38px", minHeight: "38px", aspectRatio: "1 / 1", flexShrink: 0, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: "2px dashed rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <Text style={{ color: "rgba(255,255,255,0.25)", fontSize: "20px" }}>+</Text>
@@ -215,9 +216,10 @@
         <Box if={seatBet(2) > 0} style={{ background: "rgba(0,0,0,0.6)", borderRadius: "10px", padding: "2px 8px", marginTop: "2px", animation: seatBetAnim(2) }}>
           <Text style={{ color: "#fbbf24", fontSize: "clamp(10px, 1.5vw, 11px)", fontWeight: "bold" }}>{"Bet: $" + seatBet(2)}</Text>
         </Box>
-        <Box if={seatShowStatus(2)} style={{ background: statusBadgeColor(seatStatus(2)), borderRadius: "8px", padding: "1px 6px", marginTop: "2px" }}>
-          <Text style={{ color: "#fff", fontSize: "9px", fontWeight: "bold", textTransform: "uppercase" }}>{seatStatus(2)}</Text>
+        <Box if={seatActionBadgeText(2)} style={{ background: seatActionBadgeBg(2), borderRadius: "8px", padding: "1px 6px", marginTop: "2px" }}>
+          <Text style={{ color: "#fff", fontSize: "9px", fontWeight: "bold", textTransform: "uppercase" }}>{seatActionBadgeText(2)}</Text>
         </Box>
+
         <Box if={isDealerSeat(2)} style={{ position: "absolute", top: "30px", right: "-2px", width: "22px", height: "22px", borderRadius: "50%", background: "#fbbf24", display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #fff" }}>
           <Text style={{ color: "#1c1917", fontSize: "9px", fontWeight: "900" }}>D</Text>
         </Box>
@@ -231,7 +233,7 @@
     </Box>
 
     // === SEAT 3 - top center ===
-    <Box style={{ position: "absolute", top: "clamp(-30px, -3.2vh, -16px)", left: "50%", transform: "translateX(-50%)" }}>
+    <Box className="poker-seat-pos poker-seat-pos-top" style={{ position: "absolute", top: "clamp(-30px, -3.2vh, -16px)", left: "50%", transform: "translateX(-50%)" }}>
       <Box className="poker-seat-empty" if={!seatHasPlayer(3)} @click={takeSeat(3)} style={{ width: "clamp(84px, 13vw, 108px)", display: "flex", flexDirection: "column", alignItems: "center", cursor: mySeat === -1 ? "pointer" : "default", opacity: mySeat === -1 ? 0.7 : 0.3 }}>
         <Box style={{ width: "clamp(38px, 5.3vw, 46px)", height: "clamp(38px, 5.3vw, 46px)", minWidth: "38px", minHeight: "38px", aspectRatio: "1 / 1", flexShrink: 0, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: "2px dashed rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <Text style={{ color: "rgba(255,255,255,0.25)", fontSize: "20px" }}>+</Text>
@@ -260,8 +262,8 @@
         <Box if={seatBet(3) > 0} style={{ background: "rgba(0,0,0,0.6)", borderRadius: "10px", padding: "2px 8px", marginTop: "2px", animation: seatBetAnim(3) }}>
           <Text style={{ color: "#fbbf24", fontSize: "clamp(10px, 1.5vw, 11px)", fontWeight: "bold" }}>{"Bet: $" + seatBet(3)}</Text>
         </Box>
-        <Box if={seatShowStatus(3)} style={{ background: statusBadgeColor(seatStatus(3)), borderRadius: "8px", padding: "1px 6px", marginTop: "2px" }}>
-          <Text style={{ color: "#fff", fontSize: "9px", fontWeight: "bold", textTransform: "uppercase" }}>{seatStatus(3)}</Text>
+        <Box if={seatActionBadgeText(3)} style={{ background: seatActionBadgeBg(3), borderRadius: "8px", padding: "1px 6px", marginTop: "2px" }}>
+          <Text style={{ color: "#fff", fontSize: "9px", fontWeight: "bold", textTransform: "uppercase" }}>{seatActionBadgeText(3)}</Text>
         </Box>
         <Box if={isDealerSeat(3)} style={{ position: "absolute", top: "30px", right: "-2px", width: "22px", height: "22px", borderRadius: "50%", background: "#fbbf24", display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #fff" }}>
           <Text style={{ color: "#1c1917", fontSize: "9px", fontWeight: "900" }}>D</Text>
@@ -276,7 +278,7 @@
     </Box>
 
     // === SEAT 4 - top left ===
-    <Box style={{ position: "absolute", top: "clamp(-8px, -1vw, -2px)", left: "clamp(-20px, -2vw, -6px)" }}>
+    <Box className="poker-seat-pos poker-seat-pos-tl" style={{ position: "absolute", top: "clamp(-8px, -1vw, -2px)", left: "clamp(-20px, -2vw, -6px)" }}>
       <Box className="poker-seat-empty" if={!seatHasPlayer(4)} @click={takeSeat(4)} style={{ width: "clamp(84px, 13vw, 108px)", display: "flex", flexDirection: "column", alignItems: "center", cursor: mySeat === -1 ? "pointer" : "default", opacity: mySeat === -1 ? 0.7 : 0.3 }}>
         <Box style={{ width: "clamp(38px, 5.3vw, 46px)", height: "clamp(38px, 5.3vw, 46px)", minWidth: "38px", minHeight: "38px", aspectRatio: "1 / 1", flexShrink: 0, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: "2px dashed rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <Text style={{ color: "rgba(255,255,255,0.25)", fontSize: "20px" }}>+</Text>
@@ -305,8 +307,8 @@
         <Box if={seatBet(4) > 0} style={{ background: "rgba(0,0,0,0.6)", borderRadius: "10px", padding: "2px 8px", marginTop: "2px", animation: seatBetAnim(4) }}>
           <Text style={{ color: "#fbbf24", fontSize: "clamp(10px, 1.5vw, 11px)", fontWeight: "bold" }}>{"Bet: $" + seatBet(4)}</Text>
         </Box>
-        <Box if={seatShowStatus(4)} style={{ background: statusBadgeColor(seatStatus(4)), borderRadius: "8px", padding: "1px 6px", marginTop: "2px" }}>
-          <Text style={{ color: "#fff", fontSize: "9px", fontWeight: "bold", textTransform: "uppercase" }}>{seatStatus(4)}</Text>
+        <Box if={seatActionBadgeText(4)} style={{ background: seatActionBadgeBg(4), borderRadius: "8px", padding: "1px 6px", marginTop: "2px" }}>
+          <Text style={{ color: "#fff", fontSize: "9px", fontWeight: "bold", textTransform: "uppercase" }}>{seatActionBadgeText(4)}</Text>
         </Box>
         <Box if={isDealerSeat(4)} style={{ position: "absolute", top: "30px", right: "-2px", width: "22px", height: "22px", borderRadius: "50%", background: "#fbbf24", display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #fff" }}>
           <Text style={{ color: "#1c1917", fontSize: "9px", fontWeight: "900" }}>D</Text>
@@ -321,7 +323,7 @@
     </Box>
 
     // === SEAT 5 - bottom left ===
-    <Box style={{ position: "absolute", bottom: "clamp(8px, 1.8vw, 16px)", left: "clamp(-20px, -2vw, -6px)" }}>
+    <Box className="poker-seat-pos poker-seat-pos-bl" style={{ position: "absolute", bottom: "clamp(8px, 1.8vw, 16px)", left: "clamp(-20px, -2vw, -6px)" }}>
       <Box className="poker-seat-empty" if={!seatHasPlayer(5)} @click={takeSeat(5)} style={{ width: "clamp(84px, 13vw, 108px)", display: "flex", flexDirection: "column", alignItems: "center", cursor: mySeat === -1 ? "pointer" : "default", opacity: mySeat === -1 ? 0.7 : 0.3 }}>
         <Box style={{ width: "clamp(38px, 5.3vw, 46px)", height: "clamp(38px, 5.3vw, 46px)", minWidth: "38px", minHeight: "38px", aspectRatio: "1 / 1", flexShrink: 0, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: "2px dashed rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <Text style={{ color: "rgba(255,255,255,0.25)", fontSize: "20px" }}>+</Text>
@@ -350,8 +352,8 @@
         <Box if={seatBet(5) > 0} style={{ background: "rgba(0,0,0,0.6)", borderRadius: "10px", padding: "2px 8px", marginTop: "2px", animation: seatBetAnim(5) }}>
           <Text style={{ color: "#fbbf24", fontSize: "clamp(10px, 1.5vw, 11px)", fontWeight: "bold" }}>{"Bet: $" + seatBet(5)}</Text>
         </Box>
-        <Box if={seatShowStatus(5)} style={{ background: statusBadgeColor(seatStatus(5)), borderRadius: "8px", padding: "1px 6px", marginTop: "2px" }}>
-          <Text style={{ color: "#fff", fontSize: "9px", fontWeight: "bold", textTransform: "uppercase" }}>{seatStatus(5)}</Text>
+        <Box if={seatActionBadgeText(5)} style={{ background: seatActionBadgeBg(5), borderRadius: "8px", padding: "1px 6px", marginTop: "2px" }}>
+          <Text style={{ color: "#fff", fontSize: "9px", fontWeight: "bold", textTransform: "uppercase" }}>{seatActionBadgeText(5)}</Text>
         </Box>
         <Box if={isDealerSeat(5)} style={{ position: "absolute", top: "30px", right: "-2px", width: "22px", height: "22px", borderRadius: "50%", background: "#fbbf24", display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #fff" }}>
           <Text style={{ color: "#1c1917", fontSize: "9px", fontWeight: "900" }}>D</Text>

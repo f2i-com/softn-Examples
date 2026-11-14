@@ -1,0 +1,1786 @@
+{
+  "schema": "racelab-field-snapshot-v1",
+  "snapshotId": "cup2026-final-2026-10-31-v1",
+  "verifiedAt": "2026-11-01",
+  "fieldFinalizedAt": "2026-10-31",
+  "source": "https://www.vrc.com.au/latest-news/2026-lexus-melbourne-cup-racing-and-sports-analysis/",
+  "notes": "Frozen baseline v0.10 field; preserves original exact model strengths, names and histories. Later research is a separate, unverified annotation layer.",
+  "horses": [
+    {
+      "id": "cup26-1",
+      "number": 1,
+      "name": "Sons And Lovers",
+      "barrier": 3,
+      "weight": 57.5,
+      "rating": 117,
+      "form": "Kilternan: 2nd",
+      "history": {
+        "career": {
+          "starts": 19,
+          "wins": 4,
+          "seconds": 2,
+          "thirds": 5
+        },
+        "track": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "distance": {
+          "starts": 1,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "trackDistance": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "going": {
+          "good": {
+            "starts": 17,
+            "wins": 4,
+            "seconds": 2,
+            "thirds": 4
+          },
+          "soft": {
+            "starts": 2,
+            "wins": 0,
+            "seconds": 0,
+            "thirds": 1
+          },
+          "heavy": {
+            "starts": 0,
+            "wins": 0,
+            "seconds": 0,
+            "thirds": 0
+          }
+        },
+        "last10": "513x144512",
+        "source": "https://www.tabtouch.com.au/racing/2026-11-03/mr/7",
+        "snapshot": "2026-11-01"
+      },
+      "lastStart": {
+        "race": "Kilternan Stakes",
+        "date": "2026-09-12",
+        "distance": 2414,
+        "position": 2,
+        "starters": 10,
+        "source": "https://www.neds.com.au/blog/betting-info/melbourne-cup/"
+      },
+      "recentStartText": "2/10 · Kilternan Stakes · 2414m · 2026-09-12",
+      "strength": 128.4,
+      "stamina": 0,
+      "wet": 0,
+      "style": "mid",
+      "colour": "#e1a952",
+      "active": true,
+      "provenance": "Racing & Sports rating published by VRC, 31 Oct 2026. Heuristic rating conversion; stamina, wet preference and style remain neutral assumptions."
+    },
+    {
+      "id": "cup26-2",
+      "number": 2,
+      "name": "Trustyourinstinct",
+      "barrier": 18,
+      "weight": 57,
+      "rating": 118,
+      "form": "Irish St Leger: 4th",
+      "history": {
+        "career": {
+          "starts": 25,
+          "wins": 9,
+          "seconds": 6,
+          "thirds": 3
+        },
+        "track": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "distance": {
+          "starts": 2,
+          "wins": 1,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "trackDistance": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "going": {
+          "good": {
+            "starts": 14,
+            "wins": 6,
+            "seconds": 4,
+            "thirds": 1
+          },
+          "soft": {
+            "starts": 10,
+            "wins": 3,
+            "seconds": 2,
+            "thirds": 2
+          },
+          "heavy": {
+            "starts": 1,
+            "wins": 0,
+            "seconds": 0,
+            "thirds": 0
+          }
+        },
+        "last10": "x76x721214",
+        "source": "https://www.tabtouch.com.au/racing/2026-11-03/mr/7",
+        "snapshot": "2026-11-01"
+      },
+      "lastStart": {
+        "race": "Irish St Leger",
+        "date": "2026-09-13",
+        "distance": 2816,
+        "position": 4,
+        "starters": 7,
+        "source": "https://www.neds.com.au/blog/betting-info/melbourne-cup/"
+      },
+      "recentStartText": "4/7 · Irish St Leger · 2816m · 2026-09-13",
+      "strength": 145.5,
+      "stamina": 0,
+      "wet": 0,
+      "style": "mid",
+      "colour": "#7657b4",
+      "active": true,
+      "provenance": "Racing & Sports rating published by VRC, 31 Oct 2026. Heuristic rating conversion; stamina, wet preference and style remain neutral assumptions."
+    },
+    {
+      "id": "cup26-3",
+      "number": 3,
+      "name": "Knight's Choice",
+      "barrier": 2,
+      "weight": 56.5,
+      "rating": 114,
+      "form": "Caulfield Cup: 14th",
+      "history": {
+        "career": {
+          "starts": 31,
+          "wins": 6,
+          "seconds": 3,
+          "thirds": 3
+        },
+        "track": {
+          "starts": 2,
+          "wins": 1,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "distance": {
+          "starts": 1,
+          "wins": 1,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "trackDistance": {
+          "starts": 1,
+          "wins": 1,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "going": {
+          "good": {
+            "starts": 19,
+            "wins": 5,
+            "seconds": 1,
+            "thirds": 2
+          },
+          "soft": {
+            "starts": 9,
+            "wins": 1,
+            "seconds": 1,
+            "thirds": 1
+          },
+          "heavy": {
+            "starts": 3,
+            "wins": 0,
+            "seconds": 1,
+            "thirds": 0
+          }
+        },
+        "last10": "6x708x0930",
+        "source": "https://www.tabtouch.com.au/racing/2026-11-03/mr/7",
+        "snapshot": "2026-11-01"
+      },
+      "lastStart": {
+        "race": "Caulfield Cup",
+        "date": "2026-10-17",
+        "distance": 2400,
+        "position": 14,
+        "starters": 18,
+        "source": "https://www.neds.com.au/blog/betting-info/melbourne-cup/"
+      },
+      "recentStartText": "14/18 · Caulfield Cup · 2400m · 2026-10-17",
+      "strength": 88.25,
+      "stamina": 0,
+      "wet": 0,
+      "style": "mid",
+      "colour": "#4c91b2",
+      "active": true,
+      "provenance": "Racing & Sports rating published by VRC, 31 Oct 2026. Heuristic rating conversion; stamina, wet preference and style remain neutral assumptions."
+    },
+    {
+      "id": "cup26-4",
+      "number": 4,
+      "name": "Middle Earth",
+      "barrier": 1,
+      "weight": 56.5,
+      "rating": 117,
+      "form": "2025 Cup: 3rd",
+      "history": {
+        "career": {
+          "starts": 26,
+          "wins": 6,
+          "seconds": 2,
+          "thirds": 3
+        },
+        "track": {
+          "starts": 6,
+          "wins": 1,
+          "seconds": 0,
+          "thirds": 1
+        },
+        "distance": {
+          "starts": 1,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 1
+        },
+        "trackDistance": {
+          "starts": 1,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 1
+        },
+        "going": {
+          "good": {
+            "starts": 18,
+            "wins": 5,
+            "seconds": 1,
+            "thirds": 2
+          },
+          "soft": {
+            "starts": 6,
+            "wins": 1,
+            "seconds": 0,
+            "thirds": 1
+          },
+          "heavy": {
+            "starts": 1,
+            "wins": 0,
+            "seconds": 0,
+            "thirds": 0
+          }
+        },
+        "last10": "x891x87898",
+        "source": "https://www.tabtouch.com.au/racing/2026-11-03/mr/7",
+        "snapshot": "2026-11-01"
+      },
+      "lastStart": {
+        "race": "Cox Plate",
+        "date": "2026-10-24",
+        "distance": 2040,
+        "position": 8,
+        "starters": 12,
+        "source": "https://www.neds.com.au/blog/betting-info/melbourne-cup/"
+      },
+      "recentStartText": "8/12 · Cox Plate · 2040m · 2026-10-24",
+      "strength": 128.4,
+      "stamina": 0,
+      "wet": 0,
+      "style": "mid",
+      "colour": "#d26945",
+      "active": true,
+      "provenance": "Racing & Sports rating published by VRC, 31 Oct 2026. Heuristic rating conversion; stamina, wet preference and style remain neutral assumptions."
+    },
+    {
+      "id": "cup26-5",
+      "number": 5,
+      "name": "Vauban",
+      "barrier": 22,
+      "weight": 56.5,
+      "rating": 118,
+      "form": "Geelong Cup: 9th",
+      "history": {
+        "career": {
+          "starts": 33,
+          "wins": 10,
+          "seconds": 5,
+          "thirds": 6
+        },
+        "track": {
+          "starts": 3,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "distance": {
+          "starts": 8,
+          "wins": 2,
+          "seconds": 2,
+          "thirds": 1
+        },
+        "trackDistance": {
+          "starts": 3,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "going": {
+          "good": {
+            "starts": 19,
+            "wins": 5,
+            "seconds": 2,
+            "thirds": 3
+          },
+          "soft": {
+            "starts": 13,
+            "wins": 5,
+            "seconds": 2,
+            "thirds": 3
+          },
+          "heavy": {
+            "starts": 1,
+            "wins": 0,
+            "seconds": 1,
+            "thirds": 0
+          }
+        },
+        "last10": "6506x133x9",
+        "source": "https://www.tabtouch.com.au/racing/2026-11-03/mr/7",
+        "snapshot": "2026-11-01"
+      },
+      "lastStart": {
+        "race": "Geelong Cup",
+        "date": "2026-10-21",
+        "distance": 2400,
+        "position": 9,
+        "starters": 13,
+        "source": "https://www.neds.com.au/blog/betting-info/melbourne-cup/"
+      },
+      "recentStartText": "9/13 · Geelong Cup · 2400m · 2026-10-21",
+      "strength": 145.5,
+      "stamina": 0,
+      "wet": 0,
+      "style": "mid",
+      "colour": "#975a86",
+      "active": true,
+      "provenance": "Racing & Sports rating published by VRC, 31 Oct 2026. Heuristic rating conversion; stamina, wet preference and style remain neutral assumptions."
+    },
+    {
+      "id": "cup26-6",
+      "number": 6,
+      "name": "Enfjaar",
+      "barrier": 8,
+      "weight": 56,
+      "rating": 119,
+      "form": "Caulfield Cup: 3rd",
+      "history": {
+        "career": {
+          "starts": 17,
+          "wins": 5,
+          "seconds": 2,
+          "thirds": 3
+        },
+        "track": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "distance": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "trackDistance": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "going": {
+          "good": {
+            "starts": 13,
+            "wins": 3,
+            "seconds": 2,
+            "thirds": 3
+          },
+          "soft": {
+            "starts": 0,
+            "wins": 0,
+            "seconds": 0,
+            "thirds": 0
+          },
+          "heavy": {
+            "starts": 1,
+            "wins": 0,
+            "seconds": 0,
+            "thirds": 0
+          }
+        },
+        "last10": "x543x381x3",
+        "source": "https://www.tabtouch.com.au/racing/2026-11-03/mr/7",
+        "snapshot": "2026-11-01"
+      },
+      "lastStart": {
+        "race": "Caulfield Cup",
+        "date": "2026-10-17",
+        "distance": 2400,
+        "position": 3,
+        "starters": 18,
+        "source": "https://www.neds.com.au/blog/betting-info/melbourne-cup/"
+      },
+      "recentStartText": "3/18 · Caulfield Cup · 2400m · 2026-10-17",
+      "strength": 164.87,
+      "stamina": 0,
+      "wet": 0,
+      "style": "mid",
+      "colour": "#b95452",
+      "active": true,
+      "provenance": "Racing & Sports rating published by VRC, 31 Oct 2026. Heuristic rating conversion; stamina, wet preference and style remain neutral assumptions."
+    },
+    {
+      "id": "cup26-7",
+      "number": 7,
+      "name": "Royal Supremacy",
+      "barrier": 21,
+      "weight": 56,
+      "rating": 117,
+      "form": "Caulfield Cup: 15th",
+      "history": {
+        "career": {
+          "starts": 22,
+          "wins": 7,
+          "seconds": 3,
+          "thirds": 4
+        },
+        "track": {
+          "starts": 1,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "distance": {
+          "starts": 1,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "trackDistance": {
+          "starts": 1,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "going": {
+          "good": {
+            "starts": 11,
+            "wins": 3,
+            "seconds": 3,
+            "thirds": 2
+          },
+          "soft": {
+            "starts": 8,
+            "wins": 1,
+            "seconds": 0,
+            "thirds": 2
+          },
+          "heavy": {
+            "starts": 2,
+            "wins": 2,
+            "seconds": 0,
+            "thirds": 0
+          }
+        },
+        "last10": "0x0331x910",
+        "source": "https://www.tabtouch.com.au/racing/2026-11-03/mr/7",
+        "snapshot": "2026-11-01"
+      },
+      "lastStart": {
+        "race": "Caulfield Cup",
+        "date": "2026-10-17",
+        "distance": 2400,
+        "position": 15,
+        "starters": 18,
+        "source": "https://www.neds.com.au/blog/betting-info/melbourne-cup/"
+      },
+      "recentStartText": "15/18 · Caulfield Cup · 2400m · 2026-10-17",
+      "strength": 128.4,
+      "stamina": 0,
+      "wet": 0,
+      "style": "mid",
+      "colour": "#48a080",
+      "active": true,
+      "provenance": "Racing & Sports rating published by VRC, 31 Oct 2026. Heuristic rating conversion; stamina, wet preference and style remain neutral assumptions."
+    },
+    {
+      "id": "cup26-8",
+      "number": 8,
+      "name": "Wine Dark Sea",
+      "barrier": 23,
+      "weight": 56,
+      "rating": 117,
+      "form": "Caulfield Cup: 11th",
+      "history": {
+        "career": {
+          "starts": 11,
+          "wins": 4,
+          "seconds": 2,
+          "thirds": 0
+        },
+        "track": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "distance": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "trackDistance": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "going": {
+          "good": {
+            "starts": 8,
+            "wins": 3,
+            "seconds": 2,
+            "thirds": 0
+          },
+          "soft": {
+            "starts": 0,
+            "wins": 0,
+            "seconds": 0,
+            "thirds": 0
+          },
+          "heavy": {
+            "starts": 0,
+            "wins": 0,
+            "seconds": 0,
+            "thirds": 0
+          }
+        },
+        "last10": "162x1151x0",
+        "source": "https://www.tabtouch.com.au/racing/2026-11-03/mr/7",
+        "snapshot": "2026-11-01"
+      },
+      "lastStart": {
+        "race": "Caulfield Cup",
+        "date": "2026-10-17",
+        "distance": 2400,
+        "position": 11,
+        "starters": 18,
+        "source": "https://www.neds.com.au/blog/betting-info/melbourne-cup/"
+      },
+      "recentStartText": "11/18 · Caulfield Cup · 2400m · 2026-10-17",
+      "strength": 128.4,
+      "stamina": 0,
+      "wet": 0,
+      "style": "mid",
+      "colour": "#9ba6b5",
+      "active": true,
+      "provenance": "Racing & Sports rating published by VRC, 31 Oct 2026. Heuristic rating conversion; stamina, wet preference and style remain neutral assumptions."
+    },
+    {
+      "id": "cup26-9",
+      "number": 9,
+      "name": "Asterix",
+      "barrier": 6,
+      "weight": 55,
+      "rating": 116,
+      "form": "Caulfield Cup: unplaced",
+      "history": {
+        "career": {
+          "starts": 33,
+          "wins": 8,
+          "seconds": 1,
+          "thirds": 2
+        },
+        "track": {
+          "starts": 2,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "distance": {
+          "starts": 1,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "trackDistance": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "going": {
+          "good": {
+            "starts": 22,
+            "wins": 5,
+            "seconds": 1,
+            "thirds": 2
+          },
+          "soft": {
+            "starts": 6,
+            "wins": 1,
+            "seconds": 0,
+            "thirds": 0
+          },
+          "heavy": {
+            "starts": 5,
+            "wins": 2,
+            "seconds": 0,
+            "thirds": 0
+          }
+        },
+        "last10": "11661x5300",
+        "source": "https://www.tabtouch.com.au/racing/2026-11-03/mr/7",
+        "snapshot": "2026-11-01"
+      },
+      "lastStart": {
+        "race": "Caulfield Cup",
+        "date": "2026-10-17",
+        "distance": 2400,
+        "position": 12,
+        "starters": 18,
+        "source": "https://www.neds.com.au/blog/betting-info/melbourne-cup/"
+      },
+      "recentStartText": "12/18 · Caulfield Cup · 2400m · 2026-10-17",
+      "strength": 113.31,
+      "stamina": 0,
+      "wet": 0,
+      "style": "mid",
+      "colour": "#e79346",
+      "active": true,
+      "provenance": "Racing & Sports rating published by VRC, 31 Oct 2026. Heuristic rating conversion; stamina, wet preference and style remain neutral assumptions."
+    },
+    {
+      "id": "cup26-10",
+      "number": 10,
+      "name": "Goodie Two Shoes",
+      "barrier": 19,
+      "weight": 55,
+      "rating": 117,
+      "form": "2025 Cup: 2nd",
+      "history": {
+        "career": {
+          "starts": 23,
+          "wins": 8,
+          "seconds": 2,
+          "thirds": 5
+        },
+        "track": {
+          "starts": 1,
+          "wins": 0,
+          "seconds": 1,
+          "thirds": 0
+        },
+        "distance": {
+          "starts": 3,
+          "wins": 1,
+          "seconds": 1,
+          "thirds": 1
+        },
+        "trackDistance": {
+          "starts": 1,
+          "wins": 0,
+          "seconds": 1,
+          "thirds": 0
+        },
+        "going": {
+          "good": {
+            "starts": 14,
+            "wins": 7,
+            "seconds": 1,
+            "thirds": 4
+          },
+          "soft": {
+            "starts": 9,
+            "wins": 1,
+            "seconds": 1,
+            "thirds": 1
+          },
+          "heavy": {
+            "starts": 0,
+            "wins": 0,
+            "seconds": 0,
+            "thirds": 0
+          }
+        },
+        "last10": "113x2x8210",
+        "source": "https://www.tabtouch.com.au/racing/2026-11-03/mr/7",
+        "snapshot": "2026-11-01"
+      },
+      "lastStart": {
+        "race": "Kilternan Stakes",
+        "date": "2026-09-12",
+        "distance": 2414,
+        "position": 10,
+        "starters": 10,
+        "source": "https://www.neds.com.au/blog/betting-info/melbourne-cup/"
+      },
+      "recentStartText": "10/10 · Kilternan Stakes · 2414m · 2026-09-12",
+      "strength": 128.4,
+      "stamina": 0,
+      "wet": 0,
+      "style": "mid",
+      "colour": "#697fa8",
+      "active": true,
+      "provenance": "Racing & Sports rating published by VRC, 31 Oct 2026. Heuristic rating conversion; stamina, wet preference and style remain neutral assumptions."
+    },
+    {
+      "id": "cup26-11",
+      "number": 11,
+      "name": "Juja Kibo",
+      "barrier": 14,
+      "weight": 55,
+      "rating": 117,
+      "form": "Metropolitan, Valley Gold Cup: wins",
+      "history": {
+        "career": {
+          "starts": 20,
+          "wins": 6,
+          "seconds": 3,
+          "thirds": 6
+        },
+        "track": {
+          "starts": 1,
+          "wins": 1,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "distance": {
+          "starts": 1,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "trackDistance": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "going": {
+          "good": {
+            "starts": 12,
+            "wins": 2,
+            "seconds": 3,
+            "thirds": 3
+          },
+          "soft": {
+            "starts": 6,
+            "wins": 3,
+            "seconds": 0,
+            "thirds": 3
+          },
+          "heavy": {
+            "starts": 2,
+            "wins": 1,
+            "seconds": 0,
+            "thirds": 0
+          }
+        },
+        "last10": "93339x3211",
+        "source": "https://www.tabtouch.com.au/racing/2026-11-03/mr/7",
+        "snapshot": "2026-11-01"
+      },
+      "lastStart": {
+        "race": "Moonee Valley Gold Cup",
+        "date": "2026-10-24",
+        "distance": 2500,
+        "position": 1,
+        "starters": 16,
+        "source": "https://www.neds.com.au/blog/betting-info/melbourne-cup/"
+      },
+      "recentStartText": "1/16 · Moonee Valley Gold Cup · 2500m · 2026-10-24",
+      "strength": 128.4,
+      "stamina": 0,
+      "wet": 0,
+      "style": "mid",
+      "colour": "#d95d63",
+      "active": true,
+      "provenance": "Racing & Sports rating published by VRC, 31 Oct 2026. Heuristic rating conversion; stamina, wet preference and style remain neutral assumptions."
+    },
+    {
+      "id": "cup26-12",
+      "number": 12,
+      "name": "Hopewell Rock",
+      "barrier": 15,
+      "weight": 54.5,
+      "rating": 117,
+      "form": "Ebor: 2nd",
+      "history": {
+        "career": {
+          "starts": 10,
+          "wins": 3,
+          "seconds": 3,
+          "thirds": 2
+        },
+        "track": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "distance": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "trackDistance": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "going": {
+          "good": {
+            "starts": 8,
+            "wins": 2,
+            "seconds": 3,
+            "thirds": 2
+          },
+          "soft": {
+            "starts": 0,
+            "wins": 0,
+            "seconds": 0,
+            "thirds": 0
+          },
+          "heavy": {
+            "starts": 2,
+            "wins": 1,
+            "seconds": 0,
+            "thirds": 0
+          }
+        },
+        "last10": "3229x3612x",
+        "source": "https://www.tabtouch.com.au/racing/2026-11-03/mr/7",
+        "snapshot": "2026-11-01"
+      },
+      "lastStart": {
+        "race": "Ebor Handicap",
+        "date": "2026-08-22",
+        "distance": 2816,
+        "position": 2,
+        "starters": 22,
+        "source": "https://www.neds.com.au/blog/betting-info/melbourne-cup/"
+      },
+      "recentStartText": "2/22 · Ebor Handicap · 2816m · 2026-08-22",
+      "strength": 128.4,
+      "stamina": 0,
+      "wet": 0,
+      "style": "mid",
+      "colour": "#5589ca",
+      "active": true,
+      "provenance": "Racing & Sports rating published by VRC, 31 Oct 2026. Heuristic rating conversion; stamina, wet preference and style remain neutral assumptions."
+    },
+    {
+      "id": "cup26-13",
+      "number": 13,
+      "name": "Onesmoothoperator",
+      "barrier": 13,
+      "weight": 54.5,
+      "rating": 108,
+      "form": "Geelong Cup: 11th",
+      "history": {
+        "career": {
+          "starts": 51,
+          "wins": 6,
+          "seconds": 11,
+          "thirds": 6
+        },
+        "track": {
+          "starts": 3,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "distance": {
+          "starts": 2,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "trackDistance": {
+          "starts": 2,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "going": {
+          "good": {
+            "starts": 22,
+            "wins": 2,
+            "seconds": 1,
+            "thirds": 3
+          },
+          "soft": {
+            "starts": 1,
+            "wins": 0,
+            "seconds": 0,
+            "thirds": 0
+          },
+          "heavy": {
+            "starts": 0,
+            "wins": 0,
+            "seconds": 0,
+            "thirds": 0
+          }
+        },
+        "last10": "4010x9x090",
+        "source": "https://www.tabtouch.com.au/racing/2026-11-03/mr/7",
+        "snapshot": "2026-11-01"
+      },
+      "lastStart": {
+        "race": "Geelong Cup",
+        "date": "2026-10-21",
+        "distance": 2400,
+        "position": 11,
+        "starters": 13,
+        "source": "https://www.neds.com.au/blog/betting-info/melbourne-cup/"
+      },
+      "recentStartText": "11/13 · Geelong Cup · 2400m · 2026-10-21",
+      "strength": 41.69,
+      "stamina": 0,
+      "wet": 0,
+      "style": "mid",
+      "colour": "#6687b2",
+      "active": true,
+      "provenance": "Racing & Sports rating published by VRC, 31 Oct 2026. Heuristic rating conversion; stamina, wet preference and style remain neutral assumptions."
+    },
+    {
+      "id": "cup26-14",
+      "number": 14,
+      "name": "Soul Of Spain",
+      "barrier": 5,
+      "weight": 54.5,
+      "rating": 115,
+      "form": "Sydney Cup: 2nd",
+      "history": {
+        "career": {
+          "starts": 26,
+          "wins": 5,
+          "seconds": 5,
+          "thirds": 6
+        },
+        "track": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "distance": {
+          "starts": 1,
+          "wins": 0,
+          "seconds": 1,
+          "thirds": 0
+        },
+        "trackDistance": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "going": {
+          "good": {
+            "starts": 16,
+            "wins": 4,
+            "seconds": 3,
+            "thirds": 3
+          },
+          "soft": {
+            "starts": 9,
+            "wins": 1,
+            "seconds": 2,
+            "thirds": 2
+          },
+          "heavy": {
+            "starts": 1,
+            "wins": 0,
+            "seconds": 0,
+            "thirds": 1
+          }
+        },
+        "last10": "4262x68378",
+        "source": "https://www.tabtouch.com.au/racing/2026-11-03/mr/7",
+        "snapshot": "2026-11-01"
+      },
+      "lastStart": {
+        "race": "Caulfield Cup",
+        "date": "2026-10-17",
+        "distance": 2400,
+        "position": 8,
+        "starters": 18,
+        "source": "https://www.neds.com.au/blog/betting-info/melbourne-cup/"
+      },
+      "recentStartText": "8/18 · Caulfield Cup · 2400m · 2026-10-17",
+      "strength": 100,
+      "stamina": 0,
+      "wet": 0,
+      "style": "mid",
+      "colour": "#c5754a",
+      "active": true,
+      "provenance": "Racing & Sports rating published by VRC, 31 Oct 2026. Heuristic rating conversion; stamina, wet preference and style remain neutral assumptions."
+    },
+    {
+      "id": "cup26-15",
+      "number": 15,
+      "name": "Zahrann",
+      "barrier": 11,
+      "weight": 54.5,
+      "rating": 115,
+      "form": "Caulfield Cup: 6th",
+      "history": {
+        "career": {
+          "starts": 12,
+          "wins": 4,
+          "seconds": 2,
+          "thirds": 1
+        },
+        "track": {
+          "starts": 3,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 1
+        },
+        "distance": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "trackDistance": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "going": {
+          "good": {
+            "starts": 9,
+            "wins": 4,
+            "seconds": 2,
+            "thirds": 0
+          },
+          "soft": {
+            "starts": 1,
+            "wins": 0,
+            "seconds": 0,
+            "thirds": 0
+          },
+          "heavy": {
+            "starts": 2,
+            "wins": 0,
+            "seconds": 0,
+            "thirds": 1
+          }
+        },
+        "last10": "17x53x4106",
+        "source": "https://www.tabtouch.com.au/racing/2026-11-03/mr/7",
+        "snapshot": "2026-11-01"
+      },
+      "lastStart": {
+        "race": "Caulfield Cup",
+        "date": "2026-10-17",
+        "distance": 2400,
+        "position": 6,
+        "starters": 18,
+        "source": "https://www.neds.com.au/blog/betting-info/melbourne-cup/"
+      },
+      "recentStartText": "6/18 · Caulfield Cup · 2400m · 2026-10-17",
+      "strength": 100,
+      "stamina": 0,
+      "wet": 0,
+      "style": "mid",
+      "colour": "#a96c50",
+      "active": true,
+      "provenance": "Racing & Sports rating published by VRC, 31 Oct 2026. Heuristic rating conversion; stamina, wet preference and style remain neutral assumptions."
+    },
+    {
+      "id": "cup26-16",
+      "number": 16,
+      "name": "So You Are",
+      "barrier": 7,
+      "weight": 54,
+      "rating": 115,
+      "form": "Bendigo Cup: winner",
+      "history": {
+        "career": {
+          "starts": 28,
+          "wins": 8,
+          "seconds": 6,
+          "thirds": 6
+        },
+        "track": {
+          "starts": 1,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "distance": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "trackDistance": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "going": {
+          "good": {
+            "starts": 12,
+            "wins": 4,
+            "seconds": 1,
+            "thirds": 4
+          },
+          "soft": {
+            "starts": 13,
+            "wins": 3,
+            "seconds": 5,
+            "thirds": 1
+          },
+          "heavy": {
+            "starts": 3,
+            "wins": 1,
+            "seconds": 0,
+            "thirds": 1
+          }
+        },
+        "last10": "7432421111",
+        "source": "https://www.tabtouch.com.au/racing/2026-11-03/mr/7",
+        "snapshot": "2026-11-01"
+      },
+      "lastStart": {
+        "race": "Bendigo Cup",
+        "date": "2026-10-28",
+        "distance": 2400,
+        "position": 1,
+        "starters": 13,
+        "source": "https://www.neds.com.au/blog/betting-info/melbourne-cup/"
+      },
+      "recentStartText": "1/13 · Bendigo Cup · 2400m · 2026-10-28",
+      "strength": 100,
+      "stamina": 0,
+      "wet": 0,
+      "style": "mid",
+      "colour": "#70a3a5",
+      "active": true,
+      "provenance": "Racing & Sports rating published by VRC, 31 Oct 2026. Heuristic rating conversion; stamina, wet preference and style remain neutral assumptions."
+    },
+    {
+      "id": "cup26-17",
+      "number": 17,
+      "name": "Future History",
+      "barrier": 12,
+      "weight": 53.5,
+      "rating": 115,
+      "form": "2023 Cup: 15th",
+      "history": {
+        "career": {
+          "starts": 47,
+          "wins": 10,
+          "seconds": 6,
+          "thirds": 6
+        },
+        "track": {
+          "starts": 8,
+          "wins": 2,
+          "seconds": 0,
+          "thirds": 1
+        },
+        "distance": {
+          "starts": 1,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "trackDistance": {
+          "starts": 1,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "going": {
+          "good": {
+            "starts": 33,
+            "wins": 7,
+            "seconds": 5,
+            "thirds": 5
+          },
+          "soft": {
+            "starts": 11,
+            "wins": 2,
+            "seconds": 1,
+            "thirds": 1
+          },
+          "heavy": {
+            "starts": 2,
+            "wins": 1,
+            "seconds": 0,
+            "thirds": 0
+          }
+        },
+        "last10": "4x436x3249",
+        "source": "https://www.tabtouch.com.au/racing/2026-11-03/mr/7",
+        "snapshot": "2026-11-01"
+      },
+      "lastStart": {
+        "race": "Moonee Valley Gold Cup",
+        "date": "2026-10-24",
+        "distance": 2500,
+        "position": 9,
+        "starters": 16,
+        "source": "https://www.neds.com.au/blog/betting-info/melbourne-cup/"
+      },
+      "recentStartText": "9/16 · Moonee Valley Gold Cup · 2500m · 2026-10-24",
+      "strength": 100,
+      "stamina": 0,
+      "wet": 0,
+      "style": "mid",
+      "colour": "#b8a365",
+      "active": true,
+      "provenance": "Racing & Sports rating published by VRC, 31 Oct 2026. Heuristic rating conversion; stamina, wet preference and style remain neutral assumptions."
+    },
+    {
+      "id": "cup26-18",
+      "number": 18,
+      "name": "James J Braddock",
+      "barrier": 24,
+      "weight": 53.5,
+      "rating": 114,
+      "form": "Epsom Derby: 3rd",
+      "history": {
+        "career": {
+          "starts": 7,
+          "wins": 2,
+          "seconds": 1,
+          "thirds": 1
+        },
+        "track": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "distance": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "trackDistance": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "going": {
+          "good": {
+            "starts": 4,
+            "wins": 1,
+            "seconds": 0,
+            "thirds": 0
+          },
+          "soft": {
+            "starts": 2,
+            "wins": 0,
+            "seconds": 1,
+            "thirds": 1
+          },
+          "heavy": {
+            "starts": 1,
+            "wins": 1,
+            "seconds": 0,
+            "thirds": 0
+          }
+        },
+        "last10": "21x5136x6",
+        "source": "https://www.tabtouch.com.au/racing/2026-11-03/mr/7",
+        "snapshot": "2026-11-01"
+      },
+      "lastStart": {
+        "race": "Kilternan Stakes",
+        "date": "2026-09-12",
+        "distance": 2414,
+        "position": 6,
+        "starters": 10,
+        "source": "https://www.neds.com.au/blog/betting-info/melbourne-cup/"
+      },
+      "recentStartText": "6/10 · Kilternan Stakes · 2414m · 2026-09-12",
+      "strength": 88.25,
+      "stamina": 0,
+      "wet": 0,
+      "style": "mid",
+      "colour": "#8ca5b7",
+      "active": true,
+      "provenance": "Racing & Sports rating published by VRC, 31 Oct 2026. Heuristic rating conversion; stamina, wet preference and style remain neutral assumptions."
+    },
+    {
+      "id": "cup26-19",
+      "number": 19,
+      "name": "Kizlyar",
+      "barrier": 20,
+      "weight": 53.5,
+      "rating": 110,
+      "form": "Ascot 4023m: winner",
+      "history": {
+        "career": {
+          "starts": 11,
+          "wins": 3,
+          "seconds": 2,
+          "thirds": 2
+        },
+        "track": {
+          "starts": 1,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "distance": {
+          "starts": 2,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 1
+        },
+        "trackDistance": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "going": {
+          "good": {
+            "starts": 5,
+            "wins": 3,
+            "seconds": 1,
+            "thirds": 0
+          },
+          "soft": {
+            "starts": 5,
+            "wins": 0,
+            "seconds": 1,
+            "thirds": 2
+          },
+          "heavy": {
+            "starts": 1,
+            "wins": 0,
+            "seconds": 0,
+            "thirds": 0
+          }
+        },
+        "last10": "93x011x2x0",
+        "source": "https://www.tabtouch.com.au/racing/2026-11-03/mr/7",
+        "snapshot": "2026-11-01"
+      },
+      "lastStart": {
+        "race": "Moonee Valley Gold Cup",
+        "date": "2026-10-24",
+        "distance": 2500,
+        "position": 11,
+        "starters": 16,
+        "source": "https://www.neds.com.au/blog/betting-info/melbourne-cup/"
+      },
+      "recentStartText": "11/16 · Moonee Valley Gold Cup · 2500m · 2026-10-24",
+      "strength": 53.53,
+      "stamina": 0,
+      "wet": 0,
+      "style": "mid",
+      "colour": "#8176ba",
+      "active": true,
+      "provenance": "Racing & Sports rating published by VRC, 31 Oct 2026. Heuristic rating conversion; stamina, wet preference and style remain neutral assumptions."
+    },
+    {
+      "id": "cup26-20",
+      "number": 20,
+      "name": "Point Of Law",
+      "barrier": 9,
+      "weight": 53,
+      "rating": 118,
+      "form": "Geelong Cup: winner",
+      "history": {
+        "career": {
+          "starts": 5,
+          "wins": 3,
+          "seconds": 1,
+          "thirds": 0
+        },
+        "track": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "distance": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "trackDistance": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "going": {
+          "good": {
+            "starts": 5,
+            "wins": 3,
+            "seconds": 1,
+            "thirds": 0
+          },
+          "soft": {
+            "starts": 0,
+            "wins": 0,
+            "seconds": 0,
+            "thirds": 0
+          },
+          "heavy": {
+            "starts": 0,
+            "wins": 0,
+            "seconds": 0,
+            "thirds": 0
+          }
+        },
+        "last10": "2141x1",
+        "source": "https://www.tabtouch.com.au/racing/2026-11-03/mr/7",
+        "snapshot": "2026-11-01"
+      },
+      "lastStart": {
+        "race": "Geelong Cup",
+        "date": "2026-10-21",
+        "distance": 2400,
+        "position": 1,
+        "starters": 13,
+        "source": "https://www.neds.com.au/blog/betting-info/melbourne-cup/"
+      },
+      "recentStartText": "1/13 · Geelong Cup · 2400m · 2026-10-21",
+      "strength": 145.5,
+      "stamina": 0,
+      "wet": 0,
+      "style": "mid",
+      "colour": "#55a57c",
+      "active": true,
+      "provenance": "Racing & Sports rating published by VRC, 31 Oct 2026. Heuristic rating conversion; stamina, wet preference and style remain neutral assumptions."
+    },
+    {
+      "id": "cup26-21",
+      "number": 21,
+      "name": "Strictly Business",
+      "barrier": 4,
+      "weight": 53,
+      "rating": 108,
+      "form": "VRC Oaks: winner",
+      "history": {
+        "career": {
+          "starts": 11,
+          "wins": 2,
+          "seconds": 2,
+          "thirds": 0
+        },
+        "track": {
+          "starts": 4,
+          "wins": 1,
+          "seconds": 1,
+          "thirds": 0
+        },
+        "distance": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "trackDistance": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "going": {
+          "good": {
+            "starts": 9,
+            "wins": 1,
+            "seconds": 1,
+            "thirds": 0
+          },
+          "soft": {
+            "starts": 2,
+            "wins": 1,
+            "seconds": 1,
+            "thirds": 0
+          },
+          "heavy": {
+            "starts": 0,
+            "wins": 0,
+            "seconds": 0,
+            "thirds": 0
+          }
+        },
+        "last10": "1x5802x000",
+        "source": "https://www.tabtouch.com.au/racing/2026-11-03/mr/7",
+        "snapshot": "2026-11-01"
+      },
+      "lastStart": {
+        "race": "Moonee Valley Gold Cup",
+        "date": "2026-10-24",
+        "distance": 2500,
+        "position": 16,
+        "starters": 16,
+        "source": "https://www.neds.com.au/blog/betting-info/melbourne-cup/"
+      },
+      "recentStartText": "16/16 · Moonee Valley Gold Cup · 2500m · 2026-10-24",
+      "strength": 41.69,
+      "stamina": 0,
+      "wet": 0,
+      "style": "mid",
+      "colour": "#bd5265",
+      "active": true,
+      "provenance": "Racing & Sports rating published by VRC, 31 Oct 2026. Heuristic rating conversion; stamina, wet preference and style remain neutral assumptions."
+    },
+    {
+      "id": "cup26-22",
+      "number": 22,
+      "name": "Mr Monaco",
+      "barrier": 16,
+      "weight": 52.5,
+      "rating": 115,
+      "form": "Bart Cummings: winner",
+      "history": {
+        "career": {
+          "starts": 20,
+          "wins": 6,
+          "seconds": 2,
+          "thirds": 2
+        },
+        "track": {
+          "starts": 2,
+          "wins": 1,
+          "seconds": 0,
+          "thirds": 1
+        },
+        "distance": {
+          "starts": 1,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "trackDistance": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "going": {
+          "good": {
+            "starts": 15,
+            "wins": 3,
+            "seconds": 2,
+            "thirds": 2
+          },
+          "soft": {
+            "starts": 4,
+            "wins": 2,
+            "seconds": 0,
+            "thirds": 0
+          },
+          "heavy": {
+            "starts": 1,
+            "wins": 1,
+            "seconds": 0,
+            "thirds": 0
+          }
+        },
+        "last10": "x5110x4013",
+        "source": "https://www.tabtouch.com.au/racing/2026-11-03/mr/7",
+        "snapshot": "2026-11-01"
+      },
+      "lastStart": {
+        "race": "Moonee Valley Gold Cup",
+        "date": "2026-10-24",
+        "distance": 2500,
+        "position": 3,
+        "starters": 16,
+        "source": "https://www.neds.com.au/blog/betting-info/melbourne-cup/"
+      },
+      "recentStartText": "3/16 · Moonee Valley Gold Cup · 2500m · 2026-10-24",
+      "strength": 100,
+      "stamina": 0,
+      "wet": 0,
+      "style": "mid",
+      "colour": "#519da3",
+      "active": true,
+      "provenance": "Racing & Sports rating published by VRC, 31 Oct 2026. Heuristic rating conversion; stamina, wet preference and style remain neutral assumptions."
+    },
+    {
+      "id": "cup26-23",
+      "number": 23,
+      "name": "Zakouma",
+      "barrier": 10,
+      "weight": 52,
+      "rating": 112,
+      "form": "Andrew Ramsden: winner",
+      "history": {
+        "career": {
+          "starts": 18,
+          "wins": 5,
+          "seconds": 2,
+          "thirds": 1
+        },
+        "track": {
+          "starts": 4,
+          "wins": 2,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "distance": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "trackDistance": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "going": {
+          "good": {
+            "starts": 12,
+            "wins": 3,
+            "seconds": 2,
+            "thirds": 0
+          },
+          "soft": {
+            "starts": 4,
+            "wins": 1,
+            "seconds": 0,
+            "thirds": 1
+          },
+          "heavy": {
+            "starts": 2,
+            "wins": 1,
+            "seconds": 0,
+            "thirds": 0
+          }
+        },
+        "last10": "11171x6650",
+        "source": "https://www.tabtouch.com.au/racing/2026-11-03/mr/7",
+        "snapshot": "2026-11-01"
+      },
+      "lastStart": {
+        "race": "Crystal Mile",
+        "date": "2026-10-24",
+        "distance": 1600,
+        "position": 11,
+        "starters": 11,
+        "source": "https://www.neds.com.au/blog/betting-info/melbourne-cup/"
+      },
+      "recentStartText": "11/11 · Crystal Mile · 1600m · 2026-10-24",
+      "strength": 68.73,
+      "stamina": 0,
+      "wet": 0,
+      "style": "mid",
+      "colour": "#d2a354",
+      "active": true,
+      "provenance": "Racing & Sports rating published by VRC, 31 Oct 2026. Heuristic rating conversion; stamina, wet preference and style remain neutral assumptions."
+    },
+    {
+      "id": "cup26-24",
+      "number": 24,
+      "name": "Shockletz",
+      "barrier": 17,
+      "weight": 51,
+      "rating": 113,
+      "form": "Archer Stakes: winner",
+      "history": {
+        "career": {
+          "starts": 20,
+          "wins": 7,
+          "seconds": 3,
+          "thirds": 1
+        },
+        "track": {
+          "starts": 9,
+          "wins": 3,
+          "seconds": 2,
+          "thirds": 0
+        },
+        "distance": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "trackDistance": {
+          "starts": 0,
+          "wins": 0,
+          "seconds": 0,
+          "thirds": 0
+        },
+        "going": {
+          "good": {
+            "starts": 12,
+            "wins": 4,
+            "seconds": 2,
+            "thirds": 1
+          },
+          "soft": {
+            "starts": 7,
+            "wins": 3,
+            "seconds": 1,
+            "thirds": 0
+          },
+          "heavy": {
+            "starts": 1,
+            "wins": 0,
+            "seconds": 0,
+            "thirds": 0
+          }
+        },
+        "last10": "1x34864162",
+        "source": "https://www.tabtouch.com.au/racing/2026-11-03/mr/7",
+        "snapshot": "2026-11-01"
+      },
+      "lastStart": {
+        "race": "Tesio Stakes",
+        "date": "2026-10-24",
+        "distance": 2040,
+        "position": 2,
+        "starters": 15,
+        "source": "https://www.neds.com.au/blog/betting-info/melbourne-cup/"
+      },
+      "recentStartText": "2/15 · Tesio Stakes · 2040m · 2026-10-24",
+      "strength": 77.88,
+      "stamina": 0,
+      "wet": 0,
+      "style": "mid",
+      "colour": "#9c78ae",
+      "active": true,
+      "provenance": "Racing & Sports rating published by VRC, 31 Oct 2026. Heuristic rating conversion; stamina, wet preference and style remain neutral assumptions."
+    }
+  ]
+}

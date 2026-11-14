@@ -15,6 +15,7 @@
   let editingAppointment = null
   let showDataModal = false
   let exportedData = ""
+  let copiedExport = false
   let darkMode = (function() { try { var v = localStorage.getItem("softn-theme-preference"); if (v === "light") return false; if (v === "dark") return true; } catch(e) {} return true; })()
   let confirmClearData = false
   let importData = ""
@@ -23,24 +24,38 @@
   let syncConnected = false
   let syncConnecting = false
   let syncPeers = 0
+  let copiedRoom = false
 
-  // Field lists for the appointment forms, rebuilt each time a form opens so
-  // that a client or stylist added a moment ago is in the list.
+  // ── Beauty & Lighting Studio state (works immediately without webcam) ──
+  let studioMuse = "balayage"
+  let studioPreset = "golden"
+  let studioExposure = 104
+  let studioWarmth = 18
+  let studioContrast = 106
+  let studioGlow = 35
+  let studioVignette = 28
+  let studioCameraOn = false
+  let studioCameraAvailable = false
+  let studioCapturedUrl = ""
+  let studioToast = ""
+
+  // Field lists for the appointment forms, rebuilt each time a form opens
   let appointmentFormFields = []
   let appointmentEditFields = []
 
-  // Line icons for the places the built-in Icon set has no name for. Drawn
-  // with currentColor so the wrapper's colour decides the stroke.
+  // Line icons drawn with currentColor
   let iconOpen = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
   let iconCalendar = iconOpen + '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>'
   let iconUsers = iconOpen + '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'
   let iconScissors = iconOpen + '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>'
   let iconList = iconOpen + '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>'
+  let iconSparkles = iconOpen + '<path d="M12 3l1.9 5.8L20 10.7l-6.1 1.9L12 18.4l-1.9-5.8L4 10.7l6.1-1.9L12 3z"/><path d="M19 15l.9 2.6L22.5 18.5l-2.6.9L19 22l-.9-2.6-2.6-.9 2.6-.9L19 15z"/></svg>'
+  let iconCamera = iconOpen + '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>'
   let iconSun = iconOpen + '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>'
   let iconMoon = iconOpen + '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'
 
-  // App icon as inline SVG data URL (cached to avoid Image component resetting on re-render)
-  let appIconUrl = "data:image/svg+xml," + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='bg-grad' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' stop-color='#b08d60'/><stop offset='100%' stop-color='#9a7a52'/></linearGradient><mask id='g-mask'><rect width='100' height='100' fill='black'/><circle cx='50' cy='50' r='34' fill='white'/><circle cx='50' cy='50' r='20' fill='black'/><path d='M 50 50 L 75 -10 L 110 -10 L 110 44 L 40 44 Z' fill='black'/><rect x='46' y='44' width='40' height='14' fill='white'/><circle cx='50' cy='50' r='68' stroke='black' stroke-width='68' fill='none'/></mask></defs><rect width='100' height='100' rx='22' fill='url(#bg-grad)'/><rect width='100' height='100' fill='white' mask='url(#g-mask)'/></svg>")
+  // App icon as inline SVG data URL
+  let appIconUrl = "data:image/svg+xml," + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><defs><linearGradient id='bg-grad' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' stop-color='#b08d60'/><stop offset='100%' stop-color='#9a7a52'/></linearGradient><mask id='g-mask'><rect width='100' height='100' fill='black'/><circle cx='50' cy='50' r='34' fill='white'/><circle cx='50' cy='50' r='20' fill='black'/><path d='M 50 50 L 75 -10 L 110 -10 L 110 44 L 40 44 Z' fill='black'/><rect x='46' y='44' width='40' height='14' fill='white'/><circle cx='50' cy='50' r='68' stroke='black' stroke-width='68' fill='none'/></mask></defs><rect width='100' height='100' rx='22' fill='url(#bg-grad)'/><rect width='100' height='100' fill='white' mask='url(#g-mask)'/></svg>")
 
   // Theme colors — warm luxury palette
   function getBgColor() {
@@ -91,7 +106,6 @@
     return darkMode ? "rgba(212, 165, 116, 0.15)" : "rgba(176, 141, 96, 0.12)"
   }
 
-  // Get greeting based on time of day
   function getGreeting() {
     let hour = new Date().getHours()
     if (hour < 12) return "Good morning"
@@ -99,24 +113,23 @@
     return "Good evening"
   }
 
-  // Activity logging helper
   function logActivity(title, description, status, actor) {
-    db.create("activity", {
-      title: title,
-      description: description,
-      time: new Date().toISOString(),
-      status: status || "info",
-      actor: actor || "Front desk"
-    })
+    try {
+      db.create("activity", {
+        title: title,
+        description: description,
+        time: new Date().toISOString(),
+        status: status || "info",
+        actor: actor || "Front desk"
+      })
+    } catch (e) {}
   }
 
-  // Appointment forms pick from the people and services that exist rather
-  // than asking for names to be typed. A collection with nothing in it yet
-  // falls back to a text box so the first booking can still be made.
   function pickField(name, label, records, key, placeholder) {
     let options = []
-    for (let i = 0; i < records.length; i = i + 1) {
-      let value = records[i].data ? records[i].data[key] : records[i][key]
+    let list = records || []
+    for (let i = 0; i < list.length; i = i + 1) {
+      let value = list[i].data ? list[i].data[key] : list[i][key]
       if (value) { options.push({ value: value, label: value }) }
     }
     if (options.length === 0) {
@@ -140,8 +153,6 @@
         helpText: "24-hour clock"
       }
     ]
-    // SmartForm seeds a new form from each field's defaultValue; the modal's
-    // defaults prop is not something it reads.
     fields.push({
       name: "status",
       type: "select",
@@ -157,16 +168,17 @@
     return fields
   }
 
-  // Theme toggle
   function toggleTheme() {
     darkMode = !darkMode
     try { localStorage.setItem("softn-theme-preference", darkMode ? "dark" : "light") } catch(e) {}
   }
 
-  // Navigation
   function navigate(page) {
     currentPage = page
     selectedItem = null
+    if (page !== "studio") {
+      studioCameraOn = false
+    }
   }
 
   function toggleSidebar() {
@@ -181,25 +193,28 @@
     selectedItem = null
   }
 
-  // Navigate to page AND select item (for dashboard clicks)
   function viewAppointment(item) {
     selectedItem = item
     currentPage = "appointments"
+    studioCameraOn = false
   }
 
   function viewStaff(item) {
     selectedItem = item
     currentPage = "staff"
+    studioCameraOn = false
   }
 
   function viewClient(item) {
     selectedItem = item
     currentPage = "clients"
+    studioCameraOn = false
   }
 
   function viewService(item) {
     selectedItem = item
     currentPage = "services"
+    studioCameraOn = false
   }
 
   // CRUD handlers using XDB
@@ -223,12 +238,19 @@
 
   function saveEditClient(data) {
     if (editingClient) {
-      db.update(editingClient.id, {
+      let updated = {
         name: data.name || editingClient.data.name,
         email: data.email || editingClient.data.email,
-        phone: data.phone || editingClient.data.phone
-      })
-      logActivity("Client updated", data.name + " was updated", "info")
+        phone: data.phone !== undefined ? data.phone : editingClient.data.phone,
+        visits: editingClient.data.visits || 0,
+        totalSpent: editingClient.data.totalSpent || 0,
+        vip: !!editingClient.data.vip
+      }
+      db.update(editingClient.id, updated)
+      if (selectedItem && selectedItem.id === editingClient.id) {
+        selectedItem = { id: editingClient.id, data: updated }
+      }
+      logActivity("Client updated", updated.name + " was updated", "info")
     }
     showEditClientModal = false
     editingClient = null
@@ -240,8 +262,12 @@
   }
 
   function deleteClient(row) {
+    if (!row) return
     db.delete(row.id)
-    logActivity("Client removed", row.data.name + " was removed", "warning")
+    if (selectedItem && selectedItem.id === row.id) {
+      selectedItem = null
+    }
+    logActivity("Client removed", (row.data && row.data.name ? row.data.name : "Client") + " was removed", "warning")
   }
 
   function addStaff(data) {
@@ -264,12 +290,19 @@
 
   function saveEditStaff(data) {
     if (editingStaff) {
-      db.update(editingStaff.id, {
+      let updated = {
         name: data.name || editingStaff.data.name,
         role: data.role || editingStaff.data.role,
-        email: data.email || editingStaff.data.email
-      })
-      logActivity("Staff updated", data.name + " was updated", "info")
+        email: data.email || editingStaff.data.email,
+        status: editingStaff.data.status || "online",
+        rating: editingStaff.data.rating || 0,
+        appointments: editingStaff.data.appointments || 0
+      }
+      db.update(editingStaff.id, updated)
+      if (selectedItem && selectedItem.id === editingStaff.id) {
+        selectedItem = { id: editingStaff.id, data: updated }
+      }
+      logActivity("Staff updated", updated.name + " was updated", "info")
     }
     showEditStaffModal = false
     editingStaff = null
@@ -281,16 +314,20 @@
   }
 
   function deleteStaff(row) {
+    if (!row) return
     db.delete(row.id)
-    logActivity("Staff removed", row.data.name + " was removed", "warning")
+    if (selectedItem && selectedItem.id === row.id) {
+      selectedItem = null
+    }
+    logActivity("Staff removed", (row.data && row.data.name ? row.data.name : "Staff") + " was removed", "warning")
   }
 
   function addService(data) {
     db.create("services", {
       name: data.name,
       category: data.category,
-      price: data.price || 0,
-      duration: data.duration || 30
+      price: data.price !== undefined && data.price !== "" ? Number(data.price) : 0,
+      duration: data.duration !== undefined && data.duration !== "" ? Number(data.duration) : 30
     })
     logActivity("New service added", data.name + " (" + data.category + ")", "success")
     showAddServiceModal = false
@@ -303,13 +340,17 @@
 
   function saveEditService(data) {
     if (editingService) {
-      db.update(editingService.id, {
+      let updated = {
         name: data.name || editingService.data.name,
         category: data.category || editingService.data.category,
-        price: data.price || editingService.data.price,
-        duration: data.duration || editingService.data.duration
-      })
-      logActivity("Service updated", data.name + " was updated", "info")
+        price: data.price !== undefined && data.price !== "" ? Number(data.price) : editingService.data.price,
+        duration: data.duration !== undefined && data.duration !== "" ? Number(data.duration) : editingService.data.duration
+      }
+      db.update(editingService.id, updated)
+      if (selectedItem && selectedItem.id === editingService.id) {
+        selectedItem = { id: editingService.id, data: updated }
+      }
+      logActivity("Service updated", updated.name + " was updated", "info")
     }
     showEditServiceModal = false
     editingService = null
@@ -321,8 +362,12 @@
   }
 
   function deleteService(row) {
+    if (!row) return
     db.delete(row.id)
-    logActivity("Service removed", row.data.name + " was removed", "warning")
+    if (selectedItem && selectedItem.id === row.id) {
+      selectedItem = null
+    }
+    logActivity("Service removed", (row.data && row.data.name ? row.data.name : "Service") + " was removed", "warning")
   }
 
   function addAppointment(data) {
@@ -332,7 +377,7 @@
       service: data.service,
       time: data.time,
       status: "scheduled",
-      price: data.price || 0
+      price: data.price !== undefined && data.price !== "" ? Number(data.price) : 0
     })
     logActivity("Appointment booked", data.client + " - " + data.service + " at " + data.time, "success")
     showAddModal = false
@@ -346,15 +391,19 @@
 
   function saveEditAppointment(data) {
     if (editingAppointment) {
-      db.update(editingAppointment.id, {
+      let updated = {
         client: data.client || editingAppointment.data.client,
         stylist: data.stylist || editingAppointment.data.stylist,
         service: data.service || editingAppointment.data.service,
         time: data.time || editingAppointment.data.time,
         status: data.status || editingAppointment.data.status,
-        price: data.price || editingAppointment.data.price
-      })
-      logActivity("Appointment updated", data.client + " appointment was updated", "info")
+        price: data.price !== undefined && data.price !== "" ? Number(data.price) : editingAppointment.data.price
+      }
+      db.update(editingAppointment.id, updated)
+      if (selectedItem && selectedItem.id === editingAppointment.id) {
+        selectedItem = { id: editingAppointment.id, data: updated }
+      }
+      logActivity("Appointment updated", updated.client + " appointment was updated", "info")
     }
     showEditAppointmentModal = false
     editingAppointment = null
@@ -366,11 +415,14 @@
   }
 
   function deleteAppointment(row) {
+    if (!row) return
     db.delete(row.id)
-    logActivity("Appointment cancelled", row.data.client + " - " + row.data.service, "warning")
+    if (selectedItem && selectedItem.id === row.id) {
+      selectedItem = null
+    }
+    logActivity("Appointment cancelled", (row.data && row.data.client ? row.data.client : "Booking") + " cancelled", "warning")
   }
 
-  // SmartForm onSaved callbacks (called when SmartForm creates records directly)
   function onAppointmentSaved() {
     logActivity("Appointment booked", "New appointment created", "success")
     showAddModal = false
@@ -440,8 +492,13 @@
     navigate("services")
   }
 
+  function openStudioPage() {
+    navigate("studio")
+  }
+
   // Data Management Modal
   function openDataModal() {
+    copiedExport = false
     showDataModal = true
   }
 
@@ -450,9 +507,9 @@
     exportedData = ""
     importData = ""
     confirmClearData = false
+    copiedExport = false
   }
 
-  // XDB Data Export/Import
   function exportAllData() {
     let data = {
       clients: db.query("clients"),
@@ -462,16 +519,25 @@
       activity: db.query("activity")
     }
     exportedData = JSON.stringify(data, null, 2)
+    copiedExport = false
   }
 
   function copyToClipboard() {
-    if (exportedData) {
-      navigator.clipboard.writeText(exportedData)
-    }
+    if (!exportedData) return
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+        navigator.clipboard.writeText(exportedData)
+        copiedExport = true
+      }
+    } catch (e) {}
   }
 
   function setImportData(value) {
-    importData = value
+    if (value && value.target !== undefined) {
+      importData = value.target.value
+    } else {
+      importData = value
+    }
   }
 
   function importAllData() {
@@ -525,11 +591,11 @@
       return
     }
 
-    let clients = db.query("clients")
-    let staff = db.query("staff")
-    let services = db.query("services")
-    let appointments = db.query("appointments")
-    let activity = db.query("activity")
+    let clients = db.query("clients") || []
+    let staff = db.query("staff") || []
+    let services = db.query("services") || []
+    let appointments = db.query("appointments") || []
+    let activity = db.query("activity") || []
 
     clients.forEach(function(r) { db.delete(r.id) })
     staff.forEach(function(r) { db.delete(r.id) })
@@ -537,6 +603,7 @@
     appointments.forEach(function(r) { db.delete(r.id) })
     activity.forEach(function(r) { db.delete(r.id) })
 
+    selectedItem = null
     confirmClearData = false
     closeDataModal()
   }
@@ -545,14 +612,249 @@
     confirmClearData = false
   }
 
-  // Auto-init: resume sync from localStorage if previously connected
-  function _init() {
-    let savedRoom = db.getSavedSyncRoom()
-    if (savedRoom) {
-      syncRoom = savedRoom
-      syncConnecting = true
-      db.startSync(savedRoom)
+  // ── Beauty & Lighting Studio functions ──
+
+  function parseNumericInput(val, fallback) {
+    let raw = val
+    if (val && typeof val === "object" && val.target !== undefined) {
+      raw = val.target.value
     }
+    let n = Number(raw)
+    if (isNaN(n)) return fallback
+    return Math.round(n)
+  }
+
+  function setStudioMuse(m) {
+    studioMuse = m
+    studioCapturedUrl = ""
+    studioToast = ""
+  }
+
+  function applyStudioPreset(preset) {
+    studioPreset = preset
+    studioToast = ""
+    if (preset === "golden") {
+      studioExposure = 104
+      studioWarmth = 18
+      studioContrast = 106
+      studioGlow = 35
+      studioVignette = 28
+    } else if (preset === "editorial") {
+      studioExposure = 108
+      studioWarmth = -12
+      studioContrast = 116
+      studioGlow = 20
+      studioVignette = 34
+    } else if (preset === "rose") {
+      studioExposure = 105
+      studioWarmth = 10
+      studioContrast = 102
+      studioGlow = 48
+      studioVignette = 22
+    } else if (preset === "noir") {
+      studioExposure = 96
+      studioWarmth = -20
+      studioContrast = 126
+      studioGlow = 15
+      studioVignette = 52
+    } else {
+      studioExposure = 100
+      studioWarmth = 0
+      studioContrast = 100
+      studioGlow = 12
+      studioVignette = 14
+    }
+  }
+
+  function setStudioExposure(v) {
+    studioExposure = parseNumericInput(v, studioExposure)
+  }
+
+  function setStudioWarmth(v) {
+    studioWarmth = parseNumericInput(v, studioWarmth)
+  }
+
+  function setStudioContrast(v) {
+    studioContrast = parseNumericInput(v, studioContrast)
+  }
+
+  function setStudioGlow(v) {
+    studioGlow = parseNumericInput(v, studioGlow)
+  }
+
+  function setStudioVignette(v) {
+    studioVignette = parseNumericInput(v, studioVignette)
+  }
+
+  function resetStudioControls() {
+    applyStudioPreset("golden")
+  }
+
+  function toggleStudioCamera() {
+    studioCameraOn = !studioCameraOn
+    studioToast = ""
+  }
+
+  function onStudioCapture(data) {
+    if (data && data.dataUrl) {
+      studioCapturedUrl = data.dataUrl
+      studioCameraOn = false
+      studioToast = "Client consultation photo captured — adjust lighting & LUT presets live."
+    }
+  }
+
+  function clearStudioCapture() {
+    studioCapturedUrl = ""
+    studioToast = "Switched back to built-in Studio Portrait preview."
+  }
+
+  function getStudioFilterCss() {
+    let bright = studioExposure / 100
+    let cont = studioContrast / 100
+    let sat = studioPreset === "noir" ? 0.15 : (1 + (studioWarmth / 140))
+    let sepia = studioWarmth > 0 ? (studioWarmth / 120) : 0
+    let hue = studioPreset === "rose" ? -8 : (studioWarmth < 0 ? (studioWarmth * 0.4) : 0)
+    return "brightness(" + bright + ") contrast(" + cont + ") saturate(" + sat + ") sepia(" + sepia + ") hue-rotate(" + hue + "deg)"
+  }
+
+  function getStudioMuseLabel() {
+    if (studioCapturedUrl !== "") return "Live Camera Capture"
+    if (studioMuse === "platinum") return "Platinum Silk"
+    if (studioMuse === "rosegold") return "Rose Gold Glow"
+    if (studioMuse === "espresso") return "Espresso Velvet"
+    return "Warm Balayage"
+  }
+
+  function getStudioPresetLabel() {
+    if (studioPreset === "editorial") return "Editorial Cool"
+    if (studioPreset === "rose") return "Velvet Rose"
+    if (studioPreset === "noir") return "Noir Luxe"
+    if (studioPreset === "natural") return "Natural Daylight"
+    return "Golden Hour"
+  }
+
+  function buildStudioPortraitSvg(includeLutFooter) {
+    let hairMain = "#9a6b44"
+    let hairHi = "#e0b483"
+    let bgA = "#231915"
+    let bgB = "#3d2c24"
+    let lip = "#b85d5c"
+    if (studioMuse === "platinum") {
+      hairMain = "#cbd5e1"
+      hairHi = "#f8fafc"
+      bgA = "#181c26"
+      bgB = "#2c3446"
+      lip = "#c06c78"
+    } else if (studioMuse === "rosegold") {
+      hairMain = "#b8746c"
+      hairHi = "#f1bfb5"
+      bgA = "#27181c"
+      bgB = "#462931"
+      lip = "#c46271"
+    } else if (studioMuse === "espresso") {
+      hairMain = "#2e1f1a"
+      hairHi = "#6e4e3e"
+      bgA = "#171413"
+      bgB = "#2e2623"
+      lip = "#9f3f47"
+    }
+
+    let glowOpacity = Math.round(studioGlow) / 160
+    let vigOpacity = Math.round(studioVignette) / 110
+    let tintColor = studioWarmth >= 0 ? "rgba(251,191,36," + (studioWarmth / 260) + ")" : "rgba(96,165,250," + ((-studioWarmth) / 240) + ")"
+    if (studioPreset === "rose") {
+      tintColor = "rgba(244,114,182,0.12)"
+    }
+
+    let s = "<svg xmlns='http://www.w3.org/2000/svg' width='640' height='520' viewBox='0 0 640 520'>"
+    s = s + "<defs>"
+    s = s + "<linearGradient id='bg' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' stop-color='" + bgA + "'/><stop offset='100%' stop-color='" + bgB + "'/></linearGradient>"
+    s = s + "<linearGradient id='hair' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' stop-color='" + hairMain + "'/><stop offset='55%' stop-color='" + hairHi + "'/><stop offset='100%' stop-color='" + hairMain + "'/></linearGradient>"
+    s = s + "<radialGradient id='keylight' cx='32%' cy='24%' r='65%'><stop offset='0%' stop-color='rgba(255,247,237," + glowOpacity + ")'/><stop offset='100%' stop-color='rgba(255,247,237,0)'/></radialGradient>"
+    s = s + "<radialGradient id='vig' cx='50%' cy='48%' r='62%'><stop offset='55%' stop-color='rgba(0,0,0,0)'/><stop offset='100%' stop-color='rgba(0,0,0," + vigOpacity + ")'/></radialGradient>"
+    s = s + "</defs>"
+    s = s + "<rect width='640' height='520' fill='url(#bg)'/>"
+    s = s + "<circle cx='490' cy='118' r='130' fill='rgba(212,165,116,0.12)'/>"
+    s = s + "<circle cx='160' cy='390' r='150' fill='rgba(212,165,116,0.08)'/>"
+    // Back hair silhouette
+    s = s + "<path d='M195 210 C190 105, 450 105, 445 210 C458 315, 472 395, 430 455 L210 455 C168 395, 182 315, 195 210 Z' fill='url(#hair)'/>"
+    // Shoulders & luxury gown neckline
+    s = s + "<path d='M130 520 C155 430, 235 408, 320 408 C405 408, 485 430, 510 520 Z' fill='#141211'/>"
+    s = s + "<path d='M255 415 L320 468 L385 415' fill='none' stroke='#d4a574' stroke-width='2.5' opacity='0.75'/>"
+    // Neck & face
+    s = s + "<rect x='294' y='320' width='52' height='98' rx='24' fill='#dfb195'/>"
+    s = s + "<ellipse cx='320' cy='246' rx='74' ry='94' fill='#eac0a6'/>"
+    // Soft cheek contour
+    s = s + "<ellipse cx='274' cy='266' rx='20' ry='12' fill='rgba(196,108,108,0.22)'/>"
+    s = s + "<ellipse cx='366' cy='266' rx='20' ry='12' fill='rgba(196,108,108,0.22)'/>"
+    // Brows & lashes
+    s = s + "<path d='M268 220 Q288 210 305 218' fill='none' stroke='#4a352c' stroke-width='3.2' stroke-linecap='round'/>"
+    s = s + "<path d='M335 218 Q352 210 372 220' fill='none' stroke='#4a352c' stroke-width='3.2' stroke-linecap='round'/>"
+    s = s + "<path d='M271 236 Q288 244 303 236' fill='none' stroke='#291d18' stroke-width='2.8' stroke-linecap='round'/>"
+    s = s + "<path d='M337 236 Q352 244 369 236' fill='none' stroke='#291d18' stroke-width='2.8' stroke-linecap='round'/>"
+    // Nose & lips
+    s = s + "<path d='M320 236 L316 272 Q320 276 325 272' fill='none' stroke='rgba(140,92,72,0.45)' stroke-width='2' stroke-linecap='round'/>"
+    s = s + "<path d='M296 296 Q320 287 344 296 Q320 312 296 296 Z' fill='" + lip + "'/>"
+    s = s + "<path d='M302 296 Q320 301 338 296' fill='none' stroke='rgba(255,255,255,0.35)' stroke-width='1.2'/>"
+    // Sweeping front hair highlights
+    s = s + "<path d='M242 205 C250 142, 330 132, 396 196 C382 162, 305 154, 246 232 Z' fill='" + hairHi + "' opacity='0.65'/>"
+    s = s + "<path d='M396 196 C428 245, 424 335, 398 398 C436 340, 442 250, 404 184 Z' fill='" + hairHi + "' opacity='0.45'/>"
+    // Studio lighting & LUT overlays
+    s = s + "<rect width='640' height='520' fill='" + tintColor + "'/>"
+    s = s + "<rect width='640' height='520' fill='url(#keylight)'/>"
+    s = s + "<rect width='640' height='520' fill='url(#vig)'/>"
+    if (includeLutFooter) {
+      s = s + "<rect x='24' y='454' width='592' height='44' rx='10' fill='rgba(12,10,9,0.78)' stroke='rgba(212,165,116,0.35)'/>"
+      s = s + "<text x='42' y='481' fill='#faf9f7' font-family='Georgia, serif' font-size='15' font-weight='bold'>Glamour Studio · " + getStudioMuseLabel() + " · " + getStudioPresetLabel() + "</text>"
+      s = s + "<text x='440' y='481' fill='#d4a574' font-family='monospace' font-size='12'>EXP " + studioExposure + "% · WRM " + studioWarmth + "</text>"
+    }
+    s = s + "</svg>"
+    return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(s)
+  }
+
+  function getStudioPortraitUrl() {
+    if (studioCapturedUrl !== "") {
+      return studioCapturedUrl
+    }
+    return buildStudioPortraitSvg(false)
+  }
+
+  function getStudioExportUrl() {
+    if (studioCapturedUrl !== "") {
+      return studioCapturedUrl
+    }
+    return buildStudioPortraitSvg(true)
+  }
+
+  function saveLookToActivity() {
+    let summary = getStudioMuseLabel() + " with " + getStudioPresetLabel() + " lighting (Exp " + studioExposure + "%, Warmth " + studioWarmth + ")"
+    logActivity("Lookbook consultation saved", summary, "success", "Styling Studio")
+    studioToast = "Saved '" + getStudioPresetLabel() + "' recipe to Salon Activity Log."
+  }
+
+  // Lifecycle hooks
+  function _init() {
+    try {
+      studioCameraAvailable = typeof navigator !== "undefined" && !!(navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function")
+    } catch (e) {
+      studioCameraAvailable = false
+    }
+
+    try {
+      if (typeof db !== "undefined" && typeof db.getSavedSyncRoom === "function") {
+        let savedRoom = db.getSavedSyncRoom()
+        if (savedRoom) {
+          syncRoom = savedRoom
+          syncConnecting = true
+          db.startSync(savedRoom)
+        }
+      }
+    } catch (e) {}
+  }
+
+  function _onHide() {
+    // Release active camera stream cleanly when hidden
+    studioCameraOn = false
   }
 
   function getTotalBookedRevenue() {
@@ -579,6 +881,7 @@
 
   // P2P Sync functions
   function openSyncModal() {
+    copiedRoom = false
     showSyncModal = true
     refreshSyncStatus()
   }
@@ -588,7 +891,8 @@
   }
 
   function setSyncRoom(value) {
-    if (value && value.target) {
+    copiedRoom = false
+    if (value && value.target !== undefined) {
       syncRoom = value.target.value
     } else {
       syncRoom = value
@@ -596,9 +900,13 @@
   }
 
   function copySyncRoom() {
-    if (syncRoom) {
-      navigator.clipboard.writeText(syncRoom)
-    }
+    if (!syncRoom) return
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+        navigator.clipboard.writeText(syncRoom)
+        copiedRoom = true
+      }
+    } catch (e) {}
   }
 
   function generateRoomCode() {
@@ -610,32 +918,42 @@
       i = i + 1
     }
     syncRoom = code
+    copiedRoom = false
   }
 
   function joinSync() {
     if (!syncRoom) return
     syncConnecting = true
     syncConnected = false
-    db.startSync(syncRoom)
+    try {
+      db.startSync(syncRoom)
+    } catch (e) {
+      syncConnecting = false
+    }
   }
 
   function leaveSync() {
-    db.stopSync(syncRoom)
+    try {
+      db.stopSync(syncRoom)
+    } catch (e) {}
     syncConnected = false
     syncConnecting = false
     syncPeers = 0
   }
 
   function refreshSyncStatus() {
-    let status = db.getSyncStatus(syncRoom)
-    if (status) {
-      syncConnected = status.connected
-      syncPeers = status.peers
-      if (status.connected) {
+    try {
+      let status = db.getSyncStatus(syncRoom)
+      if (status) {
+        syncConnected = status.connected
+        syncPeers = status.peers
+        if (status.connected) {
+          syncConnecting = false
+        }
+      } else if (syncConnecting) {
         syncConnecting = false
       }
-    } else if (syncConnecting) {
-      // No status returned — sync likely failed to initialize
+    } catch (e) {
       syncConnecting = false
     }
   }

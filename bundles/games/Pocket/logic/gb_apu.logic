@@ -284,6 +284,18 @@ function gbApu_reset() {
   // behavioural gain, since every cart initialises the APU before it uses it.
 }
 
+function gbApu_syncOut() {
+  gbApu_catchUp()
+}
+
+function gbApu_syncIn() {
+  gbApu_acc = 0
+  gbApu_facc = 0
+  gbApu_debt = 0
+  GB_FCTR[GB_F_SAMPLE_ACC] = 0
+  gbApu_syncRate()
+}
+
 // ===========================================================================
 // Channel primitives
 //

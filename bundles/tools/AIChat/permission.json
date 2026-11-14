@@ -1,4 +1,9 @@
 {
+  "app": {
+    "id": "com.softn.aichat",
+    "name": "AI Chat",
+    "version": "1.2.0"
+  },
   "permissions": {
     "ai": {
       "enabled": true,
@@ -6,6 +11,10 @@
       "allowedSources": [
         "huggingface"
       ]
+    },
+    "storage": {
+      "enabled": true,
+      "max_bytes": 10485760
     }
   }
 }

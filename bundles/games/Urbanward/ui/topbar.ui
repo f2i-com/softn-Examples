@@ -1,0 +1,34 @@
+<div className="uw-topbar">
+  <div className="uw-brand"><img className="uw-game-logo" src={asset("assets/branding/logo.png")} alt="Urbanward" /></div>
+  <div className="uw-stat"><span className="uw-micro">Population</span><span className="uw-stat-value">{hud.population}</span><span className="uw-stat-note">{cityWellbeing.populationTrend}</span></div>
+  <button className="uw-happiness-stat" title="Open the city ratings" @click={() => uwOpenModal("ratings")}><span className="uw-mood-face" style={{color:cityWellbeing.color}}>{cityWellbeing.face}</span><span className="uw-stat"><span className="uw-micro">Happiness</span><span className="uw-stat-value" style={{color:cityWellbeing.color}}>{cityWellbeing.happiness}</span><span className="uw-stat-note">{cityWellbeing.mood}</span></span></button>
+  <div className="uw-stat"><span className="uw-micro">Treasury</span><span className="uw-stat-value">{hud.money}</span><span className={hud.balanceGood ? "uw-micro uw-positive" : "uw-micro uw-negative"}>{hud.balance} / mo</span></div>
+  <div className="uw-stat uw-stat-extra"><span className="uw-micro">Employment</span><span className="uw-stat-value">{hud.employment}</span><span className="uw-micro">{hud.traffic} traffic pressure</span></div>
+  <button className="uw-green-stat" @click={() => uwOpenModal("ratings")} title="Clean & Green: resident-weighted environmental quality"><span className="uw-micro">Clean & Green</span><span className="uw-green-score">{cityWellbeing.green}<small> / 100</small></span><span className="uw-rating-track"><span style={{width:cityWellbeing.greenWidth,background:"#b7dc88"}} /></span></button>
+  <div className="uw-speedbar">
+    <div className="uw-date"><span className="uw-label">{hud.date}</span><span className="uw-micro">{paused ? "PAUSED" : "CITY LIVE"}</span></div>
+    <button className={paused ? "uw-small-button uw-active" : "uw-small-button"} title="Pause / play · Space" @click={uwTogglePause}>{paused ? "▶" : "Ⅱ"}</button>
+    <button className={gameSpeed === 1 && !paused ? "uw-small-button uw-active" : "uw-small-button"} @click={() => uwSetSpeed(1)}>1×</button>
+    <button className={gameSpeed === 2 && !paused ? "uw-small-button uw-active" : "uw-small-button"} @click={() => uwSetSpeed(2)}>2×</button>
+    <button className={gameSpeed === 4 && !paused ? "uw-small-button uw-active" : "uw-small-button"} @click={() => uwSetSpeed(4)}>4×</button>
+  </div>
+</div>
+<div className="uw-commandbar">
+  <button className="uw-small-button uw-mobile-news" @click={() => uwOpenModal("news")}>Gazette</button>
+  <span className="uw-city-name">{hud.city}</span>
+  <button className="uw-small-button" @click={() => uwOpenModal("budget")}>Budget</button>
+  <button className="uw-small-button" @click={() => uwOpenModal("policies")}>Policies</button>
+  <button className="uw-small-button" @click={() => uwOpenModal("districts")}>Districts</button>
+  <button className="uw-small-button" @click={() => uwOpenModal("objectives")}>Charter</button>
+  <button className="uw-small-button" @click={() => uwOpenModal("history")}>History</button>
+  <button className="uw-small-button" @click={() => uwOpenModal("ratings")}>City ratings</button>
+  <button className="uw-small-button" @click={() => uwOpenModal("transit")}>Transport</button>
+  <div className="uw-spacer" />
+  #if (choiceCard.open)
+    <button className="uw-small-button uw-active" @click={() => uwOpenModal("choice")}>Council offer ●</button>
+  #end
+  <button className="uw-small-button" @click={() => uwOpenModal("saves")}>Save / load</button>
+  <button className="uw-small-button" @click={() => uwOpenModal("settings")}>City menu</button>
+  <button className="uw-small-button" @click={() => uwOpenModal("help")}>?</button>
+  <button className={showInspector ? "uw-small-button uw-active" : "uw-small-button"} @click={uwToggleInspector}>Inspector</button>
+</div>

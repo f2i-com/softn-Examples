@@ -1,7 +1,7 @@
 {
   "name": "DeviceKit",
   "version": "1.1.0",
-  "description": "A tour of what a sandboxed app may ask for: fetch a URL, read and make QR codes, take a photo, open a file — each behind the permission that gates it",
+  "description": "A tour of what a sandboxed app may ask for: fetch a URL, read and make QR codes, take a photo, open a file, and inspect device capabilities — each behind the permission that gates it",
   "author": "SoftN",
   "main": "ui/main.ui",
   "icon": "assets/icon.svg",
@@ -11,7 +11,8 @@
       "ui/pages/ApiExplorer.ui",
       "ui/pages/QRTools.ui",
       "ui/pages/CameraDemo.ui",
-      "ui/pages/FileBrowser.ui"
+      "ui/pages/FileBrowser.ui",
+      "ui/pages/SystemTelemetry.ui"
     ],
     "logic": [
       "logic/main.logic"

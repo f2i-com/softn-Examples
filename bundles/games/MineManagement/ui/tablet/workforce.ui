@@ -1,0 +1,495 @@
+<!--
+  03 Workforce: the KILN robot crew. A card per operator with a drawn portrait (plain boxes, tinted
+  with the robot's colour), their history and quirk, what they are doing, their battery and the
+  buttons to find them or send them to charge. `robotRows` comes from refreshWorkforce() in
+  logic/mine/workforce.logic; the profiles and jokes are in logic/mine/crew.logic.
+-->
+<div if={tab === 'workforce'}>
+  <div class="mm-page-head">
+    <div>
+      <span class="mm-label">KILN INDUSTRIAL ROBOTICS / CREW REGISTER</span>
+      <h2>Good people. Mostly metal.</h2>
+      <p class="mm-muted">Your operators, their equipment and the next thing they need. Each one has opinions. Some have a lot of them.</p>
+    </div>
+    <button class="mm-primary" type="button" @click={buyRobot} disabled={hud.recruitDisabled}>{hud.recruitment}</button>
+  </div>
+
+  <div class="mm-crew-summary">
+    <div><span class="mm-crew-number">{hud.crewWorking}</span><span class="mm-label">ON DUTY</span></div>
+    <div><span class="mm-crew-number">{hud.crewCharging}</span><span class="mm-label">CHARGING</span></div>
+    <div><span class="mm-crew-number">{hud.crewReady}</span><span class="mm-label">READY AT THE COMPOUND</span></div>
+  </div>
+
+  <div class="mm-robot-grid">
+    #each (bot in robotRows) key={bot.id}
+      <article class="mm-robot-card">
+        <div class="mm-portrait-stage" style:color={bot.color}>
+          <span class="mm-portrait-serial">K / 0{bot.id}</span>
+          <span class="mm-portrait-model">KILN<br>FIELD UNIT</span>
+          <!-- The portrait: a robot made of boxes, its helmet and torso in the robot's colour. -->
+          <div class="mm-crew-bot" aria-hidden="true">
+            <div class="mm-bot-antenna"></div>
+            <div class="mm-bot-head">
+              <div class="mm-bot-helmet"></div>
+              <div class="mm-bot-visor"><div class="mm-bot-eye mm-bot-eye-left"></div><div class="mm-bot-eye mm-bot-eye-right"></div></div>
+            </div>
+            <div class="mm-bot-neck"></div>
+            <div class="mm-bot-arm mm-bot-arm-left"><div class="mm-bot-hand"></div></div>
+            <div class="mm-bot-arm mm-bot-arm-right"><div class="mm-bot-hand"></div></div>
+            <div class="mm-bot-torso"><div class="mm-bot-stripe"></div><div class="mm-bot-panel"><div class="mm-bot-light"></div></div></div>
+            <div class="mm-bot-hip"></div>
+            <div class="mm-bot-leg mm-bot-leg-left"><div class="mm-bot-knee"></div><div class="mm-bot-boot"></div></div>
+            <div class="mm-bot-leg mm-bot-leg-right"><div class="mm-bot-knee"></div><div class="mm-bot-boot"></div></div>
+          </div>
+          <div class="mm-bot-ground"></div>
+        </div>
+
+        <div class="mm-crew-identity">
+          <span class="mm-label">OPERATOR 0{bot.id}</span>
+          <h3>{bot.name}</h3>
+          <span class="mm-trait">{bot.trait}</span>
+          <span class="mm-small">{bot.history}</span>
+          <span class="mm-crew-note">{bot.quirk}</span>
+          <span class="mm-small">{bot.specialty} · Prefers {bot.preference} driving (+2.5% haul pace)</span>
+          <span class="mm-small">Trust {bot.rapport} / 100</span>
+          <button class="mm-small-button" type="button" @click={checkInCrew(bot.id)}>Radio check-in</button>
+        </div>
+
+        <span class="mm-crew-status" style={bot.statusStyle}>● {bot.status}</span>
+        <span class="mm-crew-job">{bot.job}</span>
+        <span class="mm-small">Operator skill {bot.skill}</span>
+        <div class="mm-inline mm-battery-label"><span class="mm-small">BATTERY</span><span>{bot.battery}%</span></div>
+        <div class="mm-meter"><div style={bot.style}></div></div>
+        <span class="mm-crew-note">{bot.note}</span>
+
+        <div class="mm-crew-actions">
+          <button class="mm-secondary" type="button" @click={locateRobot(bot.id)} disabled={!bot.locatable}>Locate operator →</button>
+          <button class="mm-small-button" type="button" if={bot.canRecall} @click={recallOperator(bot.id)}>{bot.recall}</button>
+        </div>
+      </article>
+    #end
+  </div>
+
+  <div class="mm-crew-footer">
+    <div>
+      <span class="mm-label">KEEP THE CREW MOVING</span>
+      <p class="mm-muted">Start fleet puts free operators into trucks that have nobody driving. Return & charge finishes the current load, then parks. Mel stays with the excavator, because Mel and the excavator have an understanding.</p>
+      <span class="mm-small">{hud.crewPositionNote}</span>
+    </div>
+    <div class="mm-crew-footer-actions">
+      <button class="mm-primary" type="button" @click={dispatchAll}>Start fleet →</button>
+      <button class="mm-small-button" type="button" @click={markPlace('charger')}>Mark the charging bay</button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .mm-crew-summary {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    margin-bottom: 22px;
+    overflow: hidden;
+    background: #20323a;
+    border: 1px solid #425760;
+    border-radius: var(--radius);
+  }
+  .mm-crew-summary > div {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 18px;
+    border-right: 1px solid #425760;
+  }
+  .mm-crew-summary > div:last-child {
+    border-right: 0;
+  }
+  .mm-crew-summary .mm-label {
+    font-size: 9px;
+  }
+  .mm-crew-number {
+    font-size: 29px;
+    color: #e8d2a7;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- Crew cards ---------- */
+  .mm-robot-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    align-items: stretch;
+    gap: 18px;
+  }
+  .mm-robot-card {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+    padding: 18px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  .mm-robot-card .mm-label {
+    font-size: 8px;
+  }
+  .mm-robot-card > .mm-small {
+    font-size: 10px;
+    color: #a6babf;
+  }
+  .mm-crew-identity .mm-label {
+    letter-spacing: 1.6px;
+    color: #a6bdc2;
+  }
+  .mm-game .mm-crew-identity h3 {
+    margin: 4px 0 8px;
+    font-size: 29px;
+    color: #eff0dc;
+  }
+  .mm-trait {
+    display: block;
+    min-height: 36px;
+    margin-bottom: 10px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #b8c7c6;
+  }
+  .mm-crew-status {
+    min-height: 24px;
+    font-size: 9px;
+    letter-spacing: 0.8px;
+  }
+  .mm-crew-job {
+    margin-bottom: 7px;
+    font-size: 12px;
+    color: #e3d7b8;
+  }
+  .mm-battery-label {
+    justify-content: space-between;
+    margin: 17px 0 8px;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+  .mm-robot-card .mm-meter {
+    flex-shrink: 0;
+    height: 5px;
+  }
+  .mm-crew-note {
+    display: block;
+    min-height: 52px;
+    margin: 12px 0 15px;
+    font-size: 11px;
+    line-height: 1.6;
+    color: #aebfc3;
+  }
+  .mm-crew-identity .mm-small-button {
+    margin-top: 10px;
+  }
+  .mm-crew-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: auto;
+  }
+  .mm-crew-actions > button {
+    width: 100%;
+    font-size: 11px;
+  }
+
+  /* ---------- The portrait ---------- */
+  .mm-portrait-stage {
+    position: relative;
+    flex-shrink: 0;
+    height: 172px;
+    margin: -18px -18px 19px;
+    background-color: #182930;
+    background-image: linear-gradient(#8fa9a50a 1px, transparent 1px), linear-gradient(90deg, #8fa9a50a 1px, transparent 1px),
+      radial-gradient(ellipse at 50% 80%, #536d6740, transparent 70%);
+    background-size: 20px 20px, 20px 20px, 100% 100%;
+    border-bottom: 1px solid #40565e;
+  }
+  .mm-portrait-serial {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: #9bb4ba;
+  }
+  .mm-portrait-model {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    font-size: 7px;
+    letter-spacing: 1.5px;
+    line-height: 1.7;
+    text-align: right;
+    color: #8ba3aa;
+  }
+  .mm-crew-bot {
+    position: absolute;
+    left: 50%;
+    bottom: 13px;
+    z-index: 1;
+    width: 108px;
+    height: 147px;
+    transform: translateX(-50%);
+  }
+  .mm-crew-bot div {
+    position: absolute;
+  }
+  .mm-bot-antenna {
+    left: 74px;
+    top: 0;
+    width: 3px;
+    height: 14px;
+    background: #94aaa9;
+    border-top: 4px solid #edb966;
+  }
+  .mm-bot-head {
+    left: 31px;
+    top: 8px;
+    z-index: 3;
+    width: 46px;
+    height: 37px;
+    background: linear-gradient(90deg, #b1c5bb, #e2e7d7 55%, #a8bfb5);
+    border: 2px solid #8da69e;
+    border-radius: 11px 11px 9px 9px;
+  }
+  .mm-bot-helmet {
+    left: -4px;
+    top: -3px;
+    width: 50px;
+    height: 10px;
+    background: currentColor;
+    border-bottom: 3px solid #52675f;
+    border-radius: 12px 12px 3px 3px;
+  }
+  .mm-bot-visor {
+    left: 4px;
+    top: 13px;
+    width: 34px;
+    height: 12px;
+    background: #132c35;
+    border: 1px solid #46626a;
+    border-radius: 5px;
+  }
+  .mm-bot-eye {
+    top: 4px;
+    width: 7px;
+    height: 3px;
+    background: #a7eee0;
+    border-radius: 2px;
+  }
+  .mm-bot-eye-left {
+    left: 4px;
+  }
+  .mm-bot-eye-right {
+    right: 4px;
+  }
+  .mm-bot-neck {
+    left: 45px;
+    top: 43px;
+    width: 18px;
+    height: 9px;
+    background: #708c8c;
+    border-top: 2px solid #30494d;
+  }
+  .mm-bot-torso {
+    left: 25px;
+    top: 50px;
+    z-index: 2;
+    width: 58px;
+    height: 48px;
+    background: currentColor;
+    border: 4px solid #c4d0bf;
+    border-radius: 12px 12px 9px 9px;
+  }
+  .mm-bot-stripe {
+    left: 0;
+    right: 0;
+    top: 7px;
+    height: 6px;
+    background: #f1eccf;
+  }
+  .mm-bot-panel {
+    left: 16px;
+    top: 22px;
+    width: 18px;
+    height: 13px;
+    background: #2f484b;
+    border: 2px solid #89a7a1;
+    border-radius: 3px;
+  }
+  .mm-bot-light {
+    left: 4px;
+    top: 3px;
+    width: 5px;
+    height: 3px;
+    background: #a3e2c5;
+  }
+  .mm-bot-arm {
+    top: 53px;
+    width: 13px;
+    height: 41px;
+    background: linear-gradient(90deg, #77948e, #bccdbe);
+    border-top: 12px solid currentColor;
+    border-bottom: 5px solid #577578;
+    border-radius: 7px;
+  }
+  .mm-bot-arm-left {
+    left: 7px;
+    transform: rotate(8deg);
+  }
+  .mm-bot-arm-right {
+    right: 7px;
+    transform: rotate(-8deg);
+  }
+  .mm-bot-hand {
+    left: -1px;
+    top: 31px;
+    width: 15px;
+    height: 13px;
+    background: #38525a;
+    border: 2px solid #829f9a;
+    border-radius: 4px;
+  }
+  .mm-bot-hip {
+    left: 31px;
+    top: 95px;
+    z-index: 1;
+    width: 46px;
+    height: 11px;
+    background: #425f63;
+    border-radius: 4px;
+  }
+  .mm-bot-leg {
+    top: 103px;
+    width: 16px;
+    height: 32px;
+    background: linear-gradient(90deg, #8ba89f, #c4d1bd);
+    border: 1px solid #8ca49a;
+    border-radius: 3px;
+  }
+  .mm-bot-leg-left {
+    left: 31px;
+  }
+  .mm-bot-leg-right {
+    right: 31px;
+  }
+  .mm-bot-knee {
+    left: -2px;
+    top: 9px;
+    width: 18px;
+    height: 9px;
+    background: #5c7878;
+    border: 2px solid #b3c7b8;
+    border-radius: 3px;
+  }
+  .mm-bot-boot {
+    left: -4px;
+    top: 27px;
+    width: 24px;
+    height: 12px;
+    background: #3b5660;
+    border: 2px solid #8ca49c;
+    border-bottom: 4px solid #192f37;
+    border-radius: 5px 5px 3px 3px;
+  }
+  .mm-bot-ground {
+    position: absolute;
+    left: 50%;
+    bottom: 8px;
+    width: 103px;
+    height: 8px;
+    transform: translateX(-50%);
+    background: #080f1566;
+    border-radius: 50%;
+  }
+
+  /* ---------- Footer ---------- */
+  .mm-crew-footer {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    margin-top: 22px;
+    padding: 22px;
+    background: #293a3e;
+    border: 1px solid #526367;
+    border-left: 3px solid #deb46e;
+    border-radius: 8px;
+  }
+  .mm-crew-footer .mm-muted {
+    margin: 9px 0;
+    font-size: 12px;
+    line-height: 1.7;
+  }
+  .mm-crew-footer .mm-small {
+    font-size: 10px;
+  }
+  .mm-crew-footer-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    min-width: 160px;
+  }
+
+  @media (max-width: 900px) {
+    .mm-robot-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 620px) {
+    .mm-robot-grid {
+      gap: 10px;
+    }
+    .mm-robot-card {
+      padding: 13px;
+    }
+    .mm-game .mm-crew-identity h3 {
+      font-size: 22px;
+    }
+    .mm-trait {
+      font-size: 10px;
+    }
+    .mm-portrait-stage {
+      height: 164px;
+      margin: -13px -13px 16px;
+    }
+    .mm-portrait-model {
+      display: none;
+    }
+    .mm-crew-summary > div {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 3px;
+      padding: 12px;
+    }
+    .mm-crew-summary .mm-label {
+      font-size: 8px;
+      letter-spacing: 0.4px;
+    }
+    .mm-crew-number {
+      font-size: 25px;
+    }
+    .mm-crew-note {
+      min-height: 70px;
+    }
+    .mm-crew-footer {
+      flex-direction: column;
+      align-items: stretch;
+      padding: 16px;
+    }
+    .mm-crew-footer-actions {
+      flex-direction: row;
+      flex-wrap: wrap;
+    }
+  }
+  @media (max-width: 390px) {
+    .mm-robot-grid {
+      grid-template-columns: 1fr;
+    }
+    .mm-crew-note {
+      min-height: 0;
+    }
+  }
+</style>

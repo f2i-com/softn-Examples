@@ -1,0 +1,125 @@
+// SoftN entry. Supporting .logic files are composed in manifest order.
+function _init() {
+ let restored=restore();
+ if(!restored){S=freshState((Date.now()%2147483646)+1);makeProps(S);}
+ if(!S.customers.length&&S.phase==="play")spawnCustomer(S);
+ screen="welcome";audioReady=false;lastClock=Date.now();
+ installInput();publish();
+}
+function beginShift() {
+ audioReady=true;screen=S.phase==="ending"?"ending":S.phase==="report"?"report":"play";
+ lastClock=Date.now();publish();startAmbience();persist();
+}
+function selectItem(id) {
+ if(!canPlay()||!unlocked(S,id))return;
+ S.selected=id;S.aisle=ITEMS[id].aisle;S.offering=S.stock[id]>0;publish();
+}
+function chooseAisle(id) {
+ if(!canPlay()||id<0||id>2)return;
+ if(id===2&&!unlocked(S,10)){message(S,"The not-for-sale cupboard opens after three feedings or three customers.");publish();return;}
+ S.aisle=id;publish();
+}
+function feedMoon() {
+ if(!canPlay())return;
+ audioReady=true;
+ if(startFeed(S)){playSound("toss");persist();}
+ publish();startAmbience();
+}
+function putBack() {if(!canPlay())return;S.offering=false;publish();}
+function serveCustomer(id) {if(!canPlay())return;if(sellToCustomer(S,id)){playSound("chime",.25);persist();}publish();}
+function serveFirst() {if(canPlay()&&S.customers.length)serveCustomer(S.customers[0].id);}
+function delivery() {if(!canPlay())return;if(restockItem(S)){playSound("chime",.22);persist();}publish();}
+function stabilise() {if(!canPlay())return;if(groundStore(S)){startAmbience();playSound("gravity");persist();}publish();}
+function catchProduct(id) {if(!canPlay())return;if(catchStock(S,id)){playSound("delight",.16);persist();}publish();}
+function refuseMoon() {
+ if(!canPlay())return;
+ if(!S.refusedThisNight){S.refusedThisNight=true;S.refusals++;}
+ S.offering=false;S.mood="sulking";S.moodTime=10;
+ message(S,"You turn the sign toward the moon. It looks at the sign. Then very slowly back at you.");
+ publish();persist();
+}
+function clockOut() {
+ if(!canPlay()||S.freeplay)return;
+ if(!closeReady(S)){message(S,"Clock out after three customers, five feedings, or the end of the shift. There is no hurry.");publish();return;}
+ if(shouldEnd(S)){
+  S.ending=resolveEnding(S);S.phase="ending";screen="ending";
+  if(profile.endings.indexOf(S.ending)<0)profile.endings.push(S.ending);profile.completed++;
+ }else{S.phase="report";screen="report";}
+ stopAudio();playSound("discovery",.23);publish();persist();
+}
+function takeNextShift() {
+ if(screen!=="report"||S.phase!=="report")return;
+ nextNight(S);makeProps(S);spawnCustomer(S);screen="play";lastClock=Date.now();publish();startAmbience();persist();
+}
+function keepPlaying() {
+ if(screen!=="ending")return;
+ S.phase="play";S.freeplay=true;screen="play";lastClock=Date.now();message(S,"Overtime. No deadline. The moon still has room for one more experiment.");publish();startAmbience();persist();
+}
+function openJournal() {
+ if(screen==="journal")return;
+ previousScreen=screen;screen="journal";stopAudio();newDiscovery=false;showBackup=false;confirmNew=false;publish();persist();
+}
+function closeJournal() {if(screen!=="journal")return;screen=previousScreen;lastClock=Date.now();publish();startAmbience();}
+function nextClue(){hintIndex++;publish();}
+function pauseGame(){if(screen!=="play")return;screen="paused";stopAudio();publish();persist();}
+function resumeGame(){if(screen!=="paused")return;screen="play";lastClock=Date.now();publish();startAmbience();}
+function toggleSound(){settings.muted=!settings.muted;audioReady=true;if(settings.muted)stopAudio();else startAmbience();publish();persist();}
+function toggleMotion(){settings.reducedMotion=!settings.reducedMotion;publish();persist();}
+function requestNew(){confirmNew=!confirmNew;publish();}
+function newShift(){
+ if(screen!=="ending"&&!confirmNew)return;
+ S=freshState((Date.now()%2147483646)+1);makeProps(S);spawnCustomer(S);screen="play";confirmNew=false;hintIndex=0;lastClock=Date.now();audioReady=true;
+ publish();startAmbience();persist();
+}
+function backupDesk(){showBackup=!showBackup;if(showBackup)saveText=JSON.stringify(savePayload());publish();}
+function exportBackup(){saveText=JSON.stringify(savePayload());saveStatus="Select and copy the text below. Keep it somewhere safe.";publish();}
+function importBackup(){
+ if(screen!=="journal")return;
+ try{
+  let d=loadPayload(saveText);S=d.state;profile=d.profile;settings=d.settings;
+  previousScreen=S.phase==="ending"?"ending":S.phase==="report"?"report":"play";
+  persist();saveStatus="Backup restored. Close the log to continue.";
+ }catch(err){saveStatus="That backup could not be read. Your current night is unchanged.";}
+ publish();
+}
+function tick() {
+ if(!canPlay())return;
+ let now=Date.now(),dt=lastClock?clamp((now-lastClock)/1000,0,.1):.05;lastClock=now;
+ let event=stepSimulation(S,dt);
+ // Change the ambient bed before transient cues, so stopAll cannot cut off an impact.
+ startAmbience();
+ if(event.impact){soundForImpact(event.impact);syncNotebook();persist();}
+ if(event.arrival)playSound("chime",.17);
+ if(event.chapter)playSound("rattle",.2);
+ saveClock+=dt;if(saveClock>=5){saveClock=0;persist();}
+ publish();
+}
+function keyDown(e) {
+ let key=String(e.key||""),tag=String(e.targetTag||(e.target&&e.target.tagName)||"").toLowerCase();
+ if(tag==="input"||tag==="textarea"||tag==="select"||e.repeat)return;
+ if(key.length===1)key=key.toLowerCase();
+ if(key==="Tab")return;
+ if(tag==="button"&&(key===" "||key==="Enter"))return;
+ if(key==="Escape"){
+  if(screen==="journal")closeJournal();else if(screen==="paused")resumeGame();else if(screen==="play")pauseGame();
+  if(e.preventDefault)e.preventDefault();return;
+ }
+ if(key==="m"){toggleSound();return;}
+ if(key==="j"&&screen!=="welcome"){screen==="journal"?closeJournal():openJournal();return;}
+ if(key==="p"){screen==="paused"?resumeGame():pauseGame();return;}
+ if(!canPlay())return;
+ let used=[" ","e","q","g","1","2","3","ArrowLeft","ArrowRight"];
+ if(used.indexOf(key)<0)return;if(e.preventDefault)e.preventDefault();
+ if(key===" ")feedMoon();if(key==="e")serveFirst();if(key==="q")delivery();if(key==="g")stabilise();
+ if(key==="1"||key==="2"||key==="3")chooseAisle(Number(key)-1);
+ if(key==="ArrowLeft"||key==="ArrowRight"){
+  let visible=ITEMS.filter(function(i){return i.aisle===S.aisle&&unlocked(S,i.id);}),index=0;
+  for(let i=0;i<visible.length;i++)if(visible[i].id===S.selected)index=i;
+  if(visible.length)selectItem(visible[(index+(key==="ArrowRight"?1:visible.length-1))%visible.length].id);
+ }
+}
+function loseFocus(){if(screen==="play")pauseGame();}
+function installInput(){
+ if(inputInstalled)return;inputInstalled=true;
+ window.addEventListener("keydown",keyDown);window.addEventListener("blur",loseFocus);
+}

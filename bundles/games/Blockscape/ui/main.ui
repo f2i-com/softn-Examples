@@ -74,7 +74,7 @@
   <Loop frame running={true} @tick={frameStep} />
   <Controls
     :bind={pad}
-    enabled={started && !paused && !showHelp}
+    enabled={started}
     keys={{
       up: "w ArrowUp",
       down: "s ArrowDown",
@@ -85,6 +85,8 @@
       sink: "c ControlLeft",
       fly: "f",
       help: "h",
+      mute: "m",
+      pause: "p Escape",
       chest: "e",
       s1: "1",
       s2: "2",
@@ -109,7 +111,7 @@
       antialias={true}
       shadows={true}
       pointerLock={started && !paused && !showHelp && !touchMode}
-      crosshair={true}
+      crosshair={false}
       cameraSmoothing={0.4}
       maxPixelRatio={1.5}
       pitchLimit={1.5}
@@ -135,7 +137,7 @@
   <Box className="bs-ovl bs-vig" />
 
   <!-- In play: crosshair, readouts, the block in hand -->
-  <Box if={started} className="bs-ovl bs-cross" />
+  <Box if={started && !paused && !showHelp} className="bs-ovl bs-cross" />
   <Box if={started} className="bs-ovl bs-panel bs-hud">
     <Text style={{ display: "block", fontSize: "12px", color: "#f4f6fb" }}><Text style={{ fontSize: "12px", color: "#8fa0b8" }}>xyz </Text>{hudPos}</Text>
     <Text style={{ display: "block", fontSize: "12px", color: "#f4f6fb" }}><Text style={{ fontSize: "12px", color: "#8fa0b8" }}>time </Text>{hudTime}</Text>
@@ -146,6 +148,7 @@
 
   <Box if={started} className="bs-ovl bs-corner">
     <Button variant="ghost" className="bs-mini" style={{ padding: "6px 10px", fontSize: "11px", minHeight: "36px", background: touchMode ? "rgba(56,189,248,0.28)" : "rgba(8,12,20,0.6)", border: touchMode ? "1px solid #38bdf8" : "1px solid rgba(255,255,255,0.14)", color: "#fff", borderRadius: "8px" }} @click={toggleTouchMode}>{touchMode ? "Touch" : "Keys"}</Button>
+    <Button variant="ghost" className="bs-mini" style={{ padding: "6px 10px", fontSize: "11px", minHeight: "36px", background: "rgba(8,12,20,0.6)", border: "1px solid rgba(255,255,255,0.14)", color: muted ? "#94a3b8" : "#dbe4f3", borderRadius: "8px" }} @click={toggleMute}>{muted ? "Muted" : "Sound"}</Button>
     <Button variant="ghost" className="bs-mini" style={{ padding: "6px 10px", fontSize: "11px", minHeight: "36px", background: "rgba(8,12,20,0.6)", border: "1px solid rgba(255,255,255,0.14)", color: "#dbe4f3", borderRadius: "8px" }} @click={saveNow}>Save</Button>
     <Button variant="ghost" className="bs-mini" style={{ padding: "6px 10px", fontSize: "11px", minHeight: "36px", background: "rgba(8,12,20,0.6)", border: "1px solid rgba(255,255,255,0.14)", color: "#dbe4f3", borderRadius: "8px" }} @click={toggleHelp}>{showHelp ? "Close" : "Help"}</Button>
     <Button variant="ghost" className="bs-mini" style={{ padding: "6px 10px", fontSize: "11px", minHeight: "36px", background: "rgba(8,12,20,0.6)", border: "1px solid rgba(255,255,255,0.14)", color: "#dbe4f3", borderRadius: "8px" }} @click={touchPause}>{paused ? "Play" : "Menu"}</Button>
@@ -172,8 +175,9 @@
     <Button if={nearChest} variant="ghost" style={{ width: "116px", height: "42px", borderRadius: "999px", background: "rgba(245,158,11,0.9)", border: "2px solid #fde68a", color: "#111827", fontSize: "11px", fontWeight: 800, gridColumn: "span 2" }} @click={touchOpenChest}>Open Chest!</Button>
     <Button variant="ghost" style={{ width: "54px", height: "54px", borderRadius: "999px", background: "rgba(8,12,20,0.68)", border: "1px solid rgba(255,255,255,0.22)", color: "#fff", fontSize: "11px", fontWeight: 700 }} @click={touchBreak}>Mine</Button>
     <Button variant="ghost" style={{ width: "54px", height: "54px", borderRadius: "999px", background: "rgba(16,185,129,0.52)", border: "1px solid rgba(110,231,183,0.45)", color: "#fff", fontSize: "11px", fontWeight: 700 }} @click={touchPlace}>Build</Button>
-    <Button variant="ghost" style={{ width: "54px", height: "54px", borderRadius: "999px", background: "rgba(8,12,20,0.68)", border: "1px solid rgba(255,255,255,0.22)", color: "#fff", fontSize: "11px", fontWeight: 700 }} @pointerdown={touchJumpDown} @pointerup={touchJumpUp} @pointercancel={touchJumpUp} @mousedown={touchJumpDown} @mouseup={touchJumpUp} @touchstart={touchJumpDown} @touchend={touchJumpUp}>Jump</Button>
+    <Button variant="ghost" style={{ width: "54px", height: "54px", borderRadius: "999px", background: "rgba(8,12,20,0.68)", border: "1px solid rgba(255,255,255,0.22)", color: "#fff", fontSize: "11px", fontWeight: 700 }} @pointerdown={touchJumpDown} @pointerup={touchJumpUp} @pointercancel={touchJumpUp} @mousedown={touchJumpDown} @mouseup={touchJumpUp} @touchstart={touchJumpDown} @touchend={touchJumpUp}>{flying ? "Rise" : "Jump"}</Button>
     <Button variant="ghost" style={{ width: "54px", height: "54px", borderRadius: "999px", background: flying ? "rgba(56,189,248,0.55)" : "rgba(8,12,20,0.68)", border: "1px solid rgba(255,255,255,0.22)", color: "#fff", fontSize: "11px", fontWeight: 700 }} @click={touchFly}>{flying ? "Walk" : "Fly"}</Button>
+    <Button if={flying} variant="ghost" style={{ width: "116px", height: "38px", borderRadius: "999px", background: "rgba(14,116,144,0.68)", border: "1px solid rgba(103,232,249,0.45)", color: "#fff", fontSize: "11px", fontWeight: 700, gridColumn: "span 2" }} @pointerdown={touchSinkDown} @pointerup={touchSinkUp} @pointercancel={touchSinkUp} @mousedown={touchSinkDown} @mouseup={touchSinkUp} @touchstart={touchSinkDown} @touchend={touchSinkUp}>Sink Down</Button>
     <Button variant="ghost" style={{ width: "116px", height: "36px", borderRadius: "999px", background: touchSprint ? "rgba(250,204,21,0.35)" : "rgba(8,12,20,0.68)", border: "1px solid rgba(255,255,255,0.22)", color: "#fff", fontSize: "11px", fontWeight: 700, gridColumn: "span 2" }} @click={toggleTouchSprint}>{touchSprint ? "Sprint: ON" : "Sprint: OFF"}</Button>
   </Box>
 
@@ -184,8 +188,8 @@
       <Text style={{ display: "block", marginTop: "12px", fontSize: "15px", color: "#c7d2e2" }}>An island of blocks. Dig it up, build it out, watch the sun go down on it.</Text>
       <Stack direction="horizontal" gap={10} style={{ justifyContent: "center", marginTop: "24px", flexWrap: "wrap" }}>
         <Button if={hasSave} variant="ghost" style={{ padding: "12px 26px", borderRadius: "10px", fontWeight: 700, fontSize: "15px", background: "#5cae4a", color: "#0b1a08", border: "1px solid #5cae4a", boxShadow: "0 10px 30px rgba(92,174,74,0.35)" }} @click={continueWorld}>Continue</Button>
-        <Button if={hasSave} variant="ghost" style={{ padding: "12px 26px", borderRadius: "10px", fontWeight: 700, fontSize: "15px", background: "rgba(255,255,255,0.1)", color: "#ffffff", border: "1px solid rgba(255,255,255,0.2)" }} @click={newWorld}>New island</Button>
-        <Button if={!hasSave} variant="ghost" style={{ padding: "12px 26px", borderRadius: "10px", fontWeight: 700, fontSize: "15px", background: "#5cae4a", color: "#0b1a08", border: "1px solid #5cae4a", boxShadow: "0 10px 30px rgba(92,174,74,0.35)" }} @click={newWorld}>New island</Button>
+        <Button if={hasSave} variant="ghost" style={{ padding: "12px 26px", borderRadius: "10px", fontWeight: 700, fontSize: "15px", background: "rgba(255,255,255,0.1)", color: "#ffffff", border: "1px solid rgba(255,255,255,0.2)" }} @click={startFreshWorld}>New island</Button>
+        <Button if={!hasSave} variant="ghost" style={{ padding: "12px 26px", borderRadius: "10px", fontWeight: 700, fontSize: "15px", background: "#5cae4a", color: "#0b1a08", border: "1px solid #5cae4a", boxShadow: "0 10px 30px rgba(92,174,74,0.35)" }} @click={startFirstWorld}>New island</Button>
       </Stack>
       <Box className="bs-keys">
         <Text style={{ color: "#cfd8e6", fontSize: "13px" }}><Text className="bs-kbd" style={{ fontSize: "11px", color: "#fff" }}>W A S D</Text></Text><Text style={{ color: "#cfd8e6", fontSize: "13px" }}>walk · <Text className="bs-kbd" style={{ fontSize: "11px", color: "#fff" }}>Shift</Text> sprint</Text>

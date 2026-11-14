@@ -1,0 +1,16 @@
+<span className="uw-eyebrow">THE CITY ARCHIVE</span><span className="uw-title">Keep a chapter. Start another.</span>
+<span className="uw-modal-subtitle">Three local save slots and an autosave every six simulated months. Loading replaces the current city and starts paused. Save your current city before loading another.</span>
+#each (save in saveRows)
+  <div className="uw-save-card"><div><span className="uw-section-title">{save.title}</span><span className="uw-muted">{save.detail}</span></div><div className="uw-row">
+    #if (save.slot !== "auto")
+      <button className="uw-small-button" disabled={!started} @click={() => uwSaveSlot(save.slot,false)}>Save / overwrite</button>
+    #end
+    <button className="uw-small-button" disabled={!save.available} @click={() => uwLoadSlot(save.slot)}>Load</button>
+  </div></div>
+#end
+<div className="uw-divider" />
+<span className="uw-section-title">Portable city text</span>
+<span className="uw-muted">Browser storage can be cleared or scoped differently after a bundle update. Export a portable copy to a text file before replacing your app. Imports are validated before the current city is replaced.</span>
+<div className="uw-row uw-gap"><button className="uw-button" disabled={!started} @click={uwExportSave}>Generate export text</button><button className="uw-button" @click={uwImportSave}>Import pasted text</button></div>
+<div className="uw-gap"><textarea className="uw-save-text" :bind={saveText} aria-label="Portable Urbanward save text" spellCheck={false} placeholder="Generate an export, or paste the entire contents of a previous Urbanward save here." /></div>
+<div className="uw-gap" role="status"><span className="uw-muted">{saveStatus}</span></div>

@@ -1,0 +1,148 @@
+// Road components, service travel costs and an aggregate commuting forest.
+// Residents are cohorts. Representative vehicles never decide employment.
+function uwRoadPassable(a, b) {
+    let ta = uwWorld.tiles[a], tb = uwWorld.tiles[b];
+    return ta.road > 0 && tb.road > 0 && !ta.flood && !tb.flood && (ta.wet || tb.wet || Math.abs(ta.h - tb.h) <= 1);
+}
+function uwNearNetwork(i, ids) {
+    if (ids[i] >= 0)
+        return i;
+    let p = uwXZ(i), steps = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (let d = 1; d <= 2; d = d + 1)
+        for (let k = 0; k < 4; k = k + 1) {
+            let x = p.x + steps[k][0] * d, z = p.z + steps[k][1] * d, j = uwIndex(x, z);
+            if (j < 0 || ids[j] < 0)
+                continue;
+            let mid = uwIndex(p.x + steps[k][0], p.z + steps[k][1]);
+            if (d === 2 && uwWorld.tiles[mid].wet && !uwWorld.tiles[mid].road)
+                continue;
+            if (!uwWorld.tiles[i].wet && !uwWorld.tiles[j].wet && Math.abs(uwWorld.tiles[i].h - uwWorld.tiles[j].h) > 1)
+                continue;
+            return j;
+        }
+    return -1;
+}
+function uwBuildRoadGraph() {
+    let count = uwWorld.tiles.length, previous = uwNet && uwNet.traffic ? uwNet.traffic : uwZero(count, 0);
+    let ids = uwZero(count, -1), groups = [], roads = [];
+    for (let i = 0; i < count; i = i + 1) {
+        let t = uwWorld.tiles[i];
+        if (!t.road || t.flood || ids[i] >= 0)
+            continue;
+        let id = groups.length, queue = [i], head = 0, cells = [];
+        ids[i] = id;
+        while (head < queue.length) {
+            let a = queue[head];
+            head = head + 1;
+            cells.push(a);
+            roads.push(a);
+            let nn = uwNeighbours(a);
+            for (let k = 0; k < nn.length; k = k + 1) {
+                let b = nn[k];
+                if (ids[b] < 0 && uwRoadPassable(a, b)) {
+                    ids[b] = id;
+                    queue.push(b);
+                }
+            }
+        }
+        groups.push({ roads: cells, population: 0, workers: 0, jobs: 0, depot: false });
+    }
+    let access = uwZero(count, -1);
+    for (let i = 0; i < count; i = i + 1)
+        access[i] = uwNearNetwork(i, ids);
+    uwNet = { roadIds: ids, groups: groups, roads: roads, access: access, traffic: previous, power: uwZero(count, 0), water: uwZero(count, 0), pollution: uwZero(count, 0), value: uwZero(count, 0), employment: uwZero(count, 0), service: {}, powerSupply: 0, powerDemand: 0, waterSupply: 0, waterDemand: 0, connectedPower: 0, connectedWater: 0, congestion: 0, commute: 0, education: 0, health: 0, waste: 0, roadCount: roads.length };
+}
+function uwRoadDistances(sources, maxDistance, withParents) {
+    let dist = uwZero(uwWorld.tiles.length, 1e9), parent = uwZero(uwWorld.tiles.length, -1), heap = [], order = [];
+    for (let k = 0; k < sources.length; k = k + 1) {
+        let id = sources[k];
+        if (id >= 0 && dist[id] > 0) {
+            dist[id] = 0;
+            uwHeapPush(heap, id, 0);
+        }
+    }
+    while (heap.length > 0) {
+        let node = uwHeapPop(heap);
+        if (node.d !== dist[node.id] || node.d > maxDistance)
+            continue;
+        order.push(node.id);
+        let nn = uwNeighbours(node.id);
+        for (let k = 0; k < nn.length; k = k + 1) {
+            let j = nn[k];
+            if (!uwRoadPassable(node.id, j))
+                continue;
+            let cost = 1 + Math.min(3, (uwNet.traffic[j] || 0) / 130), nd = node.d + cost;
+            if (nd < dist[j] && nd <= maxDistance) {
+                dist[j] = nd;
+                parent[j] = node.id;
+                uwHeapPush(heap, j, nd);
+            }
+        }
+    }
+    return { dist: dist, parent: withParents ? parent : [], order: order };
+}
+function uwComputeTraffic() {
+    let groups = uwNet.groups, tiles = uwWorld.tiles, totalPop = 0, totalJobs = 0, totalWorkers = 0, totalEmployed = 0, sources = [];
+    for (let g = 0; g < groups.length; g = g + 1) {
+        groups[g].population = 0;
+        groups[g].workers = 0;
+        groups[g].jobs = 0;
+    }
+    for (let i = 0; i < tiles.length; i = i + 1) {
+        let t = tiles[i], road = uwNet.access[i], pop = t.pop || 0;
+        totalPop += pop;
+        totalWorkers += Math.floor(pop * 0.48);
+        let jobs = uwJobCapacity(t), usable = uwNet.power[i] > 0.3 && uwNet.water[i] > 0.25;
+        jobs = usable ? jobs : 0;
+        if (road < 0)
+            continue;
+        let g = groups[uwNet.roadIds[road]];
+        g.population += pop;
+        g.workers += Math.floor(pop * 0.48);
+        g.jobs += jobs;
+        totalJobs += jobs;
+        if (jobs > 0)
+            sources.push(road);
+    }
+    for (let g = 0; g < groups.length; g = g + 1)
+        totalEmployed += Math.min(groups[g].workers, groups[g].jobs);
+    let tree = uwRoadDistances(sources, uwWorld.n * uwWorld.n, true), flow = uwZero(tiles.length, 0), traffic = uwZero(tiles.length, 0), commutes = 0, commuters = 0;
+    for (let i = 0; i < tiles.length; i = i + 1) {
+        let t = tiles[i], road = uwNet.access[i];
+        if (road < 0)
+            continue;
+        let g = groups[uwNet.roadIds[road]], ratio = g.workers > 0 ? Math.min(1, g.jobs / g.workers) : 1;
+        uwNet.employment[i] = ratio;
+        if (t.pop > 0 && tree.dist[road] < 1e9) {
+            let workers = Math.floor(t.pop * 0.48) * ratio;
+            let transit = uwNet.service.transit ? uwNet.service.transit[i] / 100 : 0;
+            let reduction = transit * (uwWorld.policies.transit ? 0.62 : 0.4);
+            let cars = workers * (1 - reduction);
+            flow[road] += cars;
+            commutes += workers * tree.dist[road];
+            commuters += workers;
+        }
+        if (t.zone === 3 && t.level > 0)
+            flow[road] += uwJobCapacity(t) * (uwWorld.policies.clean ? 0.22 : 0.35);
+    }
+    // A reverse accumulation moves each origin's aggregate flow toward its nearest workplace.
+    for (let k = tree.order.length - 1; k >= 0; k = k - 1) {
+        let i = tree.order[k];
+        if (tree.parent[i] >= 0)
+            flow[tree.parent[i]] += flow[i];
+    }
+    let totalRatio = 0;
+    for (let k = 0; k < uwNet.roads.length; k = k + 1) {
+        let i = uwNet.roads[k], cap = (tiles[i].road === 2 ? 240 : 90) * Math.max(0.35, uwWorld.funding.roads / 100);
+        traffic[i] = Math.min(300, flow[i] / cap * 100);
+        totalRatio += Math.max(0, traffic[i] - 80);
+    }
+    uwNet.traffic = traffic;
+    uwNet.flow = flow;
+    uwNet.congestion = uwNet.roads.length ? Math.min(100, totalRatio / uwNet.roads.length) : 0;
+    uwNet.commute = commuters > 0 ? commutes / commuters * 0.45 : 0;
+    uwWorld.population = totalPop;
+    uwWorld.jobs = totalJobs;
+    uwWorld.workers = totalWorkers;
+    uwWorld.employed = totalEmployed;
+}

@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "files": {
+      "enabled": true
+    }
+  },
+  "version": 1,
+  "app": {
+    "id": "com.softn.racelab",
+    "name": "RaceLab",
+    "version": "0.16.0"
+  }
+}

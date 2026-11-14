@@ -1,0 +1,226 @@
+<!--
+  07 Field guide: how to play, written as the site induction. Each card covers one part of the job
+  and has a button that marks the place or opens the workspace it talks about. Keyboard controls
+  come first; touch players get the on-screen pads automatically.
+-->
+<div if={tab === 'guide'}>
+  <div class="mm-page-head">
+    <div>
+      <span class="mm-label">RED DUST / YOUR FIRST-SHIFT FIELDBOOK</span>
+      <h2>Bring the mine back to life.</h2>
+      <p class="mm-muted">The old crew left. The robots stayed. Head Office has given you one shift to prove Red Dust can work again, plus a tablet, a ute and its best wishes.</p>
+    </div>
+    <button class="mm-primary" type="button" @click={focusObjective}>Show my next step →</button>
+  </div>
+
+  <div class="mm-guide-brief">
+    <div>
+      <span class="mm-label">THE REOPENING TRIAL</span>
+      <h3>Ore out. People safe. Another shift tomorrow.</h3>
+      <p>You run dispatch and do everything the automation can't: driving, fixing and deciding where the next dollar goes. Gary hauls. Mel loads. Oscar can bring the second truck online. Kevin does whatever Kevin wants.</p>
+    </div>
+    <div>
+      <span class="mm-label">YOUR SHIFT</span>
+      <span class="mm-guide-target">{hud.tonnes} / {hud.target} t</span>
+      <p>{hud.remaining} · {hud.checklist}</p>
+      <span class="mm-small">A shift is 12 real minutes. The mine keeps running while the tablet is open; Pause stops the clock.</span>
+    </div>
+  </div>
+
+  <div class="mm-guide-grid">
+    <section class="mm-card">
+      <span class="mm-guide-number">01 / CLOCK IN</span>
+      <h3>Give Gary a route.</h3>
+      <p>Open Operations and press Start fleet. Gary drives HT-01 round the loop: load at Bench 1, haul up the ramp, tip at the crusher, come back, repeat forever. HT-02 needs a driver: recruit Oscar in Workforce for $2,500, then press Start fleet again.</p>
+      <div class="mm-guide-actions">
+        <button class="mm-primary" type="button" @click={dispatchAll}>Start fleet</button>
+        <button class="mm-small-button" type="button" @click={openTab('workforce')}>Meet the crew</button>
+      </div>
+    </section>
+
+    <section class="mm-card">
+      <span class="mm-guide-number">02 / TAKE THE KEYS</span>
+      <h3>Drive the ute.</h3>
+      <p>Walk to the ute and press E. W and S drive, A and D steer, Space brakes, P is the park brake, C switches between cab and chase cameras, H is the horn and E gets you out. On a touch screen, drag the left pad to drive and drag anywhere else to look.</p>
+      <span class="mm-small">Robot trucks stop for people and parked utes, so don't park in the haul lanes. If you hit something, the bollard wins.</span>
+      <div class="mm-guide-actions"><button class="mm-small-button" type="button" @click={markUte}>Mark the ute</button></div>
+    </section>
+
+    <section class="mm-card">
+      <span class="mm-guide-number">03 / BENCH 1</span>
+      <h3>Four buckets make a load.</h3>
+      <p>Drive a haul truck down the ramp to Bench 1 and stop in the loading bay. R asks Mel for a full tray (four 20 t buckets) and L asks for one bucket. Stay in the cab until it's done.</p>
+      <span class="mm-small">G marks the next stop. Follow the ramp, not a straight line over the edge. The pit is very deep and would be very disappointed in you.</span>
+      <div class="mm-guide-actions"><button class="mm-small-button" type="button" @click={markPlace('pit')}>Mark the loading bay</button></div>
+    </section>
+
+    <section class="mm-card">
+      <span class="mm-guide-number">04 / THE CRUSHER</span>
+      <h3>A full tray is only halfway.</h3>
+      <p>Drive up to the crusher and stop in the tip bay. L tips the load: tray up, ore out, tray down. Stay put until it finishes. If the bay is busy or the 240 t hopper is full, wait your turn. A tripped interlock needs fixing in person.</p>
+      <span class="mm-small">Tipped tonnes count toward the target. The crusher then turns them into money, which is the point of all this.</span>
+      <div class="mm-guide-actions"><button class="mm-small-button" type="button" @click={markPlace('crusher')}>Mark the crusher</button></div>
+    </section>
+
+    <section class="mm-card">
+      <span class="mm-guide-number">05 / THE BUCKET SEAT</span>
+      <h3>Run Mel's excavator.</h3>
+      <p>Press E beside the excavator. D swings toward the ore face, Space digs, A swings back to the truck and L empties the bucket into a stopped truck underneath. W and S raise and lower the boom. On touch, use the pad and the Dig and Discharge buttons.</p>
+      <span class="mm-small">Empty the bucket before you get out, or Mel will mention it. Repeatedly.</span>
+      <div class="mm-guide-actions"><button class="mm-small-button" type="button" @click={openTab('excavators')}>Excavator fleet</button></div>
+    </section>
+
+    <section class="mm-card">
+      <span class="mm-guide-number">06 / WHEN THE RADIO CALLS</span>
+      <h3>Be the person who turns up.</h3>
+      <p>Faults appear on the tablet. Mark one, go there, get out and press E to open the field kit: inspect, do the fix, then hold the control (or E) to verify. Use the real kit, not the duct tape. A warning gets worse after 70 seconds, and some faults start others.</p>
+      <span class="mm-small">If the repeater fails, the map only shows where things last were. Stuck somewhere silly? Pause, then Tow me to the compound ($250).</span>
+      <div class="mm-guide-actions"><button class="mm-small-button" type="button" @click={guideService}>Find field service</button></div>
+    </section>
+  </div>
+
+  <section class="mm-card mm-guide-wide">
+    <span class="mm-guide-number">07 / A QUIET RADIO IS AN OPPORTUNITY</span>
+    <h3>Catch the little things.</h3>
+    <p>Visit the crusher, the excavator and the haul road check point on foot, open the field kit, compare the reading and hold to record it. Each check gives that system 60 more seconds before a warning gets worse. Do all three in a shift for a $300 bonus.</p>
+    <div class="mm-guide-actions">
+      <button class="mm-small-button" type="button" @click={nextInspection}>Find the next check →</button>
+      <button class="mm-small-button" type="button" @click={openTab('site')}>Open the site journal</button>
+    </div>
+  </section>
+
+  <section class="mm-card mm-guide-wide mm-guide-fun">
+    <span class="mm-guide-number">08 / THE BITS HEAD OFFICE DOESN'T NEED TO KNOW</span>
+    <h3>Emus, memos and one unapproved ramp.</h3>
+    <p>Kevin the emu sometimes stands in the haul road, and robot trucks will wait for him forever. Walk at him, drive near him or honk (H). Memos from Clive arrive with two answers: click one or press 1 or 2, and every answer has consequences. Cones can be kicked; Gary keeps count. Bazza's ramp is just south of the compound. Hit it fast.</p>
+    <div class="mm-guide-actions"><button class="mm-small-button" type="button" @click={markPlace('ramp')}>Mark Bazza's ramp</button></div>
+  </section>
+
+  <div class="mm-guide-finish">
+    <div>
+      <span class="mm-label">THE NEXT CHAPTER</span>
+      <h3>Make enough room for tomorrow.</h3>
+      <p>Meet the target, then keep hauling for ore money or end the shift in Operations. Every shift is a chapter: Head Office's spreadsheet, a storm, a contractor who actually shows up, a forgotten survey, a visit from Clive and, if you get there, the grand reopening. Trucks, crew, upgrades and career records carry forward.</p>
+      <div class="mm-guide-actions">
+        <button class="mm-primary" type="button" @click={openTab('contracts')}>Contracts & career</button>
+        <button class="mm-small-button" type="button" @click={openTab('operations')}>Back to Operations</button>
+      </div>
+    </div>
+    <div class="mm-guide-checklist">
+      <span class="mm-label">YOUR FIELDBOOK</span>
+      #each (item in objectiveRows)
+        <div class="mm-checklist-row"><span>{item.mark}</span><span>{item.name}</span></div>
+      #end
+    </div>
+  </div>
+</div>
+
+<style>
+  .mm-guide-brief {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 24px;
+    margin-bottom: 22px;
+    padding: 24px;
+    background: linear-gradient(120deg, #39453d, #253940);
+    border: 1px solid #617369;
+    border-left: 3px solid #dab774;
+    border-radius: var(--radius);
+    font-size: 12px;
+    line-height: 1.8;
+    color: #ccd6cc;
+  }
+  .mm-guide-brief .mm-small {
+    margin-top: 9px;
+  }
+  .mm-guide-target {
+    display: block;
+    font-size: 29px;
+    color: #f2d49a;
+  }
+  .mm-guide-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 17px;
+  }
+  .mm-guide-grid .mm-card,
+  .mm-guide-wide {
+    display: flex;
+    flex-direction: column;
+    padding: 22px;
+    font-size: 12px;
+    line-height: 1.9;
+    color: #c1cdb5;
+  }
+  .mm-guide-wide {
+    margin-top: 17px;
+  }
+  .mm-guide-fun {
+    border-left: 3px solid #ff8a1e;
+  }
+  .mm-guide-number {
+    display: block;
+    margin-bottom: 13px;
+    font-size: 11px;
+    font-weight: 300;
+    letter-spacing: 1.2px;
+    color: #bea462;
+  }
+  .mm-game .mm-guide-grid h3,
+  .mm-game .mm-guide-wide h3 {
+    font-size: 18px;
+  }
+  .mm-guide-grid .mm-small,
+  .mm-guide-wide .mm-small {
+    padding-top: 12px;
+    font-size: 10px;
+    color: #a6c1c4;
+  }
+  .mm-guide-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 18px;
+  }
+  .mm-guide-grid .mm-guide-actions {
+    margin-top: auto;
+    padding-top: 18px;
+  }
+  .mm-guide-finish {
+    display: grid;
+    grid-template-columns: 1.15fr 1fr;
+    gap: 28px;
+    margin-top: 22px;
+    padding: 25px;
+    background: #253a40;
+    border: 1px solid #50686b;
+    border-radius: var(--radius);
+    font-size: 12px;
+    line-height: 1.8;
+  }
+  .mm-game .mm-guide-finish h3 {
+    margin: 9px 0 13px;
+  }
+  .mm-guide-checklist .mm-checklist-row {
+    font-size: 11px;
+  }
+  @media (max-width: 750px) {
+    .mm-guide-brief,
+    .mm-guide-finish,
+    .mm-guide-grid {
+      grid-template-columns: 1fr;
+    }
+    .mm-guide-brief,
+    .mm-guide-finish {
+      gap: 18px;
+      padding: 18px;
+    }
+    .mm-guide-grid .mm-card,
+    .mm-guide-wide {
+      padding: 18px;
+    }
+    .mm-guide-target {
+      font-size: 25px;
+    }
+  }
+</style>

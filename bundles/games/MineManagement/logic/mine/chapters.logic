@@ -1,0 +1,671 @@
+// The reopening story and the site's memory (S.site): each shift's chapter with its plan choice and
+// field task, the seeded forecast, Clive's visit, the seed commission, the handover journal, and
+// validSite, the save check for all of it (and for the incident alerts on S.alerts).
+// State: S.site, created and topped up by ensureSite (its fields are listed there). Globals: the
+// views the interface reads, below.
+// Callers: stepSimulation (advanceSiteLife), finishShift and nextShift (closeSiteChapter,
+// nextSiteChapter), refreshUI (refreshSiteUI), the Site journal tab (chooseChapter,
+// acceptCommission), validState in core/persistence.logic (validSite), and ensureSite from most
+// files that touch S.site.
+// Before changing: validSite checks S.site field by field and repeats numbers used here (24 journal
+// entries, 9 spare kits, 800 t of survey ore, commission targets 2 / 80 / 160): keep them in step.
+
+// ---------- Views for the interface ----------
+
+// The Site journal's handover entries, rebuilt by refreshSiteUI.
+var journalRows = [];
+
+// The Site journal's field board, rebuilt by refreshIncidentUI (incidents.logic).
+var incidentRows = [];
+
+// The title screen's summary of the typed seed's site, rebuilt by refreshSiteUI.
+var seedPreview = '';
+
+// This shift's chapter and commission as the Site journal shows them, rebuilt by refreshSiteUI.
+var chapterView = {};
+
+var commissionView = {};
+
+// Whether the report screen shows the grand-reopening ending; set by refreshReportUI
+// (fun/awards.logic).
+var endingView = { visible: false };
+
+// ---------- Site state and the journal ----------
+
+// Creates S.site on first use and fills in anything missing: a memory for each robot, this shift's
+// chapter and this shift's commission. It is called from most entry points, so it stays cheap and
+// is safe to repeat. S.site holds:
+//   version        1; validSite rejects anything else.
+//   profile        siteProfile(S.seed) (site-profile.logic); never edited, validSite compares it.
+//   crew           one memory per robot (see crew.logic).
+//   journal        handover entries, newest first, at most 24 (siteJournal).
+//   serial         incident key counter; resolved: incidents repaired; signs: Gary's register.
+//   looseOre       tonnes spilled on the road (the sum of open alerts' a.ore).
+//   spares         contractor spare kits, at most 9; each takes $40 off a field job.
+//   closedShift    the last shift closeSiteChapter ran for. chapter, commission: this shift's.
+//   forecastDone   this shift's forecast weather has arrived.
+//   lockedPlant, lockedRelay  faults switched the crusher or telemetry off (syncIncidentEffects).
+//   surveyRecovered, bonusOre  the survey chapter's 800 t parcel has been found and added.
+//   opened, openedShift  the grand reopening has happened, and on which shift.
+//   visit          Clive's visit on shift 6: { shift, cake, kevinHome, done }.
+function ensureSite() {
+  if (!S.site)
+    S.site = {
+      version: 1,
+      profile: siteProfile(S.seed),
+      crew: [],
+      journal: [],
+      serial: 0,
+      resolved: 0,
+      signs: 0,
+      looseOre: 0,
+      spares: 0,
+      closedShift: 0,
+      chapter: null,
+      commission: null,
+      forecastDone: false,
+      lockedPlant: false,
+      lockedRelay: false,
+      surveyRecovered: false,
+      bonusOre: 0
+    };
+  if (S.site.opened === undefined) S.site.opened = false; // validSite allows a save without it
+  for (var b of S.robots)
+    if (!crewMemory(b.id)) {
+      S.site.crew.push({
+        id: b.id,
+        rapport: 20,
+        helped: 0,
+        talkedAt: -1000, // never (checkInCrew's clock counts seconds since shift 1 began)
+        // Which of its three quirks this mine shows: from the seed, not from rand().
+        quirk: Math.min(2, Math.floor(profileUnit(S.seed, 'quirk-' + b.id) * 3)),
+        checkIns: 0
+      });
+    }
+  // choice: '', 'a' or 'b'. task: a story fault waits to be spawned (advanceSiteLife). resolved:
+  // the plan is complete. beat: 1 once the radio has announced the chapter.
+  if (!S.site.chapter || S.site.chapter.shift !== S.shift)
+    S.site.chapter = { shift: S.shift, choice: '', task: false, resolved: false, beat: 0 };
+  // Kind and reward come from the seed. The target counts from acceptance: 2 field repairs
+  // (service), 80 t tipped by the player (manual) or 160 t delivered (production).
+  if (!S.site.commission)
+    S.site.commission = {
+      kind: S.site.profile.commission,
+      accepted: false,
+      done: false,
+      baseline: 0,
+      target: S.site.profile.commission === 'service' ? 2 : S.site.profile.commission === 'manual' ? 80 : 160,
+      reward: S.site.profile.reward
+    };
+}
+
+// Adds a handover entry to the Site journal, newest first, keeping 24. Title and message are cut to
+// 150 and 590 characters, inside validSite's limits of 160 and 600.
+function siteJournal(title, message) {
+  ensureSite();
+  S.site.journal.unshift({
+    shift: S.shift,
+    at: S.time,
+    title: String(title).slice(0, 150),
+    message: String(message).slice(0, 590)
+  });
+  if (S.site.journal.length > 24) S.site.journal = S.site.journal.slice(0, 24);
+}
+
+// ---------- Chapters: one story a shift ----------
+
+// The story of the reopening, one chapter a shift. After the grand reopening the mine simply runs,
+// and a survey left for later comes back round.
+// Shifts 1 to 6 are fixed. From shift 7 the reopening repeats until its target is met
+// (S.site.opened), then the survey returns if it was left, then every shift is business as usual.
+function chapterId(shift) {
+  if (shift === 1) return 'trial';
+  if (shift === 2) return 'spreadsheet';
+  if (shift === 3) return 'storm';
+  if (shift === 4) return 'contractor';
+  if (shift === 5) return 'survey';
+  if (shift === 6) return 'visit';
+  if (!S.site.opened) return 'reopening';
+  if (!S.site.surveyRecovered) return 'survey';
+  return 'usual';
+}
+
+// The words for a shift's chapter: { id, title, detail, a, b }. a and b label the two plan buttons
+// on the Site journal; an empty a means the chapter offers no choice. What a choice does lives
+// elsewhere: chooseChapter (costs, the target, spares, Kevin), advanceSiteLife (the field task, the
+// storm, Clive's visit) and closeSiteChapter / finishChapterTask (the pay-offs).
+function chapterDefinition(shift) {
+  var id = chapterId(shift);
+  if (id === 'trial')
+    return {
+      id: id,
+      title: 'The reopening trial',
+      detail:
+        'Get Red Dust through its first shift. The Field guide and Gary will help. Gary may help more than anyone asked.',
+      a: '',
+      b: ''
+    };
+  if (id === 'spreadsheet')
+    return {
+      id: id,
+      title: 'Head Office has a spreadsheet',
+      detail:
+        'The reopening worked. Head Office has a spreadsheet, and the spreadsheet wants 80 more tonnes. Take the stretch target for a $900 bonus, or protect the plan you have.',
+      a: 'Accept +80 t for a $900 bonus',
+      b: 'Keep the current target'
+    };
+  if (id === 'storm')
+    return {
+      id: id,
+      title: 'Clouds over Bench 1',
+      detail:
+        'A storm is due this shift. Inspect the culvert before it becomes a washout, or fund a slower wet-weather plan for $250. Gary has already put out a "Storm" sign.',
+      a: 'Inspect the culvert yourself',
+      b: 'Fund the wet-weather plan / $250'
+    };
+  if (id === 'contractor')
+    return {
+      id: id,
+      title: 'The contractor actually arrived',
+      detail:
+        'A service van is at the workshop, on the day it said it would be. Nobody knows how to feel. Buy three spare kits ($40 off each of the next three field jobs), or ask for an equipment audit.',
+      a: 'Buy three kits / $90',
+      b: 'Request an equipment audit'
+    };
+  if (id === 'survey')
+    return {
+      id: id,
+      title: S.site.surveyRecovered ? 'The old lease has a future' : 'A machine with a memory',
+      detail: S.site.surveyRecovered
+        ? "The recovered survey is part of the mine record now. Its extra ore and the crew's history carry forward."
+        : 'An abandoned survey ute sits beyond the compound. Dot thinks its records point to a forgotten 800 t parcel. Dot has thought this every day since she arrived. Inspect it, or leave it for another shift.',
+      a: S.site.surveyRecovered ? '' : 'Investigate the survey ute',
+      b: S.site.surveyRecovered ? '' : 'Leave it for another shift'
+    };
+  if (id === 'visit')
+    return {
+      id: id,
+      title: 'Clive is coming',
+      detail:
+        'Clive from Head Office arrives at 14:00 to "get a feel for the place". If the field board is clear when he arrives, Red Dust earns a $1,500 confidence bonus. Kevin has not been told.',
+      a: 'Bake Clive a cake / $60',
+      b: 'Ask Kevin to stay home'
+    };
+  if (id === 'reopening')
+    return {
+      id: id,
+      title: 'The grand reopening',
+      detail:
+        'Red Dust officially reopens today if you meet the target. There will be a ribbon. There will be speeches. Gary has made 300 commemorative signs. No pressure.',
+      a: '',
+      b: ''
+    };
+  var usual = [
+    'Another day at Red Dust. Kevin has been seen near the office, holding what looks like a pen.',
+    'Business as usual. Head Office has sent a fruit basket. It is mostly cones.',
+    "A quiet morning. Mel has named today's big rock. It is also Trevor.",
+    'The mine is open and the crew is proud. Oscar has been rating the sunrise. Four stars.'
+  ];
+  return { id: id, title: 'Business as usual', detail: usual[S.shift % usual.length], a: '', b: '' };
+}
+
+// The Site journal's plan buttons: choice 'a' or 'b', once per shift. Any cost is paid first; if
+// spend() refuses, nothing is recorded. A choice that needs field work sets chapter.task, which
+// advanceSiteLife turns into a story fault; any other choice resolves the chapter at once.
+function chooseChapter(choice) {
+  if (screen !== 'play' || ['a', 'b'].indexOf(choice) < 0) return;
+  ensureSite();
+  var c = S.site.chapter;
+  if (c.choice) return;
+  var d = chapterDefinition(S.shift);
+  if (!d.a) return;
+  if (d.id === 'storm' && choice === 'b' && !spend(250, 'the wet-weather plan')) return;
+  if (d.id === 'contractor' && choice === 'a' && !spend(90, 'three contractor spare kits')) return;
+  if (d.id === 'visit' && choice === 'a' && !spend(60, 'a cake for Clive')) return;
+  c.choice = choice;
+  if (d.id === 'spreadsheet' && choice === 'a') S.target += 80;
+  if (d.id === 'contractor' && choice === 'a') S.site.spares = Math.min(9, S.site.spares + 3);
+  if (d.id === 'visit') {
+    S.site.visit = { shift: S.shift, cake: choice === 'a', kevinHome: choice === 'b', done: false };
+    if (choice === 'b' && S.kevin) {
+      // Kevin's next haul-road visit moves past the end of the shift (S.kevin resets overnight).
+      S.kevin.nextAt = 1e6;
+    }
+  }
+  if (
+    (d.id === 'storm' && choice === 'a') ||
+    (d.id === 'contractor' && choice === 'b') ||
+    (d.id === 'survey' && choice === 'a')
+  )
+    c.task = true;
+  else c.resolved = true;
+  siteJournal(d.title, choice === 'a' ? d.a : d.b);
+  notify('HEAD OFFICE', choice === 'a' ? d.a + '. Noted.' : d.b + '. Noted, with a small sigh.');
+  advanceSiteLife(0); // spawn the field task now rather than on the next step
+  refreshUI();
+  saveGame(true);
+}
+
+// ---------- The seed commission ----------
+
+// The running total a commission is measured on: field jobs finished this shift (service), tonnes
+// the player tipped this shift (manual) or tonnes delivered this shift (production).
+function commissionMetric() {
+  var c = S.site.commission;
+  return c.kind === 'service'
+    ? S.shiftStats.repairs
+    : c.kind === 'manual'
+      ? S.shiftStats.manualTonnes
+      : S.tonnes;
+}
+
+// The Site journal's Accept commission button. Only later work counts: the current total becomes
+// the baseline, and advanceSiteLife pays the reward once the total reaches baseline + target.
+function acceptCommission() {
+  ensureSite();
+  var c = S.site.commission;
+  if (screen !== 'play' || c.accepted || c.done) return;
+  c.accepted = true;
+  c.baseline = commissionMetric();
+  notify(
+    'SITE COMMISSION',
+    'Commission accepted. Only work completed from now on counts. Head Office is watching. Head Office is always watching.'
+  );
+  refreshUI();
+  saveGame(true);
+}
+
+// ---------- Site life, every simulation step ----------
+
+// The chapter's timed events. stepSimulation calls it every step; chooseChapter and
+// finishFieldRepair call it with dt 0 so a change lands at once (dt is unused: everything keys off
+// S.time). In order: the forecast weather (once a shift), a pending story fault, the chapter's
+// radio announcement, Clive's visit and the commission pay-out.
+function advanceSiteLife(dt) {
+  ensureSite();
+  var p = S.site.profile,
+    c = S.site.chapter,
+    id = chapterId(S.shift);
+  // The storm chapter always brings rain at 180 s (09:00); other shifts get the seed's forecast.
+  if (S.hasBegun && !S.site.forecastDone && S.time >= (id === 'storm' ? 180 : p.forecastAt)) {
+    S.site.forecastDone = true;
+    var weather = id === 'storm' ? 'rain' : p.forecast;
+    if (weather !== 'dry') {
+      S.weather = weather;
+      S.weatherUntil = S.time + 110; // stepSimulation clears the weather after 110 s
+      notify(
+        'FORECAST',
+        weather === 'rain'
+          ? 'The forecast rain has arrived, exactly as forecast, which has never happened before. Leave room to stop.'
+          : 'Dust front arriving. Lights on. Mouths closed.'
+      );
+    }
+  }
+  // The chosen plan's field task, spawned as a critical fault: the culvert (storm), a vibration
+  // check on truck 1 (the contractor's audit) or Dot's survey reading. It waits while any story
+  // fault (perhaps from an earlier shift) is open, and retries every step while spawnIncident
+  // refuses it: three faults open, or the same fault already open.
+  if (
+    c.task &&
+    !c.resolved &&
+    !S.alerts.some(function (a) {
+      return a.storyTask;
+    })
+  ) {
+    var task = id === 'storm' ? 'culvert' : id === 'contractor' ? 'vibration' : 'dot_sensor',
+      a = spawnIncident(task, id === 'contractor' ? 1 : 0, true);
+    if (a) {
+      a.storyTask = true; // never chains (advanceIncidents); finishChapterTask pays it off
+      a.storyShift = S.shift;
+      // Dot's reading is taken at the abandoned survey ute (drawn there from shift 5 by
+      // field-kit.logic), and 'discovery' stops it holding up the telemetry.
+      if (id === 'survey') {
+        // spawnIncident may have marked the spot it was spawned at; the marker moves with it.
+        var marked = S.waypoint && S.waypoint.x === a.x && S.waypoint.z === a.z;
+        a.x = -84;
+        a.z = 178;
+        a.place = 'discovery';
+        a.truckId = 0;
+        if (marked) setWaypoint(a.x, a.z, a.title);
+      }
+      c.task = false;
+      syncIncidentEffects();
+    }
+  }
+  // From shift 2, announce the chapter 10 s in (shift 1's story is in story.logic).
+  if (S.shift > 1 && c.beat === 0 && S.time >= 10) {
+    c.beat = 1;
+    var d = chapterDefinition(S.shift);
+    notify(id === 'survey' ? 'DOT' : 'HEAD OFFICE', d.title + '. The Site journal has the plan.');
+  }
+  // Clive's visit at 14:00 (480 s). Kevin's alert does not count against a clear field board.
+  var v = S.site.visit;
+  if (id === 'visit' && v && v.shift === S.shift && !v.done && S.time >= 480) {
+    v.done = true;
+    var clear = !S.alerts.some(function (x) {
+      return x.kind !== 'kevin';
+    });
+    if (clear) {
+      var bonus = 1500 + (v.cake ? 300 : 0);
+      S.cash += bonus;
+      S.revenue += bonus;
+      toast('CLIVE IS IMPRESSED  +' + money(bonus), 'gold');
+      notify(
+        'HEAD OFFICE',
+        'Clive here. Spotless! ' +
+          (v.cake ? 'And a cake. A CAKE. ' : '') +
+          'I have approved a ' +
+          money(bonus) +
+          ' confidence bonus. I also touched a truck.',
+        'success'
+      );
+      siteJournal(
+        'Clive visited',
+        'The field board was clear. ' +
+          money(bonus) +
+          ' confidence bonus.' +
+          (v.cake ? ' He ate the cake in the ute.' : '')
+      );
+    } else {
+      notify(
+        'HEAD OFFICE',
+        'Clive here. The field board was... busy. I took some photos for the "lessons" folder. ' +
+          (v.cake ? 'The cake was lovely, though.' : 'Was there meant to be cake?')
+      );
+      siteJournal('Clive visited', 'Faults were open when he arrived. No confidence bonus. He took photos.');
+    }
+  }
+  // Pay the commission once, when the work since acceptance reaches the target.
+  var com = S.site.commission;
+  if (com.accepted && !com.done && commissionMetric() - com.baseline >= com.target) {
+    com.done = true;
+    S.cash += com.reward;
+    S.revenue += com.reward;
+    siteJournal('Commission complete', money(com.reward) + ' earned for ' + com.kind + ' work.');
+    notify('COMMISSION', money(com.reward) + ' credited. Nobody tell Clive how easy that was.', 'success');
+  }
+}
+
+// Called by resolveIncident for every finished field job; acts only on story faults. One from this
+// shift completes the chapter's plan. The survey fault, whenever it is finished, adds the 800 t
+// parcel to available ore (once per mine).
+function finishChapterTask(a) {
+  if (!a.storyTask) return;
+  var c = S.site.chapter;
+  if (a.storyShift === S.shift) c.resolved = true;
+  if (a.place === 'discovery' && !S.site.surveyRecovered) {
+    S.site.surveyRecovered = true;
+    S.site.bonusOre += 800;
+    S.extraction += 800;
+    siteJournal(
+      'The old survey was right',
+      '800 t added to available ore. Dot has labelled the recovered records, and the labels.'
+    );
+    notify(
+      'DOT',
+      'The records point to another 800 tonnes. I checked the decimal point twice. Then I checked the checking.'
+    );
+  } else siteJournal('Field preparation complete', a.title + ' resolved for the shift plan.');
+}
+
+// ---------- Closing and opening a shift ----------
+
+// End-of-shift bookkeeping, from finishShift, once per shift (closedShift). Pays the $900 stretch
+// bonus if it was taken and met, opens the mine if the reopening target was met (the report then
+// shows the ending, see endingView), and writes the handover entry.
+function closeSiteChapter() {
+  ensureSite();
+  if (S.site.closedShift === S.shift) return;
+  S.site.closedShift = S.shift;
+  var c = S.site.chapter,
+    id = chapterId(S.shift);
+  if (id === 'spreadsheet' && c.choice === 'a' && S.tonnes >= S.target) {
+    S.cash += 900;
+    S.revenue += 900;
+    siteJournal(
+      'The spreadsheet smiled',
+      '$900 stretch-target bonus paid. Someone in Finance did a little dance.'
+    );
+  }
+  if (id === 'reopening' && S.tonnes >= S.target) {
+    S.site.opened = true;
+    S.site.openedShift = S.shift;
+    awardBadge('opening', 'Grand reopening');
+    siteJournal(
+      'Red Dust is open',
+      'The ribbon was cut at 17:00. Gary cried. Robots cannot cry. Gary found a way.'
+    );
+  }
+  siteJournal(
+    'Shift ' + S.shift + ' handover',
+    Math.round(S.tonnes) +
+      ' t delivered; ' +
+      S.alerts.filter(function (a) {
+        return a.kind !== 'kevin';
+      }).length +
+      ' unresolved alerts carry forward.'
+  );
+}
+
+// From nextShift, after S.shift has moved on: a fresh chapter, a fresh commission (ensureSite
+// rebuilds it from the seed, so only its progress resets) and a new forecast.
+function nextSiteChapter() {
+  ensureSite();
+  S.site.chapter = { shift: S.shift, choice: '', task: false, resolved: false, beat: 0 };
+  S.site.commission = null;
+  S.site.forecastDone = false;
+  ensureSite();
+}
+
+// ---------- Refreshing the views ----------
+
+// Rebuilds the Site journal's views and the title screen's seed preview; refreshUI calls it every
+// 0.25 s, on every screen. The preview reads seedText (the seed being typed), not S.seed.
+function refreshSiteUI() {
+  ensureSite();
+  var preview = siteProfile(String(seedText || 'RED-DUST-4817')),
+    p = S.site.profile,
+    c = S.site.chapter,
+    d = chapterDefinition(S.shift),
+    com = S.site.commission,
+    storm = d.id === 'storm';
+  seedPreview =
+    'GROUND ' +
+    preview.hardness.toFixed(2) +
+    ' / ' +
+    preview.forecast.toUpperCase() +
+    ' FORECAST / ' +
+    preview.tendency.toUpperCase() +
+    ' WATCH';
+  chapterView = {
+    seed: S.seed,
+    title: d.title,
+    detail: d.detail,
+    a: d.a,
+    b: d.b,
+    choice: c.choice
+      ? c.resolved
+        ? 'Plan recorded / done'
+        : 'Field task in progress'
+      : d.a
+        ? 'Choose the shift plan'
+        : 'Chapter ' + S.shift,
+    canChoose: !c.choice && !!d.a,
+    forecast: (storm ? 'rain' : p.forecast) + ' / around ' + clockLabel(storm ? 180 : p.forecastAt),
+    conditions:
+      'Ore hardness ' +
+      p.hardness.toFixed(2) +
+      ' · road wear ' +
+      p.roadWear.toFixed(2) +
+      ' · ' +
+      p.tendency +
+      ' tendency',
+    spares: S.site.spares + ' spare kit' + (S.site.spares === 1 ? '' : 's'),
+    resolved: S.site.resolved + ' incident' + (S.site.resolved === 1 ? '' : 's') + ' resolved'
+  };
+  commissionView = {
+    title:
+      com.kind === 'service'
+        ? 'Keep the site running'
+        : com.kind === 'manual'
+          ? 'A human at the wheel'
+          : 'Seeded production order',
+    detail:
+      com.target + (com.kind === 'service' ? ' repairs' : ' t') + ' after acceptance / ' + money(com.reward),
+    status: com.done
+      ? 'Completed'
+      : com.accepted
+        ? Math.max(0, Math.floor(commissionMetric() - com.baseline)) + ' / ' + com.target
+        : 'Available this shift',
+    disabled: com.accepted || com.done
+  };
+  journalRows = S.site.journal.map(function (j) {
+    return { when: 'SHIFT ' + j.shift + ' / ' + clockLabel(j.at), title: j.title, message: j.message };
+  });
+}
+
+// ---------- Save validation ----------
+
+// Part of validState (core/persistence.logic): false rejects the whole save. Checks each S.site
+// field it knows by type and range, the profile against a fresh siteProfile(seed), and the incident
+// fields of S.alerts. A save with no S.site skips all of this and passes (ensureSite builds one).
+function validSite(s) {
+  if (s.site === undefined) return true;
+  var site = s.site;
+  if (
+    !site ||
+    site.version !== 1 ||
+    !Array.isArray(site.crew) ||
+    site.crew.length > 6 ||
+    !Array.isArray(site.journal) ||
+    site.journal.length > 24
+  )
+    return false;
+  for (var k of ['serial', 'resolved', 'signs', 'looseOre', 'spares', 'closedShift', 'bonusOre'])
+    if (!Number.isFinite(site[k]) || site[k] < 0) return false;
+  if (site.spares > 9 || site.looseOre > 5000 || site.bonusOre > 800) return false;
+  for (var k of ['forecastDone', 'lockedPlant', 'lockedRelay', 'surveyRecovered'])
+    if (typeof site[k] !== 'boolean') return false;
+  if (site.opened !== undefined && typeof site.opened !== 'boolean') return false;
+  if (site.openedShift !== undefined && !Number.isInteger(site.openedShift)) return false;
+  if (
+    site.visit !== undefined &&
+    (!site.visit || !Number.isInteger(site.visit.shift) || typeof site.visit.done !== 'boolean')
+  )
+    return false;
+  // The profile must be exactly what the seed gives, so changing siteProfile invalidates old saves.
+  var p = site.profile;
+  if (!p || JSON.stringify(p) !== JSON.stringify(siteProfile(s.seed))) return false;
+  var ids = [];
+  for (var c of site.crew) {
+    if (!c || !Number.isInteger(c.id) || c.id < 1 || c.id > 6 || ids.indexOf(c.id) >= 0) return false;
+    ids.push(c.id);
+    for (var k of ['rapport', 'helped', 'talkedAt', 'quirk', 'checkIns'])
+      if (!Number.isFinite(c[k])) return false;
+    if (
+      c.rapport < 0 ||
+      c.rapport > 100 ||
+      c.helped < 0 ||
+      c.checkIns < 0 ||
+      !Number.isInteger(c.quirk) ||
+      c.quirk < 0 ||
+      c.quirk > 2
+    )
+      return false;
+  }
+  for (var j of site.journal)
+    if (
+      !j ||
+      !Number.isInteger(j.shift) ||
+      j.shift < 1 ||
+      !Number.isFinite(j.at) ||
+      j.at < 0 ||
+      j.at > 720 ||
+      typeof j.title !== 'string' ||
+      j.title.length > 160 ||
+      typeof j.message !== 'string' ||
+      j.message.length > 600
+    )
+      return false;
+  var c = site.chapter;
+  if (
+    !c ||
+    !Number.isInteger(c.shift) ||
+    c.shift < 1 ||
+    ['', 'a', 'b'].indexOf(c.choice) < 0 ||
+    typeof c.task !== 'boolean' ||
+    typeof c.resolved !== 'boolean' ||
+    [0, 1].indexOf(c.beat) < 0
+  )
+    return false;
+  var com = site.commission;
+  if (
+    !com ||
+    ['production', 'service', 'manual'].indexOf(com.kind) < 0 ||
+    typeof com.accepted !== 'boolean' ||
+    typeof com.done !== 'boolean' ||
+    !Number.isFinite(com.baseline) ||
+    com.baseline < 0 ||
+    com.reward !== p.reward ||
+    com.target !== (com.kind === 'service' ? 2 : com.kind === 'manual' ? 80 : 160)
+  )
+    return false;
+  // Incident alerts: a known fault id, at most three, unique keys, stage 1 or 2, sane age and ore,
+  // a truck or excavator that exists, and the spec's place ('discovery' for the survey task).
+  if (!Array.isArray(s.alerts)) return false;
+  var count = 0,
+    ore = 0,
+    keysSeen = [];
+  for (var a of s.alerts) {
+    if (a.eventId) {
+      var d = incidentSpec(a.eventId);
+      if (
+        !d ||
+        ++count > 3 ||
+        keysSeen.indexOf(a.key) >= 0 ||
+        [1, 2].indexOf(a.stage) < 0 ||
+        !Number.isFinite(a.age) ||
+        a.age < 0 ||
+        typeof a.chained !== 'boolean' ||
+        !Number.isFinite(a.ore) ||
+        a.ore < 0 ||
+        a.ore > 10
+      )
+        return false;
+      keysSeen.push(a.key);
+      ore += a.ore;
+      if (
+        a.truckId &&
+        !s.trucks.some(function (t) {
+          return t.id === a.truckId;
+        })
+      )
+        return false;
+      if (
+        a.machineId &&
+        !s.excavators.some(function (e) {
+          return e.id === a.machineId;
+        })
+      )
+        return false;
+      if (a.place !== d.place && a.place !== 'discovery') return false;
+    }
+    // Field-kit progress on any alert: 0 to 2 steps done (the third finishes the job). A cone being
+    // carried (step 2) needs its laydown point, inside the 226 m world edge.
+    if (a.work) {
+      var w = a.work;
+      if (!Number.isInteger(w.step) || w.step < 0 || w.step > 2) return false;
+      if (
+        w.dropX !== undefined &&
+        (!Number.isFinite(w.dropX) ||
+          !Number.isFinite(w.dropZ) ||
+          Math.abs(w.dropX) > 226 ||
+          Math.abs(w.dropZ) > 226)
+      )
+        return false;
+      if (fieldRecipe(a) === 'cone' && w.step === 2 && w.dropX === undefined) return false;
+    }
+  }
+  // Every tonne of loose ore must belong to an open spill.
+  return Math.abs(ore - site.looseOre) < 0.001;
+}

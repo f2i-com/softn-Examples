@@ -1,0 +1,232 @@
+// Disposable scene projection. No gameplay decisions depend on an animation or a pixel.
+function art(name) { return "assets/art/" + name + ".svg"; }
+function position(x, y, width, height, z, rotate) {
+    return { left: x + "%", top: y + "%", width: width + "%", height: height + "%", zIndex: z || 2,
+        transform: "translate(-50%, -50%) rotate(" + (rotate || 0) + "deg)" };
+}
+function addProp(id, name, x, y, w, h, cls, z, rot) {
+    scenery.push({ id: id, src: art(name), style: position(x, y, w, h, z, rot), className: "scenery " + (cls || "") });
+}
+function addDuck(id, name, x, y, w, delay, cls) {
+    let st = position(x, y, w, w * 1.3, 7, 0);
+    st.animationDelay = delay + "s";
+    cast.push({ id: id, src: art(name), style: st, className: "citizen " + (cls || ""), delayStyle: { animationDelay: delay + "s" } });
+}
+function buildParticles(kind) {
+    particles = [];
+    let family = "dust", count = 7;
+    if (kind === "squash" || kind === "blink" || kind === "suspicion" || kind === "hush") { count = kind === "squash" ? 3 : 0; family = "pop"; }
+    else if (kind === "hearts" || kind === "tea") { family = "heart"; count = 9; }
+    else if (kind === "crumbs" || kind === "conveyor" || kind === "crowd") { family = "crumb"; count = 18; }
+    else if (kind === "confetti" || kind === "council" || kind === "mayor") { family = "confetti"; count = 22; }
+    else if (kind === "stars" || kind === "cosmic" || kind === "orbit" || kind === "launch" || kind === "galaxy" || kind === "ring") { family = "star"; count = 20; }
+    for (let i = 0; i < count; i++) {
+        let angle = (i * 137.5 + effectSerial * 23) * Math.PI / 180;
+        let dist = 65 + ((i * 47) % 150);
+        particles.push({ id: effectSerial + ":" + i, className: "particle particle-" + family + " shade-" + (i % 4), style: {
+            "--dx": Math.round(Math.cos(angle) * dist) + "px", "--dy": Math.round(Math.sin(angle) * dist - 45) + "px",
+            "--twist": ((i % 2 ? -1 : 1) * (80 + i * 27)) + "deg", "--delay": (i % 4) * 0.025 + "s"
+        } });
+    }
+}
+function buildWorld() {
+    scenery = []; cast = [];
+    let n = S.presses, q = S.patience, quiet = n === 0, end = S.phase === "ending";
+    let peaceful = S.scene === "garden" || S.scene === "park" || S.scene === "pond";
+    if (quiet && !end) {
+        addProp("window", "window", 16, 29, 18, 32, "window-art", 1);
+        if (q >= 38) addProp("quiet-plant", S.watered ? "plant-bloom" : "plant", 20, 72, 14, 28, "breathe", 5);
+        if (q >= 52) addProp("quiet-chair", "chair", 76, 69, 17, 32, "", 5);
+        if (q >= 72) addProp("quiet-kettle", "kettle", 84, 78, 10, 18, "kettle-wiggle", 8);
+        if (q >= 100) addProp("quiet-door", q >= 110 ? "garden-door" : "door", 90, 44, 16, 44, "door-art", 2);
+        if (S.tea) addProp("quiet-tea", "tea", 65, 82, 18, 15, "", 7);
+        return;
+    }
+    if (S.ending === "pond") {
+        addProp("all-is-pond", "cosmic-pond", 50, 44, 77, 85, "mega-breathe", 2);
+        addProp("breadmoon1", "bread", 14, 27, 14, 24, "float", 3);
+        addProp("breadmoon2", "bread", 85, 19, 10, 17, "float", 3);
+        for (let i = 0; i < 16; i++) addDuck("cosmic-swimmer" + i, i % 4 === 0 ? "astronaut" : "duck", 5 + ((i * 31) % 92), 73 + ((i * 7) % 19), 5 + i % 3, -i * 0.3, "float");
+        return;
+    }
+    if (peaceful) {
+        addProp("garden-cloud1", "cloud", 16, 15, 22, 15, "cloud-drift", 1);
+        addProp("garden-cloud2", "cloud", 83, 24, 25, 15, "cloud-drift reverse", 1);
+        addProp("garden-plant1", "plant", 13, 70, 18, 32, "breathe", 4);
+        addProp("garden-plant2", "plant", 89, 74, 17, 30, "breathe", 4);
+        if (S.ending === "quiet") {
+            addProp("garden-chair", "chair", 72, 76, 18, 30, "", 5);
+            addProp("garden-tea", "tea", 47, 88, 18, 15, "", 8);
+            addProp("garden-tea2", "tea", 72, 87, 11, 10, "", 8);
+        } else if (S.ending === "outside") {
+            addProp("garden-door", "garden-door", 15, 52, 17, 42, "", 3);
+            addDuck("walking-friend", "duck", 69, 83, 9, -1, "waddle");
+        } else {
+            for (let i = 0; i < 18; i++) addDuck("parkduck" + i, i % 5 === 0 ? "astronaut" : "duck", 8 + ((i * 29) % 85), 69 + ((i * 7) % 23), 4.5 + i % 3, -i * 0.31, "waddle");
+            addProp("space-park-moon", "moon", 83, 18, 16, 24, "float", 1);
+            addProp("park-sign", "park-sign", 17, 59, 24, 24, "", 5);
+            addProp("park-chair", "chair", 79, 76, 15, 23, "", 7);
+        }
+        return;
+    }
+    if (n < 51) addProp("window", "window", 16, 27, 18, 29, "window-art", 1);
+    if (n >= 51 && n < 80) {
+        addProp("cloud1", "cloud", 13, 17, 23, 14, "cloud-drift", 1);
+        addProp("cloud2", "cloud", 79, 21, 28, 18, "cloud-drift reverse", 1);
+    }
+    if (n >= 3) addDuck("witness", "duck", 29, 77, 8.5, -0.8, "waddle");
+    if (n >= 4) addDuck("witness2", "duck", 75, 82, 7.8, -1.9, "waddle reverse");
+    if (n >= 6 && n < 24) addDuck("inspector", "inspector", 83, 62, 10, -0.3, "breathe");
+    if (n >= 9) addDuck("foreduck", "worker", 9, 83, 8, -1.2, "work");
+    if (n >= 10 && n < 28) addProp("scaffold", "scaffold", 17, 65, 24, 36, "", 4);
+    if (n >= 11) addProp("cone1", "cone", 31, 83, 5, 10, "", 8);
+    if (n >= 14) addProp("plant", "plant-hat", 5, 64, 12, 26, "breathe", 5);
+    if (n >= 15 && n < 20) addProp("desk", "desk", 78, 73, 25, 23, "", 7);
+    if (n >= 16) addProp("longpencil", "pencil", 89, 69, 8, 36, "pencil-wag", 8, 14);
+    if (n >= 17) addProp("papers", "papers", 93, 85, 13, 21, n >= 69 ? "float" : "", 8);
+    if (n >= 19) {
+        addProp("council", "council", 79, 71, 28, 29, n >= 66 ? "float" : "", 6);
+        addDuck("clerk", "duck", 74, 62, 6.2, -0.2, "murmur");
+        addDuck("clerk2", "duck", 85, 62, 6.4, -0.6, "murmur");
+    }
+    if (n >= 21) addDuck("mayor", "mayor", 79, 63, 9, -0.4, "murmur");
+    if (n >= 22) addProp("chair", "chair", 95, 73, 11, 25, n >= 66 ? "float" : "", 5);
+    if (n >= 24) {
+        addProp("factory", "factory", 15, 61, 30, 44, S.gate.kind === "crank" ? "" : "machine-breathe", 5);
+        addProp("gear", "gear", 18, 59, 7, 13, S.gate.kind === "crank" ? "" : "gear", 6);
+    }
+    if (n >= 26) addProp("pipe", "pipe", 1, 37, 15, 35, "", 4);
+    if (n >= 28) {
+        addProp("conveyor", "conveyor", 22, 82, 34, 13, "", 7);
+        for (let i = 0; i < 4; i++) addDuck("belt" + i, i === 2 ? "worker" : "duck", 10 + i * 7, 74, 5.5, -i * 1.7, "belt-duck");
+    }
+    if (n >= 32) addProp("potato1", "potato", 60, 86, 6, 11, "murmur", 8);
+    if (n >= 33) addProp("billboard", "billboard", 72, 28, 26, 21, "", 2);
+    if (n >= 34) addProp("city", "city", 85, 48, 33, 29, "", 3);
+    if (n >= 35) addProp("tower", "tower", 97, 33, 16, 41, "", 2);
+    if (n >= 36) {
+        addDuck("transport", "duck", 48, 89, 7.8, -2.5, "waddle");
+        addDuck("passenger", "duck", 47.3, 83, 3.8, -2.5, "waddle");
+    }
+    if (n >= 39) addProp("monument", "monument", 34, 56, 13, 23, "", 3);
+    if (n >= 43) addProp("cone2", "cone", 60, 81, 5, 10, "", 8);
+    if (n >= 62) addProp("lab", "crank", 94, 53, 12, 23, "gear-slow", 5);
+    if (n >= 67 && n < 90) {
+        addProp("balloon", "balloon", 38, 26, 10, 25, "float", 4);
+        addDuck("balloonduck", "duck", 38, 41, 6.5, -2, "float");
+    }
+    if (n >= 71 && n < 80) addDuck("thief", "thief", 64, 80, 8, -1.3, "waddle");
+    if (n >= 75) addProp("rocket", "rocket", 8, 33, 15, 42, S.scene === "launch" ? "rocket-shake" : "float-small", 4);
+    if (S.scene === "launch" || n >= 81) addProp("flame", "flame", 8, 56, 8, 18, "flame", 3);
+    if (n >= 80) {
+        addProp("space-cloud", "cloud", 42, 97, 58, 13, "", 2);
+        if (n >= 83) addProp("moon", "moon", 79, 23, 20, 29, "float", 1);
+        if (n >= 86) addProp("satellite", "satellite", 23, 23, 22, 23, "orbit-satellite", 3);
+        if (n >= 89) addProp("ufo", "ufo", 69, 13, 22, 20, "float", 3);
+        if (n >= 94) addProp("littlemoon", "moon", 93, 17, 9, 13, "float", 2);
+        if (n >= 95) addProp("miniroom", "window", 90, 91, 8, 12, "", 8);
+        if (n >= 96) addProp("megaduck", "megaduck", 52, 36, 65, 68, "mega-breathe", 1);
+    }
+    let people = Math.min(20, Math.max(0, Math.floor((n - 24) / 3)));
+    for (let i = 0; i < people; i++) {
+        let x = 7 + ((i * 37) % 87), y = 85 + ((i * 7) % 12);
+        addDuck("population" + i, n >= 80 && i % 3 === 0 ? "astronaut" : (i % 5 === 0 ? "worker" : "duck"), x, y, 4 + i % 3, -i * 0.47, n >= 69 && i % 4 === 0 ? "float" : "waddle");
+    }
+}
+function addOption(index, name, label, keyLabel, x, y, completed, cls) {
+    let many = S.gate.kind === "clones" || S.gate.kind === "search" || S.gate.kind === "dish" || S.gate.kind === "customs";
+    options.push({ id: index, src: art(name), label: label, key: keyLabel, done: !!completed,
+        aria: label + ". Keyboard " + (index + 1) + ".", className: "world-option " + (many ? "option-small " : "") + (completed ? "option-done " : "") + (cls || ""),
+        style: { left: x + "%", top: y + "%" } });
+}
+function buildOptions() {
+    options = [];
+    let g = S.gate, k = g.kind;
+    if (!k) return;
+    if (k === "inspect") addOption(0, "inspector", "BOOP THE INSPECTOR", "1", 50, 57, false, "option-character");
+    if (k === "lunch") addOption(0, "bell", "LUNCH, EVERYONE!", "1", 50, 57, false, "");
+    if (k === "permit") {
+        addOption(0, "stamp", g.bits & 1 ? "APPROVED" : "PERMISSION", "1", 38, 57, (g.bits & 1) !== 0, "option-stamp");
+        addOption(1, "stamp", g.bits & 2 ? "ALSO APPROVED" : "MORE PERMISSION", "2", 62, 57, (g.bits & 2) !== 0, "option-stamp");
+    }
+    if (k === "crank") addOption(0, "crank", "CRANK " + g.progress + " / 3", "1", 50, 57, false, "option-crank turn-" + g.progress);
+    if (k === "clones" || k === "search") {
+        for (let i = 0; i < 3; i++) {
+            let real = i === g.variant;
+            let revealed = (g.bits & (1 << i)) !== 0;
+            let image = k === "search" ? (real ? "crate-feather" : (revealed ? "bread" : "crate")) : (real ? "tag" : (revealed ? "potato" : "duck"));
+            let label = k === "search" ? (real ? "A SMALL FEATHER" : (revealed ? "JUST A SANDWICH" : "ABSOLUTELY ORDINARY")) : (real ? "YELLOW TAG" : (revealed ? "POTATO CONSULTANT" : "PROBABLY LEGITIMATE"));
+            addOption(i, image, label, String(i + 1), 24 + i * 26, 56, false, k === "clones" ? "option-clone" : "");
+        }
+    }
+    if (k === "bouncer") addOption(0, "bouncer", "AFFECTION " + g.progress + " / 2", "1", 50, 57, false, "option-character");
+    if (k === "chase") {
+        let locations = [[35, 57], [67, 60], [45, 45]];
+        let loc = settings.assist ? [50, 57] : locations[g.progress];
+        addOption(0, "tag", "CATCH " + (g.progress + 1) + " / 3", "1", loc[0], loc[1], false, "option-clone option-chase");
+    }
+    if (k === "tiny") addOption(0, "magnifier", "FOUND YOU", "1", 50, 57, false, "option-magnifier");
+    if (k === "tune") addOption(0, "knob", "TUNE " + g.progress + " / 3", "1", 50, 57, false, "option-knob turn-" + g.progress);
+    if (k === "gravity") {
+        addOption(0, "arrow-left", "DOWN IS LEFT", "1", 36, 56, false, "option-arrow");
+        addOption(1, "arrow-right", "DOWN IS RIGHT", "2", 64, 56, false, "option-arrow");
+    }
+    if (k === "launch") addOption(0, "lever", "PUMP " + g.progress + " / 3", "1", 50, 57, false, "option-lever turn-" + g.progress);
+    if (k === "dish") for (let i = 0; i < 3; i++) addOption(i, "dish", (g.bits & (1 << i)) ? "SIGNAL FOUND" : "ALIGN DISH", String(i + 1), 24 + i * 26, 56, (g.bits & (1 << i)) !== 0, "option-dish");
+    if (k === "customs") {
+        addOption(0, "duck", "ONE DUCK", "1", 24, 56, false, "option-customs");
+        addOption(1, "papers", "NOTHING AT ALL", "2", 50, 56, false, "option-customs");
+        addOption(2, "megaduck", "MOSTLY DUCK", "3", 76, 56, false, "option-customs");
+    }
+}
+function publish() {
+    if (!S) return;
+    let n = S.presses, q = S.patience, kind = S.gate.kind, quiet = n === 0, ended = S.phase === "ending";
+    let blocked = paused || !!overlay, finalReady = S.finaleTime >= (settings.reducedMotion ? 1 : 4);
+    let heroSize = n >= 49 && n <= 53 ? "hero-giant" : (n >= 44 && n <= 46 ? "hero-tiny" : (n === 48 ? "hero-big" : ""));
+    let heroX = n >= 69 && n < 75 ? 55 : 50;
+    let heroY = n >= 69 && n < 75 ? 48 : 61;
+    if (ended) { heroX = 50; heroY = 74; }
+    let showTV = n >= 57 && !ended;
+    let tvLines = ["FINGER RESPONSIBLE", "MORE BREAD AT SIX", "ALL DUCK. ALL DAY.", "THE MAYOR IS FINE"];
+    let root = "duck-app scene-" + S.scene + (settings.reducedMotion ? " low-motion" : "") + (blocked ? " still" : "") + (n >= 23 ? " damaged" : "") + (n >= 51 ? " ceiling-gone" : "") + (n >= 64 ? " sideways" : "") + (n >= 69 ? " weightless" : "") + (S.phase === "finale" ? " finale" : "") + (ended ? " ended" : "") + (quiet && q >= 88 ? " golden-hour" : "");
+    view = {
+        rootClass: root, era: currentEra().label, title: currentEra().name,
+        pressLabel: String(n < 10 ? "00" + n : (n < 100 ? "0" + n : n)), showMeter: n > 0,
+        caption: S.line, speaker: S.speaker, captions: settings.captions,
+        muted: settings.muted, soundLabel: settings.muted ? "SOUND OFF" : "SOUND ON", soundAria: settings.muted ? "Enable sound, M" : "Mute sound, M",
+        blocked: blocked, paused: paused && !overlay, autoPaused: autoPaused,
+        settings: overlay === "settings", gallery: overlay === "gallery", help: overlay === "help", dialog: blocked,
+        mainVisible: !kind && S.phase === "play", mainDisabled: blocked || S.launchTime > 0,
+        heroClass: "hero-place " + heroSize + (n >= 5 ? " suspicious" : "") + (n >= 40 && n <= 43 ? " has-legs" : "") + (effectLife > 0 ? (pulse ? " pressed-a" : " pressed-b") : "") + (ended ? " hero-ending" : ""),
+        heroStyle: { left: heroX + "%", top: heroY + "%" },
+        backgroundStyle: { "--lean": (n >= 64 && n < 80 ? (S.gravity || 1) * (n >= 69 ? 8 : 5) : 0) + "deg" },
+        pressureClass: "stage " + (effectLife > 0 && !settings.reducedMotion && (effectKind === "dust" || effectKind === "giant" || effectKind === "launch") ? "bump" : ""),
+        showGate: !!kind, gateKind: kind, gateTitle: kind ? GATE_SPECS[kind].label : "", gateHelp: kind ? GATE_SPECS[kind].help : "",
+        gateProgress: kind ? S.gate.progress + " / " + GATE_SPECS[kind].need : "", gatePaper: kind === "permit" || kind === "customs",
+        helpOffered: !!kind && (hintShown || settings.assist || S.gate.age >= GATE_HELP_SECONDS),
+        showBell: n >= 12 && n < 80 && !kind && S.phase === "play", showTV: showTV && (!kind || kind === "tune"),
+        tvClass: "side-item duck-tv" + (kind === "tune" ? " tuning-tv" : ""), tvStatic: kind === "tune",
+        tvLine: kind === "tune" ? (S.gate.progress === 0 ? "[ ... STATIC ... ]" : (S.gate.progress === 1 ? "IS THIS BREAD?" : "ALMOST DUCK")) : tvLines[S.tune % 4], showPlant: quiet && q >= 38 && !ended, plantLabel: S.watered ? "A WELL-HYDRATED PLANT" : "A SLIGHTLY THIRSTY PLANT",
+        showTea: quiet && q >= 72 && !ended, teaLabel: S.tea ? "ANOTHER SIP" : "TEA?", showDoor: quiet && q >= 110 && !ended,
+        showNotice: n < 51 && !ended, showCrack: n >= 23 && n < 55, showRing: n >= 85 && !ended,
+        showAlarm: n >= 77 && n <= 80, showLaunch: S.launchTime > 0, launchLabel: "ALTITUDE: INCREASINGLY YES",
+        showFinale: S.phase === "finale", finalReady: finalReady, finaleCaption: finalReady ? "Please decide what all of this was for." : "ONE BUTTON. AN UNREASONABLE AMOUNT OF DUCK.",
+        showEnding: ended, endingArt: art(S.ending === "president" ? "president-button" : "tag"), endingTitle: ended ? endingById(S.ending).title : "", endingBody: ended ? endingById(S.ending).body : "", endingSeal: ended ? endingById(S.ending).seal : "",
+        endingFootnote: quiet ? "ZERO PRESSES. THAT WAS THE WHOLE POINT." : "100 PRESSES. ONE VERY RESPONSIBLE FINGER.",
+        collected: profile.endings.length, collectionLabel: profile.endings.length + " / 5", legacyLabel: profile.legacyCompleted > 0 ? "Previous edition: " + profile.legacyCompleted + " certificates archived." : "",
+        saveStatus: saveStatus, resetPrompt: resetIntent === "all" ? "Erase all progress and collected endings?" : "Return this room to its very first duck?",
+        resetDetail: resetIntent === "all" ? "This removes this edition's progress and the previous edition's local save. Sound and comfort settings are kept." : "Your ending collection and comfort settings stay. This room's progress does not.",
+        confirmingReset: !!resetIntent, volumeLabel: Math.round(settings.volume * 100) + "%",
+        motionLabel: settings.reducedMotion ? "REDUCED" : "FULL", assistLabel: settings.assist ? "ON" : "OFF",
+        captionsLabel: settings.captions ? "ON" : "OFF", ambienceLabel: settings.ambience ? "ON" : "OFF",
+        footerHint: kind ? "1 / 2 / 3 · choose    H · a little help" : (ended ? "Every ending is saved in your scrapbook." : "Tap the duck. Or don't.     Space · press    Esc · pause")
+    };
+    buildWorld(); buildOptions();
+    collection = [];
+    for (let i = 0; i < ENDINGS.length; i++) {
+        let found = profile.endings.indexOf(ENDINGS[i].id) >= 0;
+        collection.push({ id: ENDINGS[i].id, found: found, title: found ? ENDINGS[i].title : "An undiscovered afternoon", seal: found ? ENDINGS[i].seal : "?", className: "scrap " + (found ? "scrap-found" : "scrap-locked") });
+    }
+    worldDirty = false;
+}

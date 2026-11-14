@@ -1,0 +1,190 @@
+<import Parcel from="./parcel.ui" />
+<div className="desk-column">
+ <div className="conveyor-strip">
+  <div className={V.jam ? "conveyor-belt jammed" : "conveyor-belt"} aria-hidden="true">
+</div>
+  <span className="belt-caption">INCOMING / KEEP HANDS ATTACHED</span>
+#each (box in V.queue)
+  <div className={box.className} style={box.position}>
+<span>
+</span>
+<b>{box.damaged ? "[eaten]" : box.serial}</b>
+</div>
+#end
+  <div className={V.separator ? "separator-fin raised" : "separator-fin"} aria-hidden="true">
+</div>
+  <button className={V.separator ? "separator-button engaged" : "separator-button"} @click={action("separator")} disabled={V.overlay}>
+<i>
+</i>{V.separator ? "SEPARATOR UP" : "RAISE SEPARATOR"}<small>G / protect adjacent labels</small>
+</button>
+  <button className={V.jam ? "jam-lever is-jammed" : "jam-lever"} @click={action("jam")} disabled={V.overlay || !V.jam}>
+<i>
+</i>{V.jam ? "PULL TO CLEAR JAM" : "BELT RUNNING"}<small>J / manual override</small>
+</button>
+ </div>
+ <div className="worktop">
+  <span className="desk-engraving">INSPECTION SURFACE / NO LICKING</span>
+<span className="desk-case-number">{V.serial}</span>
+  <div className="inspection-mat">
+<span>PLACE MAIL HERE</span>
+<i>
+</i>
+</div>
+  <div className="scale-station">
+   <button className="scale-pan" @click={action("weigh")} disabled={V.toolsDisabled} aria-label="Weigh parcel on the analogue scale">
+</button>
+   <button className="scale-body" @click={action("weigh")} disabled={V.toolsDisabled} aria-label="Weigh parcel">
+<span className="scale-brand">FAIRWEIGHT &amp; SONS</span>
+<span className="scale-dial">
+<span className="scale-ticks">
+</span>
+<span className="dial-zero">0</span>
+<span className="dial-ten">10</span>
+<span className="dial-twenty">20</span>
+<i className="scale-needle" style={V.needleStyle}>
+</i>
+<b>
+</b>
+</span>
+<span className="scale-readout">{V.scaleValue}<small> kg</small>
+</span>
+</button>
+   <span className={V.calibrated ? "calibration-seal" : "calibration-seal unverified"}>{V.scaleStatus}</span>
+   <div className="calibration-tools">
+<button className={V.reference ? "reference-weight on-pan" : "reference-weight"} @click={action("reference")} disabled={V.locked} aria-label="Place the certified one kilogram reference weight">1<small>kg</small>
+</button>
+<button className="zero-knob" @click={action("zero")} disabled={V.locked} aria-label="Zero scale using the reference weight">
+<i>
+</i>ZERO</button>
+</div>
+  </div>
+  <div className="xray-cabinet">
+<span className="xray-title">RADIOGRAPH / MK. II</span>
+<button className={V.xrayLoading ? "xray-window scanning" : "xray-window"} @click={action("xray")} disabled={V.toolsDisabled} aria-label="X-ray the parcel">
+<span className="xray-grid">
+</span>
+<i className="xray-beam">
+</i>
+<small>{V.xrayLoading ? "EXPOSING…" : "NO HANDS"}</small>
+</button>
+<span className="xray-mass">{V.xrayMass}</span>
+<span className="radiation-label">INTERIOR MASS ≠ EXTERIOR MASS</span>
+</div>
+  <Parcel />
+  <div if={!V.hasParcel} className="empty-mat">
+<span>AWAITING CONSIGNMENT</span>
+<button className="metal-button" @click={action("receive")} disabled={V.overlay}>Admit next parcel</button>
+</div>
+  <div if={V.scanActive} className="optical-beam" aria-hidden="true">
+</div>
+  <div if={V.fx === "eaten-label"} className="stolen-label" aria-hidden="true">ADDRESS</div>
+  <div if={V.fx === "swarm"} className="escaped-bees" aria-hidden="true">
+<i className="bee">
+</i>
+<i className="bee">
+</i>
+<i className="bee">
+</i>
+<i className="bee">
+</i>
+<span>UNREGISTERED STAFF</span>
+</div>
+  <div if={V.fx === "breach"} className="breach-shadow" aria-hidden="true">RETURN TO SENDER</div>
+  <div if={V.fx === "crumbs"} className="biscuit-crumbs" aria-hidden="true">· · ·</div>
+  <span className="face-caption">{V.faceName}</span>
+  <span className="drag-hint">{V.dragActive ? "← SCALE / XRAY → / ↓ STAMP / ↑ ROTATE" : "Drag parcel to a tool, or use the desk controls below."}</span>
+ </div>
+ <div className="instrument-shelf">
+  <div className="scanner-unit">
+<span className="machine-screw screw-one">
+</span>
+<span className="machine-screw screw-two">
+</span>
+<button className={V.scanActive ? "scanner-display active" : "scanner-display"} @click={action("scan")} disabled={V.toolsDisabled}>
+<small>{V.scanActive ? "READING OPTICAL MARK…" : V.scannerFooter}</small>
+<strong>{V.scannerCode}</strong>
+<span>NO CONTENTS GUARANTEED</span>
+</button>
+</div>
+  <div className="tool-controls">
+<button className="tool-key" @click={action("inspect")} disabled={V.toolsDisabled}>
+<b>⌕</b>
+<span>Inspect<kbd>I</kbd>
+</span>
+</button>
+<button className="tool-key" @click={action("rotate")} disabled={V.toolsDisabled}>
+<b>↻</b>
+<span>Rotate<kbd>R</kbd>
+</span>
+</button>
+<button className="tool-key" @click={action("weigh")} disabled={V.toolsDisabled}>
+<b>⚖</b>
+<span>Weigh<kbd>W</kbd>
+</span>
+</button>
+<button className="tool-key" @click={action("xray")} disabled={V.toolsDisabled}>
+<b>▧</b>
+<span>X-ray<kbd>X</kbd>
+</span>
+</button>
+<button className="tool-key" @click={action("clamp")} disabled={V.toolsDisabled}>
+<b>⊓</b>
+<span>{V.clamp ? "Secured" : "Clamp"}<kbd>C</kbd>
+</span>
+</button>
+<button className="tool-key flap-key" @click={action("flap")} disabled={V.toolsDisabled}>
+<b>⌑</b>
+<span>{V.flapLabel}<kbd>Q</kbd>
+</span>
+</button>
+</div>
+ </div>
+ <div className="stamp-shelf">
+  <div className="stamp-assembly">
+<button className={V.stampMoving ? "wooden-stamp stamping" : "wooden-stamp"} @click={action("stamp")} disabled={V.toolsDisabled} aria-label="Stamp parcel as inspected using the selected ink">
+<i className="stamp-handle">
+</i>
+<b className="stamp-base">INSPECTED</b>
+<span>APPLY STAMP / S</span>
+</button>
+<button className={V.ink === "red" ? "ink-pad red-pad selected" : "ink-pad red-pad"} @click={action("ink-red")} disabled={V.locked} aria-label="Select red stamp ink">
+<i>
+</i>
+<b>RED</b>
+</button>
+<button className={V.ink === "black" ? "ink-pad black-pad selected" : "ink-pad black-pad"} @click={action("ink-black")} disabled={V.locked} aria-label="Select black stamp ink">
+<i>
+</i>
+<b>BLACK</b>
+</button>
+</div>
+  <span className="stamp-instruction">{V.stampRule}<small>{V.jobLabel}</small>
+</span>
+  <button className="biscuit-tin" @click={action("biscuit")} disabled={V.toolsDisabled}>
+<span className="biscuit">
+</span>
+<b>PACKING BISCUIT</b>
+<small>For teeth / not for staff · B</small>
+</button>
+ </div>
+ <div className="routing-cages" aria-label="Dispatch destinations. Consult the handbook before choosing.">
+#each (cage in V.cages)
+  <button className={cage.className} @click={action("route:" + cage.id)} disabled={V.toolsDisabled}>
+<span className="electric-destination">{cage.electric}</span>
+<span className="cage-wire">
+</span>
+<span className="brass-plate">
+<kbd>{cage.key}</kbd>
+<strong>{cage.id}</strong>
+<small>{cage.note}</small>
+</span>
+<i className="cage-latch">
+</i>
+</button>
+#end
+ </div>
+ <div className="receipt-slot">
+<span className="receipt-slot-label">DESK TELETYPE</span>
+<p role="status" aria-live="polite">{V.message}</p>
+</div>
+</div>

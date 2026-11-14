@@ -1,0 +1,17 @@
+{
+  "collection": "market_snapshots",
+  "schema": {
+    "alias": "market_snapshots",
+    "fields": [
+      {
+        "name": "snapshotId",
+        "type": "string"
+      },
+      {
+        "name": "snapshotJSON",
+        "type": "string"
+      }
+    ]
+  },
+  "records": []
+}

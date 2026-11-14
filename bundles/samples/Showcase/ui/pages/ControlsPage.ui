@@ -1,0 +1,185 @@
+// ControlsPage.ui - Interactive SoftN UI Component Suite
+// Demonstrates Button, Badge, Input, Select, Slider, Progress, Switch, ColorPicker, Tabs, and Modal
+
+<Stack direction=vertical gap=lg if={currentPage === "controls"}>
+  <Stack direction=vertical gap=xs>
+    <Heading level={2} style={{ color: getTextColor(), fontSize: "1.5rem" }}>UI Controls</Heading>
+    <Text style={{ color: getMutedColor(), fontSize: "0.875rem" }}>
+      Core form inputs, sliders, progress indicators, switches, color pickers, tabs, badges, and modals with live state feedback.
+    </Text>
+  </Stack>
+
+  // Row 1: Buttons & Badges + Inputs & Select
+  <Grid columns={{ sm: 1, lg: 2 }} gap=lg>
+    // Buttons & Badges Card
+    <Card padding=lg style={{ background: getCardBg(), border: "1px solid " + getBorderColor(), borderRadius: "14px", minWidth: 0 }}>
+      <Stack direction=vertical gap=md>
+        <Box style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
+          <Text fontWeight=medium style={{ color: getTextColor() }}>Buttons & Status Badges</Text>
+          <Badge variant="info" size="sm">{"Clicks: " + demoButtonClicks + " (" + demoLastVariant + ")"}</Badge>
+        </Box>
+
+        <Box style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
+          <Button variant="primary" size="sm" @click={recordButtonDemo("primary")}>Primary</Button>
+          <Button variant="secondary" size="sm" @click={recordButtonDemo("secondary")}>Secondary</Button>
+          <Button variant="outline" size="sm" @click={recordButtonDemo("outline")}>Outline</Button>
+          <Button variant="ghost" size="sm" @click={recordButtonDemo("ghost")}>Ghost</Button>
+          <Button variant="danger" size="sm" @click={recordButtonDemo("danger")}>Danger</Button>
+        </Box>
+
+        <Divider style={{ borderColor: getBorderColor() }} />
+
+        <Box style={{ display: "flex", flexWrap: "wrap", gap: "0.45rem", alignItems: "center" }}>
+          <Badge variant="success" size="sm">Healthy</Badge>
+          <Badge variant="info" size="sm">Syncing</Badge>
+          <Badge variant="warning" size="sm">Degraded</Badge>
+          <Badge variant="error" size="sm">Blocked</Badge>
+          <Badge variant="secondary" size="sm">Neutral</Badge>
+        </Box>
+      </Stack>
+    </Card>
+
+    // Input & Select Card
+    <Card padding=lg style={{ background: getCardBg(), border: "1px solid " + getBorderColor(), borderRadius: "14px", minWidth: 0 }}>
+      <Stack direction=vertical gap=md>
+        <Text fontWeight=medium style={{ color: getTextColor() }}>Input & Select</Text>
+
+        <Stack direction=vertical gap=xs>
+          <Text size=xs style={{ color: getMutedColor() }}>Display Name</Text>
+          <Input
+            value={demoInputName}
+            @change={updateDemoInputName}
+            placeholder="Enter your name..."
+            style={{ width: "100%", boxSizing: "border-box" }}
+          />
+        </Stack>
+
+        <Stack direction=vertical gap=xs>
+          <Text size=xs style={{ color: getMutedColor() }}>Team Role</Text>
+          <Select
+            value={demoRole}
+            options={demoRoleOptions}
+            @change={updateDemoRole}
+          />
+        </Stack>
+
+        <Box style={{ padding: "0.65rem 0.85rem", borderRadius: "8px", background: darkMode ? "#09090b" : "#f4f4f5", border: "1px solid " + getBorderColor() }}>
+          <Text size=xs style={{ color: getTextColor(), fontFamily: "ui-monospace, Menlo, Consolas, monospace" }}>
+            {(demoInputName || "Guest") + " · " + getDemoRoleLabel()}
+          </Text>
+        </Box>
+      </Stack>
+    </Card>
+  </Grid>
+
+  // Row 2: Slider & Progress + Switches & ColorPicker
+  <Grid columns={{ sm: 1, lg: 2 }} gap=lg>
+    // Slider & Progress Card
+    <Card padding=lg style={{ background: getCardBg(), border: "1px solid " + getBorderColor(), borderRadius: "14px", minWidth: 0 }}>
+      <Stack direction=vertical gap=md>
+        <Box style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
+          <Text fontWeight=medium style={{ color: getTextColor() }}>Slider & Progress</Text>
+          <Text size=sm style={{ color: demoColor, fontWeight: 700, fontFamily: "monospace" }}>{demoProgress + "%"}</Text>
+        </Box>
+
+        <Slider
+          value={demoProgress}
+          min={0}
+          max={100}
+          step={1}
+          @change={updateDemoProgress}
+        />
+
+        <Progress value={demoProgress} max={100} />
+
+        <Box style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
+          <Button variant="outline" size="xs" @click={updateDemoProgress(25)}>25%</Button>
+          <Button variant="outline" size="xs" @click={updateDemoProgress(50)}>50%</Button>
+          <Button variant="outline" size="xs" @click={updateDemoProgress(75)}>75%</Button>
+          <Button variant="outline" size="xs" @click={updateDemoProgress(100)}>100%</Button>
+        </Box>
+      </Stack>
+    </Card>
+
+    // Switch & ColorPicker Card
+    <Card padding=lg style={{ background: getCardBg(), border: "1px solid " + getBorderColor(), borderRadius: "14px", minWidth: 0 }}>
+      <Stack direction=vertical gap=md>
+        <Text fontWeight=medium style={{ color: getTextColor() }}>Switches & ColorPicker</Text>
+
+        <Stack direction=vertical gap=sm>
+          <Switch checked={demoNotifications} @change={toggleDemoNotifications} label="Push alerts enabled" />
+          <Switch checked={demoAutoSave} @change={toggleDemoAutoSave} label="Automatic workspace snapshots" />
+          <Switch checked={demoTelemetry} @change={toggleDemoTelemetry} label="Verbose frame telemetry" />
+        </Stack>
+
+        <Divider style={{ borderColor: getBorderColor() }} />
+
+        <Box style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
+          <Stack direction=horizontal gap=sm align=center style={{ flexWrap: "wrap" }}>
+            <ColorPicker value={demoColor} @change={updateDemoColor} />
+            <Button variant="ghost" size="xs" @click={updateDemoColor("#6366f1")} style={{ border: "1px solid #6366f1", color: "#6366f1" }}>Indigo</Button>
+            <Button variant="ghost" size="xs" @click={updateDemoColor("#10b981")} style={{ border: "1px solid #10b981", color: "#10b981" }}>Emerald</Button>
+            <Button variant="ghost" size="xs" @click={updateDemoColor("#f59e0b")} style={{ border: "1px solid #f59e0b", color: "#f59e0b" }}>Amber</Button>
+          </Stack>
+          <Box style={{ padding: "0.3rem 0.65rem", borderRadius: "999px", background: demoColor, color: "#ffffff" }}>
+            <Text size=xs style={{ color: "#ffffff", fontFamily: "monospace", fontWeight: 600 }}>{demoColor}</Text>
+          </Box>
+        </Box>
+      </Stack>
+    </Card>
+  </Grid>
+
+  // Row 3: Tabs & Modal Trigger
+  <Card padding=lg style={{ background: getCardBg(), border: "1px solid " + getBorderColor(), borderRadius: "14px", minWidth: 0 }}>
+    <Stack direction=vertical gap=md>
+      <Box style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
+        <Stack direction=vertical gap=xs>
+          <Text fontWeight=medium style={{ color: getTextColor() }}>Tabs & Modal Dialog</Text>
+          <Text size=xs style={{ color: getMutedColor() }}>Switch sub-views or open a layered modal sheet</Text>
+        </Stack>
+        <Button variant="primary" size="sm" @click={openDemoModal} style={{ background: demoColor, border: "none", color: "#ffffff", fontWeight: 600 }}>
+          Open Modal Preview
+        </Button>
+      </Box>
+
+      <Tabs
+        tabs={demoTabList}
+        items={demoTabList}
+        value={demoTab}
+        activeTab={demoTab}
+        @change={setDemoTab}
+      />
+
+      <Box style={{ padding: "1rem", borderRadius: "10px", background: darkMode ? "#09090b" : "#f4f4f5", border: "1px solid " + getBorderColor() }}>
+        <Text if={demoTab === "overview"} size=sm style={{ color: getTextColor(), lineHeight: 1.6 }}>
+          Overview: All SoftN UI controls bind reactively to .logic state variables and adapt automatically between dark and light themes.
+        </Text>
+        <Text if={demoTab === "tokens"} size=sm style={{ color: getTextColor(), lineHeight: 1.6 }}>
+          {"Design Tokens: Active accent is " + demoColor + " · Notifications: " + (demoNotifications ? "On" : "Off") + " · Progress: " + demoProgress + "%."}
+        </Text>
+        <Text if={demoTab === "a11y"} size=sm style={{ color: getTextColor(), lineHeight: 1.6 }}>
+          Accessibility: Focus-visible rings, semantic ARIA labels, keyboard-operable modals, and responsive 390px mobile wrapping come built in.
+        </Text>
+      </Box>
+    </Stack>
+  </Card>
+
+  <Modal open={demoModalOpen} onClose={closeDemoModal} title="Live Component Summary" size="md">
+    <Stack direction=vertical gap=md padding=sm>
+      <Text size=sm style={{ color: getTextColor() }}>
+        {"Hello, " + (demoInputName || "Guest") + " (" + getDemoRoleLabel() + ")!"}
+      </Text>
+      <Box style={{ padding: "0.75rem", borderRadius: "8px", background: darkMode ? "#18181b" : "#f4f4f5", border: "1px solid " + getBorderColor() }}>
+        <Text size=xs style={{ color: getMutedColor(), fontFamily: "monospace", display: "block" }}>
+          {"Progress: " + demoProgress + "% · Accent: " + demoColor}
+        </Text>
+        <Text size=xs style={{ color: getMutedColor(), fontFamily: "monospace", display: "block", marginTop: "0.25rem" }}>
+          {"Alerts: " + (demoNotifications ? "Enabled" : "Muted") + " · Snapshots: " + (demoAutoSave ? "On" : "Off")}
+        </Text>
+      </Box>
+      <Stack direction=horizontal gap=sm justify="end">
+        <Button variant="secondary" size="sm" @click={closeDemoModal}>Close</Button>
+      </Stack>
+    </Stack>
+  </Modal>
+</Stack>

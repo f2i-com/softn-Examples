@@ -1,0 +1,124 @@
+// Spending in PIT: recruiting robot operators (Workforce tab), buying haul trucks (Fleet tab) and
+// workshop upgrades (Workshop tab). Each pays through spend() (core/state.logic), which refuses
+// with a radio line when the cash is short, then refreshes the UI and saves at once.
+// Limits, which validState (core/persistence.logic) also enforces: 6 robots, 4 trucks, upgrade
+// levels 0 to 3 (0 to 1 for the telemetry relay). Robot ids run 1 to 6 in recruitment order, and
+// crewProfiles (crew.logic) and the lists in buyRobot are indexed by them.
+// State: S.robots, S.trucks and S.upgrade grow here; upgradeCatalog is also read by refreshUI for
+// the Workshop tab's rows.
+
+// ---------- Robots and trucks ----------
+
+// "Recruit" (Workforce tab): the next of the six robots (Gary and Mel come with the mine, from
+// newState) for recruitmentPrice(). Skill is drawn with rand(), so recruiting advances the
+// simulation's random sequence. A recruit starts unassigned, at the charging compound, until a
+// dispatch needs an operator.
+function buyRobot() {
+  if (!S || screen !== 'play') return;
+  if (S.robots.length >= 6) {
+    notify('WORKFORCE', 'Six operators is the limit for this prototype.');
+    return;
+  }
+  var price = recruitmentPrice();
+  if (!spend(price, 'a KILN operator')) return;
+  var names = ['Gary', 'Mel', 'Oscar', 'Dot', 'Bazza', 'June'];
+  var i = S.robots.length;
+  S.robots.push({
+    id: i + 1,
+    name: names[i],
+    // Gary's and Mel's traits are set in newState; these are the recruits'.
+    trait: [
+      '',
+      '',
+      'Optimistic about reversing.',
+      'Precise. Quietly judgemental.',
+      'Calls every machine mate.',
+      'Patient. Excellent night vision.'
+    ][i],
+    skill: 0.82 + rand() * 0.15,
+    battery: 100,
+    assigned: 0,
+    color: ['#e2a83d', '#66bfb1', '#e39672', '#acbada', '#82ac71', '#c8a2bc'][i],
+    x: 25 + (i % 3) * 6,
+    z: 163
+  });
+  notify('WORKFORCE', names[i] + ' has arrived. Use Start fleet to assign available equipment.');
+  refreshUI();
+  saveGame(true);
+}
+
+// "Buy one" (Fleet tab): another Ironback 80 for $18,000, parked in the car park by the crusher
+// (standby, progress 1) without an operator.
+function buyTruck() {
+  if (S.trucks.length >= 4) {
+    notify('GARAGE', 'Four haul trucks is the fleet limit for First Shift.');
+    return;
+  }
+  if (!spend(18000, 'an Ironback haul truck')) return;
+  var t = freshTruck(S.trucks.length + 1, 1);
+  t.operator_id = 0;
+  S.trucks.push(t);
+  setTruckPosition(t);
+  notify('GARAGE', t.external_id + ' delivered to the surface parking area.');
+  refreshUI();
+  saveGame(true);
+}
+
+// ---------- Workshop upgrades ----------
+
+// The Workshop tab's upgrades. Each id is a key of S.upgrade, and validState checks exactly these
+// five. A level costs cost x (1 + 0.7 x the current level). The effects live where they act:
+//   loader   shorter bucket passes (loaderPassDuration, excavators.logic)
+//   crusher  faster crushing (crusherRate, plant.logic) and robot tipping (stepSimulation)
+//   roads    better speed in rain and less truck wear (stepSimulation)
+//   battery  slower operator drain and faster charging in a parked truck (stepSimulation)
+//   relay    no more repeater incidents (chooseIncident, incidents.logic)
+var upgradeCatalog = [
+  {
+    id: 'loader',
+    name: 'Bucket hydraulics',
+    cost: 2800,
+    detail: '+24% loading speed per level. Less waiting in the pit.'
+  },
+  {
+    id: 'crusher',
+    name: 'Crusher drive',
+    cost: 2400,
+    detail: '+25% processing throughput per level; faster tipping. Keep hopper space available.'
+  },
+  { id: 'roads', name: 'Haul road surfacing', cost: 3600, detail: 'Less wear, better traction during rain.' },
+  {
+    id: 'battery',
+    name: 'Operator battery packs',
+    cost: 2200,
+    detail: 'Longer robot shifts and faster charging.'
+  },
+  {
+    id: 'relay',
+    name: 'Redundant telemetry',
+    cost: 1800,
+    detail: 'Prevents future repeater failures. Does not fix an active fault.'
+  }
+];
+
+// "Install" (tablet/workshop.ui): buys the next level of upgrade id, up to 3 (1 for the relay).
+function buyUpgrade(id) {
+  var item = null;
+  for (var i = 0; i < upgradeCatalog.length; i++) if (upgradeCatalog[i].id === id) item = upgradeCatalog[i];
+  if (!item) return;
+  var level = S.upgrade[id];
+  if (level >= (id === 'relay' ? 1 : 3)) {
+    notify('WORKSHOP', 'Already fully upgraded.');
+    return;
+  }
+  if (!spend(Math.round(item.cost * (1 + level * 0.7)), item.name)) return;
+  S.upgrade[id]++;
+  notify('WORKSHOP', item.name + ' installed.');
+  refreshUI();
+  saveGame(true);
+}
+
+// The next robot's price: $2,500 for the third, then $700 more for each one after it.
+function recruitmentPrice() {
+  return 2500 + (S.robots.length - 2) * 700;
+}

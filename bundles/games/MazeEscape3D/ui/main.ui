@@ -6,7 +6,7 @@
 .mz-ovl { position: absolute; pointer-events: none; }
 .mz-panel { background: rgba(8, 11, 18, 0.72); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; backdrop-filter: blur(8px); }
 .mz-hud { top: 14px; left: 14px; padding: 10px 14px; }
-.mz-map { top: 14px; right: 14px; padding: 8px; }
+.mz-map { top: 14px; right: 14px; padding: 8px; pointer-events: auto; cursor: pointer; z-index: 16; }
 .mz-toast { bottom: 26px; left: 50%; transform: translateX(-50%); padding: 8px 18px; border-radius: 999px; border-color: rgba(56,189,248,0.45); }
 .mz-vig { inset: 0; background: radial-gradient(110% 100% at 50% 50%, rgba(0,0,0,0) 55%, rgba(0,0,0,0.48) 100%); }
 .mz-card-wrap { inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: auto; background: linear-gradient(180deg, rgba(4,6,12,0.35) 0%, rgba(4,6,12,0.68) 100%); z-index: 25; }
@@ -28,13 +28,14 @@
   <Loop frame running={true} @tick={frameStep} />
   <Controls
     :bind={pad}
-    enabled={started && !paused && !won}
+    enabled={started && !won}
     keys={{
       up: "w ArrowUp",
       down: "s ArrowDown",
       left: "a ArrowLeft",
       right: "d ArrowRight",
       sprint: "ShiftLeft ShiftRight",
+      hint: "h",
       mute: "m",
       pause: "p Escape"
     }}
@@ -51,7 +52,7 @@
       antialias={true}
       shadows={true}
       pointerLock={started && !paused && !won && !touchMode}
-      crosshair={true}
+      crosshair={started && !paused && !won}
       pitchLimit={0.95}
       cameraSmoothing={0.38}
       maxPixelRatio={1.5}
@@ -64,7 +65,7 @@
       effects={sceneEffects}
       @click={onSceneClick}
     >
-      <SceneAnchor if={started && !won} object="mz-exit" offset={{ y: 2.35 }} place="above" clickThrough={true}>
+      <SceneAnchor if={started && !won && (portalOpen || exitSeen)} object="mz-exit" offset={{ y: 2.35 }} place="above" clickThrough={true}>
         <Box style={{ background: "rgba(8,12,20,0.86)", border: portalOpen ? "1px solid #4ade80" : "1px solid #fbbf24", borderRadius: "6px", padding: "3px 9px", whiteSpace: "nowrap" }}>
           <Text style={{ fontSize: "10px", fontWeight: 700, color: portalOpen ? "#4ade80" : "#fbbf24" }}>
             {portalOpen ? "EXIT PORTAL OPEN" : ("SEALED (" + runesCollected + "/3 RUNES)")}
@@ -84,8 +85,11 @@
     <Text style={{ display: "block", fontSize: "11px", color: "#94a3b8", marginTop: "2px" }}>{"Best (" + mazeSize + "x" + mazeSize + "): " + bestText}</Text>
   </Box>
 
-  <Box if={started} className="mz-ovl mz-panel mz-map">
-    <PixelGrid rows={ROWS} cols={COLS} cellSize={ROWS > 15 ? 5 : 7} items={mapItems} background="rgba(0,0,0,0.4)" />
+  <Box if={started} className="mz-ovl mz-panel mz-map" @click={toggleMap}>
+    <Text style={{ display: "block", fontSize: "10px", fontWeight: 700, letterSpacing: "0.1em", color: "#94a3b8", marginBottom: mapCollapsed ? "0px" : "5px", textAlign: "center" }}>{mapCollapsed ? "MAP [+]" : "MAP [–]"}</Text>
+    <Box if={!mapCollapsed}>
+      <PixelGrid rows={ROWS} cols={COLS} cellSize={ROWS > 15 ? 5 : 7} items={mapItems} background="rgba(0,0,0,0.4)" />
+    </Box>
   </Box>
 
   <Box if={toast !== ""} className="mz-ovl mz-panel mz-toast">
@@ -106,7 +110,10 @@
     </Stack>
   </Box>
   <Box if={started && !touchMode && !won && !paused} className="mz-touchbar">
-    <Button variant="ghost" style={{ padding: "8px 12px", minHeight: "36px", borderRadius: "10px", fontWeight: 700, fontSize: "12px", background: "rgba(8,11,18,0.72)", color: "#cbd5e1", border: "1px solid rgba(255,255,255,0.16)" }} @click={toggleTouchMode}>Touch Pad</Button>
+    <Stack direction="horizontal" gap={6}>
+      <Button variant="ghost" style={{ padding: "8px 12px", minHeight: "36px", borderRadius: "10px", fontWeight: 700, fontSize: "12px", background: "rgba(8,11,18,0.72)", color: "#22d3ee", border: "1px solid rgba(34,211,238,0.4)" }} @click={pulseRuneHint}>Hint (H)</Button>
+      <Button variant="ghost" style={{ padding: "8px 12px", minHeight: "36px", borderRadius: "10px", fontWeight: 700, fontSize: "12px", background: "rgba(8,11,18,0.72)", color: "#cbd5e1", border: "1px solid rgba(255,255,255,0.16)" }} @click={toggleTouchMode}>Touch Pad</Button>
+    </Stack>
   </Box>
 
   <!-- Title -->
@@ -130,7 +137,7 @@
 
       <Box className="mz-keys">
         <Text style={{ color: "#cfd8e6", fontSize: "13px" }}><Text className="mz-kbd" style={{ fontSize: "11px", color: "#fff" }}>W A S D</Text></Text><Text style={{ color: "#cfd8e6", fontSize: "13px" }}>move · <Text className="mz-kbd" style={{ fontSize: "11px", color: "#fff" }}>Shift</Text> sprint</Text>
-        <Text style={{ color: "#cfd8e6", fontSize: "13px" }}><Text className="mz-kbd" style={{ fontSize: "11px", color: "#fff" }}>Mouse</Text></Text><Text style={{ color: "#cfd8e6", fontSize: "13px" }}>look · <Text className="mz-kbd" style={{ fontSize: "11px", color: "#fff" }}>Esc</Text> pauses · <Text className="mz-kbd" style={{ fontSize: "11px", color: "#fff" }}>M</Text> mute</Text>
+        <Text style={{ color: "#cfd8e6", fontSize: "13px" }}><Text className="mz-kbd" style={{ fontSize: "11px", color: "#fff" }}>Mouse</Text></Text><Text style={{ color: "#cfd8e6", fontSize: "13px" }}>look · <Text className="mz-kbd" style={{ fontSize: "11px", color: "#fff" }}>H</Text> hint · <Text className="mz-kbd" style={{ fontSize: "11px", color: "#fff" }}>Esc</Text> pause · <Text className="mz-kbd" style={{ fontSize: "11px", color: "#fff" }}>M</Text> mute</Text>
       </Box>
     </Box>
   </Box>

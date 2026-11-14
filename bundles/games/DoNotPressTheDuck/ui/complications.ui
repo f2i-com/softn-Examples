@@ -1,0 +1,28 @@
+<Box if={view.showGate}>
+  <Box if={view.gatePaper} className="paper-form" />
+  <Box className="gate-heading"><Text className="smallprint">{view.gateTitle}</Text></Box>
+  #each (o in options)
+  <Button className={o.className} style={o.style} ariaLabel={o.aria} disabled={view.blocked || o.done} @click={interact(o.id)}>
+    <Image loading="eager" className="option-art" src={asset(o.src)} width="100%" height="76%" objectFit="contain" showPlaceholder={false} alt="" />
+    <Text className="option-label">{o.label}</Text><Text className="option-key">{o.key}</Text>
+  </Button>
+  #end
+  <Box className="gate-tools">
+    <Text if={view.helpOffered} className="gate-hint">{view.gateHelp}</Text>
+    <Box className="help-actions"><Button className="ink-button" ariaLabel="Show or hide help for this complication" disabled={view.blocked} @click={helpGate}>A LITTLE HELP?</Button><Button if={view.helpOffered} className="ink-button button-teal" disabled={view.blocked} @click={assistGate}>LET A DUCK HANDLE IT</Button></Box>
+  </Box>
+</Box>
+<Box if={view.showFinale} className="finale-card">
+  <Text className="finale-line">{view.finaleCaption}</Text>
+  <Box if={view.finalReady} className="finale-choices">
+    <Button className="ending-choice" ariaLabel="Turn the orbital ministry into a public park" disabled={view.blocked} @click={chooseEnding("park")}><Image loading="eager" src={asset("assets/art/plant.svg")} width="72px" height="72px" objectFit="contain" showPlaceholder={false} alt="" /><Text>{"MAKE ROOM\nFOR EVERYONE"}</Text></Button>
+    <Button className="ending-choice" ariaLabel="Elect the button president" disabled={view.blocked} @click={chooseEnding("president")}><Image loading="eager" src={asset("assets/art/mayor.svg")} width="72px" height="72px" objectFit="contain" showPlaceholder={false} alt="" /><Text>{"APPOINT\nTHE BUTTON"}</Text></Button>
+    <Button className="ending-choice" ariaLabel="Rezone the entire universe as a duck pond" disabled={view.blocked} @click={chooseEnding("pond")}><Image loading="eager" src={asset("assets/art/moon.svg")} width="72px" height="72px" objectFit="contain" showPlaceholder={false} alt="" /><Text>{"REZONE\nREALITY"}</Text></Button>
+  </Box>
+</Box>
+<Box if={view.showEnding} className="ending-certificate">
+  <Text className="smallprint">OFFICIAL RECORD OF A MOST UNUSUAL AFTERNOON</Text>
+  <Text className="ending-title">{view.endingTitle}</Text><Text className="ending-body">{view.endingBody}</Text>
+  <Text className="ending-seal">{view.endingSeal}</Text><Text className="smallprint">{view.endingFootnote}</Text>
+  <Box className="ending-actions"><Button className="ink-button" disabled={view.blocked} @click={requestReset("room")}>ONE MORE AFTERNOON</Button><Button className="ink-button quiet-button" disabled={view.blocked} @click={openGallery}>SCRAPBOOK</Button></Box>
+</Box>

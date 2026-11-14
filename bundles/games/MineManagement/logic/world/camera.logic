@@ -1,0 +1,87 @@
+// Where the camera is. updateCamera() sets sceneCamera (position and field of view) at the end of
+// every buildWorldFrame() (scene.logic), its only caller. Which way the camera looks is mostly
+// Scene3D's mouse look (player/camera-look.logic): the title screen aims it with setLook(), and in
+// the ute or a truck presentVehicleLook() turns it with the vehicle.
+//
+// Views: a slow drift over the site on the title screen; first person on foot; chase or cockpit
+// (cameraMode) in the ute, a truck or an excavator. Chase views are pulled in by cameraClearance()
+// (collision.logic) so they never end up inside a building or the ground. Positions come from the
+// visual*() views (interpolation.logic), as the vehicles' do, so camera and vehicle move together.
+function updateCamera() {
+  if (!S) return;
+  var p = visualPlayer(),
+    pos;
+  if (screen === 'title') {
+    // A slow drift along an ellipse centred in the compound (radii 110 m east-west and 18 m
+    // north-south, 65 m up), a step every frame, always looking down towards the pit.
+    var a = 0.42 + frameNumber * 0.00014;
+    var x = 110 * Math.cos(a),
+      z = 152 + Math.sin(a) * 18;
+    pos = vec(x, 65, z);
+    var tx = 5 - x,
+      tz = -25 - z;
+    setLook(Math.atan2(tx, tz), Math.atan2(-70, Math.sqrt(tx * tx + tz * tz)));
+    sceneCamera = { position: pos, fov: 65 };
+    return;
+  }
+  // On foot: the eye is 1.82 m above the feet, plus the jump, plus a 2.6 cm head bob while walking
+  // (none with reduced motion).
+  if (p.mode === 'foot')
+    pos = vec(p.x, p.y + 1.82 + p.jump + (motion && p.speed > 0.5 ? Math.sin(S.time * 10) * 0.026 : 0), p.z);
+  else if (p.mode === 'excavator') {
+    var ex = excavatorLocation(Math.abs(p.vehicle)),
+      angle = ex.heading + S.manualExcavator.yaw;
+    // Chase: 15 m behind the turret and 9 m up, swinging with it; pulled in towards a point 6.5 m
+    // above the tracks.
+    if (cameraMode === 'chase')
+      pos = cameraClearance(
+        vec(ex.x, ex.y + 6.5, ex.z),
+        vec(
+          ex.x - Math.sin(angle + cameraYawOffset) * 15,
+          ex.y + 9,
+          ex.z - Math.cos(angle + cameraYawOffset) * 15
+        )
+      );
+    // The cab sits front-left on the turret; the eye is just ahead of its glass, never inside the
+    // shell.
+    else
+      pos = vec(
+        ex.x + Math.sin(angle) * 2.45 - Math.cos(angle) * 2.05,
+        ex.y + 5.55,
+        ex.z + Math.cos(angle) * 2.45 + Math.sin(angle) * 2.05
+      );
+  } else {
+    var v = visualVehicle(p.mode === 'ute' ? S.ute : getTruck(p.vehicle), p.mode === 'ute'),
+      angle = v.heading;
+    if (cameraMode === 'chase') {
+      // Chase: 12 m back and 6.3 m up for the ute, 21 m back and 10.5 m up for a truck; pulled in
+      // towards a point above the vehicle's centre (2.7 m up for the ute, 6.6 m for a truck).
+      var back = p.mode === 'ute' ? 12 : 21;
+      pos = vec(
+        v.x - Math.sin(angle + cameraYawOffset) * back,
+        v.y + (p.mode === 'ute' ? 6.3 : 10.5),
+        v.z - Math.cos(angle + cameraYawOffset) * back
+      );
+      pos = cameraClearance(vec(v.x, v.y + (p.mode === 'ute' ? 2.7 : 6.6), v.z), pos);
+    } else {
+      // Cockpit: on the centre line at the driver's eye height, 1.8 m ahead of the ute's centre or
+      // 5.05 m ahead of a truck's.
+      var front = p.mode === 'ute' ? 1.8 : 5.05;
+      pos = vec(
+        v.x + Math.sin(angle) * front,
+        v.y + (p.mode === 'ute' ? 2.38 : 5.15),
+        v.z + Math.cos(angle) * front
+      );
+    }
+  }
+  // In the ute or a truck the view turns with the vehicle; mouse look adds to that.
+  if (p.mode === 'ute' || p.mode === 'truck') presentVehicleLook(v.heading + cameraYawOffset, S.player.pitch);
+  // Shake from bumps and celebrations (fun/effects.logic).
+  var jolt = cameraShakeOffset();
+  pos = vec(pos.x + jolt.x, pos.y + jolt.y, pos.z + jolt.z);
+  // The ute's chase view widens from 70 to 78 degrees with speed.
+  sceneCamera = {
+    position: pos,
+    fov: p.mode === 'ute' && cameraMode === 'chase' ? 70 + Math.min(8, Math.abs(S.ute.speed) * 0.3) : 70
+  };
+}

@@ -14,9 +14,9 @@
         "clothes": "suit",
         "clothesColor": 1,
         "hasGlasses": false,
-        "x": 144,
-        "y": 112,
-        "row": 0
+        "x": 80,
+        "y": 144,
+        "row": 1
       },
       "createdAt": "2026-03-01T00:00:00.000Z",
       "updatedAt": "2026-03-01T00:00:00.000Z"

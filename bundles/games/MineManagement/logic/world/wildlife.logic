@@ -1,0 +1,350 @@
+// Kevin. Kevin is an emu. Kevin has never read a sign, and every so often Kevin stands in the haul
+// lane, where a robot truck will wait for him for as long as he likes. Walk at him, drive near him
+// or honk and he leaves at speed. He is never hurt: Kevin always dodges.
+//
+// State: S.kevin (made by ensureKevin(), cleared every shift by nextShift in mine/shift.logic).
+// His `mode`: 'wander' (pottering near KEVIN_HOME), 'road' (in the haul lane with a 'kevin' alert
+// up; trucks treat him as solid, see clearanceScore in collision.logic), 'flee' (shooed: a 5 s
+// sprint) or 'away' (leaving the road on his own after 110 s). A new mode must go into
+// validKevin(), or saves made while Kevin is in it are rejected. He moves by rand(), so he is
+// part of the reproducible simulation.
+// Callers: advanceWildlife() every simulation step, appendWildlifeObjects() every frame,
+// scareKevin() from honk() (fun/banter.logic) too, validKevin() from validState(), kevinOnRoad()
+// for the map (core/ui-state.logic) and the fleet watchdog (mine/traffic.logic).
+
+// ---------- State ----------
+
+// Where Kevin lives: south-east of the compound.
+var KEVIN_HOME = { x: 118, z: 196 };
+
+// Makes S.kevin when it is missing (each new shift, or an older save). His first visit to the road
+// is due 230 s into shift 1, and between 150 and 269 s into later shifts.
+function ensureKevin() {
+  if (!S.kevin || !Number.isFinite(S.kevin.x))
+    S.kevin = {
+      x: KEVIN_HOME.x,
+      z: KEVIN_HOME.z,
+      heading: -2.4,
+      mode: 'wander',
+      until: 0,
+      nextAt: S.shift === 1 ? 230 : 150 + Math.floor(rand() * 120),
+      tx: KEVIN_HOME.x,
+      tz: KEVIN_HOME.z,
+      phase: 0,
+      speed: 0,
+      visits: 0
+    };
+}
+
+// The save check for S.kevin (validState in core/persistence.logic): absent is fine; otherwise a
+// known mode, finite numbers and within 230 m of the centre. `visits` isn't checked.
+function validKevin(s) {
+  if (s.kevin === undefined) return true;
+  var k = s.kevin;
+  if (!k || ['wander', 'road', 'flee', 'away'].indexOf(k.mode) < 0) return false;
+  for (var f of ['x', 'z', 'heading', 'until', 'nextAt', 'tx', 'tz', 'phase', 'speed'])
+    if (!Number.isFinite(k[f])) return false;
+  return Math.abs(k.x) <= 230 && Math.abs(k.z) <= 230;
+}
+
+function kevinOnRoad() {
+  return !!(S.kevin && S.kevin.mode === 'road');
+}
+
+// ---------- Behaviour ----------
+
+// Kevin, once per simulation step: starts a visit to the road when one is due, lets the player
+// shoo him, ends a visit he has had enough of, settles him after fleeing or leaving, then walks
+// him towards his target.
+function advanceWildlife(dt) {
+  ensureKevin();
+  var k = S.kevin,
+    p = S.player;
+  // Time for a visit to the haul road. Never in the shift's last minute: he picks a spot 50% to
+  // 90% of the way from Bench 1 to the crusher, in either lane (4.4 m off the centre line), stays
+  // up to 110 s, and gets the waypoint if nothing else has it.
+  if (k.mode === 'wander' && S.hasBegun && S.time >= k.nextAt && S.time < S.duration - 60) {
+    var spot = pathPosition(0.5 + rand() * 0.4, rand() < 0.5 ? 4.4 : -4.4);
+    k.mode = 'road';
+    k.tx = spot.x;
+    k.tz = spot.z;
+    k.until = S.time + 110;
+    k.visits++;
+    S.alerts.push({
+      key: 'kevin',
+      title: 'Kevin the emu is in the haul lane',
+      x: spot.x,
+      z: spot.z,
+      kind: 'kevin',
+      truckId: 0,
+      at: S.time
+    });
+    if (!S.waypoint) setWaypoint(spot.x, spot.z, 'Kevin the emu');
+    notify(
+      getBot(1) ? 'GARY' : 'PIT',
+      getBot(1)
+        ? 'There is an emu in the haul lane. He has not read the sign. I have offered him the sign.'
+        : 'Large bird in the haul lane. Trucks are yielding.',
+      'warning'
+    );
+    sfx('squawk');
+  }
+  // Shooing: boots within seven metres, a moving ute within twelve, a moving truck (longer) within
+  // fourteen. (The horn works from 32 m: honk() in fun/banter.logic.) This shoos him while he
+  // wanders, too.
+  if (k.mode === 'road' || k.mode === 'wander') {
+    var ride = p.mode === 'ute' ? S.ute : p.mode === 'truck' ? getTruck(p.vehicle) : null;
+    var near =
+      p.mode === 'foot'
+        ? dist2(p, k) < 7
+        : !!ride && Math.abs(ride.speed) > 2 && dist2(ride, k) < (p.mode === 'truck' ? 14 : 12);
+    if (near) scareKevin(p.mode === 'foot' ? 'boots' : 'ute');
+  }
+  // Kevin wins: his time is up and he leaves the road on his own, 40 m to the south-east.
+  if (k.mode === 'road' && S.time > k.until) {
+    k.mode = 'away';
+    k.until = S.time + 8;
+    var home = awayFrom(k, { x: k.x - 20, z: k.z - 20 }, 40);
+    k.tx = home.x;
+    k.tz = home.z;
+    clearKevinAlert();
+    funCount('kevinWins');
+    notify(
+      getBot(4) ? 'DOT' : 'PIT',
+      getBot(4)
+        ? 'Kevin has completed his inspection of the haul road and left. He did not sign out.'
+        : 'The emu has left the haul road on his own schedule.'
+    );
+  }
+  // Settled down: back to wandering near home, with the next visit 200 to 360 s away.
+  if ((k.mode === 'flee' || k.mode === 'away') && S.time > k.until) {
+    k.mode = 'wander';
+    k.nextAt = S.time + 200 + rand() * 160;
+    k.tx = KEVIN_HOME.x;
+    k.tz = KEVIN_HOME.z;
+  }
+  // Walk toward the target; pick a new spot to peck at when there.
+  // Speeds in m/s: 11.5 fleeing, 6 leaving, 3 on the road, 2.2 wandering. A blocked step (the
+  // fixed world only, person-sized) sends him to a random spot within 10 m instead.
+  var speed = k.mode === 'flee' ? 11.5 : k.mode === 'away' ? 6 : k.mode === 'road' ? 3 : 2.2,
+    dx = k.tx - k.x,
+    dz = k.tz - k.z,
+    d = Math.hypot(dx, dz);
+  if (d > 0.6) {
+    var step = Math.min(d, speed * dt);
+    var nx = k.x + (dx / d) * step,
+      nz = k.z + (dz / d) * step;
+    if (
+      Math.abs(nx) < 222 &&
+      Math.abs(nz) < 222 &&
+      clearanceScore(S.player, 'foot', nx, nz, 0, false) < 0.001
+    ) {
+      k.x = nx;
+      k.z = nz;
+    } else {
+      k.tx = k.x + (rand() - 0.5) * 20;
+      k.tz = k.z + (rand() - 0.5) * 20;
+    }
+    k.heading = Math.atan2(dx, dz);
+    k.speed = speed;
+  } else {
+    k.speed = 0;
+    // About every three seconds, a new spot up to 25 m east or west and 20 m north or south of
+    // home.
+    if (k.mode === 'wander' && rand() < dt * 0.35) {
+      k.tx = clamp(KEVIN_HOME.x + (rand() - 0.5) * 50, -210, 210);
+      k.tz = clamp(KEVIN_HOME.z + (rand() - 0.5) * 40, -210, 210);
+    }
+  }
+  // The walk cycle (legs, bobbing and pecking), quicker the faster he goes.
+  k.phase += dt * (k.speed > 0 ? k.speed * 2.6 : 1.2);
+}
+
+// A point `distance` metres from Kevin, directly away from `from`, kept within 215 m of the centre.
+function awayFrom(k, from, distance) {
+  var dx = k.x - from.x,
+    dz = k.z - from.z,
+    d = Math.hypot(dx, dz) || 1;
+  return { x: clamp(k.x + (dx / d) * distance, -215, 215), z: clamp(k.z + (dz / d) * distance, -215, 215) };
+}
+
+// Takes down Kevin's alert, and the waypoint it set if that is still up.
+function clearKevinAlert() {
+  S.alerts = S.alerts.filter(function (a) {
+    return a.kind !== 'kevin';
+  });
+  if (S.waypoint && S.waypoint.label === 'Kevin the emu') S.waypoint = null;
+}
+
+// Shoos Kevin: he sprints 55 m away from the player (or the ute) for 5 s; source is 'boots', 'ute'
+// or 'horn'. Shooing him off the road clears his alert and pays $60 (three relocations over a
+// career earn Emu whisperer); away from the road he is only startled. The radio line comes from
+// someone who is actually on the crew.
+function scareKevin(source) {
+  var k = S.kevin;
+  if (!k || k.mode === 'flee' || k.mode === 'away') return;
+  var wasOnRoad = k.mode === 'road',
+    from =
+      S.player.mode === 'ute' ? S.ute : (S.player.mode === 'truck' && getTruck(S.player.vehicle)) || S.player,
+    run = awayFrom(k, from, 55);
+  k.mode = 'flee';
+  k.until = S.time + 5;
+  k.tx = run.x;
+  k.tz = run.z;
+  sfx('squawk');
+  if (!wasOnRoad) return;
+  clearKevinAlert();
+  funCount('kevin');
+  S.cash += 60;
+  S.revenue += 60;
+  toast('KEVIN RELOCATED  +$60', 'good');
+  burst('dust', k.x, groundAt(k.x, k.z) + 0.2, k.z, 0.8);
+  if (S.career.fun.kevin >= 3) awardBadge('emu', 'Emu whisperer');
+  var lines =
+    source === 'horn'
+      ? [
+          ['GARY', 'The horn worked. I would like it noted that the sign did not.'],
+          ['BAZZA', 'Look at him GO. Fastest thing on the lease, mate.'],
+          ['MEL', 'The emu has been moved. I did not need the bucket. Disappointing.']
+        ]
+      : source === 'ute'
+        ? [
+            ['OSCAR', 'Kevin took the shortcut. I respect Kevin.'],
+            ['GARY', 'Emu cleared by vehicle. Kevin is fine. Kevin is always fine.'],
+            ['JUNE', 'Kevin has left the road. Writing that down before he comes back.']
+          ]
+        : [
+            ['GARY', 'You asked him to leave in person. Very professional.'],
+            ['DOT', 'Emu displaced 55 metres. I measured twice. He was faster the second time.'],
+            ['HEAD OFFICE', 'Wildlife relocation logged. Please stop putting "KEVIN" on the timesheet.']
+          ];
+  var heard = onAir(lines);
+  banter(heard.length ? pick(heard) : ['PIT', 'The emu has left the haul road at speed.'], true);
+}
+
+// Whether a crew robot has this name, in the upper case the radio uses. fun/memos.logic uses it
+// too.
+function crewNamed(name) {
+  for (var b of S.robots) if (b.name.toUpperCase() === name) return true;
+  return false;
+}
+
+// ---------- Drawing ----------
+
+// Kevin, built from primitives: body, tail, neck, a head with beak and eyes, and two legs that
+// swing as he walks. He bobs as he walks and pecks when he stands about.
+function kevinObject() {
+  var k = S.kevin;
+  if (!k) return null;
+  var walk = k.speed > 0 ? Math.sin(k.phase) * 0.55 : 0,
+    bob = k.speed > 0 ? Math.abs(Math.sin(k.phase)) * 0.06 : 0;
+  var peck = k.speed === 0 && k.mode === 'wander' ? Math.max(0, Math.sin(k.phase * 0.9)) * 0.75 : 0,
+    body = '#4b4038',
+    neck = '#6a5c4f';
+  var head = group('head', 0, 1.12 - peck * 0.55, 0.66 + peck * 0.25, 0, [
+    {
+      id: 'skull',
+      type: 'sphere',
+      position: vec(0, 0, 0),
+      radius: 0.17,
+      color: '#5c5046',
+      flatShading: true
+    },
+    {
+      id: 'beak',
+      type: 'cone',
+      position: vec(0, -0.02, 0.2),
+      rotation: vec(Math.PI / 2, 0, 0),
+      radius: 0.065,
+      height: 0.22,
+      color: '#a08c6c'
+    },
+    {
+      id: 'eye-l',
+      type: 'sphere',
+      position: vec(-0.11, 0.05, 0.06),
+      radius: 0.037,
+      color: '#e9a93a',
+      emissive: '#5a3c0c',
+      emissiveIntensity: 0.3
+    },
+    {
+      id: 'eye-r',
+      type: 'sphere',
+      position: vec(0.11, 0.05, 0.06),
+      radius: 0.037,
+      color: '#e9a93a',
+      emissive: '#5a3c0c',
+      emissiveIntensity: 0.3
+    }
+  ]);
+  var neckPart = {
+    id: 'neck',
+    type: 'cylinder',
+    position: vec(0, 0.62 - peck * 0.25, 0.42 + peck * 0.12),
+    rotation: vec(0.32 + peck * 0.9, 0, 0),
+    radius: 0.085,
+    height: 1,
+    color: neck,
+    flatShading: true
+  };
+  var parts = [
+    {
+      id: 'body',
+      type: 'sphere',
+      position: vec(0, 0, 0),
+      scale: { x: 0.92, y: 0.78, z: 1.25 },
+      radius: 0.55,
+      color: body,
+      roughness: 1,
+      flatShading: true
+    },
+    {
+      id: 'tail',
+      type: 'icosahedron',
+      position: vec(0, 0.12, -0.62),
+      radius: 0.36,
+      color: '#3f352e',
+      flatShading: true
+    },
+    neckPart,
+    head
+  ];
+  // Inducted Kevin wears hi-vis. He did not ask for it. He wears it beautifully.
+  // (S.memoFx.vest: Head Office asked 'Is the emu staff?' and was told 'Kevin is staff'.)
+  if (S.memoFx && S.memoFx.vest)
+    parts.push(
+      {
+        id: 'vest',
+        type: 'sphere',
+        position: vec(0, 0.02, 0.04),
+        scale: { x: 0.98, y: 0.7, z: 1.1 },
+        radius: 0.56,
+        color: '#ff8a1e',
+        emissive: '#ff6a00',
+        emissiveIntensity: 0.35,
+        roughness: 0.6,
+        flatShading: true
+      },
+      box('vest-stripe', 0, 0.1, 0.04, 1.1, 0.07, 1.24, '#f4f1e6')
+    );
+  var legs = [];
+  for (var side of [-1, 1]) {
+    var swing = walk * side;
+    var leg = group('leg' + side, side * 0.2, -0.18, 0, 0, [
+      { id: 'shin', type: 'cylinder', position: vec(0, -0.5, 0), radius: 0.055, height: 1, color: '#8b806f' },
+      box('foot', 0, -1.02, 0.1, 0.14, 0.05, 0.32, '#7c705f')
+    ]);
+    leg.rotation = vec(swing, 0, 0);
+    legs.push(leg);
+  }
+  return group('kevin', k.x, groundAt(k.x, k.z) + bob, k.z, k.heading, [
+    group('torso', 0, 1.18, 0, 0, parts.concat(legs))
+  ]);
+}
+
+// Adds Kevin to the frame (from buildWorldFrame in scene.logic).
+function appendWildlifeObjects(objects) {
+  var o = kevinObject();
+  if (o) objects.push(o);
+}

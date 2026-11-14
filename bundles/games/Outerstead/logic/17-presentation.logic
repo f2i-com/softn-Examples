@@ -28,7 +28,7 @@ function resumeAudioAfterGesture(){if(!audioResumePending)return;audioResumePend
 const BACKGROUND_CATCHUP=60;
 function toggleBackgroundPlay(){backgroundPlay=!backgroundPlay;savePresentationPreferences();say(backgroundPlay?"Background play on. The colony keeps running when the window is not in focus.":"Background play off. The colony pauses when the window loses focus.");}
 function savePresentationPreferences(){
- try{localStorage.setItem("outerstead.presentation.v1",JSON.stringify({colourPreset:colourPreset,brightness:imageBrightness,weatherSound:weatherSoundEnabled,highDetail:highDetail,backgroundPlay:backgroundPlay,sound:soundEnabled,music:musicEnabled,effects:effectsEnabled,volume:audioVolume,narration:narrationEnabled,captions:storyCaptions}));visualPreferenceMessage="Changes are remembered on this device.";}catch(error){visualPreferenceMessage="Changes apply for this session; device storage is unavailable.";}
+ try{localStorage.setItem("outerstead.presentation.v1",JSON.stringify({colourPreset:colourPreset,brightness:imageBrightness,weatherSound:weatherSoundEnabled,highDetail:highDetail,backgroundPlay:backgroundPlay,sound:soundEnabled,music:musicEnabled,effects:effectsEnabled,volume:audioVolume,narration:narrationEnabled,captions:storyCaptions,reducedMotion:reducedMotion,edgeScroll:edgeScroll}));visualPreferenceMessage="Changes are remembered on this device.";}catch(error){visualPreferenceMessage="Changes apply for this session; device storage is unavailable.";}
 }
 function loadPresentationPreferences(){
  try{let p=JSON.parse(localStorage.getItem("outerstead.presentation.v1")||"null");if(p&&typeof p==="object"){
@@ -38,6 +38,8 @@ function loadPresentationPreferences(){
   if(typeof p.weatherSound==="boolean")weatherSoundEnabled=p.weatherSound;
   if(typeof p.backgroundPlay==="boolean")backgroundPlay=p.backgroundPlay;
   if(typeof p.captions==="boolean")storyCaptions=p.captions;
+  if(typeof p.reducedMotion==="boolean")reducedMotion=p.reducedMotion;
+  if(typeof p.edgeScroll==="boolean")edgeScroll=p.edgeScroll;
   if(typeof p.music==="boolean")musicEnabled=p.music;if(typeof p.effects==="boolean")effectsEnabled=p.effects;if(typeof p.narration==="boolean")narrationEnabled=p.narration;
   if([0.35,0.65,1].indexOf(p.volume)>=0){audioVolume=p.volume;audioVolumeText=audioVolume===1?"Volume: high":audioVolume===0.35?"Volume: low":"Volume: medium";}
   // Browsers refuse audio before a gesture, so a remembered "on" waits for the first click or key.

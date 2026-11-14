@@ -1,0 +1,100 @@
+function uwUpdateDistricts(announce) {
+    let data = [];
+    for (let d = 0; d < 16; d = d + 1)
+        data.push({ id: d, name: uwWorld.districtNames[d], focus: uwWorld.districtFocus[d], population: 0, jobs: 0, lots: 0, industry: 0, commercial: 0, park: 0, school: 0, university: 0, value: 0, pollution: 0, age: 0, towers: 0, wet: 0, identity: "New frontier", description: "Open ground waiting for its first chapter." });
+    for (let i = 0; i < uwWorld.tiles.length; i = i + 1) {
+        let t = uwWorld.tiles[i], d = data[uwDistrictOf(i)];
+        if (t.wet)
+            d.wet += 1;
+        d.population += t.pop;
+        d.jobs += uwJobCapacity(t);
+        if (t.level > 0 || t.build) {
+            d.lots += 1;
+            d.value += uwNet.value[i];
+            d.pollution += uwNet.pollution[i];
+            d.age += t.age;
+            d.school += uwNet.service.school[i];
+            d.university += uwNet.service.university[i];
+        }
+        if (t.zone === 3 && t.level)
+            d.industry += 1;
+        if ((t.zone === 2 || t.zone === 4) && t.level)
+            d.commercial += 1;
+        if (t.level >= 3)
+            d.towers += 1;
+        if (t.build === "park" || t.build === "plaza")
+            d.park += 1;
+    }
+    for (let d = 0; d < data.length; d = d + 1) {
+        let a = data[d];
+        if (a.lots) {
+            a.value = Math.round(a.value / a.lots);
+            a.pollution = Math.round(a.pollution / a.lots);
+            a.school /= a.lots;
+            a.university /= a.lots;
+            a.age /= a.lots;
+        }
+        if (a.lots < 3)
+            a.identity = "New frontier";
+        else if (a.industry > a.lots * 0.3)
+            a.identity = a.university > 30 && uwWorld.policies.clean ? "Innovation district" : "Working waterfront";
+        else if (a.university > 45 && a.population > 100)
+            a.identity = "Student quarter";
+        else if (a.commercial > a.lots * 0.48 && a.towers > 2)
+            a.identity = "Financial centre";
+        else if (a.focus === "heritage" || a.age > 120 && a.towers < 2)
+            a.identity = "Historic neighbourhood";
+        else if (a.park >= 2 && a.value > 47)
+            a.identity = "Garden district";
+        else if (a.value > 67 && a.population > 150)
+            a.identity = "Prestige address";
+        else if (a.wet > 20 && a.lots > 5)
+            a.identity = "Riverside community";
+        else if (a.school > 45)
+            a.identity = "Family neighbourhood";
+        else if (a.commercial > a.lots * 0.3)
+            a.identity = "Market quarter";
+        else
+            a.identity = "Growing neighbourhood";
+        let descriptions = { "New frontier": "Room for a plan, a park and a very optimistic ribbon-cutting.", "Innovation district": "Education and cleaner production are reshaping the local economy.", "Working waterfront": "Workshops and industry define this district. Cleaner neighbours would improve its amenity.", "Student quarter": "A university catchment has given these streets a younger rhythm.", "Financial centre": "Dense offices and mixed-use blocks form a commercial skyline.", "Historic neighbourhood": "Modest buildings and established streets preserve an older chapter of the city.", "Garden district": "Public gardens and desirable streets make greenery part of the district's identity.", "Prestige address": "High amenity has turned this into one of the city's most desirable addresses.", "Riverside community": "Water shapes the neighbourhood's setting, property values and connections.", "Family neighbourhood": "School access and everyday services make these streets attractive to families.", "Market quarter": "Shops, jobs and nearby homes support a busy local centre.", "Growing neighbourhood": "A young neighbourhood is still finding its character." };
+        a.description = descriptions[a.identity];
+        if (announce && a.lots > 12 && uwWorld.districtIdentity[d] !== a.identity && uwWorld.month % 4 === 0)
+            uwNews(a.name + " finds its identity", "Local development now describes the area as a " + a.identity.toLowerCase() + ". " + a.description, "district");
+        uwWorld.districtIdentity[d] = a.identity;
+    }
+    uwWorld.districtStats = data;
+}
+function uwRenameDistrict() {
+    if (!uwWorld || selectedDistrict.id < 0)
+        return;
+    let name = String(renameText).trim().slice(0, 36);
+    if (!name) {
+        uwNotify("A district needs a name.", "bad");
+        return;
+    }
+    uwWorld.districtNames[selectedDistrict.id] = name;
+    uwUpdateDistricts(false);
+    uwRefreshUI();
+    uwNotify("District renamed to " + name + ".", "good");
+}
+function uwDistrictFocus(focus) {
+    if (!uwWorld || selectedDistrict.id < 0 || ["balanced", "green", "employment", "heritage"].indexOf(focus) < 0)
+        return;
+    uwWorld.districtFocus[selectedDistrict.id] = focus;
+    uwUpdateDistricts(false);
+    uwRecalculate();
+    uwRefreshUI();
+}
+function uwFocusDistrict(id) {
+    let d = Number(id);
+    if (!uwWorld || d < 0 || d > 15)
+        return;
+    let size = uwWorld.n / 4, x = (d % 4 + 0.5) * size, z = (Math.floor(d / 4) + 0.5) * size;
+    uwSelectedIndex = uwIndex(Math.floor(x), Math.floor(z));
+    uwCamX = (x - uwWorld.n / 2) * UW_TILE;
+    uwCamZ = (z - uwWorld.n / 2) * UW_TILE;
+    uwZoom = 0.66;
+    panel = "district";
+    uwUpdateCamera();
+    uwRefreshUI();
+}

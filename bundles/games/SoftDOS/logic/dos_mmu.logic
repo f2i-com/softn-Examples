@@ -58,19 +58,27 @@ function dosMmu_write8(addr, val) {
 
 function dosMmu_write16(addr, val) {
   let a = addr & 0xFFFFFF;
+  let a1 = (a + 1) & 0xFFFFFF;
   dosBc_touch(a);
+  dosBc_touch(a1);
   if (DOS_VGA_UNCHAINED === 1 && a >= 0xA0000 && a < 0xB0000) {
     dosVga_writePlanar(a - 0xA0000, val);
     dosVga_writePlanar(a - 0xA0000 + 1, val >> 8);
     return;
   }
   DOS_RAM[a] = val & 0xFF;
-  DOS_RAM[(a + 1) & 0xFFFFFF] = (val >> 8) & 0xFF;
+  DOS_RAM[a1] = (val >> 8) & 0xFF;
 }
 
 function dosMmu_write32(addr, val) {
   let a = addr & 0xFFFFFF;
+  let a1 = (a + 1) & 0xFFFFFF;
+  let a2 = (a + 2) & 0xFFFFFF;
+  let a3 = (a + 3) & 0xFFFFFF;
   dosBc_touch(a);
+  dosBc_touch(a1);
+  dosBc_touch(a2);
+  dosBc_touch(a3);
   if (DOS_VGA_UNCHAINED === 1 && a >= 0xA0000 && a < 0xB0000) {
     let o = a - 0xA0000;
     dosVga_writePlanar(o, val);
@@ -80,9 +88,9 @@ function dosMmu_write32(addr, val) {
     return;
   }
   DOS_RAM[a] = val & 0xFF;
-  DOS_RAM[(a + 1) & 0xFFFFFF] = (val >> 8) & 0xFF;
-  DOS_RAM[(a + 2) & 0xFFFFFF] = (val >> 16) & 0xFF;
-  DOS_RAM[(a + 3) & 0xFFFFFF] = (val >>> 24) & 0xFF;
+  DOS_RAM[a1] = (val >> 8) & 0xFF;
+  DOS_RAM[a2] = (val >> 16) & 0xFF;
+  DOS_RAM[a3] = (val >>> 24) & 0xFF;
 }
 
 // ---------------------------------------------------------------------------

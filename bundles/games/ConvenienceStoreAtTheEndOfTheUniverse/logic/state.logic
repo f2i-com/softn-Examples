@@ -1,0 +1,57 @@
+// Serializable state is deliberately separate from presentation and host handles.
+let S = null;
+let settings = {muted:false,music:true,reducedMotion:false,captions:true};
+let profile = {completed:0,endings:[],best:0,achievements:[]};
+let running = false;
+let paused = false;
+let overlay = "welcome";
+let confirmReset = false;
+let saveStatus = "A new night, whenever you are ready.";
+let saveBlocked = false;
+let lastClock = 0;
+let saveClock = 0;
+let audioStarted = false;
+let audioGeneration = 0;
+let soundCaption = "";
+let captionTime = 0;
+let notice = "";
+let noticeTime = 0;
+let inputInstalled = false;
+let saveText = "";
+let pendingImport = null;
+// UI snapshots contain no logic closures or host objects.
+let view = {};
+let peopleView = [];
+let shelvesView = [];
+let starsView = [];
+let keepsakesView = [];
+let journalView = [];
+let choicesView = [];
+let endingsView = [];
+let epiloguesView = [];
+function clamp(n,a,b){return Math.max(a,Math.min(b,n));}
+function clone(v){return JSON.parse(JSON.stringify(v));}
+function finite(n){return typeof n === "number" && isFinite(n);}
+function whole(n,a,b){return finite(n) && Math.floor(n) === n && n >= a && n <= b;}
+function has(list,id){return list.indexOf(id) >= 0;}
+function flag(id){return !!S.flags[id];}
+function remember(id,value){if(id) S.flags[id]=value === undefined ? true : value;}
+function tell(text){notice=text;noticeTime=9;}
+function journal(text,who){
+ S.journal.unshift({night:S.stage,text:text,who:who === undefined ? -1 : who});
+ if(S.journal.length>70) S.journal.pop();
+}
+function freshState(){
+ let regulars=[];
+ for(let i=0;i<6;i++) regulars.push({bond:0,visits:0,conversations:[],gift:false,invited:false,lastChoice:"",lastLine:"",treated:0});
+ return {id:GAME_ID,version:2,stage:0,phase:"shift",time:0,revision:0,characters:regulars,
+  shift:{roster:clone(SHIFTS[0].roster),spawned:0,served:0,clock:0,spawnIn:1.8,routine:false,eventReady:false,eventDone:false,eventChoice:"",settledIds:[]},
+  store:{stock:[4,4,4,4,4,4],reserve:[8,8,8,8,8,8],coins:50,coffee:0,noodles:0,job:"",jobTime:0,jobTotal:0,carryingCrate:false,mop:false,spill:0,cleaned:0,radio:true,table:false,sign:"OPEN",hand:-1,turned:false,scanned:false,bagged:false},
+  customers:[],nextCustomerId:1,dialog:null,inspection:false,paymentChoice:"",payments:{credits:0,starlight:0,impossible:0,memory:0,seconds:0,favour:0,name:0},
+  cosmic:{level:0,echo:0,stasis:0,pulse:0},flags:{},gifts:[],journal:[],ending:null,legacy:null};
+}
+function initializeFresh(){S=freshState();setupShift(0);journal("The lights stay on. Someone still needs coffee.");}
+function activeCustomer(){for(let i=0;i<S.customers.length;i++){if(S.customers[i].state === "counter" && !S.customers[i].paid) return S.customers[i];}return null;}
+function customerById(id){for(let i=0;i<S.customers.length;i++){if(S.customers[i].id === id)return S.customers[i];}return null;}
+function activeAllowed(){return !!S && running && !paused && overlay === "" && S.phase === "shift" && !S.dialog && !S.inspection;}
+function markRoutine(id){if(SHIFTS[S.stage].routine === id && !S.shift.routine){S.shift.routine=true;journal("The little things: "+SHIFTS[S.stage].routineLabel.toLowerCase()+". Done.");tell("One ordinary thing taken care of. That matters.");}}

@@ -1,0 +1,75 @@
+// The manifest composes supporting .logic files before this entrypoint.
+function _init() {
+    if (!restore())
+        gameFresh(0);
+    installInput();
+    lastClock = Date.now();
+    publish();
+}
+function _destroy() { removeInput(); stopAmbience(); persist(); }
+function gameStep(dt) {
+    if (S.phase === "delivery") {
+        S.deliveryAnim -= dt;
+        effectsStep(dt);
+        S.p.vx *= Math.exp(-8 * dt);
+        if (S.deliveryAnim <= 0)
+            finishDelivery();
+        return;
+    }
+    if (S.phase !== "play" || !S.started)
+        return;
+    S.time += dt;
+    if (S.rescueTimer > 0) {
+        S.rescueTimer = Math.max(0, S.rescueTimer - dt);
+        effectsStep(dt);
+        if (S.rescueTimer <= 0)
+            completeRescue();
+        return;
+    }
+    S.env = levelEnvironment();
+    movementStep(dt);
+    levelStep(dt);
+    parcelStep(dt, S.env);
+    effectsStep(dt);
+    collectAndCheckpoint();
+    audioStep(dt);
+    saveClock += dt;
+    if (saveClock >= 5) {
+        saveClock = 0;
+        persist();
+    }
+}
+function step(elapsed) {
+    if (!finite(elapsed) || elapsed <= 0)
+        return;
+    if (S.phase !== "play" && S.phase !== "delivery") {
+        accumulator = 0;
+        return;
+    }
+    if (S.phase === "play")
+        processCommands();
+    if (!S.started && S.phase === "play") {
+        accumulator = 0;
+        return;
+    }
+    // Bounded catch-up prevents a hidden tab or a suspended laptop from ruining a delivery.
+    accumulator += Math.min(0.25, elapsed);
+    let steps = 0;
+    while (accumulator + 0.000000001 >= PHYSICS.step && steps < 30) {
+        accumulator -= PHYSICS.step;
+        gameStep(PHYSICS.step);
+        steps++;
+        if (S.phase !== "play" && S.phase !== "delivery") {
+            accumulator = 0;
+            break;
+        }
+    }
+    accumulator = Math.max(0, accumulator);
+}
+function tick() {
+    let now = Date.now();
+    let dt = lastClock ? (now - lastClock) / 1000 : 1 / 30;
+    lastClock = now;
+    step(dt);
+    publish();
+}

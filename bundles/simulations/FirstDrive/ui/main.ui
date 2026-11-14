@@ -1,0 +1,485 @@
+<logic>
+  // First drive: a short film of a rover leaving its lander, in eight shots.
+  //
+  // Nothing here is a recording of pictures. `data/film.json` says, for every frame, where the
+  // rover is and how its suspension lies on the ground, how far each wheel has turned, and where
+  // the camera stands and looks (it is worked out from the ground's heights by the same code that
+  // makes the Blender version of the film). This page reads the moment it is asked for out of
+  // that, and the scene draws it: so the film can be played, stopped, stepped a frame at a time
+  // and wound to any moment, and it is the same film every time.
+
+  // ── What the page shows ────────────────────────────────────────────────────────────────────
+  let pad = { presses: {} }
+  let phase = "loading"                  // loading, ready, playing, paused, ended
+  let time = 0                           // seconds into the film
+  let frame = 0                          // the frame that time is: for stepping
+  let objects = []                       // what moves: the rover, its dust and its tracks
+  let scenery = []                       // what does not: the ground, the lander, the beacon, the sky
+  let lights = []
+  let camera = { position: { x: -19, y: 2.4, z: 25 }, lookAt: { x: 2, y: 1.5, z: 3 }, fov: 30, near: 0.1, far: 9000 }
+  let effects = {}
+  let environment = "none"
+  let exposure = 2.4                     // how far the lens is open
+  let fade = 1                           // how black the picture is: 1 at the start and the end
+  let caption = ""
+  let captionShown = 0
+  let readout = ""
+  let showReadout = false
+  let clean = false                      // no words, no bars: for taking the frames
+  let quality = "high"                   // high, medium or low: how much the picture costs to draw
+  let problem = ""
+
+  // ── What only logic reads (never copied to the page, however large) ───────────────────────
+  let ground = null                      // { n, size, heights }
+  let world = null                       // { sun, start, lander, sites, boulders }
+  let film = null                        // every frame of the rover and of the camera, in columns
+  let marks = null                       // the wheels' tracks along the whole road: { places, turns, upTo }
+  let dust = []
+  let dustClock = 0
+  let lastTime = 0
+  let chosen = false                     // the person picked a quality themselves: it is left alone
+  let slow = 0                           // readings in a row at which the film was not keeping up
+  let FPS = 30
+  let LENGTH = 62
+  const MOON_G = 1.62
+  // How far the sun's shadows are drawn from the camera, shot by shot: little for a close shot
+  // (fine shadows), much for a wide one. The last shot's grows as its camera pulls away.
+  const REACH = [46, 9, 16, 16, 52, 24, 14, 0]
+
+  // ── Small things ───────────────────────────────────────────────────────────────────────────
+  function mix(a, b, t) { return a + (b - a) * t }
+  function clamp01(t) { return Math.max(0, Math.min(1, t)) }
+  function ease(t) { t = clamp01(t); return t * t * (3 - 2 * t) }
+  function span(t, from, to) { return clamp01((t - from) / (to - from)) }
+  function at(x, y, z) { return { x, y, z } }
+  // From one heading to another the short way round.
+  function swing(a, b, t) { return a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * t }
+
+  // The height of the ground at a place, from the grid of heights the terrain model was made from.
+  function heightAt(x, z) {
+    const n = ground.n
+    const cell = ground.size / (n - 1)
+    const fx = Math.max(0, Math.min(n - 1.001, (x + ground.size / 2) / cell))
+    const fz = Math.max(0, Math.min(n - 1.001, (z + ground.size / 2) / cell))
+    const i = Math.floor(fx)
+    const j = Math.floor(fz)
+    const u = fx - i
+    const v = fz - j
+    const h = ground.heights
+    const a = h[j * n + i]
+    const b = h[j * n + i + 1]
+    const c = h[(j + 1) * n + i]
+    const d = h[(j + 1) * n + i + 1]
+    return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v
+  }
+  function above(x, z, up) { return at(x, heightAt(x, z) + up, z) }
+
+  // ── Reading a moment out of the film ───────────────────────────────────────────────────────
+  // The two frames a moment lies between, and how far it is from the first to the second.
+  function between(t) {
+    const f = Math.max(0, Math.min(film.frames - 1, t * FPS))
+    const i = Math.floor(f)
+    return { i, j: Math.min(film.frames - 1, i + 1), u: f - i }
+  }
+  // One number of a column (`wide` numbers a frame) at that moment.
+  function read(column, wide, which, w) {
+    return mix(column[w.i * wide + which], column[w.j * wide + which], w.u)
+  }
+
+  function roverAt(t) {
+    const w = between(t)
+    const r = film.rover
+    const spin = []
+    for (let k = 0; k < 6; k++) spin.push(read(r.spin, 6, k, w))
+    return {
+      place: at(read(r.place, 3, 0, w), read(r.place, 3, 1, w), read(r.place, 3, 2, w)),
+      heading: swing(r.turn[w.i * 3], r.turn[w.j * 3], w.u), tip: read(r.turn, 3, 1, w), roll: read(r.turn, 3, 2, w),
+      rocker: [read(r.rocker, 2, 0, w), read(r.rocker, 2, 1, w)], bogie: [read(r.bogie, 2, 0, w), read(r.bogie, 2, 1, w)],
+      spin, steer: read(r.steer, 1, 0, w), mast: read(r.mast, 1, 0, w), rock: read(r.rock, 1, 0, w),
+      x: read(r.way, 5, 0, w), z: read(r.way, 5, 1, w), s: read(r.way, 5, 3, w), speed: read(r.way, 5, 4, w)
+    }
+  }
+
+  function shotAt(t) {
+    let w = between(t)
+    const c = film.camera
+    // Across a cut there is nothing between the two frames: the picture is the earlier shot's.
+    if (c.shot[w.i] !== c.shot[w.j]) w = { i: w.i, j: w.i, u: 0 }
+    const focus = c.focus[w.i]
+    return {
+      shot: c.shot[w.i],
+      position: at(read(c.place, 3, 0, w), read(c.place, 3, 1, w), read(c.place, 3, 2, w)),
+      lookAt: at(read(c.aim, 3, 0, w), read(c.aim, 3, 1, w), read(c.aim, 3, 2, w)),
+      fov: read(c.fov, 1, 0, w),
+      focus: focus > 0 ? read(c.focus, 1, 0, w) : focus,
+      fstop: c.fstop[w.i]
+    }
+  }
+
+  // ── Reading the world ──────────────────────────────────────────────────────────────────────
+  async function _init() {
+    try {
+      ground = await (await fetch("data/terrain.json")).json()
+      world = await (await fetch("data/world.json")).json()
+      film = await (await fetch("data/film.json")).json()
+    } catch (error) {
+      problem = "The film's data could not be read: " + error
+      return
+    }
+    FPS = film.fps
+    LENGTH = film.length
+    // The sky's panorama lights the scene and is what its metal reflects. It is not shown behind
+    // the scene: at this size its stars are smudges. The stars are points of their own.
+    environment = { url: "assets/sky.hdr", background: false }
+    buildScenery()
+    layMarks()
+    show(0)
+    phase = "ready"
+  }
+
+  // The lights, with the sun's shadows drawn `reach` metres each way from the camera.
+  let reachNow = 0
+  let litFor = ""
+  function light(reach) {
+    if (reach === reachNow && quality === litFor) return
+    reachNow = reach
+    litFor = quality
+    const sun = world.sun
+    lights = [
+      // The sun: low, hard and a little warm. It is carried with the camera, so its shadows are
+      // around whatever the camera is near.
+      {
+        id: "sun", type: "directional", color: "#fff1dc", intensity: 5.2,
+        position: at(sun[0] * 140, sun[1] * 140, sun[2] * 140),
+        castShadow: true, follow: "camera", shadowMapSize: quality === "high" ? 4096 : quality === "medium" ? 2048 : 1024, shadowCameraSize: reach, shadowNear: 1, shadowFar: 320, shadowBias: -0.0004
+      }
+      // (What the sunlit ground throws back up into the shadows comes from the sky's panorama,
+      // which was made under this same sun: there is no other fill light.)
+    ]
+  }
+
+  // Stars: points far off, the same every time (their places come from a fixed count, not from
+  // chance), over the whole sky from a little under the horizon up.
+  function stars(id, count, seed, size, opacity, color) {
+    let state = seed
+    const next = () => { state = (state * 1664525 + 1013904223) % 4294967296; return state / 4294967296 }
+    const positions = []
+    for (let i = 0; i < count; i++) {
+      const up = next() * 1.06 - 0.06
+      const round = next() * Math.PI * 2
+      const flat = Math.sqrt(Math.max(0, 1 - up * up))
+      positions.push(Math.cos(round) * flat * 8000, up * 8000, Math.sin(round) * flat * 8000)
+    }
+    return { id, type: "particles", particleShape: "round", particlePositions: positions, particleSize: size, color, opacity, fog: false, pickable: false }
+  }
+
+  function buildScenery() {
+    const sun = world.sun
+    const site = film.site
+    const earth = film.earth
+    // The ground, the lander, the rover, the beacon and the Earth are all in the one file
+    // Blender exported (assets/film.glb): only the sun's disc is added here.
+    scenery = [
+      // The sun's disc, far off where the light comes from.
+      { id: "sun-disc", type: "sphere", radius: 26, color: "#ffffff", emissive: "#fff4e0", emissiveIntensity: 60, fog: false, pickable: false, position: at(sun[0] * 6000, sun[1] * 6000, sun[2] * 6000) }
+    ]
+    // A few bright stars, more middling ones, many faint: faint enough not to fight the sunlit ground.
+    scenery = scenery.concat([stars("stars-bright", 60, 7, 18, 0.7, "#ffffff"), stars("stars", 320, 11, 13, 0.4, "#e6ecff"), stars("stars-faint", 1000, 23, 10, 0.22, "#fff1e0")])
+  }
+
+  // The marks the wheels leave, for the whole road: a flat patch every quarter of a metre under
+  // each side's wheels, laid on the ground as the ground lies there. A moment of the film shows
+  // the ones the rover has passed.
+  function layMarks() {
+    const way = film.rover.way
+    const half = film.geometry.front[0]
+    const places = []
+    const turns = []
+    const upTo = []
+    let next = 0.125
+    for (let i = 1; i < film.frames; i++) {
+      const s0 = way[(i - 1) * 5 + 3]
+      const s1 = way[i * 5 + 3]
+      while (next <= s1 && s1 > s0) {
+        const u = (next - s0) / (s1 - s0)
+        const x = mix(way[(i - 1) * 5], way[i * 5], u)
+        const z = mix(way[(i - 1) * 5 + 1], way[i * 5 + 1], u)
+        const heading = swing(way[(i - 1) * 5 + 2], way[i * 5 + 2], u)
+        for (const side of [1, -1]) {
+          const px = x + Math.cos(heading) * side * half
+          const pz = z - Math.sin(heading) * side * half
+          const e = 0.3
+          const nx = -(heightAt(px + e, pz) - heightAt(px - e, pz)) / (2 * e)
+          const nz = -(heightAt(px, pz + e) - heightAt(px, pz - e)) / (2 * e)
+          const long = Math.hypot(nx, 1, nz)
+          places.push(px, heightAt(px, pz) + 0.02, pz)
+          turns.push(Math.atan2(-1 / long, nz / long), Math.asin(nx / long), heading)
+        }
+        upTo.push(next)
+        next += 0.25
+      }
+    }
+    marks = { places, turns, upTo }
+  }
+
+  // ── A moment of the film ───────────────────────────────────────────────────────────────────
+  // Put everything where it is at `t`: the rover, the camera, what is in focus, the words.
+  function show(t) {
+    const dt = t - lastTime
+    lastTime = t
+    time = t
+    frame = Math.round(t * FPS)
+    const R = roverAt(t)
+    const shot = shotAt(t)
+    camera = { position: shot.position, lookAt: shot.lookAt, fov: shot.fov, near: 0.08, far: 9000 }
+
+    // The last shot's camera pulls far away: its shadows reach as far as the rover is from it.
+    const far = Math.hypot(shot.position.x - R.x, shot.position.y - R.place.y, shot.position.z - R.z)
+    light(REACH[shot.shot] || Math.max(14, Math.min(84, Math.round((far + 10) / 6) * 6)))
+
+    // Black at each end.
+    fade = Math.max(1 - span(t, 0.3, 2.4), span(t, LENGTH - 3, LENGTH - 0.3))
+    const name = film.shots[shot.shot]
+    caption = name === "plain" ? "Sol 1 · the first morning" : name === "leaving" && t > 55 ? "First drive" : ""
+    captionShown = name === "plain" ? ease(span(t, 2.2, 3.4)) * (1 - ease(span(t, 6, 7.2))) : name === "leaving" ? ease(span(t, 55.5, 57)) : 0
+
+    // What the picture is finished with, by what the machine can afford: everything; all but the
+    // shading where things meet (the costly one); or nothing at all, which is the scene alone.
+    const looks = quality === "low" ? {} : { bloom: { strength: 0.06, radius: 0.35, threshold: 9 }, vignette: 0.28, grain: 0.035 }
+    if (quality === "high") looks.ambientOcclusion = { radius: 0.5, intensity: 1 }
+    if (shot.focus !== 0 && quality !== "low") {
+      // As a lens does it. The blur of something at depth d, for a lens focused at s, is
+      // k * |d - s| / d of the picture's height across, where k grows with a wider opening (a
+      // smaller f-number), a longer lens (a narrower view) and a nearer subject. The film's
+      // sensor is 15 mm tall (36 mm wide at 2.39 to 1).
+      const s = shot.focus < 0 ? Math.hypot(shot.position.x - R.place.x, shot.position.y - R.place.y - 0.8, shot.position.z - R.place.z) : shot.focus
+      const half = Math.tan(shot.fov * Math.PI / 360)
+      const k = 0.01506 / (4 * half * half * shot.fstop * s)
+      // The scene's blur grows evenly with depth and then stops: it is set to rise as the lens's
+      // does near the focus, and to stop where the lens's does far away.
+      looks.depthOfField = { focus: Math.round(s * 50) / 50, aperture: Math.round(1.25 * k / s * 1e5) / 1e5, maxBlur: Math.round(1.25 * k * 1e5) / 1e5 }
+    }    if (JSON.stringify(looks) !== JSON.stringify(effects)) effects = looks
+
+    // Dust only makes sense going forward, a little at a time: wound to another moment, it is let go.
+    if (dt > 0 && dt < 0.2) raiseDust(dt, R)
+    else dust = []
+
+    draw(R)
+  }
+
+  // Dust thrown up behind the wheels. With no air it does not hang: every grain flies an arc and lands.
+  function raiseDust(dt, R) {
+    if (R.speed > 0.4 && dust.length < 420) {
+      const sinH = Math.sin(R.heading)
+      const cosH = Math.cos(R.heading)
+      const g = film.geometry
+      const axles = [g.rear[2], g.middle[2], g.front[2]]
+      dustClock += R.speed * 90 * dt
+      while (dustClock >= 1) {
+        dustClock -= 1
+        const side = Math.random() < 0.5 ? 1 : -1
+        const along = axles[Math.floor(Math.random() * 3)] - 0.3
+        const px = R.x + sinH * along + cosH * side * g.front[0]
+        const pz = R.z + cosH * along - sinH * side * g.front[0]
+        const push = R.speed * (0.2 + Math.random() * 0.5)
+        dust.push({
+          x: px, y: heightAt(px, pz) + 0.04, z: pz,
+          vx: -sinH * push + (Math.random() - 0.5) * 0.5,
+          vy: 0.35 + Math.random() * R.speed * 0.45,
+          vz: -cosH * push + (Math.random() - 0.5) * 0.5,
+          life: 3
+        })
+      }
+    }
+    for (const grain of dust) {
+      grain.vy -= MOON_G * dt
+      grain.x += grain.vx * dt
+      grain.y += grain.vy * dt
+      grain.z += grain.vz * dt
+      grain.life -= dt
+      if (grain.y < heightAt(grain.x, grain.z)) grain.life = 0
+    }
+    dust = dust.filter(grain => grain.life > 0)
+  }
+
+  // The list the scene draws from, made again for each moment.
+  function draw(R) {
+    // The whole scene as Blender exported it, held at this moment of its one clip: the rover's
+    // drive, its suspension and its wheels are Blender's keyframes, not this page's arithmetic.
+    const list = [{ id: "film", type: "model", modelUrl: "assets/film.glb", castShadow: true, receiveShadow: true, pickable: false, animation: { clip: "Animation", progress: time / LENGTH } }]
+    if (dust.length > 0) {
+      const positions = []
+      for (const grain of dust) positions.push(grain.x, grain.y, grain.z)
+      list.push({ id: "dust", type: "particles", particleShape: "soft", particlePositions: positions, particleSize: 0.07, color: "#9a9186", opacity: 0.5, pickable: false })
+    }
+    // The tracks as far as the rear wheels have come.
+    let passed = 0
+    const behind = R.s + film.geometry.rear[2]
+    while (passed < marks.upTo.length && marks.upTo[passed] < behind) passed++
+    if (passed > 0) {
+      list.push({ id: "tracks", type: "instanced", shape: "plane", width: 0.3, height: 0.25, color: "#0d0c0b", roughness: 1, opacity: 0.36, instances: marks.places.slice(0, passed * 6), instanceRotations: marks.turns.slice(0, passed * 6), receiveShadow: true, pickable: false })
+    }
+    objects = list
+  }
+
+  // ── Playing it ─────────────────────────────────────────────────────────────────────────────
+  function step(dt) {
+    const next = time + dt
+    if (next >= LENGTH) {
+      show(LENGTH)
+      phase = "ended"
+      return
+    }
+    show(next)
+  }
+
+  function play() {
+    if (phase === "ended" || time >= LENGTH - 0.05) { lastTime = 0; show(0) }
+    phase = "playing"
+  }
+
+  function pressed(action) {
+    if (phase === "loading") return
+    if (action === "play") {
+      if (phase === "playing") phase = "paused"
+      else play()
+    }
+    // A frame at a time, a second at a time, and from cut to cut: for looking closely, and for
+    // taking the frames.
+    if (action === "frame") { phase = "paused"; show(Math.min(LENGTH, (frame + 1) / FPS)) }
+    if (action === "back") { phase = "paused"; show(Math.max(0, (frame - 1) / FPS)) }
+    // An eighth of a frame on: several of these pictures laid over each other are one frame of a
+    // camera whose shutter was open while things moved.
+    if (action === "sliver") { phase = "paused"; show(Math.min(LENGTH, time + 1 / (FPS * 8))) }
+    if (action === "forward") { phase = "paused"; show(Math.min(LENGTH, Math.floor(time + 1.0001))) }
+    if (action === "rewind") { phase = "paused"; show(Math.max(0, Math.ceil(time - 1.0001))) }
+    if (action === "next") { phase = "paused"; const cut = film.cuts.find(c => c > time + 0.05); show(cut === undefined ? LENGTH : Math.min(LENGTH, cut + 0.5)) }
+    if (action === "previous") { phase = "paused"; const before = film.cuts.filter(c => c < time - 0.6); show(before.length ? before[before.length - 1] + 0.5 : 0) }
+    if (action === "restart") { lastTime = 0; show(0); phase = "paused" }
+    if (action === "clean") clean = !clean
+    if (action === "quality") { chosen = true; setQuality(quality === "high" ? "medium" : quality === "medium" ? "low" : "high") }
+    if (action === "readout") showReadout = !showReadout
+  }
+
+  // Wound to a moment with the bar under the picture.
+  function wind(to) {
+    if (phase === "loading") return
+    phase = "paused"
+    show(Math.max(0, Math.min(LENGTH, Number(to) || 0)))
+  }
+
+  function setQuality(next) {
+    quality = next
+    slow = 0
+    // A film that is standing still is drawn again as it now is; a playing one is on its next frame.
+    if (phase !== "playing" && phase !== "loading") show(time)
+  }
+
+  function seen(stats) {
+    // A machine that cannot keep up is given less to draw, once for each two readings (about two
+    // seconds) under 24 frames a second, unless the person has chosen for themselves.
+    if (phase === "playing" && !chosen && quality !== "low") {
+      slow = stats.fps < 24 ? slow + 1 : 0
+      if (slow >= 2) setQuality(quality === "high" ? "medium" : "low")
+    }
+    readout = stats.fps + " frames a second · " + stats.drawCalls + " draws · " + Math.round(stats.triangles / 1000) + "k triangles"
+  }
+
+  function _onHide() {
+    if (phase === "playing") phase = "paused"
+  }
+  function isTouchEnv() {
+    if (typeof window === "undefined") return false
+    let coarse = false
+    try { coarse = !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches) } catch {}
+    return (typeof navigator !== "undefined" && navigator.maxTouchPoints > 0) || coarse || window.innerWidth <= 860
+  }
+  let touchUi = isTouchEnv()
+  function tapPicture() {
+    if (clean) { clean = false; return }
+    if (phase === "playing" || phase === "paused") pressed("play")
+  }
+  function toggleClean() { pressed("clean") }
+  function prevShot() { pressed("previous") }
+  function nextShot() { pressed("next") }
+  function restartFilm() { pressed("restart") }
+  function cycleQ() { pressed("quality") }
+</logic>
+
+<style>
+  .stage { position: absolute; inset: 0; background: #000; overflow: hidden; font-family: ui-sans-serif, system-ui, sans-serif; color: #f5f5f4; }
+  /* A wide picture: the frame is as wide as the window and 2.39 to 1, with black above and below. */
+  .picture { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); aspect-ratio: 2.39 / 1; max-height: 100%; margin: 0 auto; background: #000; overflow: hidden; }
+  .picture.whole { top: 0; transform: none; aspect-ratio: auto; height: 100%; }
+  .black { position: absolute; inset: 0; background: #000; pointer-events: none; }
+  .caption { position: absolute; left: 5%; bottom: 9%; font-size: clamp(11px, 1.15vw, 17px); letter-spacing: 0.34em; text-transform: uppercase; color: #e7e5e4; text-shadow: 0 1px 12px rgba(0, 0, 0, 0.8); pointer-events: none; }
+  .title { left: 0; right: 0; bottom: 46%; text-align: center; font-size: clamp(16px, 2.3vw, 34px); letter-spacing: 0.6em; }
+  .cover { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; pointer-events: none; }
+  .card { display: grid; gap: 14px; justify-items: center; max-width: 460px; padding: 24px 28px; pointer-events: auto; }
+  .card h1 { margin: 0; font-size: 22px; font-weight: 500; letter-spacing: 0.5em; text-transform: uppercase; }
+  .card p { margin: 0; font-size: 13px; line-height: 1.6; color: #a8a29e; }
+  .again { position: absolute; left: 0; right: 0; top: 62%; display: grid; justify-items: center; pointer-events: auto; }
+  .hud-dock { position: absolute; left: 8%; right: 8%; bottom: 16px; display: flex; flex-direction: column; gap: 10px; align-items: stretch; pointer-events: auto; z-index: 12; }
+  .hud-dock.playing { opacity: 0.72; }
+  .transport { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+  .tbtn { min-height: 36px; padding: 6px 12px; font-size: 12px; border-radius: 999px; background: rgba(24,24,27,0.82); color: #e7e5e4; border: 1px solid rgba(255,255,255,0.18); cursor: pointer; }
+  .keys { text-align: center; font-size: 11px; letter-spacing: 0.04em; color: #78716c; line-height: 1.4; }
+  .readout { position: absolute; left: 14px; top: 12px; font: 11px ui-monospace, monospace; color: #a8a29e; z-index: 12; }
+  @media (max-width: 720px), (max-height: 460px) {
+    .hud-dock { left: 14px; right: 14px; bottom: 14px; gap: 10px; }
+    .keys { display: none; }
+    .card h1 { font-size: 19px; letter-spacing: 0.36em; }
+    .card { padding: 16px; }
+  }
+</style>
+
+<App theme="dark">
+  <div class="stage" data-phase={phase} data-time={time.toFixed(5)} data-readout={readout} data-quality={quality}>
+    <div class={clean ? "picture whole" : "picture"} @click={tapPicture}>
+      <Scene3D fill shadows objects={objects} staticObjects={scenery} lights={lights} camera={camera} jumpDistance={0.0001} background="#000000" environment={environment} environmentIntensity={1} toneMapping="agx" toneMappingExposure={exposure} maxPixelRatio={quality === "high" ? 2 : quality === "medium" ? 1.5 : 1} effects={effects} @stats={seen} />
+      <div class="black" style:opacity={fade}></div>
+      #if (caption)
+        <div class={caption === "First drive" ? "caption title" : "caption"} style:opacity={captionShown}>{caption}</div>
+      #end
+    </div>
+
+    #if (showReadout && !clean)
+      <div class="readout">{readout} · {time.toFixed(2)} s · frame {frame}</div>
+    #end
+
+    #if (!clean && phase !== "playing")
+      <div class="cover">
+        #if (phase === "loading")
+          <div class="card"><h1>First drive</h1><p>{problem || "Reading the film…"}</p></div>
+        #elseif (phase === "ready")
+          <div class="card">
+            <h1>First drive</h1>
+            <p>A minute on the Moon, drawn as you watch.</p>
+            <Button variant="primary" style={{ minHeight: "42px", padding: "10px 26px" }} @click={play}>Play</Button>
+          </div>
+        #elseif (phase === "ended")
+          <!-- The film ends on its own title: only the button, under it. -->
+          <div class="again"><Button variant="primary" style={{ minHeight: "42px", padding: "10px 24px" }} @click={play}>Play again</Button></div>
+        #end
+      </div>
+    #end
+
+    #if (!clean && phase !== "loading" && (phase !== "playing" || touchUi))
+      <div class={phase === "playing" ? "hud-dock playing" : "hud-dock"}>
+        <Slider value={time} min={0} max={LENGTH} step={0.1} @change={wind} />
+        <div class="transport">
+          <Button variant="ghost" className="tbtn" @click={prevShot}>Prev Shot</Button>
+          <Button variant="ghost" className="tbtn" @click={tapPicture}>{phase === "playing" ? "Pause" : "Play"}</Button>
+          <Button variant="ghost" className="tbtn" @click={nextShot}>Next Shot</Button>
+          <Button variant="ghost" className="tbtn" @click={restartFilm}>Restart</Button>
+          <Button variant="ghost" className="tbtn" @click={toggleClean}>Clean</Button>
+          <Button variant="ghost" className="tbtn" @click={cycleQ}>{"Quality: " + quality}</Button>
+        </div>
+        <div class="keys">Space plays and stops · the arrows go from shot to shot · [ and ] a second · , and . a frame · R the start · H hides these words · F the frame rate · Q the quality (now {quality})</div>
+      </div>
+    #end
+  </div>
+
+  <Controls :bind={pad} enabled={phase !== "loading"} keys={{ play: "Space Enter", frame: ".", back: ",", sliver: "'", next: "ArrowRight", previous: "ArrowLeft", forward: "]", rewind: "[", restart: "r", clean: "h", readout: "f", quality: "q" }} @press={pressed} />
+  <Loop frame running={phase === "playing"} @tick={step} />
+</App>

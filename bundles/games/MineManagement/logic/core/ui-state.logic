@@ -1,0 +1,388 @@
+// Project small UI snapshots; never mirror the heightfield every frame.
+// The view-model: refreshUI() turns S into the plain values and row arrays the UI pages read (hud,
+// fleetRows, mapRows, summaryRows and the rest, declared in core/state.logic, plus toastList at
+// the end of this file). tick() (core/game-loop.logic) calls it every 0.25 s on every screen, and
+// actions call it straight away so a button's effect shows at once. It also runs each module's own
+// refresh (refreshProgressUI, refreshWorkforce, refreshMemoUI...), so a new page's view-model
+// usually gets a refreshX() called from here. It runs four times a second: keep it cheap.
+// The Operations map: positionStyle() turns metres into CSS percentages, north (-z) up.
+
+// ---------- The Operations map ----------
+
+// A point's place on the Operations map (ui/tablet/operations.ui): x and z in metres to CSS left
+// and top percentages. The map is a 370 m square running from -180 m to 190 m on both axes.
+function positionStyle(x, z) {
+  return { left: ((x + 180) / 370) * 100 + '%', top: ((z + 180) / 370) * 100 + '%' };
+}
+
+// Draws the haul road on the map (called by initWorld, world/scene.logic): a CSS line from every
+// other HAUL_PATH point (x, y, z) to the point two further on, placed at its start, sized to its
+// length and rotated to its angle. Length and angle assume a square map, as positionStyle does:
+// keep .mm-map's aspect-ratio at 1 in ui/tablet/operations.ui.
+function initMapLines() {
+  var a = [];
+  for (var i = 1; i < HAUL_PATH.length; i += 2) {
+    var p = HAUL_PATH[i - 1],
+      q = HAUL_PATH[Math.min(i + 1, HAUL_PATH.length - 1)],
+      dx = ((q[0] - p[0]) / 370) * 100,
+      dz = ((q[2] - p[2]) / 370) * 100;
+    a.push({
+      id: i,
+      style: {
+        left: ((p[0] + 180) / 370) * 100 + '%',
+        top: ((p[2] + 180) / 370) * 100 + '%',
+        width: Math.sqrt(dx * dx + dz * dz) + '%',
+        transform: 'rotate(' + Math.atan2(dz, dx) + 'rad)'
+      }
+    });
+  }
+  mapSegments = a;
+}
+
+// ---------- Truck rows ----------
+
+// A truck's status for the Fleet page and the map. Trouble comes before the phase; the phase names
+// are the ones validState accepts (core/persistence.logic). Also used by mine/workforce.logic.
+function phaseLabel(t) {
+  if (t.trafficBlocked) return 'YIELDING / OBSTACLE';
+  if (t.positioning) return 'MANOEUVRING';
+  if (t.fault) return 'BLOCKED';
+  if (t.stopped) return 'ON HOLD';
+  var b = botFor(t);
+  if (b && b.battery <= 0) return 'BATTERY EMPTY';
+  return (
+    {
+      standby: 'PARKED',
+      queued: 'LOAD QUEUE',
+      loading: 'LOADING',
+      hauling: 'HAULING',
+      dump_queue: 'TIP QUEUE',
+      dumping: 'TIPPING',
+      returning: 'RETURNING',
+      manual: 'PLAYER CONTROL'
+    }[t.phase] || t.phase
+  );
+}
+
+// The colour for a truck's status: orange for faulted or on hold, grey parked, amber loading or
+// tipping, teal on the move.
+function phaseColor(t) {
+  return t.fault || t.stopped
+    ? '#f2a17d'
+    : t.phase === 'standby'
+      ? '#9dada9'
+      : t.phase === 'loading' || t.phase === 'dumping'
+        ? '#eab966'
+        : '#78cdb8';
+}
+
+// One truck's row for the Fleet page (ui/tablet/fleet.ui), as display strings. Speeds are stored in
+// m/s, hence the 3.6 for km/h; fill is the payload bar's width.
+function makeFleetRow(t) {
+  var b = botFor(t);
+  return {
+    id: t.id,
+    name: t.external_id,
+    model: t.model,
+    phase: phaseLabel(t),
+    crew: b ? b.name : 'Unassigned',
+    payload: Math.round(t.payload) + ' / ' + t.capacity + ' t',
+    fuel: Math.round(t.fuel) + '%',
+    battery: b ? Math.round(b.battery) + '%' : 'N/A',
+    health: Math.round(t.health) + '%',
+    loads: t.loads,
+    tonnes: Math.round(t.tonnes),
+    speed: Math.round(t.speed * 3.6) + ' km/h',
+    policy: t.policy,
+    action: t.active ? (t.stopped ? 'Release' : 'Hold') : 'Dispatch',
+    policyLabel: 'Driving: ' + t.policy,
+    color: phaseColor(t),
+    style: { borderColor: phaseColor(t) },
+    fill: { width: (t.payload / t.capacity) * 100 + '%' },
+    cycle: t.lastCycle ? Math.round(t.lastCycle) + ' s' : 'Awaiting first cycle',
+    wait: Math.round(t.queueSeconds) + ' s',
+    selected: selectedTruck === t.id
+  };
+}
+
+// ---------- refreshUI ----------
+
+// Rebuilds the whole view-model from S (see the header). Safe to call at any time once S exists.
+function refreshUI() {
+  if (!S) return;
+  // ---------- Module refreshes ----------
+  // Each module rebuilds its own part. They run first because blocks below read what they write:
+  // hud.excavatorTask (refreshOperations) and fieldView (refreshFieldUI).
+  refreshProgressUI();
+  refreshSiteUI();
+  refreshRounds();
+  refreshIncidentUI();
+  refreshFieldUI();
+  refreshFieldMechanism();
+  refreshOperations();
+  refreshTracking();
+  refreshWorkforce();
+  refreshControls();
+  refreshDriving();
+  // ---------- Top bar and vehicle readout ----------
+  var p = S.player;
+  // The ute or truck the player is in; null on foot or in an excavator.
+  var vehicle = p.mode === 'ute' ? S.ute : p.mode === 'truck' ? getTruck(p.vehicle) : null;
+  hud.relay = S.relay;
+  hud.shift = String(S.shift).padStart(2, '0');
+  hud.clock = clockLabel(S.time);
+  hud.tonnes = String(Math.round(S.tonnes));
+  hud.target = String(S.target);
+  hud.money = money(S.cash);
+  // In an excavator, p.vehicle is minus its id (player/interactions.logic).
+  hud.mode =
+    p.mode === 'foot'
+      ? 'ON FOOT'
+      : p.mode === 'ute'
+        ? 'SITE UTE'
+        : p.mode === 'truck'
+          ? getTruck(p.vehicle).external_id
+          : 'EXC-0' + Math.abs(p.vehicle);
+  // m/s to km/h.
+  hud.speed = String(Math.round(p.speed * 3.6));
+  // Rough zones: south of z = 104 m is the surface compound, below y = -16 m the pit floor.
+  hud.location = p.z > 104 ? 'SURFACE OPERATIONS' : p.y < -16 ? 'BENCH 1 / EXTRACTION' : 'HAUL ROAD';
+  hud.condition =
+    S.weather === 'rain'
+      ? 'Rain / reduced traction'
+      : S.weather === 'dust'
+        ? 'Dust / low visibility'
+        : 'Clear / dry haul road';
+  hud.fuel = String(Math.round(vehicle ? vehicle.fuel : 100));
+  // ---------- Progress meter and the End shift button ----------
+  totalProgress = clamp((S.tonnes / S.target) * 100, 0, 100);
+  // finishShift (mine/shift.logic) refuses during the shift's first minute.
+  reportCanEnd = S.time >= 60;
+  // ---------- Goal text: the HUD's objective panel and the Operations page's callout ----------
+  // The first step that applies wins: the tutorial's first two steps, then the oldest open alert
+  // (Kevin has his own wording), then recruiting, driving, the first delivery and the target. A
+  // marked site-round check (mine/rounds.logic) overrides them all.
+  var goal,
+    first = S.alerts.length ? S.alerts[0] : null;
+  if (!S.tutorial.tablet)
+    goal = ['01 / CLOCK IN', 'Press T to raise your PIT tablet. The mine is waiting. So is Gary.'];
+  else if (!S.tutorial.dispatch)
+    goal = [
+      '02 / START PRODUCTION',
+      'In PIT Operations, press Start fleet. Gary takes HT-01 and reads every sign on the way.'
+    ];
+  else if (first && first.kind === 'kevin')
+    goal = [
+      'WILDLIFE ON THE HAUL ROAD',
+      'Kevin the emu is holding up the trucks. Walk up to him, drive near him or honk (H).'
+    ];
+  else if (first)
+    goal = [
+      'FIELD SERVICE REQUIRED',
+      first.title + '. Mark it in the tablet, go there and fix it with your actual hands.'
+    ];
+  // $2,500 is the third robot's price (recruitmentPrice in mine/purchases.logic).
+  else if (S.robots.length < 3 && S.cash >= 2500)
+    goal = [
+      '03 / BUILD YOUR CREW',
+      'Recruit Oscar in Workforce, then Start fleet again to put HT-02 to work.'
+    ];
+  else if (!S.tutorial.drive)
+    goal = [
+      '03 / LEAVE THE OFFICE',
+      'The ute is parked out front. Walk over and press E. Everyone hits something on their first drive.'
+    ];
+  else if (!S.tutorial.delivery)
+    goal = [
+      'THE FIRST PAYLOAD',
+      'Follow the trucks down the haul road, or take one yourself and do it properly.'
+    ];
+  else if (S.tonnes < S.target)
+    goal = [
+      'KEEP THE MINE MOVING',
+      'Deliver ' +
+        Math.max(0, Math.round(S.target - S.tonnes)) +
+        ' more tonnes. More trucks, upgrades and fewer emus all help.'
+    ];
+  else
+    goal = [
+      'TARGET MET',
+      "End the shift in PIT, or keep hauling for ore money. Bazza's ramp is just south of the compound. Just saying."
+    ];
+  if (S.waypoint && S.waypoint.inspectionId) {
+    goal = [
+      'SITE ROUNDS / ' + S.rounds.done.length + ' OF 3',
+      S.waypoint.label + '. Walk close and use E or Interact.'
+    ];
+  }
+  hud.goal = goal[0];
+  hud.goalDetail = goal[1];
+  // ---------- Action prompt: what E does here, and how ----------
+  // Most urgent first: the excavator's task, a bucket pass or tip in progress (shown as a
+  // percentage), the field job's stage, then what is in reach on foot, or leaving the vehicle. A
+  // tip takes 4.5 s (mine/bays.logic).
+  var near = p.mode === 'foot' ? nearestInteraction() : null;
+  hud.action =
+    p.mode === 'excavator'
+      ? hud.excavatorTask
+      : vehicle && vehicle.manualLoad
+        ? 'BUCKET PASS / ' +
+          Math.round(clamp((vehicle.manualLoad / loaderPassDuration()) * 100, 0, 100)) +
+          '%'
+        : vehicle && vehicle.manualTip
+          ? 'HYDRAULICS / ' + Math.round(clamp((vehicle.manualTip / 4.5) * 100, 0, 100)) + '%'
+          : repairJob
+            ? serviceStage().toUpperCase()
+            : p.mode === 'foot'
+              ? near
+                ? 'E  ' + near.label
+                : ''
+              : 'E  Leave ' + hud.mode;
+  hud.actionDetail = repairJob
+    ? fieldView.hint
+    : vehicle && (vehicle.manualLoad || vehicle.manualTip)
+      ? 'Vehicle secured. Remain in the cab until the cycle finishes.'
+      : p.mode === 'foot'
+        ? near && near.kind === 'repair'
+          ? 'E opens the service panel. Complete its three steps.'
+          : ''
+        : p.mode === 'excavator'
+          ? 'A D swing / W S boom / Space dig / L discharge / C camera'
+          : p.mode === 'truck'
+            ? 'WASD drive / Space brake / L bucket pass or tip / C camera'
+            : 'WASD drive / Space brake / H horn / C camera';
+  // With the touch pads on, swap the keyboard wording for the pads' wording.
+  if (controlsEnabled) {
+    if (p.mode === 'foot' && near && !repairJob) hud.action = near.label;
+    else if (
+      p.mode !== 'foot' &&
+      !repairJob &&
+      !(vehicle && (vehicle.manualLoad || vehicle.manualTip)) &&
+      p.mode !== 'excavator'
+    )
+      hud.action = 'Operating ' + hud.mode;
+    if (repairJob) hud.actionDetail = fieldView.hint;
+    else if (p.mode === 'excavator')
+      hud.actionDetail = 'Left pad: boom / swing. Dig at the face; discharge over a stopped truck.';
+    else if (vehicle && !(vehicle.manualLoad || vehicle.manualTip))
+      hud.actionDetail = 'Drag to steer and accelerate. Hold brake to stop. Cab / chase changes camera.';
+    else if (p.mode === 'foot' && near && near.kind === 'repair')
+      hud.actionDetail = 'Tap Interact to begin service. Stay at the equipment.';
+  }
+
+  // ---------- Waypoint and the player's map markers ----------
+  hud.waypoint = S.waypoint
+    ? waypointBearing() + ' / ' + S.waypoint.label + ' / ' + Math.round(dist2(p, S.waypoint)) + ' m'
+    : '';
+  mapPlayer = positionStyle(p.x, p.z);
+  waypointStyle = S.waypoint ? positionStyle(S.waypoint.x, S.waypoint.z) : { display: 'none' };
+  // ---------- Driving readouts, and the bays for the Operations page ----------
+  hud.payload =
+    p.mode === 'truck' ? Math.round(vehicle.payload) + ' / ' + vehicle.capacity + ' t PAYLOAD' : '';
+  hud.roadGrade = vehicle ? Math.round(vehicleHandling(vehicle, p.mode).grade * 100) + '% GRADE' : '';
+  hud.loadBay =
+    S.manualExcavator.bucket > 0
+      ? 'EMPTY MANUAL BUCKET'
+      : S.deployment.remaining
+        ? 'RELOCATING'
+        : !loaderAvailable()
+          ? 'LOADER HELD'
+          : bayOwner('loading', 0) || 'Available';
+  // Near capacity: less room in the hopper than one 80 t truckload.
+  hud.tipBay = S.crusher
+    ? hopperSpace() < 80
+      ? 'HOPPER NEAR CAPACITY'
+      : bayOwner('dumping', 0) || 'Available'
+    : 'INTERLOCK / OFFLINE';
+  hud.exposedOre = Math.round(S.extraction) + ' t';
+  // ---------- Fleet rows and truck markers ----------
+  var fleet = [],
+    map = [];
+  for (var i = 0; i < S.trucks.length; i++) {
+    var t = S.trucks[i];
+    fleet.push(makeFleetRow(t));
+    // A marker on the Operations map: the truck's name at its position.
+    map.push({ id: t.id, name: t.external_id, style: positionStyle(t.x, t.z) });
+  }
+  fleetRows = fleet;
+  // With the repeater down the map keeps the last positions it had.
+  if (S.relay) mapRows = map;
+  // ---------- Alerts, Kevin on the map, the radio log and past shifts ----------
+  // An incident keeps its own age (mine/incidents.logic); other alerts count from when they opened.
+  alertRows = S.alerts.map(function (a) {
+    return {
+      key: a.key,
+      title: a.title,
+      distance: Math.round(dist2(p, a)) + ' m',
+      age: Math.max(0, Math.round(a.age === undefined ? S.time - a.at : a.age)) + ' s',
+      kind: a.kind
+    };
+  });
+  mapKevin = kevinOnRoad()
+    ? { visible: true, style: positionStyle(S.kevin.x, S.kevin.z) }
+    : { visible: false, style: {} };
+  logRows = S.events.slice(0, 18).map(function (e) {
+    return { id: e.id, clock: clockLabel(e.at), speaker: e.speaker, message: e.message, kind: e.kind };
+  });
+  historyRows = S.history;
+  // ---------- Workshop upgrades ----------
+  // Same price (70% more per level) and level cap (the relay stops at 1) as buyUpgrade in
+  // mine/purchases.logic: change them together.
+  upgradeRows = upgradeCatalog.map(function (u) {
+    var level = S.upgrade[u.id];
+    return {
+      id: u.id,
+      name: u.name,
+      detail: u.detail,
+      level: level,
+      cost: money(Math.round(u.cost * (1 + level * 0.7))),
+      max: level >= (u.id === 'relay' ? 1 : 3)
+    };
+  });
+  // ---------- The Production page's money ----------
+  financialRows = [
+    { name: 'Processed ore sales + bonuses', value: money(S.revenue) },
+    {
+      name: 'Hopper ore awaiting processing',
+      value: Math.round(S.plant.hopper) + ' t / ' + money(S.plant.value)
+    },
+    { name: 'Purchases + service', value: money(S.costs) },
+    { name: 'Shift net cash flow', value: money(S.revenue - S.costs) },
+    {
+      name: 'Fleet payload (not sold)',
+      value:
+        Math.round(
+          S.trucks.reduce(function (n, t) {
+            return n + t.payload;
+          }, 0)
+        ) + ' t'
+    }
+  ];
+  // ---------- The report, Clive's memo, career records and toasts ----------
+  // The grade is the one finishShift stored in S.history (mine/shift.logic). hud.profit is kept
+  // up to date, but no page shows it.
+  hud.rank = S.history.length ? S.history[0].rank : 'C';
+  hud.profit = money(S.revenue - S.costs);
+  refreshMemoUI();
+  refreshReportUI();
+  refreshCareerFun();
+  toastList = toastRows();
+  hud.reportTitle = (reportRankTitle || 'Shift complete').toUpperCase() + '.';
+  summaryRows = [
+    { name: 'Completed tonnes', value: Math.round(S.tonnes) + ' / ' + S.target + ' t' },
+    { name: 'Cash flow this shift', value: money(S.revenue - S.costs) },
+    { name: 'Field jobs done', value: String(S.shiftStats.repairs) },
+    { name: 'Fleet', value: S.trucks.length + ' trucks / ' + S.robots.length + ' operators' },
+    { name: 'Mine lifetime', value: Math.round(S.lifetimeTonnes) + ' t' },
+    { name: 'Hopper carried over', value: Math.round(S.plant.hopper) + ' t' }
+  ];
+  // ---------- Light and sound ----------
+  refreshLighting();
+  refreshEngineAudio();
+  refreshMusic();
+  refreshWeatherAudio();
+}
+
+// The toasts on screen, for ui/screens/overlays.ui: refreshUI fills it from toastRows()
+// (fun/effects.logic).
+var toastList = [];

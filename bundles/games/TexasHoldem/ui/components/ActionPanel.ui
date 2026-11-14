@@ -32,14 +32,22 @@
         </Box>
       </Box>
       <Box style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-        <Text if={myHandName} style={{ color: "#c8aa6e", fontSize: "11px", fontWeight: "700", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{myHandName}</Text>
+        <Box style={{ display: "flex", alignItems: "center", gap: "5px", minWidth: 0 }}>
+          <Text if={heroHandPill()} style={{ color: "#c8aa6e", fontSize: "11px", fontWeight: "700", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{heroHandPill()}</Text>
+          <Text if={turnCountdownText()} style={{ color: turnCountdownUrgent() ? "#f87171" : "#fbbf24", fontSize: "10px", fontWeight: "800", flexShrink: 0 }}>{turnCountdownText()}</Text>
+        </Box>
         <Text style={{ color: "rgba(255,255,255,0.68)", fontSize: "10px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{"$" + getCallAmount() + " call | $" + getMyChips()}</Text>
       </Box>
     </Box>
 
-    <Box className="poker-action-info" style={{ display: "flex", flexDirection: "column", justifyContent: "center", flex: "1 1 auto", minWidth: "160px" }}>
-      <Text style={{ color: "#e5e7eb", fontSize: "12px", fontWeight: "700" }}>Your turn</Text>
-      <Text if={myHandName} style={{ color: "#c8aa6e", fontSize: "11px", fontWeight: "600", marginTop: "2px" }}>{myHandName}</Text>
+    <Box className="poker-action-info" style={{ display: "flex", flexDirection: "column", justifyContent: "center", flex: "1 1 auto", minWidth: "150px" }}>
+      <Box style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+        <Text style={{ color: "#e5e7eb", fontSize: "12px", fontWeight: "700" }}>Your turn</Text>
+        <Box if={turnCountdownText()} style={{ background: turnCountdownUrgent() ? "rgba(239,68,68,0.2)" : "rgba(251,191,36,0.16)", border: "1px solid " + (turnCountdownUrgent() ? "rgba(239,68,68,0.45)" : "rgba(251,191,36,0.35)"), borderRadius: "999px", padding: "1px 7px" }}>
+          <Text style={{ color: turnCountdownUrgent() ? "#fca5a5" : "#fde68a", fontSize: "10px", fontWeight: "800" }}>{turnCountdownText()}</Text>
+        </Box>
+      </Box>
+      <Text if={heroHandPill()} style={{ color: "#c8aa6e", fontSize: "11px", fontWeight: "600", marginTop: "2px" }}>{heroHandPill()}</Text>
       <Text style={{ color: "rgba(255,255,255,0.62)", fontSize: "11px", marginTop: "2px" }}>{"To call: $" + getCallAmount() + " | Stack: $" + getMyChips()}</Text>
     </Box>
 
@@ -185,9 +193,12 @@
       </Box>
     </Box>
     <Box style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-      <Text if={myHandName} style={{ color: "#c8aa6e", fontSize: "11px", fontWeight: "700", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{myHandName}</Text>
+      <Text if={heroHandPill()} style={{ color: "#c8aa6e", fontSize: "11px", fontWeight: "700", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{heroHandPill()}</Text>
       <Text style={{ color: "rgba(255,255,255,0.58)", fontSize: "11px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{"Stack: $" + getMyChips()}</Text>
     </Box>
   </Box>
-  <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: "12px", fontWeight: "600", whiteSpace: "nowrap" }}>{topStatusMain()}</Text>
+  <Box style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+    <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: "12px", fontWeight: "600", whiteSpace: "nowrap" }}>{topStatusMain()}</Text>
+    <Text if={turnCountdownText()} style={{ color: turnCountdownUrgent() ? "#fca5a5" : "#fde68a", fontSize: "11px", fontWeight: "800", whiteSpace: "nowrap" }}>{turnCountdownText()}</Text>
+  </Box>
 </Box>

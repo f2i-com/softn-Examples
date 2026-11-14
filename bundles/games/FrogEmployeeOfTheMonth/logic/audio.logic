@@ -1,0 +1,24 @@
+// Small original PCM cues. Sounds are cosmetic and never influence simulation.
+function sound(name,volume) {
+    if(settings.muted || !audioStarted) return;
+    let now=Date.now(); let limit=name==="land"?90:(name==="key"?75:120);
+    if(audioTimes[name] && now-audioTimes[name]<limit) return;
+    audioTimes[name]=now;
+    try {softn.audio.play("assets/sfx/"+name+".wav",{volume:volume===undefined?0.45:volume});} catch(err) {}
+}
+function startAudio() {
+    audioStarted=true;
+    if(settings.muted || ambientHandle!==null) return;
+    try {ambientHandle=softn.audio.play("assets/sfx/office.wav",{volume:0.18,loop:true});} catch(err) {ambientHandle=null;}
+}
+function stopAudio() {
+    try {softn.audio.stopAll();} catch(err) {}
+    ambientHandle=null;
+}
+function toggleSound() { settings.muted=!settings.muted; stopAudio(); if(!settings.muted && screen==="play") startAudio(); saveProgress(); publish(); }
+function audioStep(dt) {
+    ambientAge+=dt;
+    if(ambientAge>7.2) {ambientAge=0; sound("chatter",0.13);}
+    let support=findPlatform(G.p.support);
+    if(support && support.kind==="chair" && Math.abs(support.vx)>45) sound("roll",0.19);
+}

@@ -1,0 +1,84 @@
+// Save only durable progress and validated checkpoint identifiers, never a live rope.
+let SAVE_KEY="oddjobs:frog:corporate-ascent:v2";
+function safeTree(v,depth,budget) {
+    budget.n++;if(depth>10 || budget.n>3500)return false;
+    if(v===null || typeof v==="boolean")return true;
+    if(typeof v==="number")return finite(v) && Math.abs(v)<1000000000;
+    if(typeof v==="string")return v.length<1400;
+    if(typeof v!=="object")return false;
+    let ks=Object.keys(v);if(ks.length>150)return false;
+    for(let i=0;i<ks.length;i++) {if(ks[i]==="__proto__" || ks[i]==="constructor" || ks[i]==="prototype" || !safeTree(v[ks[i]],depth+1,budget))return false;}return true;
+}
+function intRange(v,lo,hi) {return finite(v) && Math.floor(v)===v && v>=lo && v<=hi;}
+function stringsIn(list,allowed) {if(!Array.isArray(list) || list.length>allowed.length)return false;let seen=[];for(let i=0;i<list.length;i++){if(allowed.indexOf(list[i])<0 || seen.indexOf(list[i])>=0)return false;seen.push(list[i]);}return true;}
+function validProgress(data) {
+    if(!data || data.schema!==2 || !safeTree(data,0,{n:0}) || !intRange(data.stage,0,7))return false;
+    let p=data.profile,m=data.mission;
+    if(!p || !intRange(p.done,0,8) || data.stage>p.done || !intRange(p.best,0,100000000) || !intRange(p.flies,0,10000000) || !intRange(p.hops,0,10000000))return false;
+    if(!stringsIn(p.achievements,["first","careful","finish","fly","hops","printer","swing","coffee"]))return false;
+    if(!m || ["","report","coffee"].indexOf(m.carrying)<0 || !finite(m.coffee) || m.coffee<0 || m.coffee>100)return false;
+    if(!stringsIn(m.matIds,["mat-1","mat-2"]) || !stringsIn(m.connected,[1,2]) || !stringsIn(m.caught,["memo-1","memo-2","memo-3"]))return false;
+    if(!finite(m.boatTime) || m.boatTime<0 || !finite(m.chairTime) || m.chairTime<0 || !finite(m.boatDistance||0) || (m.boatDistance||0)<0)return false;
+    let bs=["done","braked","reportTongued","projector"];
+    for(let i=0;i<bs.length;i++)if(typeof m[bs[i]]!=="boolean")return false;
+    if(!intRange(data.bossCleared,0,3) || !finite(data.score) || data.score<0 || !finite(data.health) || data.health<0 || data.health>100)return false;
+    if(typeof data.checkpoint!=="string" || !data.settings)return false;
+    if(data.boatX!==null && !finite(data.boatX))return false;if(data.chairX!==null && !finite(data.chairX))return false;
+    return true;
+}
+function saveProgress() {
+    if(!G)return;
+    let boat=findPlatform("mug-boat"),chair=findPlatform("chair");
+    let data={schema:2,stage:G.stage,profile:clone(profile),settings:clone(settings),checkpoint:G.checkpoint.id,
+        mission:clone(G.mission),score:Math.floor(G.score),health:G.health,time:G.time,
+        boatX:boat?boat.x:null,chairX:chair?chair.x:null,bossCleared:G.boss?G.boss.cleared:0};
+    try {localStorage.setItem(SAVE_KEY,JSON.stringify(data));saveStatus="Saved on this device";hasSave=true;}catch(err){saveStatus="Storage unavailable. The current shift still works.";}
+}
+function readProgress() {
+    let raw=null;
+    try {raw=localStorage.getItem(SAVE_KEY);}catch(err){saveStatus="Storage unavailable. The current shift still works.";return null;}
+    try {if(!raw)return null;if(raw.length>90000)throw new Error("Oversize save");let d=JSON.parse(raw);if(!validProgress(d))throw new Error("Invalid save");return d;}
+    catch(err){saveStatus="Damaged save ignored safely. Your original v0.1 save is untouched.";return null;}
+}
+function migrateLegacyProfile() {
+    try {let raw=localStorage.getItem("oddjobs:frog:v1");if(!raw || raw.length>250000)return;
+        let d=JSON.parse(raw);if(!d || !d.profile || !safeTree(d.profile,0,{n:0}))return;
+        let old=d.profile;if(finite(old.best))profile.best=clamp(Math.floor(old.best),0,100000000);
+        if(Array.isArray(old.achievements)){for(let i=0;i<BADGES.length;i++)if(old.achievements.indexOf(BADGES[i].id)>=0)profile.achievements.push(BADGES[i].id);}
+        profile.legacy=true;saveStatus="Original badges and best score retained. New traversal campaign starts at orientation.";
+    }catch(err){}
+}
+function applyProgress(d) {
+    profile={done:d.profile.done,best:d.profile.best,flies:d.profile.flies,hops:d.profile.hops,achievements:d.profile.achievements.slice(),legacy:d.profile.legacy===true};
+    settings={muted:d.settings.muted===true,gentle:d.settings.gentle===true,reducedMotion:d.settings.reducedMotion===true,touch:d.settings.touch===true};
+    setupStage(d.stage);G.score=d.score;G.health=Math.max(35,d.health);G.time=finite(d.time)?Math.max(0,d.time):0;
+    G.mission=clone(d.mission);G.mission.chairStarted=false;
+    for(let i=0;i<G.world.checkpoints.length;i++) {let c=G.world.checkpoints[i];if(c.id===d.checkpoint){c.used=true;G.checkpoint={id:c.id,x:c.x,y:c.y};G.p=makeFrog(c.x,c.y);}}
+    let report=findTarget("report");if(report && G.mission.reportTongued)report.active=false;
+    let coffee=findTarget("coffee");if(coffee && G.mission.carrying==="coffee")coffee.active=false;
+    for(let i=0;i<G.mission.connected.length;i++){let n=G.mission.connected[i],p=findTarget("plug-"+n),s=findTarget("socket-"+n);if(p&&s){p.active=false;p.attached=true;p.wasTongued=true;p.x=s.x;p.y=s.y;s.attached=true;}}
+    for(let i=0;i<G.mission.caught.length;i++){let t=findTarget(G.mission.caught[i]);if(t)t.active=false;}
+    let cord=findTarget("projector-cord");if(cord && G.mission.projector)cord.active=false;
+    let brake=findTarget("brake");if(brake && G.mission.braked)brake.active=false;
+    let boat=findPlatform("mug-boat");if(boat && finite(d.boatX)){boat.x=clamp(d.boatX,boat.minX,boat.maxX);if(G.checkpoint.id==="start" && G.mission.boatTime>0){G.p=makeFrog(boat.x+boat.w/2,boat.y);G.p.support=boat.id;G.p.grounded=true;}}
+    let chair=findPlatform("chair");if(chair && finite(d.chairX)){chair.x=clamp(d.chairX,200,chair.maxX);if(G.checkpoint.id==="start"){G.p=makeFrog(chair.x+chair.w/2,chair.y);G.p.support=chair.id;G.p.grounded=true;}}
+    if(G.boss){G.boss.cleared=d.bossCleared;G.boss.phase=Math.min(3,d.bossCleared+1);if(d.bossCleared>0)createJamPlatforms();if(d.bossCleared===3){G.boss.state=G.mission.done?"defeated":"meltdown";G.boss.timer=1.5;G.boss.lcd="PLEASE CONSULT A SMALLER EMPLOYEE";}}
+    if(G.mission.done){reportTitle=G.stage===7?"EMPLOYEE OF THE MONTH":"DELIVERABLE: DELIVERED";reportText=JOBS[G.stage].reply;reportReward=JOBS[G.stage].reward;}
+    G.camera.x=clamp(G.p.x-340,0,G.world.width-VW);G.camera.y=clamp(G.p.y-570,0,G.world.height-VH);
+    dirtyBackground=true;hasSave=true;saveStatus="Saved shift restored. Live machinery restarts in a safe state.";
+}
+function beginGame() {if(!G)setupStage(0);screen=G.mission.done?"report":"play";frameClock=Date.now();accumulator=0;startAudio();publish();}
+function nextAssignment() {if(!G || !G.mission.done)return;if(G.stage<7){setupStage(G.stage+1);startAudio();saveProgress();}else openBoard();}
+function restartAssignment() {let n=G.stage;clearInput();setupStage(n);startAudio();saveProgress();}
+function pauseGame() {
+    if(screen==="play"){clearInput();screen="pause";stopAudio();saveProgress();}
+    else if(screen==="pause" || screen==="board"){screen=G.mission.done?"report":"play";frameClock=Date.now();accumulator=0;if(screen==="play")startAudio();}
+    publish();
+}
+function openBoard() {clearInput();screen="board";stopAudio();saveProgress();publish();}
+function selectJob(index) {if(!intRange(index,0,7) || index>profile.done)return;setupStage(index);startAudio();saveProgress();}
+function toggleGentle() {settings.gentle=!settings.gentle;saveProgress();publish();}
+function toggleMotion() {settings.reducedMotion=!settings.reducedMotion;G.shake=0;G.particles=[];saveProgress();publish();}
+function toggleTouch() {settings.touch=!settings.touch;saveProgress();publish();}
+function requestReset() {confirmReset=!confirmReset;publish();}
+function newCampaign() {confirmReset=false;profile.done=0;G=null;setupStage(0);startAudio();saveProgress();}

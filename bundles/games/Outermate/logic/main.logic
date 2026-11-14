@@ -25,3 +25,8 @@ function gameLoop(delta){
     syncAmbience();tickAmbienceRetry(dt);syncAudio(dt);
   }catch(e){lastError=String(e.message||e);paused=true;dialog="error";toastText="Simulation paused safely. Export your save before restarting.";}
 }
+function _onHide(){
+  try{if(omGame&&!demoRun)saveSlot(autoIndex,true);}catch(e){}
+  stopAmbience();stopLoop(musicLoop);stopLoop(sceneLoop);stopVoice();
+  if(typeof window!=="undefined"&&window.__omCleanup){try{window.__omCleanup();}catch(e){}window.__omCleanup=null;}
+}

@@ -1,0 +1,27 @@
+// Entry point: 60 Hz bounded simulation, 30 Hz publish, no unbounded catch-up.
+function simulate(dt) {
+ S.time+=dt;
+ stepWorld(dt);stepNPCs(dt);stepMovement(dt);stepObjects(dt);stepAudio(dt);
+ toastTime=Math.max(0,toastTime-dt);cameraFlash=Math.max(0,cameraFlash-dt);shake=Math.max(0,shake-dt);
+ let targetY=S.p.y-S.p.z*0.35;
+ let blend=settings.reducedMotion?1:Math.min(1,dt*8);
+ cam.x+=(S.p.x-cam.x)*blend;cam.y+=(targetY-cam.y)*blend;
+ saveClock+=dt;if(saveClock>=6){saveClock=0;persist();}
+}
+function tick() {
+ let now=Date.now(),elapsed=lastClock?(now-lastClock)/1000:1/30;lastClock=now;
+ if(!isPlaying()){clearInput();accumulator=0;return;}
+ let pending=commands;commands=[];
+ for(let i=0;i<pending.length && isPlaying();i++)processAction(pending[i]);
+ if(!isPlaying()){publish();return;}
+ accumulator+=clamp(elapsed,0,0.1);
+ let steps=0;
+ while(accumulator>=1/60 && steps<6){simulate(1/60);accumulator-=1/60;steps++;}
+ publish();
+}
+function _init() {
+ let restored=restore(),note=saveStatus;
+ if(!restored){resetGame();if(note.indexOf("ignored")>=0)saveStatus=note;}
+ overlay="welcome";sessionReady=false;paused=false;clearInput();lastClock=Date.now();accumulator=0;
+ cam={x:S.p.x,y:S.p.y-S.p.z*0.35};setupStaticView();installInput();publish();
+}

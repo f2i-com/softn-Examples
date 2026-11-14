@@ -1,0 +1,293 @@
+let uwPreviewPlan = null;
+function uwToolSpec(id) {
+    if (UW_FACILITIES[id]) {
+        let f = UW_FACILITIES[id];
+        return { id: id, name: f.name, cost: f.cost, upkeep: f.upkeep, description: f.description, category: f.category, icon: f.service === "park" ? "♧" : "▥" };
+    }
+    for (let k = 0; k < UW_BASE_TOOLS.length; k = k + 1)
+        if (UW_BASE_TOOLS[k].id === id)
+            return UW_BASE_TOOLS[k];
+    return { id: id, name: id === "bulldoze" ? "Bulldozer" : "Inspect / navigate", cost: 0, upkeep: 0, description: id === "bulldoze" ? "Remove infrastructure and development. Terrain is retained. Undo is available until the next month." : "Click to inspect. Drag to orbit; scroll to zoom. WASD pans, Q/E rotates, +/- zooms." };
+}
+function uwSelectCategory(id) { category = id; uwUpdateToolCards(); }
+function uwSelectTool(id) {
+    mobilePanel = "";
+    activeTool = id;
+    uwDragStart = -1;
+    uwPreviewPlan = null;
+    uwHoverIndex = -1;
+    previewText = "";
+    let s = uwToolSpec(id);
+    toolHint = s.name + " · " + s.description;
+    uwUpdateToolCards();
+    uwRenderMotion();
+}
+function uwSetBrush(size) { brushSize = [1, 3, 5].indexOf(Number(size)) >= 0 ? Number(size) : 1; uwPreviewPlan = null; previewText = ""; }
+function uwStrokeCells(a, b, tool) {
+    if (!uwWorld || !uwInt(a, 0, uwWorld.tiles.length - 1) || !uwInt(b, 0, uwWorld.tiles.length - 1))
+        return [];
+    let p = uwXZ(a), q = uwXZ(b), cells = [], seen = {};
+    let add = function (x, z) { let i = uwIndex(x, z); if (i >= 0 && !seen[i]) {
+        seen[i] = true;
+        cells.push(i);
+    } };
+    if (UW_FACILITIES[tool])
+        return [b];
+    if (["road", "avenue", "wire", "pipe"].indexOf(tool) >= 0) {
+        let x = p.x, z = p.z;
+        add(x, z);
+        while (x !== q.x) {
+            x += q.x > x ? 1 : -1;
+            add(x, z);
+        }
+        while (z !== q.z) {
+            z += q.z > z ? 1 : -1;
+            add(x, z);
+        }
+    }
+    else {
+        let radius = a === b ? Math.floor(brushSize / 2) : 0;
+        let x0 = Math.min(p.x, q.x) - radius, x1 = Math.max(p.x, q.x) + radius, z0 = Math.min(p.z, q.z) - radius, z1 = Math.max(p.z, q.z) + radius;
+        if ((x1 - x0 + 1) * (z1 - z0 + 1) > 512)
+            return [];
+        for (let z = z0; z <= z1; z = z + 1)
+            for (let x = x0; x <= x1; x = x + 1)
+                add(x, z);
+    }
+    return cells;
+}
+function uwPlanAction(a, b, tool) {
+    let cells = uwStrokeCells(a, b, tool), edits = [], total = 0, skipped = 0;
+    for (let k = 0; k < cells.length; k = k + 1) {
+        let i = cells[k], before = uwWorld.tiles[i], t = uwTileFromTuple(uwTileTuple(before)), cost = 0, valid = true;
+        if (tool === "road" || tool === "avenue") {
+            if (t.build || t.level || t.stage || t.flood)
+                valid = false;
+            else {
+                let grade = tool === "avenue" ? 2 : 1;
+                if (t.road >= grade)
+                    valid = false;
+                else {
+                    let desired = t.wet ? grade === 2 ? 240 : 180 : grade === 2 ? 45 : 12;
+                    let old = t.road ? t.wet ? 180 : 12 : 0;
+                    cost = desired - old;
+                    t.road = grade;
+                    t.zone = 0;
+                    t.tree = 0;
+                }
+            }
+        }
+        else if (tool === "wire" || tool === "pipe") {
+            if (t[tool] || t.road || t.flood)
+                valid = false;
+            else {
+                t[tool] = 1;
+                cost = tool === "wire" ? 8 : 7;
+            }
+        }
+        else if (UW_FACILITIES[tool]) {
+            if (t.wet || t.road || t.build || t.level || t.stage || t.flood)
+                valid = false;
+            else {
+                t.build = tool;
+                t.tree = 0;
+                t.zone = 0;
+                t.level = 0;
+                t.pop = 0;
+                cost = UW_FACILITIES[tool].cost;
+            }
+        }
+        else if (["res", "resHigh", "com", "comHigh", "ind", "mixed"].indexOf(tool) >= 0) {
+            let zone = tool === "res" || tool === "resHigh" ? 1 : tool === "com" || tool === "comHigh" ? 2 : tool === "ind" ? 3 : 4;
+            let density = tool === "resHigh" || tool === "comHigh" || tool === "mixed" ? 2 : 1;
+            if (t.wet || t.road || t.build || (t.stage > 0 && t.zone !== zone) || (t.level > 0 && t.zone !== zone) || (t.zone === zone && t.density === density))
+                valid = false;
+            else {
+                t.zone = zone;
+                t.density = density;
+                cost = uwToolSpec(tool).cost;
+            }
+        }
+        else if (tool === "tree") {
+            if (t.wet || t.road || t.build || t.level || t.stage || t.tree)
+                valid = false;
+            else {
+                t.tree = 1;
+                cost = 18;
+            }
+        }
+        else if (tool === "raise" || tool === "lower") {
+            if (t.road || t.level || t.stage || t.build || t.wire || t.pipe)
+                valid = false;
+            else if (tool === "raise" && t.h < 4) {
+                cost = t.wet ? 250 : 65;
+                t.h += 1;
+                t.wet = false;
+                t.tree = 0;
+            }
+            else if (tool === "lower" && t.h > 0) {
+                cost = 45;
+                t.h -= 1;
+                t.wet = t.h === 0;
+                t.tree = 0;
+                if (t.wet)
+                    t.zone = 0;
+            }
+            else
+                valid = false;
+        }
+        else if (tool === "bulldoze") {
+            if (!(t.road || t.zone || t.build || t.tree || t.wire || t.pipe))
+                valid = false;
+            else {
+                cost = t.build ? 50 : t.level ? 20 : t.road ? 10 : t.tree ? 4 : 2;
+                t.road = 0;
+                t.zone = 0;
+                t.level = 0;
+                t.stage = 0;
+                t.build = "";
+                t.pop = 0;
+                t.tree = 0;
+                t.wire = 0;
+                t.pipe = 0;
+                t.fire = 0;
+                t.neglect = 0;
+            }
+        }
+        else
+            valid = false;
+        if (valid) {
+            edits.push({ i: i, before: uwTileTuple(before), after: uwTileTuple(t) });
+            total += cost;
+        }
+        else
+            skipped += 1;
+    }
+    return { edits: edits, cost: total, skipped: skipped, cells: cells, tool: tool, affordable: total <= uwWorld.funds, month: uwWorld.month };
+}
+function uwCommitAction(a, b, tool) {
+    let plan = uwPlanAction(a, b, tool);
+    if (!plan.edits.length) {
+        uwNotify(plan.cells.length ? "Nothing can be changed here. Developed lots must be bulldozed before a different use is placed." : "Keep each selection to 512 tiles or fewer.", "info");
+        uwSfx("error");
+        return false;
+    }
+    if (!plan.affordable) {
+        uwNotify("This plan costs " + uwMoney(plan.cost) + ". The treasury contains " + uwMoney(uwWorld.funds) + ". Nothing was changed.", "bad");
+        uwSfx("error");
+        return false;
+    }
+    for (let k = 0; k < plan.edits.length; k = k + 1) {
+        let edit = plan.edits[k];
+        uwWorld.tiles[edit.i] = uwTileFromTuple(edit.after);
+    }
+    uwWorld.funds -= plan.cost;
+    uwWorld.totalBuilt += plan.edits.length;
+    uwUndo.push(plan);
+    if (uwUndo.length > 10)
+        uwUndo.shift();
+    canUndo = true;
+    uwRecalculate();
+    uwComputeDemand();
+    uwComputeHappiness();
+    uwUpdateDistricts(false);
+    uwStaticDirty = true;
+    uwRenderStatic();
+    uwRefreshUI();
+    uwNotify(uwToolSpec(tool).name + ": " + plan.edits.length + " tiles · " + uwMoney(plan.cost) + (plan.skipped ? " · " + plan.skipped + " occupied/unchanged tiles skipped." : "."), "good");
+    uwSfx("build");
+    return true;
+}
+function uwUndoLast() {
+    if (!uwWorld || !uwUndo.length)
+        return;
+    let plan = uwUndo.pop();
+    if (plan.month !== uwWorld.month) {
+        uwUndo = [];
+        canUndo = false;
+        uwNotify("Construction undo expires when the simulation advances a month.", "info");
+        return;
+    }
+    for (let k = 0; k < plan.edits.length; k = k + 1) {
+        let e = plan.edits[k];
+        uwWorld.tiles[e.i] = uwTileFromTuple(e.before);
+    }
+    uwWorld.funds += plan.cost;
+    uwWorld.totalBuilt -= plan.edits.length;
+    canUndo = uwUndo.length > 0;
+    uwRecalculate();
+    uwComputeDemand();
+    uwComputeHappiness();
+    uwUpdateDistricts(false);
+    uwStaticDirty = true;
+    uwRenderStatic();
+    uwRefreshUI();
+    uwNotify("Construction undone. " + uwMoney(plan.cost) + " returned to the treasury.", "good");
+}
+function uwHitIndex(hit) {
+    if (!uwWorld || !hit || !hit.point)
+        return -1;
+    return uwIndex(Math.floor(hit.point.x / UW_TILE + uwWorld.n / 2), Math.floor(hit.point.z / UW_TILE + uwWorld.n / 2));
+}
+function uwSceneClick(hit) {
+    if (modal || welcomeOpen || activeTool !== "inspect")
+        return;
+    let i = uwHitIndex(hit);
+    if (i < 0)
+        return;
+    uwSelectedIndex = i;
+    panel = "lot";
+    uwRefreshUI();
+    uwRenderMotion();
+}
+function uwSceneDown(hit) {
+    if (modal || welcomeOpen || activeTool === "inspect" || !hit || hit.button !== 0)
+        return;
+    uwDragStart = uwHitIndex(hit);
+    uwDragEnd = uwDragStart;
+    uwDragButton = hit.button;
+    uwPreviewAt(uwDragStart);
+}
+function uwSceneMove(hit) { if (uwDragStart < 0 || activeTool === "inspect")
+    return; let i = uwHitIndex(hit); if (i >= 0 && i !== uwDragEnd) {
+    uwDragEnd = i;
+    uwPreviewAt(i);
+} }
+function uwSceneUp(hit) {
+    if (activeTool === "inspect" || uwDragStart < 0)
+        return;
+    let end = uwHitIndex(hit), start = uwDragStart;
+    uwDragStart = -1;
+    uwDragEnd = -1;
+    if (!modal && end >= 0 && hit.button === 0)
+        uwCommitAction(start, end, activeTool);
+    uwPreviewPlan = null;
+    previewText = "";
+    uwRenderMotion();
+}
+function uwSceneHover(hit) {
+    if (modal || welcomeOpen || uwDragStart >= 0)
+        return;
+    let i = uwHitIndex(hit);
+    if (i === uwHoverIndex)
+        return;
+    uwHoverIndex = i;
+    if (i < 0) {
+        hoverLabel = "";
+        uwPreviewPlan = null;
+        previewText = "";
+        uwRenderMotion();
+        return;
+    }
+    let p = uwXZ(i), t = uwWorld.tiles[i];
+    hoverLabel = p.x + ", " + p.z + " · " + uwWorld.districtNames[uwDistrictOf(i)] + " · " + (t.build ? UW_FACILITIES[t.build].name : t.road ? t.wet ? "Bridge" : "Road" : t.wet ? "Water" : UW_ZONE_NAMES[t.zone]);
+    if (activeTool !== "inspect")
+        uwPreviewAt(i);
+}
+function uwPreviewAt(i) {
+    if (i < 0 || activeTool === "inspect")
+        return;
+    uwPreviewPlan = uwPlanAction(uwDragStart >= 0 ? uwDragStart : i, i, activeTool);
+    previewText = uwPreviewPlan.edits.length + " tiles · " + uwMoney(uwPreviewPlan.cost) + (uwPreviewPlan.affordable ? "" : " · over budget");
+    uwRenderMotion();
+}

@@ -1,0 +1,28 @@
+// Inspection is reversible. The physical consequence occurs only at settlement.
+function openPayment(){
+ let c=activeCustomer();if(!c){tell("The brass tray reflects the lamp. No payment yet.");return;}
+ S.inspection=true;sfx("token","Something small touches the brass tray.",0.32);
+}
+function examinePayment(){
+ let c=activeCustomer();if(!S.inspection || !c)return;
+ if(!c.inspected){c.inspected=true;sfx(c.currency==="memory"?"memory":"token",CURRENCIES[c.currency].seen,0.27);}
+ persist();publish();
+}
+function decidePayment(kind){
+ let c=activeCustomer();if(!S.inspection || !c || (kind!=="accept" && kind!=="gift"))return;
+ if(kind==="accept" && !c.inspected){tell("Check what you have been given before accepting it.");publish();return;}
+ c.payment=kind;S.paymentChoice=kind;S.inspection=false;
+ tell(kind==="gift"?"You slide the payment back. This one's on the house. Close the till when the bag is ready.":"Payment checked. The till will make room for it when you finish the sale.");persist();publish();
+}
+function closePayment(){S.inspection=false;publish();}
+function applyPayment(c){
+ let k=c.currency;S.payments[k]++;
+ if(k==="credits")S.store.coins+=PRODUCTS[c.item].price;
+ if(k==="starlight"){S.cosmic.pulse=5;addGift("star",-1);}
+ if(k==="memory"){S.cosmic.echo=13;addGift("memory",-1);}
+ if(k==="seconds"){S.cosmic.stasis=12;addGift("minute",-1);}
+ if(k==="impossible"){addGift("coin",-1);}
+ if(k==="favour"){addGift("favour",-1);for(let i=0;i<6;i++)S.store.reserve[i]++;}
+ if(k==="name"){remember("nimbusName");addGift("book",4);}
+ journal(REGULARS[c.who].name+" paid with "+CURRENCIES[k].name+". "+CURRENCIES[k].effect,c.who);
+}

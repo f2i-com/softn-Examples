@@ -1,0 +1,123 @@
+#if (modal === "policies")
+  <span className="uw-eyebrow">THE CITY WE CHOOSE</span><span className="uw-title">Policies with consequences.</span><span className="uw-modal-subtitle">Each policy is an ongoing monthly commitment. Effects are applied to the real simulation.</span>
+  #each (policy in policyRows)
+    <div className="uw-policy"><div className="uw-between"><div><span className="uw-section-title">{policy.name}</span><span className="uw-micro">{policy.cost}</span></div><button className={policy.active ? "uw-button uw-active" : "uw-button"} @click={() => uwTogglePolicy(policy.id)}>{policy.active ? "Enabled" : "Enable"}</button></div><p>{policy.text}</p></div>
+  #end
+#end
+#if (modal === "ratings")
+  <span className="uw-eyebrow">A CITY IS MORE THAN ITS SKYLINE</span><span className="uw-title">How is {hud.city} doing?</span>
+  <div className="uw-ratings-intro"><div className="uw-score-ring uw-score-ring-large" style={{background:cityWellbeing.ring}}><span>{cityWellbeing.score}<small>/ 100</small></span></div><div><span className="uw-title">{cityWellbeing.label}</span><p className="uw-muted">{cityWellbeing.detail}</p><p className="uw-rating-trend">Happiness · {cityWellbeing.happiness} · {cityWellbeing.trend}</p></div></div>
+  <span className="uw-modal-subtitle">80–100 thriving · 60–79 healthy · 40–59 needs attention · below 40 under pressure. These ratings summarize current conditions; they do not add hidden bonuses or penalties.</span>
+  <div className="uw-ratings-grid">
+    #each (rating in cityRatings)
+      <div className="uw-rating-card"><div className="uw-between"><span className="uw-section-title">{rating.label}</span><span className="uw-rating-number" style={{color:rating.color}}>{rating.score}<small>/100</small></span></div><div className="uw-rating-track"><span style={{width:rating.width,background:rating.color}} /></div><span className="uw-rating-status" style={{color:rating.color}}>{rating.status}</span><p>{rating.detail}</p><button className="uw-small-button uw-gap" @click={() => uwRatingInspect(rating.overlay)}>Inspect conditions ↗</button></div>
+    #end
+  </div>
+#end
+#if (modal === "districts")
+  <span className="uw-eyebrow">SIXTEEN NEIGHBOURHOODS. ONE CITY.</span><span className="uw-title">Places with a personality.</span><span className="uw-modal-subtitle">District identity emerges from development and services. Select a district to visit it, then use the Ward inspector to rename it and set a planning focus.</span>
+  <div className="uw-modal-grid">
+    #each (district in districtRows)
+      <div className="uw-district-card"><span className="uw-district-name">{district.name}</span><span className="uw-district-type">{district.identity}</span><span className="uw-muted">{district.population} residents · {district.value} land value</span><div className="uw-gap"><button className="uw-small-button" @click={() => uwVisitDistrict(district.id)}>Visit district ↗</button></div></div>
+    #end
+  </div>
+#end
+#if (modal === "news")
+  <span className="uw-eyebrow">ESTABLISHED WITH THE FIRST STREET</span><span className="uw-title">The Urbanward Gazette</span><span className="uw-modal-subtitle">The record of a city becoming itself. Reports are generated from actual city conditions and civic decisions.</span>
+  #each (petition in petitionRows)
+    <div className="uw-policy"><span className="uw-section-title">{petition.title}</span><p>{petition.action}</p><span className="uw-muted">{petition.status}</span><div className="uw-gap"><button className="uw-small-button" @click={() => uwVisitDistrict(petition.district)}>Visit neighbourhood ↗</button></div></div>
+  #end
+  #if (newsRows.length === 0)
+    <span className="uw-muted">The first edition is waiting for a city.</span>
+  #end
+  #each (article in newsRows)
+    <div className="uw-news-item"><span className="uw-news-date">{article.date} · {article.kind}</span><span className="uw-news-title">{article.title}</span><span className="uw-news-body">{article.body}</span></div>
+  #end
+#end
+#if (modal === "transit")
+  <span className="uw-eyebrow">CONNECT THE PLACES PEOPLE CALL HOME</span><span className="uw-title">Streets into journeys.</span>
+  <span className="uw-modal-subtitle">Build bus stops and a powered depot, then choose stops in travel order. Lines follow shortest connected road paths and run out and back. More buses improve frequency; congestion lengthens the trip.</span>
+  <div className="uw-row"><button className={transitMode === "local" ? "uw-button uw-active" : "uw-button"} @click={() => uwSetTransitMode("local")}>Automatic local service</button><button className={transitMode === "routes" ? "uw-button uw-active" : "uw-button"} @click={() => uwSetTransitMode("routes")}>Planned routes</button></div>
+  <p className="uw-muted">Automatic mode preserves the original area service. In planned mode only running lines provide bus coverage. Each enabled bus costs $45/month, including while a line is disrupted. Depot and stop upkeep are additional.</p>
+  #each (line in transitRows)
+    <div className="uw-policy" style={{borderLeft:"4px solid " + line.color}}>
+      <span className="uw-section-title">{line.name}</span><span className="uw-micro">{line.detail}</span><p>{line.status} · {line.service}</p><span className="uw-muted">{line.stops}</span>
+      <div className="uw-row uw-gap"><button className="uw-small-button" @click={() => uwShowRoute(line.id)}>Show on map ↗</button><button className="uw-small-button" @click={() => uwEditRoute(line.id)}>Edit line</button><button className="uw-small-button" @click={() => uwToggleRoute(line.id)}>{line.enabled ? "Pause line" : "Resume line"}</button><button className="uw-small-button" @click={() => uwDeleteRoute(line.id)}>Remove line</button></div>
+    </div>
+  #end
+  <div className="uw-divider" />
+  <span className="uw-section-title">{routeEditing < 0 ? "Plan a new line" : "Edit this line"}</span>
+  <div className="uw-modal-grid uw-gap"><div><label className="uw-form-label" htmlFor="uw-line-name">Line name</label><input id="uw-line-name" aria-label="Bus line name" maxLength={36} :bind={routeName} /></div><div><label className="uw-form-label" htmlFor="uw-line-buses">Buses assigned · 1–6</label><input id="uw-line-buses" type="number" min="1" max="6" aria-label="Buses assigned" :bind={routeBuses} /></div></div>
+  <p>{routeStatus}</p>
+  #each (draftStop in routeDraftRows)
+    <div className="uw-between uw-gap"><span>{draftStop.label}</span><div className="uw-row"><button className="uw-small-button" @click={() => uwMoveDraft(draftStop.index, -1)}>Earlier</button><button className="uw-small-button" @click={() => uwMoveDraft(draftStop.index, 1)}>Later</button><button className="uw-small-button" @click={() => uwRemoveDraft(draftStop.index)}>Remove stop</button></div></div>
+  #end
+  #if (transitStops.length === 0)
+    <p className="uw-muted">No bus stops yet. Close this window and choose Transport in the construction toolbox to place stops and a depot.</p>
+  #end
+  <div className="uw-modal-grid">
+    #each (stop in transitStops)
+      <button className={stop.selected ? "uw-button uw-active" : "uw-button"} @click={() => uwDraftStop(stop.id)}>{stop.order} · {stop.name}</button>
+    #end
+  </div>
+  <div className="uw-row uw-gap"><button className="uw-button uw-button-primary" @click={uwSaveRoute}>Save line</button><button className="uw-button" @click={uwNewRoute}>Clear draft / map highlight</button></div>
+#end
+#if (modal === "performance")
+  <span className="uw-eyebrow">THE CITY AS A WORKLOAD</span><span className="uw-title">Performance monitor</span>
+  <span className="uw-modal-subtitle">{performanceSummary}</span>
+  <div className="uw-row"><button className="uw-button" @click={uwTogglePerformance}>{performanceEnabled ? "Stop sampling" : "Start sampling"}</button><button className="uw-button" @click={uwPerformanceSnapshot}>Refresh samples</button><button className="uw-button" @click={uwResetPerformance}>Reset samples</button><button className="uw-button" @click={uwStepMonth}>Measure one month</button></div>
+  <p className="uw-muted">Close this window and play to collect samples, or measure one month here (this advances your city). Last 120 calls per phase, measured by the host wall clock. Millisecond resolution; zero means below clock resolution. Nested phases overlap and must not be added together. These measure logic work, not GPU frame time or UI paint. Sampling starts off and is never saved.</p>
+  #if (performanceRows.length === 0)
+    <p className="uw-muted">No samples yet. Start sampling, then measure a month and refresh.</p>
+  #end
+  #each (sample in performanceRows)
+    <div className="uw-policy"><span className="uw-section-title">{sample.name}</span><span className="uw-muted">{sample.count} calls · last {sample.last} · mean {sample.mean} · p95 {sample.p95} · peak {sample.peak}</span></div>
+  #end
+#end
+#if (modal === "objectives")
+  <span className="uw-eyebrow">YOUR CIVIC CHARTER</span><span className="uw-title">The next good decision.</span><span className="uw-modal-subtitle">These milestones guide a new city. Completed objectives stay recorded even when conditions later change.</span>
+  #each (goal in objectiveRows)
+    <div className={goal.done ? "uw-objective uw-objective-done" : "uw-objective"}><span className="uw-objective-title">{goal.done ? "✓ " : "○ "}{goal.title}</span><span className="uw-objective-text">{goal.text}</span></div>
+  #end
+  <div className="uw-gap"><span className="uw-muted">Current story: {settings.scenario}. Growth challenge: 3,000 residents and a non-negative projected balance within 60 months. Recovery: 75% approval and a non-negative projected balance.</span></div>
+#end
+#if (modal === "history")
+  <span className="uw-eyebrow">EVERY MONTH LEAVES A MARK</span><span className="uw-title">A skyline in the making.</span><span className="uw-modal-subtitle">The most recent 24 months. The archive retains 72 monthly records in saves. Bars show population relative to the highest recorded population.</span>
+  <div className="uw-history-row"><span>Month</span><span>Population trend</span><span>People</span><span>Balance</span><span>Approval</span></div>
+  #if (historyRows.length === 0)
+    <span className="uw-muted">Advance the simulation one month to begin the record.</span>
+  #end
+  #each (record in historyRows)
+    <div className="uw-history-row"><span>{record.date}</span><div className="uw-history-track"><div className="uw-history-bar" style={{width:record.width}} /></div><span>{record.population}</span><span>{record.balance}</span><span>{record.approval}</span></div>
+  #end
+#end
+#if (modal === "choice")
+  <span className="uw-eyebrow">BEFORE THE COUNCIL</span><span className="uw-title">{choiceCard.title}</span><span className="uw-modal-subtitle">{choiceCard.text}</span><div className="uw-row"><button className="uw-button uw-button-primary" @click={() => uwResolveChoice(true)}>{choiceCard.left}</button><button className="uw-button" @click={() => uwResolveChoice(false)}>{choiceCard.right}</button></div>
+#end
+#if (modal === "settings")
+  <span className="uw-eyebrow">YOUR CITY. YOUR PACE.</span><span className="uw-title">City menu</span><span className="uw-modal-subtitle">{settings.scenario} · {settings.map} lots · numeric world seed {settings.seed}</span>
+  <div className="uw-modal-grid">
+    <div className="uw-stack">
+      <button className="uw-button" @click={uwCycleLight}>Lighting: {lightMode}</button>
+      <button className="uw-button" @click={uwToggleAutoLight}>Automatic lighting: {autoLight ? "on" : "off"}</button>
+      <button className="uw-button" @click={uwChangeQuality}>Geometry quality: {quality}</button>
+      <button className="uw-button" @click={uwToggleSound}>Original music and cues: {soundEnabled ? "on" : "off"}</button>
+      <button className="uw-button" @click={() => uwOpenModal("performance")}>Performance monitor</button>
+      <button className="uw-button" @click={uwStepMonth}>Advance exactly one month</button>
+    </div>
+    <div className="uw-stack">
+      <button className="uw-button" @click={uwToggleDisasters}>Random disasters: {settings.disasters ? "on" : "off"}</button>
+      <button className="uw-button uw-button-danger" @click={() => uwOpenModal("fire")}>Trigger a fire scenario…</button>
+      <button className="uw-button" @click={() => uwOpenModal("saves")}>Save and load</button>
+      <button className="uw-button" @click={uwRequestNewCity}>Start another city…</button>
+      <button className="uw-button" @click={() => uwOpenModal("help")}>Read the field guide</button>
+    </div>
+  </div>
+  <div className="uw-divider" /><span className="uw-muted">Renderer: {hud.batches} static object batches · {hud.instances} instances. Simulation uses monthly steps; cars are representative visual traffic. Native performance varies with the SoftN runtime and device.</span>
+#end
+#if (modal === "newcity")
+  <span className="uw-eyebrow">A DIFFERENT CHAPTER</span><span className="uw-title">Start a new city?</span><span className="uw-modal-subtitle">Your current city stays paused while you choose a new map. Founding another city replaces the current unsaved world. Save first to preserve it.</span><div className="uw-row"><button className="uw-button uw-button-primary" @click={() => uwOpenModal("saves")}>Save first</button><button className="uw-button" @click={uwNewCityScreen}>Choose a new map</button><button className="uw-button" @click={uwCloseModal}>Keep this city</button></div>
+#end
+#if (modal === "fire")
+  <span className="uw-eyebrow">CONTROLLED TEST. REAL CONSEQUENCES.</span><span className="uw-title">Trigger a building fire?</span><span className="uw-modal-subtitle">The selected building will burn. Without a selected building, a developed lot is chosen. Fire coverage over 35% can contain it next month; unprotected fires can spread and destroy buildings. Save first to keep a pre-disaster version.</span><div className="uw-row"><button className="uw-button uw-button-danger" @click={uwConfirmFire}>Start the incident</button><button className="uw-button" @click={uwCloseModal}>Cancel</button></div>
+#end

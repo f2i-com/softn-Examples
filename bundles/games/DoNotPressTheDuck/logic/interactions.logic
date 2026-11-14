@@ -1,0 +1,67 @@
+// Every complication is forgiving. No precision timing, penalties or mandatory grinding.
+function interact(index) {
+    if (!active() || actionCooldown > 0 || !S.gate.kind) return false;
+    if (!integer(index, 0, 2)) return false;
+    unlockAudio();
+    let g = S.gate, kind = g.kind, spec = GATE_SPECS[kind];
+    let threeChoices = kind === "clones" || kind === "search" || kind === "customs" || kind === "dish";
+    if (!threeChoices && kind !== "gravity" && kind !== "permit" && index !== 0) return false;
+    if ((kind === "gravity" || kind === "permit") && index > 1) return false;
+    actionCooldown = 0.16;
+    if ((kind === "clones" || kind === "search") && index !== g.variant) {
+        g.mistakes = Math.min(100, g.mistakes + 1);
+        g.bits = g.bits | (1 << index); // Unmask the potato / open the sandwich crate visibly.
+        tell(kind === "clones" ? "That one is a potato with professional ambitions. Look for the yellow tag." : "Just a sandwich. The feather-marked crate is making suspicious noises.", "NO HARM DONE");
+        flashEffect("squash", 0.5); playSound("honk3", 0.6); persist(); publish(); return false;
+    }
+    if (kind === "customs" && index !== 2) {
+        g.mistakes = Math.min(100, g.mistakes + 1);
+        tell(index === 0 ? "One duck? Our instruments suggest quite a few more." : "Nothing to declare? Your moon is quacking.", "CUSTOMS OFFICER");
+        playSound("stamp", 0.5); worldDirty = true; persist(); publish(); return false;
+    }
+    if (kind === "permit" || kind === "dish") {
+        let bit = Math.pow(2, index);
+        if ((g.bits & bit) !== 0) return false;
+        g.bits = g.bits | bit;
+    }
+    if (kind === "gravity") S.gravity = index === 0 ? -1 : 1;
+    if (kind === "tune") S.tune = Math.min(3, S.tune + 1);
+    g.progress++;
+    flashEffect(kind === "inspect" || kind === "bouncer" ? "hearts" : "squash", 0.65);
+    playSound(kind === "permit" || kind === "customs" ? "stamp" : (kind === "crank" ? "machine" : (kind === "tune" ? "static" : (kind === "launch" ? "pump" : "boing"))), 0.6);
+    if (kind === "chase" && g.progress < spec.need) tell(g.progress === 1 ? "NOPE. One more extremely determined waddle." : "It is running out of leg.", "THE BUTTON");
+    if (g.progress >= spec.need) finishGate(false);
+    worldDirty = true; persist(); publish(); return true;
+}
+function helpGate() {
+    if (!active() || !S.gate.kind) return;
+    hintShown = !hintShown;
+    tell(GATE_SPECS[S.gate.kind].help, "A HELPFUL DUCK");
+    worldDirty = true; publish();
+}
+function assistGate() {
+    if (!active() || !S.gate.kind || (!settings.assist && !hintShown && S.gate.age < GATE_HELP_SECONDS)) return false;
+    unlockAudio(); finishGate(true); persist(); publish(); return true;
+}
+function sideAction(id) {
+    if (!active() || S.launchTime > 0 || actionCooldown > 0) return false;
+    unlockAudio(); actionCooldown = 0.2;
+    if (id === "plant" && S.presses === 0 && S.patience >= 38) {
+        S.watered = true; tell("You watered a plant. Nothing exploded. Interesting.", "THE ROOM"); flashEffect("hearts", 1); playSound("water", 0.6);
+    } else if (id === "tea" && S.presses === 0 && S.patience >= 72) {
+        S.tea = true; tell("The duck made you tea. It wasn't sure what else to do.", "THE DUCK"); flashEffect("hearts", 1); playSound("tea", 0.5);
+    } else if (id === "door" && S.presses === 0 && S.patience >= 110) {
+        S.doorOpen = true; record("door"); completeEnding("outside"); return true;
+    } else if (id === "bell" && S.presses >= 12 && S.presses < 100) {
+        S.extras = Math.min(50, S.extras + 1); tell("A complimentary crumb for everyone.", "LUNCH SERVICE"); flashEffect("crumbs", 1); playSound("ding", 0.5);
+    } else if (id === "tv" && S.presses >= 57) {
+        S.tune = (S.tune + 1) % 4;
+        let channels = ["DUCK TV: now with absolutely no competing opinions.", "Weather: a 100% chance of ducks.", "Cooking with Crumbs: today, crumbs.", "Live council coverage. Nothing has happened for six hours."];
+        tell(channels[S.tune], "DUCK TV / CHANNEL " + (S.tune + 1)); playSound("tv", 0.55);
+    } else { actionCooldown = 0; return false; }
+    worldDirty = true; persist(); publish(); return true;
+}
+function chooseEnding(id) {
+    if (paused || overlay || S.phase !== "finale" || S.finaleTime < (settings.reducedMotion ? 1 : 4)) return false;
+    unlockAudio(); return completeEnding(id);
+}

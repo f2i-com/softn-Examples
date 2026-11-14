@@ -2,6 +2,7 @@
 
 <style>
 /* The scene is the page. Everything else floats over it. */
+.pu-root, .pu-root * { box-sizing: border-box; }
 .pu-root { position: relative; width: 100%; height: 100%; min-height: 0; overflow: hidden; background: #0b0f17; font-family: "Segoe UI", system-ui, sans-serif; color: #e6e9f4; user-select: none; }
 .pu-scene { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
 .pu-ovl { position: absolute; pointer-events: none; }
@@ -71,8 +72,18 @@
 .pu-barwrap { background: #0b1017; border-radius: 999px; height: 7px; overflow: hidden; }
 .pu-fill { height: 7px; border-radius: 999px; transition: width 500ms cubic-bezier(0.16, 1, 0.3, 1); }
 .pu-luma { width: min(860px, 100%); max-height: 56vh; display: flex; flex-direction: column; overflow: hidden; border-color: #7c3aed; }
+.pu-box-hud { top: 64px; left: 16px; padding: 10px 14px; z-index: 18; max-width: min(420px, calc(100% - 32px)); }
 @media (max-width: 720px) {
-  .pu-top { top: 8px; left: 8px; right: 8px; gap: 6px; }
+  .pu-top { top: 8px; left: 8px; right: 8px; gap: 5px; align-items: center; }
+  .pu-top-spacer { display: none !important; }
+  .pu-obj-chip { max-width: 100%; white-space: normal; line-height: 1.25; font-size: 11px !important; padding: 5px 10px !important; border-radius: 10px !important; }
+  .pu-hud { max-width: 100%; gap: 6px; padding: 4px 8px; }
+  .pu-hud-label { font-size: 10px !important; letter-spacing: 0.04em !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 145px; }
+  .pu-dot { width: 7px !important; height: 7px !important; }
+  .pu-runway-chip { font-size: 11px !important; padding: 4px 9px !important; }
+  .pu-top-btn { padding: 4px 9px !important; font-size: 11px !important; min-height: 28px !important; }
+  .pu-box-hud { top: 112px; left: 8px; right: 8px; max-width: calc(100% - 16px); padding: 8px 10px; }
+  .pu-cut-title { left: 12px; right: 84px; }
   .pu-title-wrap { justify-content: flex-start; padding: 36px 16px 120px 16px; overflow-y: auto; }
   .pu-title-foot { left: 10px; right: 10px; bottom: 10px; background: rgba(11,15,23,0.78); backdrop-filter: blur(6px); padding: 8px 10px; border-radius: 10px; }
   .pu-title-word { font-size: clamp(32px, 11vw, 56px) !important; }
@@ -83,7 +94,7 @@
   .pu-modal-card { max-height: calc(100% - 16px); }
   .pu-panel { padding: 14px 12px; }
   .pu-bottom { left: 8px; right: 8px; bottom: 10px; }
-  .pu-controls { bottom: 10px; left: 8px; right: 8px; justify-content: space-between; }
+  .pu-controls { bottom: 10px; left: 8px; right: 8px; justify-content: space-between; gap: 8px !important; }
 }
 .pu-cap.pu-padded, .pu-choices.pu-padded { margin-bottom: 175px; }
 @media (prefers-reduced-motion: reduce) {
@@ -207,22 +218,22 @@
 
   <!-- Top HUD -->
   <Box if={scene !== "title" && scene !== "done"} className="pu-ovl pu-top" style={{ zIndex: 20 }}>
-    <Text className="pu-chip pu-obj pu-glass" key={objective} style={{ color: "#f59e0b", borderRadius: "999px", padding: "6px 13px" }}>{scene === "meeting" ? slideTitle : objective}</Text>
-    <Box style={{ flex: 1, pointerEvents: "none" }} />
+    <Text className="pu-chip pu-obj pu-glass pu-obj-chip" key={objective} style={{ color: "#f59e0b", borderRadius: "999px", padding: "6px 13px" }}>{scene === "meeting" ? slideTitle : objective}</Text>
+    <Box className="pu-top-spacer" style={{ flex: 1, pointerEvents: "none" }} />
     <Box className="pu-hud">
-      <Text style={{ fontSize: "11px", color: "#8b97ad", letterSpacing: "0.08em", paddingLeft: "4px" }}>{currentChapter() + " · " + chapterProgress()}</Text>
-      <Stack direction="horizontal" gap={6} style={{ alignItems: "center" }}>
+      <Text className="pu-hud-label" style={{ fontSize: "11px", color: "#8b97ad", letterSpacing: "0.08em", paddingLeft: "4px" }}>{currentChapter() + " · " + chapterProgress()}</Text>
+      <Stack direction="horizontal" gap={5} style={{ alignItems: "center" }}>
         #each (d, di in chapterDots())
           <Box className={d.state === "now" ? "pu-dot pu-dot-now" : "pu-dot"} title={d.label}
                style={{ width: "9px", height: "9px", borderRadius: "999px", background: dotColor(d.state) }} />
         #end
       </Stack>
     </Box>
-    <Text className="pu-chip pu-glass" style={{ color: "#4ade80", borderRadius: "999px", padding: "6px 13px" }}>Runway {stat("runway")}</Text>
-    <Button @click={toggleTouchMode} variant="ghost" className="pu-btn-ghost" style={{ background: touchMode ? "rgba(56,189,248,0.22)" : "rgba(10,14,21,0.72)", border: touchMode ? "1px solid #38bdf8" : "1px solid rgba(60,72,96,0.7)", padding: "6px 12px", fontSize: "12px", color: "#e2e8f0", borderRadius: "999px", minHeight: "34px" }}>{touchMode ? "Touch" : "Keys"}</Button>
-    <Button @click={toggleMute} ariaLabel={muted ? "Unmute game audio" : "Mute game audio"} variant="ghost" className="pu-btn-ghost" style={{ background: "rgba(10,14,21,0.72)", border: "1px solid rgba(60,72,96,0.7)", padding: "6px 12px", fontSize: "12px", color: "#e2e8f0", borderRadius: "999px", minHeight: "34px" }}>{muted ? "Unmute" : "Mute"}</Button>
-    <Button @click={toggleTranscript} variant="ghost" className="pu-btn-ghost" style={{ background: "rgba(10,14,21,0.72)", border: "1px solid rgba(60,72,96,0.7)", padding: "6px 12px", fontSize: "12px", color: "#e2e8f0", borderRadius: "999px", minHeight: "34px" }}>Transcript</Button>
-    <Button @click={quitToTitle} variant="ghost" className="pu-btn-ghost" style={{ background: "rgba(10,14,21,0.72)", border: "1px solid rgba(60,72,96,0.7)", padding: "6px 12px", fontSize: "12px", color: "#e2e8f0", borderRadius: "999px", minHeight: "34px" }}>Menu</Button>
+    <Text className="pu-chip pu-glass pu-runway-chip" style={{ color: "#4ade80", borderRadius: "999px", padding: "6px 13px" }}>Runway {stat("runway")}</Text>
+    <Button @click={toggleTouchMode} variant="ghost" className="pu-btn-ghost pu-top-btn" style={{ background: touchMode ? "rgba(56,189,248,0.22)" : "rgba(10,14,21,0.72)", border: touchMode ? "1px solid #38bdf8" : "1px solid rgba(60,72,96,0.7)", padding: "6px 12px", fontSize: "12px", color: "#e2e8f0", borderRadius: "999px", minHeight: "34px" }}>{touchMode ? "Touch" : "Keys"}</Button>
+    <Button @click={toggleMute} ariaLabel={muted ? "Unmute game audio" : "Mute game audio"} variant="ghost" className="pu-btn-ghost pu-top-btn" style={{ background: "rgba(10,14,21,0.72)", border: "1px solid rgba(60,72,96,0.7)", padding: "6px 12px", fontSize: "12px", color: "#e2e8f0", borderRadius: "999px", minHeight: "34px" }}>{muted ? "Unmute" : "Mute"}</Button>
+    <Button @click={toggleTranscript} variant="ghost" className="pu-btn-ghost pu-top-btn" style={{ background: "rgba(10,14,21,0.72)", border: "1px solid rgba(60,72,96,0.7)", padding: "6px 12px", fontSize: "12px", color: "#e2e8f0", borderRadius: "999px", minHeight: "34px" }}>Transcript</Button>
+    <Button @click={quitToTitle} variant="ghost" className="pu-btn-ghost pu-top-btn" style={{ background: "rgba(10,14,21,0.72)", border: "1px solid rgba(60,72,96,0.7)", padding: "6px 12px", fontSize: "12px", color: "#e2e8f0", borderRadius: "999px", minHeight: "34px" }}>Menu</Button>
   </Box>
 
   <!-- Bottom: caption, then choices above it -->
@@ -251,11 +262,11 @@
   </Box>
 
   <!-- Touch controls -->
-  <Stack if={canMove() && touchMode} className={padClass()} direction="horizontal" gap={12} style={{ alignItems: "center" }}>
-    <DPad @press={padPress} @release={padRelease} buttonSize={50} />
-    <Stack direction="horizontal" gap={8} style={{ alignItems: "center" }}>
-      <Button if={dlgActive} @click={dlgSkip} variant="ghost" style={{ padding: "12px 14px", fontWeight: 700, borderRadius: "10px", background: "rgba(10,14,21,0.78)", border: "1px solid rgba(60,72,96,0.7)", color: "#e2e8f0", minHeight: "44px" }}>Skip</Button>
-      <Button @click={interactPressed} style={{ padding: "14px 20px", fontWeight: 700, borderRadius: "10px", background: hsNearId ? "#f59e0b" : "rgba(56,189,248,0.85)", color: "#10131a", minHeight: "48px" }}>{hsNearId ? "Use" : "Use (E)"}</Button>
+  <Stack if={canMove() && touchMode} className={padClass()} direction="horizontal" gap={10} style={{ alignItems: "center" }}>
+    <DPad @press={padPress} @release={padRelease} buttonSize={48} />
+    <Stack direction="horizontal" gap={8} style={{ alignItems: "center", minWidth: 0 }}>
+      <Button if={dlgActive} @click={dlgSkip} variant="ghost" style={{ padding: "10px 12px", fontSize: "13px", fontWeight: 700, borderRadius: "10px", background: "rgba(10,14,21,0.78)", border: "1px solid rgba(60,72,96,0.7)", color: "#e2e8f0", minHeight: "44px" }}>Skip</Button>
+      <Button @click={interactPressed} style={{ padding: "10px 14px", fontSize: "13px", lineHeight: "1.2", whiteSpace: "normal", height: "auto", maxWidth: dlgActive ? "138px" : "195px", fontWeight: 700, borderRadius: "10px", background: (cutActive || hsNearId) ? "#f59e0b" : "rgba(15,23,42,0.78)", border: (cutActive || hsNearId) ? "1px solid #fbbf24" : "1px solid rgba(60,72,96,0.7)", color: (cutActive || hsNearId) ? "#10131a" : "#94a3b8", minHeight: "46px" }}>{touchActionLabel()}</Button>
     </Stack>
   </Stack>
 
@@ -298,7 +309,7 @@
   </Box>
 
   <!-- Scene 3: packing progress (the picking itself happens in the world) -->
-  <Box if={scene === "boxes" && keptItems.length === 0 && !cutActive} className="pu-ovl pu-glass pu-live" style={{ top: "64px", left: "16px", padding: "10px 14px", zIndex: 18, maxWidth: "min(420px, calc(100% - 32px))" }}>
+  <Box if={scene === "boxes" && keptItems.length === 0 && !cutActive} className="pu-ovl pu-glass pu-live pu-box-hud">
     <Stack direction="horizontal" gap={10} style={{ alignItems: "center", flexWrap: "wrap" }}>
       <Text style={{ fontWeight: 700, color: "#fbbf24", fontSize: "13px" }}>Archive box</Text>
       <Stack direction="horizontal" gap={6} style={{ alignItems: "center" }}>
