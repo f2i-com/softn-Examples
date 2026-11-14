@@ -84,7 +84,7 @@ Node 20.19 or newer. A build is deterministic from the sources: files are enumer
 ## Release
 
 1. Bump `version` in `package.json` and commit.
-2. Either tag and push (`git tag v1.0.4 && git push origin v1.0.4`), publish a GitHub Release for that tag in the GitHub UI, or run the `Release` workflow manually (`workflow_dispatch`).
+2. Either tag and push (`git tag v1.0.5 && git push origin v1.0.5`), publish a GitHub Release for that tag in the GitHub UI, or run the `Release` workflow manually (`workflow_dispatch`).
 
 The `Release` workflow runs `npm test`, runs `node scripts/build/build-release.cjs --expect-tag vX.Y.Z` to compile all `.softn` archives into `dist/`, uploads `dist/` as a workflow run artifact, and attaches every compiled `dist/*.softn` file along with `dist/SHA256SUMS.txt` and `dist/catalogue.json` directly to the GitHub Release.
 
@@ -93,7 +93,7 @@ A published release is immutable: softn.com pins one by URL and digest, and a pl
 softn.com then pins the new release from its own checkout:
 
 ```sh
-node scripts/fetch-demos.mjs --pin v1.0.4   # rewrites the sizes, digests and download URLs in public/demos/index.json, then fetches
+node scripts/fetch-demos.mjs --pin v1.0.5   # rewrites the sizes, digests and download URLs in public/demos/index.json, then fetches
 ```
 
 ## Layout
@@ -111,6 +111,7 @@ node scripts/fetch-demos.mjs --pin v1.0.4   # rewrites the sizes, digests and do
 | `scripts/test/test-bundle.cjs` | Structural, composition and source-parity validator for built `.softn` bundles. |
 | `scripts/test/test-all-bundles.cjs` | `npm test`'s final gate: builds and validates every bundle against its source directory and `catalogue.json`. |
 | `scripts/test/texasholdem/` | Texas Hold'em gameplay, server authority, client sync and HTTP authority tests. |
+| `scripts/test/minemanagement/` | Mine Management simulation, fleet dispatch, contracts, save backup/restore and audio lifecycle tests. |
 | `scripts/test/promptly/` | Promptly Unemployed geometry, spawn clearance and voiced-audio completeness checks. |
 | `scripts/test/test-*.cjs` | WarbleWire protocol tests and validator regression tests. |
 | `scripts/assets/` | Shared Blender 3D PBR library, HDR environment generator and WAV SFX synthesizer. |
