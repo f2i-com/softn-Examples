@@ -1,0 +1,17 @@
+<div className="os-stack">
+  <div><div className="os-section-title">Beyond survival.</div><span className="os-small os-dim">Select a project. A powered station and a researcher turn time into understanding.</span></div>
+  <div className="os-card"><span className="os-label">ACTIVE PROJECT</span><div className="os-small os-amber" style={{ marginTop: "5px" }}>{researchSummary}</div></div>
+  #each (r in researchCards) key={r.id}
+    <div className="os-research-card" osactive={String(r.active)} osdone={String(r.done)}>
+      <div className="os-between"><span className="os-label">{r.branch}</span><span className="os-tiny os-dim">{r.progress} / {r.cost}</span></div>
+      <div className="os-research-name" style={{ marginTop: "6px" }}>{r.name}</div>
+      <div className="os-item-desc">{r.description}</div>
+      <div className="os-tech-progress"><i style={r.barStyle} /></div>
+      <div className="os-row"><button className="os-btn os-tab" disabled={!r.available || r.active} oson={String(r.active)} @click={() => selectResearch(r.id)}>{r.done ? "✓ Complete" : r.active ? "Researching" : r.available ? "Begin research" : r.status}</button>
+        #if (r.queueable)
+          <button className="os-btn os-tab" oson={String(r.queued)} @click={() => queueResearch(r.id)}>{r.queueLabel}</button>
+        #end
+      </div>
+    </div>
+  #end
+</div>

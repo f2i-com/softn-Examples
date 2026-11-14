@@ -1,0 +1,71 @@
+// 96 x 96 authored Greywall. Retains Outerstead's tile-world and stable-ID conventions.
+function fillFloor(x,y,w,h,id){for(let yy=y;yy<y+h;yy++)for(let xx=x;xx<x+w;xx++)if(onMap(xx,yy))omGame.ground[tileId(xx,yy)]=id;}
+function wallRect(x,y,w,h,type){for(let xx=x;xx<x+w;xx++){omGame.walls[tileId(xx,y)]=type;omGame.walls[tileId(xx,y+h-1)]=type;}for(let yy=y;yy<y+h;yy++){omGame.walls[tileId(x,yy)]=type;omGame.walls[tileId(x+w-1,yy)]=type;}}
+function addProp(kind,x,y,w,h,solid){omGame.props.push({id:"prop"+omGame.props.length,kind:kind,x:x,y:y,w:w||1,h:h||1,solid:!!solid});}
+function makeDoor(d){let out={id:d.id,x:d.x,y:d.y,kind:d.kind,job:d.job,label:d.label,openUntil:0};omGame.doors.push(out);omGame.walls[tileId(d.x,d.y)]=0;}
+function buildPrison(){
+  for(let i=0;i<MAP_SIZE*MAP_SIZE;i++){let x=i%MAP_SIZE,y=Math.floor(i/MAP_SIZE);omGame.ground.push((x*7+y*13)%9===0?1:0);omGame.walls.push(0);}
+  fillFloor(10,9,76,78,1);fillFloor(15,14,66,68,2);fillFloor(61,78,7,18,9);fillFloor(78,63,18,5,1);fillFloor(0,61,14,7,1);
+  wallRect(9,8,78,80,2);wallRect(14,13,68,70,1);
+  for(let i=0;i<ZONES.length;i++){let z=ZONES[i];fillFloor(z.x,z.y,z.w,z.h,z.tile);if(z.id!=="count"){wallRect(z.x,z.y,z.w,z.h,z.id==="yard"?2:1);}}
+  // Yard has two broad openings, not a one-cell traffic trap.
+  for(let x=26;x<=28;x++){omGame.walls[tileId(x,35)]=0;omGame.walls[tileId(x,52)]=0;}
+  for(let i=0;i<DOORS.length;i++)makeDoor(DOORS[i]);
+  // Internal cell fronts and partitions. Public corridor stays below y=25.
+  for(let x=19;x<40;x++)omGame.walls[tileId(x,25)]=1;
+  for(let y=19;y<25;y++)for(let x of [24,29,34])omGame.walls[tileId(x,y)]=1;
+  for(let i=0;i<4;i++)makeDoor({id:"cellA"+i,x:[22,27,32,37][i],y:25,kind:"cell",job:"cellA",label:"Block A cell "+(i+1)});
+  for(let x=45;x<62;x++)omGame.walls[tileId(x,25)]=1;
+  for(let y=19;y<25;y++)for(let x of [50,56])omGame.walls[tileId(x,y)]=1;
+  for(let i=0;i<3;i++)makeDoor({id:"cellB"+i,x:[48,54,60][i],y:25,kind:"cell",job:"cellB",label:"Block B cell "+(i+1)});
+  for(let i=0;i<SITES.length;i++){let s=SITES[i];siteIndex[s.id]=s;addProp(s.kind,s.x,s.y,s.w,s.h,s.kind!=="anchor");}
+  // Cell furniture: one bunk per inmate with a clear bedside tile, plus a sink. The first
+  // bed of the first cell is the player's site fixture and was added with the sites above.
+  for(let cell of CELLS){for(let i=0;i<cell.beds.length;i++){let b=cell.beds[i];if(cell.id===playerCellId()&&i===0)continue;addProp("bunk",b.x,b.y,2,2,true);}addProp("sink",cell.sink.x,cell.sink.y,1,1,true);}
+  addProp("bunk",74,20,2,3,true);addProp("desk",69,23,2,2,true);
+  for(let y of [41,44])for(let x of [44,55])addProp("table",x,y,4,2,true);
+  for(let y of [39,43])addProp("medbed",74,y,2,3,true);
+  for(let rp of ROOM_PROPS){let pt=layoutPoint(rp.zone,rp.x,rp.y,rp.w,rp.h);addProp(rp.kind,pt.x,pt.y,rp.w,rp.h,true);}
+  addProp("crates",70,75,4,3,true);addProp("crates",51,75,3,3,true);
+  addProp("bench",20,38,1,4,true);addProp("bench",33,46,1,4,true);addProp("hoop",32,37,2,1,true);
+  addProp("table",20,75,3,2,true);addProp("kettle",39,75,2,2,true);
+  for(let xy of [[13,12],[80,12],[13,80],[80,80],[85,39]])addProp("tower",xy[0],xy[1],3,3,true);
+  for(let xy of [[17,32],[40,33],[64,33],[79,32],[16,55],[34,52],[50,52],[64,52],[79,52],[16,71],[45,71],[79,71]])addProp("lamp",xy[0],xy[1],1,1,false);
+  for(let y=2;y<94;y+=7)for(let x=2;x<94;x+=9)if(x<8||x>88||y<7){addProp((x+y)%3===0?"rock":"shrub",x,y,2,2,false);}
+  // Reserved action points always remain clear. A scenic prop cannot strand a command.
+  for(let i=0;i<SITES.length;i++){let s=SITES[i];omGame.walls[tileId(s.ax,s.ay)]=0;}
+}
+function makePerson(id,name,role,palette,x,y){return {id:id,name:name,short:name.split(" ")[0],role:role,palette:palette,x:x+0.5,y:y+0.5,homeX:x,homeY:y,homeZone:"cellA",job:"laundry",mode:role==="player"?"routine":"auto",headingX:0,headingY:1,path:[],pathCursor:0,pathEpoch:-1,pathProfile:"",destination:null,retryAt:0,task:null,action:"Waiting",food:90,energy:90,stress:10,health:100,trust:10,risk:0.5,favorStage:0,crew:false,crewState:"routine",talkAt:-9999,met:false,tradeAt:0,memories:[],routineKey:"",routineTarget:null,workClock:0,idleClock:0,notice:0,suspicion:0,patrolIndex:0,pauseUntil:0,searchUntil:0,lastSeen:null,targetId:"",challengeAt:0,headingAngle:1.57,detainedUntil:0,escaped:false,carrying:false,downUntil:0,injuredUntil:0,stripped:false,grudge:0,armed:false,dragging:""};}
+function populatePrison(){
+  let homes=bedsideSlots();
+  let p=makePerson("player",playerName.trim().slice(0,32)||"Alex Vale","player",characterPalette,homes[0].x,homes[0].y);p.short=p.name.split(" ")[0];p.homeZone=homes[0].zone;p.background=backgroundChoice;p.trait=backgroundChoice;p.job=backgroundChoice==="clerk"?"records":backgroundChoice==="technician"?"maintenance":"laundry";omGame.people.push(p);
+  for(let i=0;i<INMATES.length;i++){let d=INMATES[i],h=homes[i+1],c=makePerson(d.id,d.name,"inmate",d.palette,h.x,h.y);c.short=d.short;c.job=d.job;c.homeZone=h.zone;c.trait=d.trait;c.bio=d.bio;c.trust=d.trust;c.risk=d.risk;omGame.people.push(c);}
+  for(let i=0;i<GUARDS.length;i++){let d=GUARDS[i],pt=d.route[0],c=makePerson(d.id,d.name,"guard",d.palette,pt[0],pt[1]);c.short=d.short;c.trait=d.trait;c.bio=d.trait+" officer. Watch the route, not the uniform.";c.patrolIndex=i%d.route.length;omGame.people.push(c);}
+  for(let i=0;i<STAFF.length;i++){let d=STAFF[i],pt=d.route[0],c=makePerson(d.id,d.name,"staff",d.palette,pt[0],pt[1]);c.short=d.short;c.job=d.job;c.trait=d.kind;c.bio="Greywall "+d.kind+". Staff movement continues off-screen.";omGame.people.push(c);}
+  rebuildIndexes();
+}
+// Bedside tiles in block order: the player takes the first bed of Block A cell 1.
+function bedsideSlots(){let out=[],first=null,home=playerCellId();for(let cell of CELLS)for(let i=0;i<cell.beds.length;i++){let b=cell.beds[i],slot={x:b.side.x,y:b.side.y,zone:cell.block};if(cell.id===home&&i===0)first=slot;else out.push(slot);}if(first)out.unshift(first);return out;}
+function rebuildIndexes(){actorIndex={};siteIndex={};for(let i=0;i<omGame.people.length;i++)actorIndex[omGame.people[i].id]=omGame.people[i];for(let i=0;i<SITES.length;i++)siteIndex[SITES[i].id]=SITES[i];}
+function freshState(){return {schema:SAVE_SCHEMA,version:OM_VERSION,seed:hashSeed(seedText),rng:hashSeed(seedText),seedLabel:seedText.slice(0,48),nextId:1,name:playerName.trim().slice(0,32)||"Alex Vale",difficulty:difficultyChoice,minutes:350,elapsed:0,step:0,ground:[],walls:[],doors:[],props:[],people:[],inventory:{},stashes:{cell:{cloth:1},laundry:{},workshop:{},yard:{}},scrip:12,favors:0,wearing:false,sprinting:false,personalSuspicion:0,heat:0,lockdownUntil:0,policyKey:"",patrolReverse:false,cameraNotice:{},cameraReported:{},power:{offUntil:0,source:"normal"},weather:"Clear",weatherUntil:1440,knowledge:{},projects:{},siteCooldown:{},siteTaken:{},evidence:[],chronicle:[],notebook:"",selectedRoute:"",escape:null,ending:null,over:false,distractions:[],search:null,nextSearch:1440+600,nextIncident:600,capturedCount:0,challenge:null,stats:{counts:0,missedCounts:0,work:0,met:0,favors:0,crafted:0,projects:0,observations:0,stashes:0,searches:0,escapes:0,fights:0,riots:0},countKeys:{},chapter:0,chapterDone:{},needsClock:0,securityClock:0,directorClock:0,socialClock:0,guideDismissed:false,lastAnnouncement:"",routeHistory:[],practice:false,sleepClock:0,nightKey:"",ledger:{scrip:12,work:0,counts:0,met:0},shop:{day:0,sold:{}},rounds:null,roundsKey:"",cellTalk:null,cellTalkDay:0,recentIncidents:[],orders:[],guide:{route:"",skipped:[],auto:false},milestones:{},relations:{},argued:{},cameraFaults:{},history:null,wearingGuard:false,uniformAlert:0,riot:null,fightsToday:null};}
+function newGame(){
+  if(omGame&&screen==="game")saveSlot(autoIndex,true);
+  if(!demoStarting)endDemo();contextMenu=null;
+  directoryQuery="";directoryFilter="all";applyLayout(prisonMode==="procedural"?layoutForSeed(seedText):null);omGame=freshState();siteIndex={};buildPrison();populatePrison();
+  if(backgroundChoice==="mechanic")omGame.inventory.scrap=1;
+  if(backgroundChoice==="technician")learnIntel("power","observed",false);
+  learnIntel("counts","observed",false);
+  selectedId="bunk";selectedType="site";screen="game";paused=true;gameSpeed=1;dialog="arrival";mobilePanelOpen=false;activePanel="day";
+  viewDirty=true;terrainDirty=true;loopAccumulator=0;realSaveClock=0;pathEpoch=0;securityEpoch=0;visibleTileRange=null;
+  rebuildSpatial();if(prisonMode==="procedural"){generatePrison();generateCastAndStory();}assignProfiles();seedGrudges();updateSecurityPolicy();resetMapGesture();focusPlayer();
+  logEvent("Your number is not your name",pName()+" arrives at Greywall. The gates are closed. The schedule is not.","chapter");
+  refreshAll();if(!demoStarting)playCue("door");
+}
+function pName(){return player()?player().name:"Inmate";}
+function beginFirstCount(){dialog="";paused=false;statusText="First count: stay in Routine mode to learn the prison day.";if(guidedStartPending){guidedStartPending=false;applyGuidedStart();}dirty();}
+let cachedRoutineMinute=-1,cachedRoutine=null;
+function routineNow(){let m=minuteNow();if(m===cachedRoutineMinute&&cachedRoutine)return cachedRoutine;cachedRoutineMinute=m;for(let i=0;i<SCHEDULE.length;i++)if(m>=SCHEDULE[i].start&&m<SCHEDULE[i].end){cachedRoutine=SCHEDULE[i];return cachedRoutine;}cachedRoutine=SCHEDULE[0];return cachedRoutine;}
+function isWorkTime(){return timeIn(435,690)||timeIn(780,990);}
+function hasUniformPass(){return (!!omGame.wearing&&itemCount("uniform")>0&&itemCount("pass")>0)||wearingGuardUniform();}
+function isOutside(c){let v=omGame&&omGame.generation;if(v&&v.version>=4){if(v.shape==="crown"&&c.x>40&&c.x<55&&c.y<7)return true;return !perimeterContains(v.outerBounds,c.x,c.y);}return c.x<9||c.x>87||c.y<8||c.y>88;}
+function isOutsideInner(c){return c.x<14||c.x>82||c.y<13||c.y>83;}

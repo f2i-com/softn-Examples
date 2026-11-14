@@ -1,0 +1,189 @@
+// Independent namespace and brand: an Outermate run can never replace an Outerstead save.
+// Parse and validate the complete candidate before replacing the live simulation.
+function snapshotText(){return JSON.stringify({format:"OUTERMATE-SAVE",schema:SAVE_SCHEMA,version:OM_VERSION,game:omGame});}
+function validateTree(value,depth,budget){
+  budget.n++;if(budget.n>150000||depth>24)throw new Error("Save is too complex.");
+  if(value===null||typeof value==="boolean")return;
+  if(typeof value==="number"){if(!Number.isFinite(value))throw new Error("Non-finite number.");return;}
+  if(typeof value==="string"){if(value.length>16000)throw new Error("Oversized text field.");return;}
+  if(Array.isArray(value)){if(value.length>10000)throw new Error("Oversized array.");for(let i=0;i<value.length;i++)validateTree(value[i],depth+1,budget);return;}
+  if(!isRecord(value))throw new Error("Invalid save value.");
+  let keys=Object.keys(value);if(keys.length>512)throw new Error("Oversized object.");
+  for(let i=0;i<keys.length;i++){let key=keys[i];if(key==="__proto__"||key==="prototype"||key==="constructor")throw new Error("Unsafe object key.");validateTree(value[key],depth+1,budget);}
+}
+function requireNumber(n,min,max,label){if(!isFiniteNumber(n)||n<min||n>max)throw new Error("Invalid "+label+".");}
+function requireList(v,max,label){if(!Array.isArray(v)||v.length>max)throw new Error("Invalid "+label+".");}
+function requireGoods(goods,capacity){if(!isRecord(goods))throw new Error("Invalid item storage.");let bulk=0;let ids=Object.keys(goods);for(let i=0;i<ids.length;i++){let id=ids[i];if(!ITEMS[id])throw new Error("Unknown item.");requireNumber(goods[id],0,200,"item count");if(Math.floor(goods[id])!==goods[id])throw new Error("Fractional item count.");bulk+=goods[id]*ITEMS[id].bulk;}if(bulk>capacity)throw new Error("Storage exceeds capacity.");}
+function validateCandidate(text){
+  if(typeof text!=="string"||text.length>2000000)throw new Error("Save text is missing or too large.");
+  let envelope=JSON.parse(text);validateTree(envelope,0,{n:0});
+  // The room layout the save was built with has to be in place before doors and fixtures are checked.
+  let candidateLayout=envelope&&envelope.game&&envelope.game.generation?envelope.game.generation.layout:null;if(candidateLayout!==undefined&&candidateLayout!==null&&!validLayout(candidateLayout))throw new Error("Invalid layout.");applyLayout(candidateLayout||null);
+  if(!isRecord(envelope)||envelope.format!=="OUTERMATE-SAVE")throw new Error("This is not an Outermate save.");
+  if(envelope.schema!==SAVE_SCHEMA)throw new Error("Unsupported save schema. Keep this file for a compatible release.");
+  let g=envelope.game;if(!isRecord(g)||g.schema!==SAVE_SCHEMA||OM_COMPATIBLE_VERSIONS.indexOf(g.version)<0)throw new Error("Incompatible game state.");
+  for(let k of ["minutes","elapsed","nextId","step","rng","seed","nextSearch","nextIncident","lockdownUntil","capturedCount"])requireNumber(g[k],0,10000000000,k);
+  if(!DIFFICULTIES[g.difficulty]||typeof g.name!=="string"||g.name.length>60)throw new Error("Invalid player setup.");
+  for(let k of ["personalSuspicion","heat"])requireNumber(g[k],0,100,k);
+  for(let k of ["scrip","favors"])requireNumber(g[k],0,99999,k);
+  for(let k of ["needsClock","securityClock","directorClock","socialClock"])requireNumber(g[k],0,100,k);
+  for(let k of ["over","wearing","sprinting"])if(typeof g[k]!=="boolean")throw new Error("Invalid flag: "+k);
+  if(!isRecord(g.power)||!isRecord(g.stats)||!isRecord(g.knowledge)||!isRecord(g.projects)||!isRecord(g.stashes)||!isRecord(g.countKeys)||!isRecord(g.chapterDone)||!isRecord(g.siteCooldown)||!isRecord(g.siteTaken))throw new Error("Missing game systems.");
+  requireNumber(g.power.offUntil,0,1e10,"power timer");requireNumber(g.weatherUntil,0,1e10,"weather timer");
+  if(["Clear","Rain","Storm","Fog"].indexOf(g.weather)<0)throw new Error("Invalid weather.");
+  for(let k of ["counts","missedCounts","work","met","favors","crafted","projects","observations","stashes","searches","escapes"])requireNumber(g.stats[k],0,1e8,"statistics");
+  requireGoods(g.inventory,INVENTORY_CAPACITY);for(let k of ["cell","laundry","workshop","yard"])requireGoods(g.stashes[k],200);
+  requireList(g.ground,9216,"terrain");requireList(g.walls,9216,"walls");if(g.ground.length!==9216||g.walls.length!==9216)throw new Error("Invalid world dimensions.");
+  for(let i=0;i<9216;i++){requireNumber(g.ground[i],0,15,"terrain tile");requireNumber(g.walls[i],0,2,"wall tile");if(g.ground[i]%1||g.walls[i]%1)throw new Error("Fractional terrain tile.");}
+  requireList(g.props,512,"fixtures");for(let i=0;i<g.props.length;i++){let b=g.props[i];if(!isRecord(b)||typeof b.kind!=="string"||typeof b.id!=="string")throw new Error("Invalid fixture.");for(let k of ["x","y"])requireNumber(b[k],0,95,"fixture coordinate");for(let k of ["w","h"])requireNumber(b[k],1,8,"fixture size");}
+  requireList(g.doors,64,"doors");let doorDefs=DOORS.slice();for(let i=0;i<4;i++)doorDefs.push({id:"cellA"+i,x:[22,27,32,37][i],y:25,kind:"cell",job:"cellA"});for(let i=0;i<3;i++)doorDefs.push({id:"cellB"+i,x:[48,54,60][i],y:25,kind:"cell",job:"cellB"});
+  if(g.doors.length!==doorDefs.length)throw new Error("Invalid door count.");for(let i=0;i<doorDefs.length;i++){let d=g.doors[i],def=doorDefs[i];for(let k of ["id","y","kind","job"])if(d[k]!==def[k])throw new Error("Invalid door policy.");
+    if(d.x!==def.x){let z=zoneById(def.job);if(!g.generation||[1,2,3,4].indexOf(g.generation.version)<0||!z||["block","public","work","staff"].indexOf(def.kind)<0||!Number.isInteger(d.x)||d.x<z.x+2||d.x>z.x+z.w-3||Math.abs(d.x-def.x)>4||g.walls[tileId(d.x,d.y)]!==0)throw new Error("Invalid generated door.");}requireNumber(d.openUntil,0,1e10,"door animation");}
+  requireList(g.people,56,"population");let ids=["player"];for(let d of INMATES)ids.push(d.id);for(let d of GUARDS)ids.push(d.id);for(let d of STAFF)ids.push(d.id);
+  if(g.people.length!==ids.length)throw new Error("Population does not match this scenario.");
+  for(let i=0;i<ids.length;i++){
+    let c=g.people[i];if(!isRecord(c)||c.id!==ids[i])throw new Error("Invalid actor identity.");
+    let role=i===0?"player":i<=INMATES.length?"inmate":i<=INMATES.length+GUARDS.length?"guard":"staff";if(c.role!==role)throw new Error("Invalid actor role.");
+    if(typeof c.name!=="string"||c.name.length>80||(!jobFor(c.job)&&!(c.role==="staff"&&c.job==="infirmary")))throw new Error("Invalid actor details.");
+    for(let k of ["x","y"])requireNumber(c[k],0,95.999,"actor position");
+    for(let k of ["homeX","homeY"])requireNumber(c[k],0,95,"actor home");
+    for(let k of ["health","energy","food","stress","trust","notice"])requireNumber(c[k],0,100,"actor need");
+    for(let k of ["detainedUntil","retryAt","pauseUntil","searchUntil","workClock","idleClock","tradeAt","challengeAt","patrolIndex"])requireNumber(c[k],0,1e10,"actor clock");
+    if(["cellA","cellB"].indexOf(c.homeZone)<0||["routine","auto","manual"].indexOf(c.mode)<0||["routine","caught","meeting","diversion","following","escaped"].indexOf(c.crewState)<0)throw new Error("Invalid actor mode.");
+    requireList(c.path,9216,"path");requireNumber(c.pathCursor,0,c.path.length,"path cursor");for(let n of c.path)if(!Number.isInteger(n)||n<0||n>=9216)throw new Error("Invalid path cell.");
+    if(c.workBatches!==undefined){requireNumber(c.workBatches,0,1e9,"duty batches");if(c.workBatches%1)throw new Error("Invalid duty batches.");}
+    if(c.greetAt!==undefined)requireNumber(c.greetAt,0,1e10,"greeting clock");
+    if(c.speech!==undefined&&c.speech!==null){if(!isRecord(c.speech)||typeof c.speech.text!=="string"||c.speech.text.length>60)throw new Error("Invalid speech.");requireNumber(c.speech.until,0,1e10,"speech timer");}
+    if(c.meal!==undefined){let m=c.meal;if(!isRecord(m)||typeof m.key!=="string"||m.key.length>40||["queue","counter","serve","seat","eat","done"].indexOf(m.phase)<0)throw new Error("Invalid meal state.");requireNumber(m.lane,0,2,"meal lane");requireNumber(m.seat,0,511,"meal seat");requireNumber(m.progress,0,8,"meal progress");if(m.lane%1||m.seat%1)throw new Error("Invalid meal station.");}
+    requireList(c.memories,8,"memories");for(let m of c.memories)if(m.kind!==undefined&&(typeof m.kind!=="string"||m.kind.length>12))throw new Error("Invalid memory.");
+    if(c.profile!==undefined){if(!isRecord(c.profile)||!Array.isArray(c.profile.traits)||c.profile.traits.length>4)throw new Error("Invalid profile.");for(let t of c.profile.traits)if(!TRAITS[t])throw new Error("Unknown trait.");if(!SKILLS[c.profile.skill]||!WEAKNESSES[c.profile.weakness]||!BIASES[c.profile.bias])throw new Error("Unknown profile field.");}
+    if(c.owed!==undefined)requireNumber(c.owed,0,50,"favours owed");if(c.asked!==undefined)requireNumber(c.asked,0,1e6,"favour day");if(c.shared!==undefined&&typeof c.shared!=="boolean")throw new Error("Invalid actor flag.");
+    if(c.holding!==undefined){if(!isRecord(c.holding))throw new Error("Invalid holding.");for(let id in c.holding){if(!ITEMS[id])throw new Error("Unknown held item.");requireNumber(c.holding[id],0,20,"held count");}}
+    if(c.task){let t=c.task;if(!isRecord(t)||["travel","work"].indexOf(t.phase)<0||["talk","accept","favor","trade","recruit","distract","craft","project","observe","take","work","rest","eat","buytea","stash","assignment","evidence","escape","inspect","walk","buy","fetch","attack","drag","strip","incite"].indexOf(t.type)<0)throw new Error("Invalid task.");if(t.type==="fetch"&&(!stashDef(t.stash)||!ITEMS[t.item]))throw new Error("Invalid fetch task.");if(t.job!==undefined&&!jobFor(t.job))throw new Error("Invalid detail task.");if(t.type==="buy"&&!shopLine(t.line))throw new Error("Invalid commissary task.");if(t.type==="walk"){requireNumber(t.x,0,95,"walk target");requireNumber(t.y,0,95,"walk target");}requireNumber(t.progress,0,1e7,"task progress");requireNumber(t.duration,0,1e7,"task duration");requireGoods(t.escrow||{},100);if(t.site&&!SITES.some(function(s){return s.id===t.site;}))throw new Error("Unknown task site.");if(t.actor&&ids.indexOf(t.actor)<0)throw new Error("Unknown task actor.");if(t.recipe&&!recipeById(t.recipe))throw new Error("Unknown recipe.");if(t.project&&!projectById(t.project))throw new Error("Unknown project.");if(t.route&&!routeById(t.route))throw new Error("Unknown route.");}
+  }
+  for(let id of Object.keys(g.projects)){let p=g.projects[id],d=projectById(id);if(!d||!isRecord(p)||typeof p.paid!=="boolean"||typeof p.complete!=="boolean")throw new Error("Invalid project.");requireNumber(p.progress,0,d.work,"project progress");requireGoods(p.escrow,100);}
+  for(let id of Object.keys(g.knowledge)){let k=g.knowledge[id];if(!isRecord(k)||k.id!==id||(!INTEL[id]&&id.indexOf("guard_")!==0)||["rumor","observed","confirmed","changed"].indexOf(k.confidence)<0)throw new Error("Invalid notebook entry.");for(let n of ["nextAt","lastAt","count"])requireNumber(k[n],0,1e10,"knowledge");}
+  requireList(g.evidence,48,"evidence");for(let e of g.evidence){requireNumber(e.strength,0,100,"evidence strength");requireNumber(e.at,0,1e10,"evidence time");if(typeof e.resolved!=="boolean")throw new Error("Invalid evidence status.");}
+  requireList(g.chronicle,160,"chronicle");requireList(g.distractions,8,"distractions");requireList(g.routeHistory,24,"route history");
+  if(g.escape){let e=g.escape;if(!isRecord(e)||!routeById(e.route)||["transit","crossing","outside"].indexOf(e.phase)<0)throw new Error("Invalid escape.");requireList(e.members,3,"escape crew");requireList(e.promised,3,"promised crew");for(let id of e.members.concat(e.promised))if(ids.indexOf(id)<=0)throw new Error("Unknown crew member.");requireNumber(e.transitProgress,0,1,"transit");}
+  if(g.search&&(!isRecord(g.search)||!stashDef(g.search.stash)||!guardDef(g.search.guard)||["announced","walking"].indexOf(g.search.stage)<0))throw new Error("Invalid search.");
+  if(g.challenge&&(!isRecord(g.challenge)||!guardDef(g.challenge.guard)))throw new Error("Invalid challenge.");
+  if(g.over&&(!isRecord(g.ending)||!g.escape))throw new Error("Missing ending.");
+  for(let k of ["patrolReverse","guideDismissed","practice"])if(typeof g[k]!=="boolean")throw new Error("Invalid flag: "+k);
+  for(let k of ["notebook","seedLabel","selectedRoute","policyKey","lastAnnouncement"])if(typeof g[k]!=="string")throw new Error("Invalid text: "+k);
+  if(g.notebook.length>8000||(g.selectedRoute&&!routeById(g.selectedRoute)))throw new Error("Invalid notebook or selected route.");
+  requireNumber(g.chapter,0,7,"chapter");
+  for(let key of ["cameraNotice","cameraReported","siteCooldown"]){let records=g[key];if(!isRecord(records))throw new Error("Invalid timer map.");for(let id of Object.keys(records))requireNumber(records[id],0,key==="cameraNotice"?100:1e10,"security clock");}
+  for(let c of g.people){
+    for(let k of ["headingX","headingY"])requireNumber(c[k],-1,1,"heading");requireNumber(c.headingAngle,-10,10,"heading angle");
+    requireNumber(c.palette,0,c.role==="player"||c.role==="inmate"?5:2,"appearance");if(c.palette%1)throw new Error("Invalid appearance.");
+    requireNumber(c.talkAt,-9999,1e10,"conversation timer");requireNumber(c.favorStage,0,2,"favour stage");
+    if(c.favorStage%1||c.pathCursor%1||c.patrolIndex%1)throw new Error("Invalid actor index.");
+    for(let k of ["crew","met","escaped","carrying"])if(typeof c[k]!=="boolean")throw new Error("Invalid actor flag.");
+    for(let k of ["stripped","armed","rioting","wasDown","riotPost"])if(c[k]!==undefined&&typeof c[k]!=="boolean")throw new Error("Invalid actor flag.");for(let k of ["downUntil","injuredUntil","downFrom","attackedDay"])if(c[k]!==undefined)requireNumber(c[k],0,1e10,"force timer");if(c.grudge!==undefined)requireNumber(c.grudge,0,100,"grudge");if(c.dragging!==undefined&&(typeof c.dragging!=="string"||(c.dragging&&ids.indexOf(c.dragging)<0)))throw new Error("Invalid drag target.");if(c.detainedWhere!==undefined&&["","infirmary","isolation"].indexOf(c.detainedWhere)<0)throw new Error("Invalid detention.");
+    for(let k of ["short","trait","action","routineKey","pathProfile","targetId"])if(typeof c[k]!=="string")throw new Error("Invalid actor text.");
+    if(c.targetId&&ids.indexOf(c.targetId)<0)throw new Error("Unknown pursuit target.");
+    for(let key of ["destination","lastSeen","routineTarget"]){let pt=c[key];if(pt!==null&&pt!==undefined){if(!isRecord(pt))throw new Error("Invalid waypoint.");requireNumber(pt.x,0,95.999,"waypoint");requireNumber(pt.y,0,95.999,"waypoint");if(key==="lastSeen")requireNumber(pt.at,0,1e10,"sighting time");}}
+    if(c.task){let t=c.task;if(t.batches!==undefined&&(!validBatchCount(t.batches)||["work","craft"].indexOf(t.type)<0))throw new Error("Invalid batch order.");requireNumber(t.illegal||0,0,2,"task risk");if(typeof t.paid!=="boolean")throw new Error("Invalid task escrow flag.");
+      let socials=["talk","accept","favor","trade","recruit","distract","hold","collect","dismiss"];
+      let actorOk=function(id){return !!(inmateDef(id)||GUARDS.some(function(x){return x.id===id;})||STAFF.some(function(x){return x.id===id;}));};
+      if(socials.indexOf(t.type)>=0){if(!inmateDef(t.actor))throw new Error("Social task needs an inmate.");}
+      else if(FORCE_TYPES.indexOf(t.type)>=0){if(!actorOk(t.actor))throw new Error("Force task needs a target.");}
+      else if(t.type==="inspect"&&t.actor){if(!actorOk(t.actor))throw new Error("Inspect task needs a target.");}
+      else if(t.type!=="walk"&&!SITES.some(function(d){return d.id===t.site;}))throw new Error("Task needs a fixture.");
+      if(t.type==="craft"&&(!recipeById(t.recipe)||recipeById(t.recipe).site!==t.site))throw new Error("Invalid crafting task.");
+      if(t.type==="project"&&(!projectById(t.project)||projectById(t.project).site!==t.site))throw new Error("Invalid project task.");
+      if(t.type==="escape"&&(!routeById(t.route)||routeById(t.route).site!==t.site))throw new Error("Invalid escape task.");
+    }
+  }
+  for(let d of g.distractions){requireNumber(d.x,0,95.999,"diversion position");requireNumber(d.y,0,95.999,"diversion position");requireNumber(d.until,0,1e10,"diversion timer");}
+  if(g.escape){for(let k of ["at","elapsedStart","departAt"])requireNumber(g.escape[k],0,1e10,"escape timer");for(let k of ["alarmAt","alarmCueAt","readyAt"])if(g.escape[k]!==undefined)requireNumber(g.escape[k],0,1e10,"escape timer");if(g.escape.alarmProgress!==undefined)requireNumber(g.escape.alarmProgress,0,1,"transit");for(let k of ["alarm","departed","checked","ready","atExitNotified"])if(typeof g.escape[k]!=="boolean")throw new Error("Invalid escape flag.");for(let id of g.escape.members.concat(g.escape.promised))if(!inmateDef(id))throw new Error("Invalid escape ally.");}
+  if(g.search){requireNumber(g.search.at,0,1e10,"search time");requireNumber(g.search.started,0,1e10,"search start");}
+  if(g.challenge){requireNumber(g.challenge.at,0,1e10,"challenge time");if(typeof g.challenge.reason!=="string")throw new Error("Invalid challenge reason.");}
+  if((g.generation!==undefined)!==(g.story!==undefined))throw new Error("Incomplete generated scenario.");
+  if(g.generation!==undefined){let v=g.generation;if(!isRecord(v)||[1,2,3,4].indexOf(v.version)<0||v.mode!=="procedural")throw new Error("Unsupported prison generator.");for(let k of ["changedTiles","partitions","furnishings","movedDoors"]){requireNumber(v[k],0,512,"generated layout");if(v[k]%1)throw new Error("Invalid layout count.");}}
+  if(g.generation&&g.generation.version>=3){let v=g.generation;requireList(v.courtyards,512,"generated courtyards");for(let id of v.courtyards)if(!Number.isInteger(id)||id<0||id>=9216)throw new Error("Invalid courtyard tile.");if(!PRISON_DESIGNS.some(function(d){return d.id===v.design;}))throw new Error("Invalid prison design.");for(let k of ["reshaped","screenTiles"]){requireNumber(v[k],0,512,"architecture");if(v[k]%1)throw new Error("Invalid architecture count.");}}
+  if(g.generation&&g.generation.version===4){let v=g.generation;if(!PRISON_SHAPES.some(function(d){return d.id===v.shape;})||!Number.isInteger(v.cut)||v.cut<6||v.cut>8||typeof v.prisonName!=="string"||v.prisonName.length<1||v.prisonName.length>80)throw new Error("Invalid prison perimeter.");if(JSON.stringify(v.outerBounds)!==JSON.stringify(perimeterRows(v.shape,v.cut)))throw new Error("Invalid perimeter bounds.");}
+  if(g.story!==undefined){let s=g.story;if(!isRecord(s)||[1,2].indexOf(s.version)<0||!Number.isInteger(s.motive)||!STORY_MOTIVES[s.motive]||!inmateDef(s.contact)||!routeById(s.route)||typeof s.clue!=="string"||s.clue.length>200||!Array.isArray(s.stages)||s.stages.length!==4||s.stages.some(function(v){return typeof v!=="boolean";}))throw new Error("Invalid personal story.");for(let i=1;i<4;i++)if(s.stages[i]&&!s.stages[i-1])throw new Error("Invalid story progression.");if(s.approach!==undefined&&(["protect","share"].indexOf(s.approach)<0||!s.stages[1]))throw new Error("Invalid story promise.");}
+  if(g.story&&g.story.version===2){let s=g.story;if(typeof s.outsideContact!=="string"||!s.outsideContact.length||s.outsideContact.length>80||typeof s.destination!=="string"||!s.destination.length||s.destination.length>80||!Number.isInteger(s.complication)||!STORY_COMPLICATIONS[s.complication])throw new Error("Invalid seeded story context.");}
+  if(g.experience!==undefined){let e=g.experience;if(!g.generation||!isRecord(e)||e.version!==1||!isRecord(e.contacts)||!isRecord(e.wages)||!isRecord(e.dutyOffsets))throw new Error("Invalid seeded experience.");
+   if(Object.keys(e.contacts).length!==INMATES.length||Object.keys(e.wages).length!==JOBS.length||Object.keys(e.dutyOffsets).length!==JOBS.length)throw new Error("Incomplete seeded roster.");
+   for(let base of INMATES){let d=e.contacts[base.id];if(!isRecord(d)||d.id!==base.id||["tea","cloth","scrap","paper"].indexOf(d.favorItem)<0||["tea","cloth","scrap","paper","wire"].indexOf(d.trade)<0||!INTEL[d.rumor]||!Number.isInteger(d.style)||!CONTACT_STYLES[d.style]||[25,35,45,55].indexOf(d.restock)<0)throw new Error("Invalid contact profile.");}
+   for(let j of JOBS)if([3,4].indexOf(e.wages[j.id])<0||[0,1,2].indexOf(e.dutyOffsets[j.id])<0)throw new Error("Invalid work terms.");
+   requireList(e.order,6,"priority rotation");if(e.order.length!==6||!JOBS.every(function(j){return e.order.filter(function(id){return id===j.id;}).length===1;})||[3,4,5].indexOf(e.target)<0)throw new Error("Invalid priority detail.");
+   if(e.contract!==null){let c=e.contract;if(!isRecord(c)||!Number.isInteger(c.day)||c.day<1||c.day>Math.floor(g.minutes/1440)+1||!Number.isInteger(c.progress)||c.progress<0||c.progress>e.target||typeof c.claimed!=="boolean"||c.claimed!==(c.progress===e.target))throw new Error("Invalid work-order progress.");}
+  }
+  if(g.sleepClock!==undefined)requireNumber(g.sleepClock,0,1e7,"sleep clock");
+  if(g.ledger!==undefined){if(!isRecord(g.ledger))throw new Error("Invalid day ledger.");for(let k of ["scrip","work","counts","met"])requireNumber(g.ledger[k],0,1e8,"day ledger");}
+  if(g.shop!==undefined){if(!isRecord(g.shop)||!isRecord(g.shop.sold))throw new Error("Invalid commissary record.");requireNumber(g.shop.day,0,1e6,"commissary day");for(let id of Object.keys(g.shop.sold)){if(!SHOP.some(function(d){return d.id===id;}))throw new Error("Unknown commissary line.");requireNumber(g.shop.sold[id],0,99,"commissary sales");}}
+  if(g.rounds!==undefined&&g.rounds!==null){if(!isRecord(g.rounds)||typeof g.rounds.checked!=="boolean")throw new Error("Invalid night rounds.");requireNumber(g.rounds.index,0,ROUNDS_ROUTE.length,"rounds progress");}
+  if(g.roundsKey!==undefined&&(typeof g.roundsKey!=="string"||g.roundsKey.length>24))throw new Error("Invalid rounds record.");
+  if(g.cellTalk!==undefined&&g.cellTalk!==null){if(!isRecord(g.cellTalk)||!inmateDef(g.cellTalk.peer))throw new Error("Invalid cellmate conversation.");requireNumber(g.cellTalk.until,0,1e10,"conversation timer");}
+  if(g.cellTalkDay!==undefined)requireNumber(g.cellTalkDay,0,1e6,"conversation day");
+  if(g.recentIncidents!==undefined){requireList(g.recentIncidents,8,"recent incidents");for(let id of g.recentIncidents)if(!INCIDENTS.some(function(e){return e.id===id;}))throw new Error("Unknown incident.");}
+  if(g.nightKey!==undefined&&(typeof g.nightKey!=="string"||g.nightKey.length>24))throw new Error("Invalid night record.");
+  if(g.relations!==undefined){if(!isRecord(g.relations))throw new Error("Invalid relations.");for(let k in g.relations){let r=g.relations[k],parts=k.split("|");if(parts.length!==2||!isRecord(r)||["friend","rival","kin","debt"].indexOf(r.kind)<0)throw new Error("Invalid relation.");for(let id of parts)if(!INMATES.some(function(d){return d.id===id;}))throw new Error("Unknown relation actor.");}}
+  if(g.argued!==undefined){if(!isRecord(g.argued))throw new Error("Invalid arguments.");for(let k in g.argued)requireNumber(g.argued[k],0,1e6,"argument day");}
+  for(let k of ["fights","riots"])if(g.stats[k]!==undefined)requireNumber(g.stats[k],0,1e8,"statistics");if(g.wearingGuard!==undefined&&typeof g.wearingGuard!=="boolean")throw new Error("Invalid uniform state.");if(g.uniformAlert!==undefined)requireNumber(g.uniformAlert,0,1e10,"uniform alert");
+  if(g.riot!==undefined&&g.riot!==null){if(!isRecord(g.riot)||!zoneById(g.riot.zone))throw new Error("Invalid riot.");for(let k of ["started","until"])requireNumber(g.riot[k],0,1e10,"riot timer");}
+  if(g.fightsToday!==undefined&&g.fightsToday!==null){if(!isRecord(g.fightsToday))throw new Error("Invalid fight record.");requireNumber(g.fightsToday.day,0,1e6,"fight day");requireNumber(g.fightsToday.count,0,1e4,"fight count");}
+  if(g.history!==undefined&&g.history!==null){if(!isRecord(g.history)||g.history.version!==1||!Array.isArray(g.history.events)||g.history.events.length>2||!g.history.events.every(function(id){return HISTORY_EVENTS.some(function(e){return e.id===id;});}))throw new Error("Invalid history.");for(let k of ["built","expanded","year"])requireNumber(g.history[k],2000,2200,"history year");}
+  if(g.cameraFaults!==undefined){if(!isRecord(g.cameraFaults))throw new Error("Invalid camera faults.");for(let k in g.cameraFaults){if(!CAMERAS.some(function(c){return c.id===k;}))throw new Error("Unknown camera.");requireNumber(g.cameraFaults[k],0,1e10,"camera fault");}}
+  if(g.milestones!==undefined){if(!isRecord(g.milestones))throw new Error("Invalid milestones.");for(let k in g.milestones)if(!MILESTONES.some(function(m){return m.id===k;}))throw new Error("Invalid milestone.");}
+  if(g.guide!==undefined){if(!isRecord(g.guide)||typeof g.guide.route!=="string"||(g.guide.route&&!routeById(g.guide.route)))throw new Error("Invalid guide.");if(g.guide.auto!==undefined&&typeof g.guide.auto!=="boolean")throw new Error("Invalid guide.");requireList(g.guide.skipped,32,"guide steps");for(let id of g.guide.skipped)if(typeof id!=="string"||id.length>40)throw new Error("Invalid guide step.");}
+  if(g.orders!==undefined){requireList(g.orders,ORDER_LIMIT,"orders");for(let t of g.orders){if(!isRecord(t)||["talk","accept","favor","trade","recruit","distract","craft","project","observe","take","work","rest","eat","buytea","stash","assignment","evidence","escape","inspect","walk","buy","fetch","attack","drag","strip","incite"].indexOf(t.type)<0)throw new Error("Invalid order.");if(t.type==="fetch"&&(!stashDef(t.stash)||!ITEMS[t.item]))throw new Error("Invalid fetch order.");
+    if(t.job!==undefined&&!jobFor(t.job))throw new Error("Invalid detail order.");if(t.type==="buy"&&!shopLine(t.line))throw new Error("Invalid commissary order.");
+    if(t.type==="walk"){requireNumber(t.x,0,95,"walk target");requireNumber(t.y,0,95,"walk target");if(t.x%1||t.y%1)throw new Error("Invalid walk target.");}
+    else if(t.actor){let anyTarget=FORCE_TYPES.indexOf(t.type)>=0||t.type==="inspect";let ok=anyTarget?!!(inmateDef(t.actor)||GUARDS.some(function(x){return x.id===t.actor;})||STAFF.some(function(x){return x.id===t.actor;})):!!inmateDef(t.actor);if(!ok)throw new Error("Order needs an inmate.");}else if(!SITES.some(function(d){return d.id===t.site;}))throw new Error("Order needs a fixture.");
+    requireNumber(t.duration,0,1e7,"order duration");if(t.blocked!==undefined&&(typeof t.blocked!=="string"||t.blocked.length>200))throw new Error("Invalid order note.");
+    if(t.batches!==undefined&&(!validBatchCount(t.batches)||["work","craft"].indexOf(t.type)<0))throw new Error("Invalid batch order.");
+    if(t.type==="craft"&&(!recipeById(t.recipe)||recipeById(t.recipe).site!==t.site))throw new Error("Invalid crafting order.");
+    if(t.type==="project"&&(!projectById(t.project)||projectById(t.project).site!==t.site))throw new Error("Invalid project order.");
+    if(t.type==="escape"&&(!routeById(t.route)||routeById(t.route).site!==t.site))throw new Error("Invalid escape order.");}}
+  if(g.autoDay!==undefined&&(typeof g.autoDay!=="boolean"||(g.autoDay&&(g.people[0].mode!=="routine"||g.escape||g.over))))throw new Error("Invalid auto-day state.");
+  return g;
+}
+// Bring a validated older save up to this build. Returns the version it came from, or "" when current.
+function migrateGame(g){
+  let from=g.version===OM_VERSION?"":g.version;
+  if(g.sleepClock===undefined)g.sleepClock=0;if(g.nightKey===undefined)g.nightKey="";
+  if(g.ledger===undefined)g.ledger={scrip:g.scrip,work:g.stats.work,counts:g.stats.counts,met:g.stats.met};
+  if(g.shop===undefined)g.shop={day:0,sold:{}};if(g.rounds===undefined)g.rounds=null;if(g.roundsKey===undefined)g.roundsKey="";
+  if(g.cellTalk===undefined)g.cellTalk=null;if(g.cellTalkDay===undefined)g.cellTalkDay=0;if(g.recentIncidents===undefined)g.recentIncidents=[];if(g.orders===undefined)g.orders=[];if(g.guide===undefined)g.guide={route:"",skipped:[],auto:false};if(g.guide.auto===undefined)g.guide.auto=false;if(g.milestones===undefined)g.milestones={};if(g.argued===undefined)g.argued={};if(g.cameraFaults===undefined)g.cameraFaults={};if(g.history===undefined)g.history=null;if(g.stats.fights===undefined)g.stats.fights=0;if(g.stats.riots===undefined)g.stats.riots=0;if(g.wearingGuard===undefined)g.wearingGuard=false;if(g.uniformAlert===undefined)g.uniformAlert=0;if(g.riot===undefined)g.riot=null;if(g.fightsToday===undefined)g.fightsToday=null;for(let c of g.people){if(c.downUntil===undefined)c.downUntil=0;if(c.injuredUntil===undefined)c.injuredUntil=0;if(c.stripped===undefined)c.stripped=false;if(c.grudge===undefined)c.grudge=0;if(c.armed===undefined)c.armed=false;if(c.dragging===undefined)c.dragging="";}
+  g.version=OM_VERSION;return from;
+}
+function saveSlot(index,automatic){
+  if(!omGame||demoRun||index<0||index>2)return false;
+  try{let text=snapshotText(),key=SAVE_PREFIX+(automatic?"auto":"manual")+index;localStorage.setItem(key,text);if(localStorage.getItem(key)!==text)throw new Error("Storage read-back failed.");if(automatic){autoIndex=(index+1)%3;localStorage.setItem(SAVE_PREFIX+"autoIndex",String(autoIndex));}saveMessage=(automatic?"Autosaved":"Saved slot "+(index+1))+" at Day "+dayNow()+", "+clockText(minuteNow())+".";saveAvailable=true;refreshSlots();return true;}
+  catch(e){saveMessage="Save failed: "+String(e.message||e)+". Export the save text to keep your run.";say(saveMessage);return false;}
+}
+function loadSaveText(text){
+  let previous=omGame,oldScreen=screen,oldDialog=dialog,oldPaused=paused;
+  try{let candidate=validateCandidate(text),migratedFrom=migrateGame(candidate);endDemo();contextMenu=null;omGame=candidate;rebuildSpatial();
+    if(migratedFrom)logEvent("Updated to "+OM_VERSION,"This run was saved by version "+migratedFrom+". "+(migratedFrom==="0.1.0"?"Cellmates now share the existing bunk at lights out; a new run gives every inmate their own bed. ":"")+"Night rounds, the commissary window, lights-out conversations, yard games, spoken greetings and the order list are now part of the day.","life");updateSecurityPolicy();ensureCast();for(let c of omGame.people){c.pathEpoch=-1;if(c.task)c.task.repathAt=0;}
+    screen="game";paused=true;gameSpeed=1;dialog=omGame.over?"ending":omGame.challenge?"challenge":player().detainedUntil>omGame.minutes?"detained":"";
+    loopAccumulator=0;realSaveClock=0;viewDirty=true;terrainDirty=true;selectedId="bunk";selectedType="site";notebookText=omGame.notebook||"";resetMapGesture();focusPlayer();refreshAll();saveMessage=(migratedFrom?"Restored and updated from "+migratedFrom+". ":"Restored. ")+"The game is paused; no offline time has passed.";say(saveMessage);return true;
+  }catch(e){
+    omGame=previous;screen=oldScreen;dialog=oldDialog;paused=oldPaused;applyLayout(currentLayout());
+    if(previous){try{rebuildSpatial();terrainDirty=true;viewDirty=true;}catch(ignored){}}
+    saveMessage="Not loaded: "+String(e.message||e)+" Your current run is unchanged.";return false;
+  }
+}
+function loadSlot(index,automatic){try{let text=localStorage.getItem(SAVE_PREFIX+(automatic?"auto":"manual")+index);if(!text){saveMessage="That slot is empty.";return false;}return loadSaveText(text);}catch(e){saveMessage="Storage unavailable: "+String(e.message||e);return false;}}
+function refreshSlots(){let cards=[],latest=-1,latestKey="";for(let a=0;a<2;a++)for(let i=0;i<3;i++){let text=null,g=null;try{text=localStorage.getItem(SAVE_PREFIX+(a?"auto":"manual")+i);if(text)g=JSON.parse(text).game;}catch(e){}let good=g&&isFiniteNumber(g.minutes);cards.push({id:(a?"auto":"manual")+i,index:i,automatic:!!a,name:(a?"Autosave ":"Manual ")+(i+1),exists:!!good,detail:good?"Day "+(Math.floor(g.minutes/1440)+1)+" · "+clockText(g.minutes%1440)+" · "+g.name:"Empty"});if(good&&g.elapsed>latest){latest=g.elapsed;latestKey=(a?"auto":"manual")+i;}}slotCards=cards;saveAvailable=latest>=0;}
+function continueRun(){let candidates=[];for(let a=0;a<2;a++)for(let i=0;i<3;i++)try{let t=localStorage.getItem(SAVE_PREFIX+(a?"auto":"manual")+i);if(t){let e=JSON.parse(t);if(e.game)candidates.push({text:t,time:e.game.elapsed});}}catch(e){}candidates.sort(function(a,b){return b.time-a.time;});for(let c of candidates)if(loadSaveText(c.text))return true;saveMessage="No usable save was found. Import your exported text, or start a new run.";dialog="saves";dirty();return false;}
+function exportSave(){if(!omGame)return;saveText=snapshotText();saveMessage="Copy this text into an Outermate .json file. It works independently of browser storage.";try{if(typeof softn!=="undefined"&&softn.files&&typeof softn.files.saveFile==="function")softn.files.saveFile("Outermate-Day-"+dayNow()+".json",saveText,{mime:"application/json"},function(r){if(r&&r.ok)saveMessage="Exported. The same save text is below.";});}catch(e){}dirty();}
+function importSave(){if(!saveText.trim()){saveMessage="Paste an Outermate save first.";return false;}return loadSaveText(saveText);}
+function importSaveFile(){
+  if(typeof softn==="undefined"||!softn.files||typeof softn.files.pickFile!=="function"||typeof softn.files.readText!=="function"){saveMessage="Choosing files is not available in this host. Paste the save text instead.";dirty();return;}
+  saveMessage="Choose an Outermate .json save file.";dirty();
+  try{softn.files.pickFile({accept:".json,application/json,text/plain",multiple:false},function(files){
+    if(!files||!files.length||!files[0]||!files[0].ref){saveMessage="No file was chosen.";dirty();return;}
+    softn.files.readText(files[0].ref,function(result){
+      let text=typeof result==="string"?result:(result&&typeof result.text==="string"?result.text:(result&&typeof result.value==="string"?result.value:""));
+      if(!text){saveMessage="That file could not be read"+(result&&result.error?": "+result.error:".");dirty();return;}
+      saveText=text;if(loadSaveText(text))saveMessage="Restored from "+(files[0].name||"file")+". The simulation starts paused.";dirty();
+    });
+  });}catch(e){saveMessage="The file picker failed: "+String(e.message||e);dirty();}
+}
+function saveNotebook(){if(omGame){omGame.notebook=String(notebookText).slice(0,8000);say("Personal notes updated.");}}

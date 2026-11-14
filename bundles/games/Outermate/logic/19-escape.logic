@@ -1,0 +1,98 @@
+// Six complete route families share the same physical world, items and security response.
+// The tunnel and freight transit are explicitly abstract sequences, not second-floor navigation.
+function routeById(id){for(let i=0;i<ROUTES.length;i++)if(ROUTES[i].id===id)return ROUTES[i];return null;}
+function escapeFailure(id){
+  let r=routeById(id);if(!r)return "Unknown route.";
+  if(omGame.escape)return "An escape is already in progress.";
+  if(!projectReady(r.project))return "Prepare "+projectById(r.project).name+" first.";
+  if(!knownIntel(r.intel))return "Physically observe this route's key location. A rumour is not enough.";
+  if(id==="maintenance"){
+    if(!hasUniformPass())return "Wear a work uniform and carry a work pass.";
+    if(!timeIn(840,990))return "The service window is 14:00 to 16:30.";
+    if(currentAlert()>=3)return "Service authorisations are suspended during lockdown.";
+  }
+  if(id==="cargo"){
+    if(!timeIn(810,870))return "Enter the cart between 13:30 and the 14:30 departure.";
+    if(currentAlert()>=3)return "Freight departures are stopped during lockdown.";
+    if(omGame.personalSuspicion>=60)return "The departure check will reject this much suspicion. Rebuild cover first.";
+  }
+  if(id==="paper"){
+    if(!itemCount("release"))return "Carry the finished release packet.";
+    if(!timeIn(480,1080))return "Administrative releases are processed from 08:00 to 18:00.";
+    if(omGame.personalSuspicion>=65||currentAlert()>=3)return "Your case is under scrutiny. Rebuild cover before review.";
+  }
+  if(id==="blackout"&&!mainPowerOn())return "Wait for main power to return before triggering your prepared fault.";
+  if(id==="blackout"&&!isWorkTime())return "Trip the fault during a work shift, while your presence at the panel is legitimate.";
+  if(id==="breach"&&player().energy<25)return "Rest first. This route requires at least 25 energy.";
+  return "";
+}
+function selectRoute(id){let r=routeById(id);if(!r)return;omGame.selectedRoute=id;say(r.name+" selected. Preparation and execution happen at real locations.");dirty();}
+function requestEscape(id){let r=routeById(id);if(!r)return false;return queueTask({type:"escape",site:r.site,route:id,duration:id==="paper"?8:id==="tunnel"?4:5,illegal:id==="paper"?0:id==="breach"?2:0});}
+function beginEscape(id){
+  let failure=escapeFailure(id);if(failure){say(failure);return false;}
+  // Independent pre-attempt autosave. Permission/quota errors do not destroy the run.
+  saveSlot(autoIndex,true);
+  let r=routeById(id),p=player(),crew=crewMembers(),members=[],promised=[];
+  for(let i=0;i<crew.length;i++){let c=crew[i];promised.push(c.id);if(c.crewState!=="caught"&&sqDistance(c.x,c.y,p.x,p.y)<=100&&c.trust>=35){c.crewState="following";clearPath(c);members.push(c.id);}}
+  omGame.escape={route:id,phase:(id==="cargo"||id==="tunnel")?"transit":"crossing",at:omGame.minutes,elapsedStart:omGame.elapsed,departAt:Math.floor(omGame.minutes/1440)*1440+870,departed:false,transitProgress:0,checked:false,alarm:id==="breach"||id==="blackout",members:members,promised:promised,ready:false,atExitNotified:false,autoLeave:!!omGame.autoDay};
+  leaveAutoDay();omGame.selectedRoute=id;p.mode="manual";p.task=null;clearPath(p);followPlayer=true;
+  if(id==="paper")takeItem("release",1);
+  if(id==="blackout"){delete omGame.projects.outage;setPowerFault(90,"prepared");}
+  if(id==="breach"||id==="blackout"){omGame.heat=100;omGame.sprinting=true;dispatchNearestGuard(p.x,p.y,"player");playCue("alarm");}
+  if(id==="cargo")p.carrying=true;
+  securityEpoch++;updateSecurityPolicy();
+  logEvent("The plan begins: "+r.name,members.length?members.length+" allies are here. The others did not reach the meeting point.":"You begin alone. A quiet choice is still a choice.","escape");
+  say(id==="cargo"?"Hidden in the cart. The truck departs at 14:30.":id==="tunnel"?"Below the prison. The route leads west.":"The route is open. Reach the marked exit, then choose Leave prison.");
+  if(omGame.escape.phase!=="transit")continueEscape();dirty();return true;
+}
+function continueEscape(){if(!omGame.escape||omGame.escape.phase==="transit")return false;let r=routeById(omGame.escape.route),p=player();cancelPlayerTask();p.mode="manual";let ok=routeTo(p,r.exit.x,r.exit.y);if(!ok)say("The exit route is blocked. Check the power timer and gate policy, or take cover.");paused=false;dirty();return ok;}
+function arriveTransit(e){
+  let p=player(),cargo=e.route==="cargo";p.x=cargo?64.5:7.5;p.y=cargo?90.5:62.5;p.carrying=false;
+  for(let i=0;i<e.members.length;i++){let c=actorById(e.members[i]);if(c&&c.crewState==="following"){c.x=p.x+(i%2)*0.8;c.y=p.y-(i+1)*0.7;clearPath(c);}}
+  e.phase="crossing";clearPath(p);securityEpoch++;focusPlayer();continueEscape();
+  logEvent("Beyond the perimeter",cargo?"The freight road has no walls. It still has somewhere you need to get to.":"You emerge beyond the western fence. The canyon trail is close.","escape");
+}
+function tickEscape(dt){
+  let e=omGame.escape;if(!e||omGame.over)return;let p=player(),r=routeById(e.route);
+  // The officer shouts first; the sirens follow a moment later, wherever you are by then.
+  if(e.alarmCueAt&&omGame.elapsed>=e.alarmCueAt){e.alarmCueAt=0;playCue("alarm");}
+  if(e.phase==="transit"){
+    if(e.route==="tunnel"){e.transitProgress=e.alarmAt!==undefined?clamp(e.alarmProgress+(omGame.elapsed-e.alarmAt)/10*(1-e.alarmProgress),0,1):clamp((omGame.elapsed-e.elapsedStart)/8,0,1);if(e.transitProgress>=1)arriveTransit(e);return;}
+    if(omGame.minutes<e.departAt)return;
+    if(!e.checked){e.checked=true;
+      // A known, legible risk instead of an arbitrary roll: 60+ suspicion triggers inspection.
+      if(omGame.personalSuspicion>=60||currentAlert()>=3){capturePlayer("The freight inspection found the altered cart");return;}
+      e.departed=true;e.elapsedStart=omGame.elapsed;logEvent("The truck is moving","The departure check passed. Stay out of sight until the outer gate is behind you.","escape");playCue("door");
+    }
+    e.transitProgress=clamp((omGame.elapsed-e.elapsedStart)/12,0,1);if(e.transitProgress>=1)arriveTransit(e);return;
+  }
+  if(isOutsideInner(p)&&e.phase==="crossing"){e.phase="outside";dirty();}
+  if(e.route==="blackout"&&mainPowerOn()&&!isOutside(p)&&!e.powerWarned){e.powerWarned=true;say("Main power is back. The utility gates have locked. Take cover or surrender and rebuild.");dirty();}
+  if(sqDistance(p.x,p.y,r.exit.x+0.5,r.exit.y+0.5)<=8){e.ready=true;if(!e.atExitNotified){e.atExitNotified=true;e.readyAt=omGame.elapsed;say(e.autoLeave?(e.alarm?"Exit reached. Sirens behind you; you leave once the response passes.":"Exit reached. Leaving in a moment; your crew has this long to catch up."):"Exit reached. Leave prison now, or wait here for your crew.");playCue("complete");dirty();}
+    else if(e.autoLeave&&omGame.elapsed>=(e.readyAt||0)+(e.alarm?9:4))finishEscape();}
+  else e.ready=false;
+}
+function finishEscape(){
+  let e=omGame.escape;if(!e||omGame.over)return false;let p=player(),r=routeById(e.route);if(!isOutside(p)||sqDistance(p.x,p.y,r.exit.x+0.5,r.exit.y+0.5)>8){say("Reach the marked extraction point first.");return false;}
+  let escaped=[],left=[];for(let i=0;i<e.promised.length;i++){let c=actorById(e.promised[i]);if(c&&c.crewState==="following"&&isOutside(c)&&sqDistance(c.x,c.y,p.x,p.y)<64){c.escaped=true;c.crewState="escaped";escaped.push(c.name);}else if(c)left.push(c.name);}
+  let titles={maintenance:"Ghost",cargo:"Freight",tunnel:"Under a Different Sky",paper:"Paper Moon",blackout:"Black Sky",breach:"A Different Horizon"};
+  let text={
+    maintenance:"The last gate closes behind a worker nobody remembers hiring. For a few precious minutes, Greywall still believes you are on shift. The canyon does not ask to see your pass.",
+    cargo:"The engine grows quiet at the freight turn-off. You climb down among the rocks, surrounded by labels for places you have never seen. For once, your destination is not printed for you.",
+    tunnel:"Dust gives way to cold air. The first patch of sky is a narrow one, but it belongs to no institution. Above you, morning count will eventually discover a very specific silence.",
+    paper:"At the last checkpoint, someone stamps the packet and wishes you a pleasant transfer. You walk until the gate is small behind you. The finest thing the institution ever produced was its own clerical error.",
+    blackout:"Power returns to Greywall in a grid of distant yellow lights. By then you have reached the rocks. Somewhere a technician is explaining that emergency coverage was never the same thing as complete coverage.",
+    breach:"The siren carries a long way in the thin frontier air. So do your footsteps. Eventually the rocks swallow the sound, and the walls become something behind you instead of around you."
+  };
+  let title=titles[e.route],body=text[e.route];
+  if(itemCount("records")){title="Broadcast";body+=" The quota records make it to the outside relay. Greywall's next inspection will ask questions the warden cannot file away.";}
+  else if(escaped.length>=2){title="Everybody Runs";body+=" You were not the only person who needed a horizon. This time, the promise held.";}
+  else if(left.length){title="One Seat Left";body+=" Some of the names in your plan are still inside. Freedom does not make that fact smaller.";}
+  if(omGame.story){let story=omGame.story;body+=" "+personalStoryEpilogue();body+=story.stages[3]?(story.route===e.route?" The lead from "+actorById(story.contact).name+" gave you a plan.":" You prepared the lead from "+actorById(story.contact).name+", but chose another way out."):" You left before every thread of the personal case was resolved.";}
+  body=body.replace(/Greywall/g,prisonName());
+  p.escaped=true;omGame.stats.escapes++;omGame.ending={title:title,body:body,route:r.name,routeId:r.id,day:dayNow(),time:clockText(minuteNow()),escaped:escaped,left:left,exposed:!!itemCount("records"),captures:omGame.capturedCount,suspicion:Math.round(omGame.personalSuspicion),scrip:omGame.scrip,work:omGame.stats.work,met:omGame.stats.met,favors:omGame.stats.favors};
+  omGame.routeHistory.push({route:e.route,result:"escaped",day:dayNow()});if(omGame.routeHistory.length>24)omGame.routeHistory.shift();omGame.over=true;paused=true;clearPath(p);
+  logEvent("Beyond the walls",title+". "+body,"ending");updateCampaign();saveSlot(autoIndex,true);dialog="ending";playCue("complete");dirty();return true;
+}
+function abortEscape(){if(!omGame.escape)return false;if(isOutsideInner(player())){say("You are already beyond the inner wall. Keep going, or surrender to return safely.");return false;}if(omGame.escape.phase==="transit"){say("You cannot leave this transit sequence halfway through.");return false;}let id=omGame.escape.route;omGame.escape=null;omGame.sprinting=false;cancelPlayerTask();releaseCrew();securityEpoch++;logEvent("Plan aborted",routeById(id).name+" was abandoned before the perimeter. Remaining project work is preserved.","escape");say("Plan aborted. Get back to routine and reassess.");return true;}
+function surrender(){if(!canInteractNow())return;capturePlayer("You chose to surrender rather than risk the remaining plan");}

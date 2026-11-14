@@ -1,0 +1,28 @@
+<logic src="../logic/main.logic" />
+<import Styles from="./styles.ui" />
+<import Title from="./title.ui" />
+<import Hud from="./hud.ui" />
+<import World from="./world.ui" />
+<import Sidebar from="./sidebar.ui" />
+<import Toolbar from="./toolbar.ui" />
+<import Dialogs from="./dialogs.ui" />
+<Styles />
+<div className={"om-app" + gameplayClass + (paused || dialog ? " is-paused" : "") + (attendanceCard ? " has-attendance" : "")}>
+  <Loop interval={100} running={true} @tick={gameLoop} />
+  #if (screen === "title")
+    <Title />
+  #else
+    <Hud />
+    <div className="om-workspace">
+      <World />
+      <Sidebar />
+    </div>
+    <Toolbar />
+  #end
+  #if (toastText && screen !== "title")
+    #if (!dialog && toastText)
+    <div className={"om-toast "+(progressCard?"is-raised":"")} role="status">{toastText}</div>
+  #end
+  #end
+  <Dialogs />
+</div>

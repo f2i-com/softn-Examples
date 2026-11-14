@@ -1,0 +1,171 @@
+// The story cast and the mystery kernel.
+//
+// Cast: story text names four roles rather than four people. {engineer}, {scientist}, {ranger} and {keeper}
+// are filled from whoever is alive and best fits, so a generated crew reads the same beats as Jin, Mina, Mara
+// and Sol did, in their own names. The founders map to themselves.
+//
+// Mystery: what is actually under the ridge is one of three authored hidden histories, chosen by an
+// independent seed. Every mystery uses the same three ruins, the same tech gates and the same three ending
+// buttons, but the beacon, the archives, the chapter beats, the early clues and the endings are its own.
+const CAST_ROLES={
+  engineer:{roles:["Systems engineer","Field engineer","Systems mechanic"],skills:["craft","build"]},
+  scientist:{roles:["Xenobiologist","Signals analyst","Expedition medic","Child of the Hollow"],skills:["research","doctor"]},
+  ranger:{roles:["Survey ranger","Frontier surveyor","Pod survivor"],skills:["explore","mine"]},
+  keeper:{roles:["Habitat grower","Quartermaster"],skills:["cook","farm"]}
+};
+const CAST_KEYS=["engineer","scientist","ranger","keeper"];
+function castFits(c,key){return CAST_ROLES[key].roles.indexOf(c.role)>=0;}
+function castScore(c,key){let s=CAST_ROLES[key].skills,v=0;for(let i=0;i<s.length;i++)v+=c.skills[s[i]]||0;return v+(castFits(c,key)?100:0);}
+// Assign the four roles among the living adults; a holder keeps the role while alive, so the story stays consistent.
+function storyCast(){
+  if(!osGame)return {};
+  if(!osGame.cast)osGame.cast={};
+  let cast=osGame.cast,people=alivePeople().filter(function(p){return !p.child;}),taken={};
+  for(let i=0;i<CAST_KEYS.length;i++){let k=CAST_KEYS[i],c=findColonist(cast[k]);if(c&&!c.dead&&!c.child&&!taken[c.id]){taken[c.id]=true;}else cast[k]="";}
+  for(let i=0;i<CAST_KEYS.length;i++){let k=CAST_KEYS[i];if(cast[k])continue;let best=null,bestV=-1;
+    for(let j=0;j<people.length;j++){let p=people[j];if(taken[p.id])continue;let v=castScore(p,k);if(v>bestV){bestV=v;best=p;}}
+    if(!best)for(let j=0;j<people.length;j++){let p=people[j];let v=castScore(p,k);if(v>bestV){bestV=v;best=p;}}
+    if(best){cast[k]=best.id;taken[best.id]=true;}}
+  return cast;
+}
+function castOf(key){let cast=storyCast();let c=findColonist(cast[key]);if(c&&!c.dead)return c;let people=alivePeople();return people.length?people[0]:null;}
+// The holder only when they actually have the profession: some stories are about the job, not the role.
+function castHolder(key){let c=castOf(key);return c&&castFits(c,key)?c:null;}
+function castPresent(key){let c=castOf(key);return !!c&&!c.away&&!c.rover;}
+// A card's template names roles; the scene waits until every named role is present rather than recasting it.
+function castRolesIn(text){let out=[],m=String(text||"").match(/\{(engineer|scientist|ranger|keeper|ENGINEER|SCIENTIST|RANGER|KEEPER)(\.name)?\}/g)||[];for(let i=0;i<m.length;i++){let k=m[i].replace(/[{}]|\.name/g,"").toLowerCase();if(out.indexOf(k)<0)out.push(k);}return out;}
+function storyCastReady(id){let base=STORY_EVENTS[id];if(!base)return true;let o=mysteryOf().stories[id],text=(o&&o.title||base.title)+" "+(id==="familiarGround"?facetFamiliar():(o&&o.body||base.body));let roles=castRolesIn(text);for(let i=0;i<roles.length;i++)if(!castPresent(roles[i]))return false;return true;}
+function castPeople(key){let c=castHolder(key);return c?[c]:[];}
+function castText(text){
+  if(!text||text.indexOf("{")<0)return text;
+  // Story choices are already mapped inside a VM callback. Calling back into the
+  // VM again from String.replace, then resolving the cast, can overflow the host
+  // stack. Scan the original text once; inserted names are always literal text.
+  let parts=text.split("{"),out=parts[0];
+  for(let i=1;i<parts.length;i++){
+    let part=parts[i],end=part.indexOf("}");if(end<0){out+="{"+part;continue;}
+    let token=part.slice(0,end),full=token.slice(-5)===".name",key=full?token.slice(0,-5):token,lower=key.toLowerCase();
+    if(token==="truth"){out+=mysteryHint()+part.slice(end+1);continue;}
+    if(CAST_KEYS.indexOf(lower)<0||(key!==lower&&(full||key!==key.toUpperCase()))){out+="{"+part;continue;}
+    let c=castOf(lower),upper=key!==lower;
+    out+=(c?(upper?c.short.toUpperCase():full?c.name:c.short):(upper?"SOMEBODY":"Somebody"))+part.slice(end+1);
+  }
+  return out;
+}
+function castStory(card){
+  if(!card)return card;
+  let out=Object.assign({},card,{title:castText(card.title),tag:castText(card.tag),body:castText(card.body)});
+  if(card.choices)out.choices=card.choices.map(function(ch){return Object.assign({},ch,{label:castText(ch.label),detail:castText(ch.detail)});});
+  return out;
+}
+
+const MYSTERY_IDS=["rehearsal","sleepers","mirror"];
+const MYSTERIES={
+ rehearsal:{title:"The rehearsal",legend:"an engine that had been rehearsing this settlement for centuries",
+  sites:[{name:"Structure 17",title:"The maintenance room",text:"The sealed chamber contains rows of ordinary human tools. One locker carries {engineer}'s surname. Its inspection label is dated tomorrow.",glass:5,cores:1},
+   {name:"The buried ward",title:"A colony that never was",text:"An archive lists a settlement with your colony's name. Its residents built the same first shelter. In the records, nobody answered the signal.",glass:7,cores:1},
+   {name:"The listening engine",title:"You were not the first",text:"The terraforming engine has been rehearsing human settlements for centuries, rebuilding from fragments of archived memory. This time, it has left the choice to you.",glass:10,cores:2}],
+  stories:{},
+  chapters:{},
+  endings:{departure:["The lights you leave behind","The beacon guides a rescue craft through the charged sky. You leave Hollow-7 with your people and your chronicle. From orbit, the settlement is a single warm point on a dark continent. It was real. You were there."],integration:["A world with a memory","You connect the archive to the settlement, but refuse its instruction to begin again. The engine learns a new pattern: a community that gets to keep its mistakes. Below the colony, old machines settle into a quieter rhythm."],silence:["The first unrecorded morning","You give the engine one final command. No reconstruction. No next iteration. No voices waiting below the stone. The generator hums; somebody complains about breakfast. For the first time, this morning belongs entirely to you."]},
+  far:"{scientist} says the second beacon is a rehearsal too: the engine tried the country out there first, and gave it up.",
+  familiar:"{scientist} finally says it at the table: the engine has rehearsed this settlement before, and it rehearsed it with a version of one of you in it. The layout of the bunkhouse was familiar because you had already built it, over and over, and forgotten each time. The one who felt it first was the one it remembered best."},
+ sleepers:{title:"The long sleep",legend:"twelve hundred settlers asleep in a vault beneath the south-east, and a warden that had waited three centuries for someone to answer",
+  sites:[{name:"Structure 17",title:"The maintenance room",text:"A sealed maintenance room with a shift rota for forty people on the wall. The names are crossed off in order. The last twelve are not crossed off. A coat still hangs by the door, and the beacon under the floor is not a beacon; it is a clock.",glass:5,cores:1},
+   {name:"The long gallery",title:"The manifest of the Cradle",text:"A gallery of stone shelves holds the manifest of a seed ship called the Cradle: twelve hundred names, a plan for a town, and a river with your colony's name. Everything about the surface is written in the past tense. The last entry is a promise: 'We will wake them when someone answers.'",glass:7,cores:1},
+   {name:"The cradle",title:"Twelve hundred sleepers",text:"The vault is warm. Rows of cold berths run further than the lamps reach, and every one is occupied. The warden that kept them has been waiting three hundred and twelve years for somebody to answer its clock. It has heard you. It is asking what you want it to do.",glass:10,cores:2}],
+  stories:{
+   signal:{body:"The lifeboat has picked up a maintenance beacon under the eastern ridge. Its identifier is human. It has been transmitting for 312 years, and the transmission is not a call. It is a countdown.\n\n{engineer} checks the date twice. {scientist} asks what it is counting down to."},
+   "chapter:voice":{title:"A rota on the wall",body:"The rota is for forty people, in four shifts, and the handwriting changes every few lines as the shifts changed. Somebody crossed the names off one by one, in order, with the same pen. The last twelve are still there.\n\n{engineer} reads the beacon's transmission aloud: not an identifier after all, or not only one. A number, going down. {scientist} works out the rate. It reaches zero in about a season.\n\n{keeper} takes the coat off the hook, shakes the dust out of it, and hangs it back up, because that is what there is to do."},
+   "chapter:keeps":{title:"The manifest of the Cradle",body:"The gallery's manifest lists a seed ship called the Cradle and twelve hundred names. There is a town plan with a bunkhouse where yours is, and a river with your colony's name on it, and a note in the margin that the river dried up.\n\nEverything about the surface is in the past tense: the cold that came, the crops that failed, the decision. 'When the cold came they went under,' the last page says. 'We will wake them when someone answers.'\n\n{scientist} reads the entry three times. 'They are not gone,' {scientist} says, and then, more carefully: 'They are not gone. They are waiting.' {ranger} asks where. {engineer} points at the floor."},
+   "chapter:recursion":{title:"The clock reaches zero",body:"The cradle is warm. Rows of cold berths run further than the lamps reach, and every one of them is occupied, and every one of them is breathing, very slowly, on the warden's schedule.\n\nThe warden has kept them for three hundred and twelve years. It heard your lifeboat land. It has been counting down to the moment somebody answered, and you did, and now it asks, in a voice that has not been used in centuries, what you want it to do.\n\nNobody wants to talk about it at dinner. So they talk about the generator noise instead, and it is the best evening in a long while."},
+   "chapter:choice":{body:"Whatever you chose, the settlement is still here in the morning. Somebody complains about breakfast. The generator hums.\n\nThe ground beneath the south-east is warm, or it is not, and either way the chronicle continues for as long as you want to keep it. The colony is yours now, and nobody is counting."},
+   afterDeparture:{body:"The rescue craft is a bright point that stopped moving two mornings ago. Nobody has had to leave yet. The vault's coordinates went up with the first transmission; somebody with a bigger ship will come for the sleepers, eventually, and the colony has decided to be here when they do.\n\n{keeper} has planted something in the meantime. It is not in the database."},
+   afterIntegration:{body:"There are strangers at the table now, a dozen at a time, and they look at the sky as though it has been moved. They remember a river with your colony's name that dried up three centuries ago. They call {keeper}'s bread by an older word.\n\nThe warden has stopped counting. It has started saying good morning."},
+   afterSilence:{body:"The second morning is quieter than the first, because everybody has stopped listening for the clock under the floor. The generator hums. The ridge is only a ridge, and the ground to the south-east is warm.\n\n{engineer} finds the transmitter is broadcasting after all: nothing but the colony's own footsteps, sent nowhere in particular, for the day the sleepers wake to somebody there."}},
+  chapters:{
+   voice:{title:"Somebody has been here",detail:"The lifeboat hears a maintenance beacon under the eastern ridge. Its identifier is human, and it is counting down. Find out to what.",goals:{structure17:{title:"Open Structure 17",detail:"Excavate the maintenance room under the eastern ridge, where the clock is."}}},
+   keeps:{title:"A river with your name",detail:"Learn to read the Hollow, grow what it grows, and open the long gallery in the south-west.",goals:{ward:{title:"Open the long gallery",detail:"Excavate the gallery south-west of camp."}}},
+   recursion:{title:"The warden that waits",detail:"Decode the repeated records, keep a mast powered so the frontier can hear you, and open the cradle.",goals:{engine:{title:"Open the cradle",detail:"Excavate the vault in the south-east before the clock reaches zero."}}},
+   choice:{title:"What comes next",detail:"Research a way forward, power the machinery it needs, and decide what happens to twelve hundred people who went to sleep on a promise."}},
+  endings:{departure:["The lights you leave behind","The beacon guides a rescue craft through the charged sky. The vault's coordinates go up with the first transmission; the sleepers will be somebody's charge, but not yours. From orbit, the settlement is a single warm point on a dark continent. It was real. You were there."],integration:["A town of strangers","You connect the interface and tell the warden to begin. The berths open a dozen at a time, over seasons, and the colony becomes a town of people who remember a different planet and call your river by its old name. Below the settlement, the warden's clock stops, and it starts keeping time instead."],silence:["Let them sleep","You give the warden one final command. Keep them. Keep the vault warm and the clock silent and let nobody wake to a colony of four. The generator hums; somebody complains about breakfast. The ground to the south-east stays warm, and the morning belongs to the people who are awake in it."]},
+  far:"{engineer} says the second beacon is counting too, a beat behind the first: two clocks, one vault, and a warden that wanted to be sure.",
+  familiar:"{scientist} finds the name in the manifest and does not say anything until dinner. It is a family name, and it is on the Cradle's founding list, and it belongs to one of you. The Compact knew, because the Compact keeps the old charters. Hollow-7 felt familiar because a great-great-grandparent went to sleep under it, and is still there."},
+ mirror:{title:"The long way round",legend:"a relay under the ridge that sent everything it heard three centuries into the past, so that the beacon you answered was your own",
+  sites:[{name:"Structure 17",title:"The maintenance room",text:"A sealed maintenance room with a lifeboat seat harness laid out on the bench. The registry stamped into the buckle is the Wayfarer's. The inspection tag beside it is in {engineer}'s handwriting, and {engineer} has never been here.",glass:5,cores:1},
+   {name:"The second lander",title:"A lifeboat with your name on it",text:"A lifeboat identical to yours, three centuries corroded, with the colony's name painted on the hull in {keeper}'s hand. Inside is a chronicle that reads like yours until Sol 61, and then goes on.",glass:7,cores:1},
+   {name:"The relay",title:"The fold in the ridge",text:"The relay is warm. Everything it hears, it sends back along the fold: three hundred and twelve years, give or take a season. The beacon you answered was your own lifeboat, calling from the far end of the loop. It has left the choice to you.",glass:10,cores:2}],
+  stories:{
+   signal:{body:"The lifeboat has picked up a maintenance beacon under the eastern ridge. Its identifier is human. It has been transmitting for 312 years.\n\n{engineer} checks the date twice, then checks the identifier against the lifeboat's own registry, and stops talking."},
+   "chapter:voice":{title:"The seat with our number",body:"{engineer} does not touch the harness for a long time. The registry stamped into the buckle is the Wayfarer's, down to the hull suffix nobody bothers to say aloud. The tag beside it is in {engineer}'s handwriting, with the little loop nobody else has ever bothered to copy.\n\n'Somebody is playing a joke,' {engineer} says, and then, quieter, 'Somebody has been playing it for three hundred years.'\n\n{scientist} bags the tag. {ranger} checks the horizon. {keeper} goes home and makes dinner for four, because that is what there is to do."},
+   "chapter:keeps":{title:"The second lander",body:"The lander's hull carries your colony's name, painted in {keeper}'s hand, in {keeper}'s paint. The chronicle inside lists a bunkhouse north-west of the lifeboat, two sunroot plots and an argument about the generator noise.\n\nIt reads like yours until Sol 61. Then it goes on: seasons you have not had, names you have not chosen, a death nobody has died. The last page is dated three hundred years ago and signed by everyone at your table.\n\n{scientist} reads the entry three times. 'It is not similar,' {scientist} says. 'It is ours.' {ranger} points out that the chronicle does not say what happened to the people who wrote it. {engineer} points out that it does, if you keep reading."},
+   "chapter:recursion":{title:"The fold in the ridge",body:"The relay is warm. Everything it hears, it sends back along the fold in the ridge: three hundred and twelve years, give or take a season. The beacon you answered on your first Sol was your own lifeboat, transmitting from the far end of the loop. The lander in the south-west is yours. The chronicle in it is the one you are writing.\n\nIt has left the choice to you: a beacon that can call a craft down through the charged sky, or an interface that sends the chronicle on and closes the loop with your names in it, or a single command that breaks it.\n\nNobody wants to talk about it at dinner. So they talk about the generator noise instead, and it is the best evening in a long while."},
+   "chapter:choice":{body:"Whatever you chose, the settlement is still here in the morning. Somebody complains about breakfast. The generator hums.\n\nThe chronicle continues for as long as you want to keep it, and for the first time nobody has read the next page. The colony is yours now."},
+   afterDeparture:{body:"The rescue craft is a bright point that stopped moving two mornings ago. Nobody has had to leave yet. The relay under the ridge is still sending, and somebody three centuries back is hearing a colony that decided to stay a little longer.\n\n{keeper} has planted something in the meantime. It is not in the chronicle."},
+   afterIntegration:{body:"The chronicle went back along the fold with every name on it, and the loop closed with a sound nobody heard. Somewhere three hundred years ago a lifeboat is landing beside a beacon, and the beacon is you.\n\nThe relay has stopped repeating. It has started saying good morning."},
+   afterSilence:{body:"The second morning is quieter than the first, because everybody has stopped listening for their own voice under the floor. The relay is cold. The ridge is only a ridge, and the chronicle has a blank page after this one.\n\n{engineer} finds the transmitter is broadcasting after all: nothing but the colony's own footsteps, sent forward for once, for anyone who might one day walk out of the grey."}},
+  chapters:{
+   voice:{title:"Somebody has been here",detail:"The lifeboat hears a maintenance beacon under the eastern ridge. Its identifier is human, and it is very close to yours. Find out whose.",goals:{structure17:{title:"Open Structure 17",detail:"Excavate the maintenance room under the eastern ridge."}}},
+   keeps:{title:"A lander with your name",detail:"Learn to read the Hollow, grow what it grows, and open the lander buried in the south-west.",goals:{ward:{title:"Open the second lander",detail:"Excavate the lander south-west of camp."}}},
+   recursion:{title:"The fold in the ridge",detail:"Decode the repeated records, keep a mast powered so the frontier can hear you, and open the relay.",goals:{engine:{title:"Open the relay",detail:"Excavate the relay in the south-east."}}},
+   choice:{title:"What comes next",detail:"Research a way forward, power the machinery it needs, and decide whether the loop closes with your names in it."}},
+  endings:{departure:["The lights you leave behind","The beacon guides a rescue craft through the charged sky. You leave Hollow-7 with your people and your chronicle, and the relay goes on sending an empty settlement into the past, where nobody answers it. From orbit, the settlement is a single warm point on a dark continent. It was real. You were there."],integration:["The chronicle goes back","You connect the interface and send the chronicle along the fold, every name on it, every argument about the generator. Somewhere three centuries back a lifeboat lands beside a beacon and four people hear their own colony calling. The loop closes. You chose to be in it."],silence:["The first unread morning","You give the relay one final command. No fold. No echo. No chronicle waiting under the ridge with the next page written. The generator hums; somebody complains about breakfast. For the first time, this morning has not happened before."]},
+  far:"{ranger} says the second beacon is transmitting the same registry as the first, one season older. The loop has been round more than once.",
+  familiar:"{scientist} finds the seat tags in the second lander and counts them twice. One name is there twice: once on a seat, once on the crew list of the ship that sent the lander down, three hundred years earlier. Hollow-7 felt familiar to one of you because one of you has already been here, at the far end of the loop, and left the map that was mostly right."}
+};
+// Which history this world hides: independent of the terrain and the crew, fixed for tests when asked.
+let mysteryOverride="";
+function pickMystery(seed){if(mysteryOverride&&MYSTERIES[mysteryOverride])return mysteryOverride;return MYSTERY_IDS[hashSeed(String(seed>>>0)+"|mystery")%MYSTERY_IDS.length];}
+function mysteryId(){return osGame&&osGame.mystery&&MYSTERIES[osGame.mystery]?osGame.mystery:"rehearsal";}
+function mysteryOf(){return MYSTERIES[mysteryId()];}
+function mysterySites(){let m=mysteryOf(),out=[];for(let i=0;i<m.sites.length;i++)out.push(Object.assign({},m.sites[i]));return out;}
+// The story card for an id, with this mystery's words and this crew's names.
+function mysteryStory(id,base){let o=mysteryOf().stories[id];if(id==="familiarGround")o={body:facetFamiliar()};return castStory(o?Object.assign({},base,o):base);}
+function chapterView(ch){
+  let o=mysteryOf().chapters[ch.id]||{},goals=[];
+  for(let i=0;i<ch.goals.length;i++){let g=ch.goals[i],og=o.goals&&o.goals[g.id]?o.goals[g.id]:{};goals.push(Object.assign({},g,og));}
+  return {id:ch.id,tag:ch.tag,title:o.title||ch.title,detail:o.detail||ch.detail,goals:goals};
+}
+function chapterBeat(ch){return mysteryStory("chapter:"+ch.id,ch.beat);}
+function mysteryEnding(kind){return mysteryOf().endings[kind];}
+// Early clues: ambiguous storylets that fit their mystery and no other.
+const MYSTERY_CLUES={
+  frostInside:{title:"Frost on the inside",tag:"HOLLOW / A COLD BREATH",mystery:"sleepers",body:"It is a warm morning and there is frost on the inside of the lifeboat's window, in a shape like a hand. Under the floor, faintly, something is breathing: a long draw, a long release, once a minute, like a sleeper.\n\n{scientist} times it. {engineer} says the ground has no business breathing. {keeper} puts a blanket over the window.",choices:[{id:"log",label:"Log the rhythm",detail:"Current research gains 10. Everyone remembers the breathing."},{id:"blanket",label:"Leave the blanket where it is",detail:"Everyone takes a small comfort in not looking."}],
+    when:function(){return campaignState().chapter>=2;}},
+  tally:{title:"Somebody kept counting",tag:"HOLLOW / STRUCTURE 17",mystery:"sleepers",priority:true,body:"There are tally marks on the inside of Structure 17's door, one per Sol, in groups of five, all the way up to the height of a tired arm. {ranger} counts them twice and gets about three thousand both times.\n\nThey stop. They do not trail off; they stop, and the last one is pressed harder than the others.",choices:[{id:"count",label:"Count the last twelve again",detail:"Hollow research gains 15. {ranger} remembers the last mark."},{id:"door",label:"Close the door",detail:"Everyone remembers that somebody kept counting."}],
+    when:function(){return osGame.storyStage>=1&&dayNow()>=8;}},
+  ownVoice:{title:"Our own registry",tag:"HOLLOW / SIGNAL 02",mystery:"mirror",body:"The mast has been carrying the beacon's identifier for a season now, and {engineer} has finally decoded the suffix. It is the Wayfarer's. Not a ship like the Wayfarer: the Wayfarer, down to the hull suffix nobody says aloud, transmitting from under the ridge three hundred years before it launched.\n\n{scientist} suggests, carefully, that a registry can be copied. {engineer} says nobody copies a hull suffix.",choices:[{id:"study",label:"Compare it against the lifeboat",detail:"Current research gains 20. {engineer} remembers the match."},{id:"log",label:"Log it and get some sleep",detail:"Everyone takes a small comfort in the decision to sleep on it."}],
+    when:function(){return !!osGame.storySeen.signal&&anyPowered("radio")&&campaignState().chapter>=2;}},
+  handwriting:{title:"A map in a familiar hand",tag:"HOLLOW / STRUCTURE 17",mystery:"mirror",priority:true,body:"There is a survey map pinned inside Structure 17: the ridge, the marsh, the three ruins, a route to the coast that nobody has walked yet. It is drawn in {ranger}'s hand, with {ranger}'s habit of hatching the north slope of every hill.\n\n{ranger} has not drawn it. {ranger} says so twice, and then goes very quiet, and asks whether the route is any good.",choices:[{id:"walk",label:"Walk the route",detail:"A distant stretch of the map is revealed. {ranger} remembers following their own hand."},{id:"pin",label:"Leave it pinned",detail:"Everyone remembers the map. Hollow research gains 10."}],
+    when:function(){return osGame.storyStage>=1&&dayNow()>=8;}},
+  familiarGround:{title:"Why it felt familiar",tag:"HOLLOW / ONE OF US",priority:true,body:"",choices:[{id:"aloud",label:"Say it aloud at the table",detail:"Everyone remembers hearing it. The settler in question is lighter for it."},{id:"keep",label:"Keep it between the two of you",detail:"The settler remembers being trusted. Nobody else has to carry it."}],
+    when:function(){if(osGame.storyStage<2)return false;for(let i=0;i<osGame.people.length;i++){let p=osGame.people[i];if(p.connected&&!p.dead)return true;}return false;}}
+};
+function connectedSettler(){for(let i=0;i<osGame.people.length;i++){let p=osGame.people[i];if(p.connected&&!p.dead)return p;}return null;}
+function resolveMysteryClue(id,choice){
+  let people=alivePeople();
+  if(id==="frostInside"){if(choice==="log"){grantResearch(10);for(let p of people)remember(p,"The ground was breathing",-2,1440*2);}else for(let p of people)remember(p,"We did not look under the blanket",2,1440);}
+  if(id==="tally"){let r=castOf("ranger");if(choice==="count"){if(!grantResearch(15,"Hollow Studies"))grantResearch(8);if(r)remember(r,"The last mark was pressed harder",-3,1440*3);}else for(let p of people)remember(p,"Somebody kept counting",-1,1440*2);}
+  if(id==="ownVoice"){let e=castOf("engineer");if(choice==="study"){grantResearch(20);if(e)remember(e,"It was our own registry",-4,1440*3);}else for(let p of people)remember(p,"We slept on it",2,1440);}
+  if(id==="handwriting"){let r=castOf("ranger");if(choice==="walk"){let x=homeOrigin()+randomInt(10,85),y=homeOrigin()+randomInt(10,85);revealArea(x,y,12);if(r)remember(r,"I followed my own hand",-2,1440*3);}else{if(!grantResearch(10,"Hollow Studies"))grantResearch(5);for(let p of people)remember(p,"A map in a familiar hand",-1,1440*2);}}
+  if(id==="familiarGround"){let who=connectedSettler();
+    if(choice==="aloud"){for(let p of people)remember(p,"We know why now",2,1440*4);if(who)remember(who,"They know, and they stayed",7,1440*10);chronicle("Why it felt familiar",castText(mysteryOf().familiar),"hollow");}
+    else{if(who)remember(who,"Somebody I can tell",6,1440*8);chronicle("Kept between two people","One settler knows why Hollow-7 felt familiar to another. The chronicle does not.","people");}
+    if(who)who.connectedKnown=true;}
+  return true;
+}
+// The director's pacing: no flavour while the colony is fighting for its life, and a clue when it has been quiet.
+function colonyInCrisis(){
+  if(!osGame)return false;
+  if(osGame.weather==="Glass Wind"||osGame.weather==="Storm")return true;
+  let people=alivePeople();for(let i=0;i<people.length;i++){let p=people[i];if(p.health<45||p.food<15||p.bleed>0)return true;}
+  for(let i=0;i<osGame.animals.length;i++){let a=osGame.animals[i];if(a.hostile&&!a.dead)return true;}
+  return false;
+}
+function directorState(){if(!osGame.director)osGame.director={lastStoryAt:0,lastClueAt:0};return osGame.director;}
+function directorPick(sides){
+  let d=directorState(),clues=[];
+  for(let i=0;i<sides.length;i++)if(MYSTERY_CLUES[sides[i]])clues.push(sides[i]);
+  if(clues.length&&osGame.minutes-d.lastClueAt>=facetClueGap()&&randomUnit()<0.7)return pick(clues);
+  return pick(sides);
+}

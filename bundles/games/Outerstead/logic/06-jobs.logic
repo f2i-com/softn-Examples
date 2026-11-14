@@ -1,0 +1,464 @@
+// A finite, claimed job board. A job is owned by at most one settler.
+function addJob(type,target,category,x,y,weight,knownJobs) {
+  let key=type+":"+target;
+  if(knownJobs){if(knownJobs[key])return knownJobs[key];}
+  else for(let i=0;i<osGame.jobs.length;i++)if(osGame.jobs[i].key===key)return osGame.jobs[i];
+  if(osGame.jobs.length>=320)return null;
+  let j={id:entityId("j"),key:key,type:type,target:target,category:category,x:x,y:y,weight:weight||5,claimed:"",blockedUntil:0,reason:""};
+  jobLookup[j.id]=osGame.jobs.length;osGame.jobs.push(j);if(knownJobs)knownJobs[key]=j;return j;
+}
+// Cache array positions, never entity objects. Validate every hit after removals/replacements.
+let jobLookup={};
+function getJob(id) {
+  if(!osGame||!id)return null;
+  let index=jobLookup[id],job=typeof index==="number"?osGame.jobs[index]:null;
+  if(job&&job.id===id)return job;
+  for(let i=0;i<osGame.jobs.length;i++)if(osGame.jobs[i].id===id){jobLookup[id]=i;return osGame.jobs[i];}
+  delete jobLookup[id];return null;
+}
+function targetForJob(j) {
+  if(j.type==="gather")return getNode(j.target);
+  if(j.type==="treat")return findColonist(j.target);
+  if(j.type==="survey")return {x:j.x,y:j.y,w:1,h:1};
+  if(j.type==="excavate"){for(let i=0;i<osGame.sites.length;i++)if(osGame.sites[i].id===j.target)return osGame.sites[i];return null;}
+  if(j.type==="strike")return getCamp(j.target);
+  if(j.type==="bury"||j.type==="rescue")return findColonist(j.target);
+  if(j.type==="hunt")return getAnimal(j.target);
+  if(j.type==="tame")return getAnimal(j.target);
+  return getBuilding(j.target);
+}
+function jobStillValid(j) {
+  let owner=findColonist(j.claimed);if(owner&&owner.task&&owner.task.jobId===j.id&&owner.task.phase==="deliver")return true;
+  let t=targetForJob(j);if(!t)return false;if(typeof t.x==="number"&&!t.isAnimal&&t.dead===undefined&&!onMap(t.x,t.y))return false;
+  if(j.type==="gather")return t.amount>0&&t.marked;
+  if(j.type==="build")return !t.built;
+  if(j.type==="repair")return t.built&&t.hp<BUILDINGS[t.kind].hp-1;
+  if(j.type==="treat")return !t.dead&&!t.carried&&(t.health<88||t.bleed>0);
+  if(j.type==="sow")return t.built&&!t.sown;
+  if(j.type==="harvest")return t.built&&t.sown&&t.growth>=1;
+  if(j.type==="research")return t.built&&!!osGame.researchId;
+  if(j.type==="produce"){let r=recipeFor(t);return t.built&&t.on&&!!r&&bufferReady(t,r);}
+  if(j.type==="supply"){let r=recipeFor(t);return t.built&&t.on&&!!r&&!bufferReady(t,r);}
+  if(j.type==="collect")return t.built&&hasGoods(t.made);
+  if(j.type==="excavate")return !t.studied;
+  if(j.type==="strike")return !t.roused&&!t.cleared;
+  if(j.type==="bury")return t.dead&&!t.buried&&!!freeGrave(t.id);
+  if(j.type==="rescue")return !t.dead&&t.health<22&&(!!t.carried||!nearClinic(t))&&countBuilt("clinic")>0;
+  if(j.type==="hunt")return !t.dead&&!!t.marked&&!t.hostile;
+  if(j.type==="tame")return !t.dead&&!!t.taming&&!t.hostile&&!t.tamed&&hasTech("husbandry")&&!!freePen();
+  return true;
+}
+function generateJobs() {
+  for(let i=osGame.jobs.length-1;i>=0;i--){let j=osGame.jobs[i];if(!jobStillValid(j)){let c=findColonist(j.claimed);if(c&&c.task&&c.task.jobId===j.id)releaseTask(c,true);osGame.jobs.splice(i,1);}}
+  // This lookup lives only for this rebuild, so completion/cancellation cannot stale it.
+  let knownJobs={};jobLookup={};for(let i=0;i<osGame.jobs.length;i++){let j=osGame.jobs[i];knownJobs[j.key]=j;jobLookup[j.id]=i;}
+  for(let i=0;i<osGame.buildings.length;i++){
+    let b=osGame.buildings[i],d=BUILDINGS[b.kind];if(!onMap(b.x,b.y))continue;
+    if(!b.built){addJob("build",b.id,"build",b.x,b.y,6,knownJobs);continue;}
+    if(b.built&&hasGoods(b.made))addJob("collect",b.id,"haul",b.x,b.y,osGame.stock.meals<12&&b.made.meals?14:8,knownJobs);
+    if(!b.on)continue;
+    if(b.hp<d.hp*0.7)addJob("repair",b.id,"build",b.x,b.y,14,knownJobs);
+    if(d.crop){if(!b.sown)addJob("sow",b.id,"farm",b.x,b.y,8,knownJobs);else if(b.growth>=1)addJob("harvest",b.id,"farm",b.x,b.y,15,knownJobs);}
+    if(b.kind==="lab"&&osGame.researchId&&b.powered)addJob("research",b.id,"research",b.x,b.y,5,knownJobs);
+    {let recipe=recipeFor(b);if(recipe&&(!d.power||b.powered)){let missing=bufferMissing(b,recipe);
+      if(Object.keys(missing).length){if(stockHas(missing))addJob("supply",b.id,"haul",b.x,b.y,osGame.stock.meals<12&&recipe.goods.meals?18:9,knownJobs);}
+      else addJob("produce",b.id,(b.kind==="kitchen"||b.kind==="cookfire")?"cook":"craft",b.x,b.y,osGame.stock.meals<12?16:7,knownJobs);}}
+  }
+  for(let i=0;i<osGame.nodes.length;i++){let n=osGame.nodes[i];if(n.marked&&n.amount>0)addJob("gather",n.id,n.kind==="pile"?"haul":(n.kind==="berries"?"farm":"mine"),n.x,n.y,6,knownJobs);}
+  for(let i=0;i<osGame.people.length;i++){let c=osGame.people[i];if(!c.dead&&!c.away&&!c.rover&&(c.health<80||c.bleed>0))addJob("treat",c.id,"doctor",c.x,c.y,c.health<40?40:25,knownJobs);}
+  for(let i=0;i<osGame.people.length;i++){let c=osGame.people[i];if(c.dead&&!c.buried&&freeGrave(c.id))addJob("bury",c.id,"haul",c.x,c.y,9,knownJobs);}
+  if(countBuilt("clinic")>0)for(let i=0;i<osGame.people.length;i++){let c=osGame.people[i];if(!c.dead&&!c.away&&!c.rover&&c.health<22&&!c.carried&&!nearClinic(c))addJob("rescue",c.id,"haul",c.x,c.y,30,knownJobs);}
+  for(let i=0;i<osGame.animals.length;i++){let a=osGame.animals[i];if(a.taming&&!a.dead&&!a.hostile&&!a.tamed){let j=addJob("tame",a.id,"farm",Math.floor(a.x),Math.floor(a.y),8,knownJobs);if(j){j.x=Math.floor(a.x);j.y=Math.floor(a.y);}}}
+  for(let i=0;i<osGame.animals.length;i++){let a=osGame.animals[i];if(a.marked&&!a.dead&&!a.hostile){let j=addJob("hunt",a.id,"explore",Math.floor(a.x),Math.floor(a.y),7,knownJobs);if(j){j.x=Math.floor(a.x);j.y=Math.floor(a.y);if(!j.claimed&&!j.reason)j.reason="Needs an armed explorer";}}}
+}
+// Burials: a hauler carries the fallen to a free grave; the colony then gathers there.
+function freeGrave(deadId) {
+  let best=null,bestD=1e9,dead=findColonist(deadId);
+  let graves=buildingsOfKind("grave");for(let i=0;i<graves.length;i++){let b=graves[i];if(!b.built||!onMap(b.x,b.y)||b.occupant||(b.reservedBy&&b.reservedBy!==deadId))continue;let d=dead?sqDistance(dead.x,dead.y,b.x,b.y):0;if(d<bestD){bestD=d;best=b;}}
+  return best;
+}
+function completeBurial(dead,grave,c) {
+  {let f=factsOf();for(let i=0;i<f.deaths.length;i++)if(f.deaths[i].name===dead.name)f.deaths[i].buried=true;}
+  dead.buried=true;dead.carried=false;dead.x=grave.x+0.5;dead.y=grave.y+0.5;grave.occupant=dead.name;grave.reservedBy="";grave.buriedSol=dayNow();c.carryBody="";
+  osGame.stats.burials=(osGame.stats.burials||0)+1;remember(c,"Carried "+dead.short+" to rest",3,1440*3);
+  chronicle("Laid to rest",dead.name+" was buried on Sol "+dayNow()+". The colony gathers to say goodbye.","people");
+  startFuneral(dead,grave);viewDirty=true;
+}
+function startFuneral(dead,grave) {
+  osGame.funeral={graveId:grave.id,deadId:dead.id,name:dead.short,until:osGame.minutes+180,attended:0};
+  let flagged=0;for(let i=0;i<osGame.people.length;i++){let p=osGame.people[i];if(!p.dead&&!p.drafted&&p.health>=22){p.funeralAt=grave.id;flagged++;}}
+  say("A funeral for "+dead.short+". Settlers are gathering at the grave.");
+  if(!flagged){concludeFuneral();return;}
+  if(!osGame.pendingEvent&&!dialog){buildFuneralChoices();openStory("funeral");}
+}
+function startMourning(c) {
+  let f=osGame.funeral,grave=getBuilding(c.funeralAt);
+  if(!f||!grave||f.graveId!==grave.id||f.until<osGame.minutes){c.funeralAt="";return false;}
+  if(c.food<15||c.rest<10)return false;
+  if(!routeTo(c,grave,false)){c.funeralAt="";return false;}
+  c.task={type:"recreation",personal:true,phase:"travel",targetId:grave.id,progress:0,mourn:true};c.action="Going to "+f.name+"'s funeral";return true;
+}
+function finishMourning(c) {
+  let f=osGame.funeral;c.funeralAt="";if(!f)return;
+  let bond=(c.relations[f.deadId]||0)>30;remember(c,"We buried "+f.name,bond?8:5,1440*5);c.recreation=Math.min(100,c.recreation+8);f.attended++;
+}
+function concludeFuneral() {
+  let f=osGame.funeral;if(!f)return;
+  chronicle("Goodbye, "+f.name,(f.attended?f.attended+" settler"+(f.attended===1?"":"s")+" stood at the grave.":"Nobody could leave their work to stand at the grave.")+" The colony carries on.","people");
+  for(let i=0;i<osGame.people.length;i++)osGame.people[i].funeralAt="";
+  osGame.funeral=null;viewDirty=true;
+}
+function tickFuneral() {
+  let f=osGame.funeral;if(!f)return;
+  let waiting=0;for(let i=0;i<osGame.people.length;i++){let p=osGame.people[i];if(!p.dead&&p.funeralAt)waiting++;}
+  if(!waiting||osGame.minutes>=f.until)concludeFuneral();
+}
+function releaseTask(c,refund) {
+  if(!c.task){c.path=[];return;}
+  let t=c.task,j=t.jobId?getJob(t.jobId):null;
+  if(j&&j.claimed===c.id)j.claimed="";
+  if(t.graveId){let g=getBuilding(t.graveId);if(g&&!g.occupant)g.reservedBy="";}
+  if(c.carryBody){let d=findColonist(c.carryBody);if(d&&!d.buried){d.carried=false;d.x=c.x;d.y=c.y;}c.carryBody="";}
+  let b=getBuilding(t.targetId);if(b){if(b.reservedBy===c.id)b.reservedBy="";if(b.claimedBy===c.id)b.claimedBy="";}
+  if(refund&&t.inputs&&!t.committed){if(c.carry&&t.phase!=="deliver"&&t.type!=="collect"){c.carry=null;}stockGive(t.inputs);if(t.qualityMeal)osGame.qualityMeals=(osGame.qualityMeals||0)+1;}
+  c.task=null;c.kit=false;c.path=[];c.pathCursor=0;c.pathFailed=false;c.action="Looking for work";
+}
+function finishTask(c) {
+  if(!c.task)return;
+  let id=c.task.jobId;c.task.committed=true;
+  releaseTask(c,false);
+  if(id)for(let i=osGame.jobs.length-1;i>=0;i--)if(osGame.jobs[i].id===id)osGame.jobs.splice(i,1);
+  c.waitUntil=osGame.elapsed+0.35;viewDirty=true;
+}
+function blockTask(c,message) {
+  let j=c.task&&c.task.jobId?getJob(c.task.jobId):null;
+  if(j){j.blockedUntil=osGame.elapsed+10;j.reason=message;}
+  releaseTask(c,true);c.waitUntil=osGame.elapsed+1;c.action=message;
+}
+function cancelTargetJobs(target) {
+  for(let i=0;i<osGame.people.length;i++){let c=osGame.people[i];if(c.task&&c.task.targetId===target)releaseTask(c,true);}
+  for(let i=osGame.jobs.length-1;i>=0;i--)if(osGame.jobs[i].target===target)osGame.jobs.splice(i,1);
+}
+// Which goods a stockpile takes. The lander takes everything; a filtered rack only its kinds. One inventory
+// still sits behind them all, but where a hauler walks to depends on what is in the crate.
+const STORE_FILTERS={all:null,food:["raw","meals"],building:["wood","stone","metal","parts"],industrial:["ore","metal","parts","fuel","glass","cores"],medical:["medicine"]};
+const STORE_FILTER_ORDER=["all","food","building","industrial","medical"];
+function storeAccepts(b,goods){if(!b||b.kind==="lander")return true;let list=STORE_FILTERS[b.filter||"all"];if(!list)return true;if(!goods)return true;let keys=Object.keys(goods);for(let i=0;i<keys.length;i++)if(goods[keys[i]]>0&&list.indexOf(keys[i])<0)return false;return true;}
+function storeFilterText(b){let f=b.filter||"all";return f==="all"?"Everything":f==="food"?"Food: raw and meals":f==="building"?"Building: wood, stone, metal, components":f==="industrial"?"Industrial: ore, metal, components, fuel, glass, cores":"Medical: medicine";}
+function cycleStoreFilter(){let b=getBuilding(selectedId);if(!b||b.kind!=="stockpile")return;let at=STORE_FILTER_ORDER.indexOf(b.filter||"all");b.filter=STORE_FILTER_ORDER[(at+1)%STORE_FILTER_ORDER.length];say("Stockpile takes: "+storeFilterText(b)+".");viewDirty=true;refreshAll();}
+function warehouseRoute(c,goods) {
+  let stores=nearestBuilding(c,["stockpile","lander"],false),fallback=[];
+  for(let i=0;i<stores.length;i++){if(!storeAccepts(stores[i],goods)){fallback.push(stores[i]);continue;}if(routeTo(c,stores[i],false)){c.storeId=stores[i].id;return true;}}
+  for(let i=0;i<fallback.length;i++)if(routeTo(c,fallback[i],false)){c.storeId=fallback[i].id;return true;}
+  return false;
+}
+function beginDelivery(c,goods) {
+  c.carry=goods;
+  if(!c.task)c.task={type:"delivery",jobId:"",targetId:"",phase:"deliver",progress:0,inputs:null,committed:true};
+  c.task.phase="deliver";c.task.committed=true;
+  if(!warehouseRoute(c,goods)){dropCarriedGoods(c);blockTask(c,"No route to the warehouse");return;}
+  c.action="Hauling supplies";
+}
+function dropCarriedGoods(c) {
+  if(!c.carry)return;
+  c.carryQuality=0;
+  let keys=Object.keys(c.carry);
+  for(let k=0;k<keys.length;k++){
+    let placed=false;
+    for(let r=0;r<5&&!placed;r++)for(let dy=-r;dy<=r&&!placed;dy++)for(let dx=-r;dx<=r;dx++){
+      let x=Math.floor(c.x)+dx,y=Math.floor(c.y)+dy;if(!passable(x,y)||nodeAtCell[tileId(x,y)])continue;
+      let n=addResourceNode(x,y,"pile",c.carry[keys[k]]);n.resource=keys[k];n.marked=true;placed=true;break;
+    }
+    // Fallback remains conserved as a crate on the current cell, never silently deleted.
+    if(!placed){let n={id:entityId("n"),x:Math.floor(c.x),y:Math.floor(c.y),kind:"pile",resource:keys[k],amount:c.carry[keys[k]],marked:true,blockedUntil:0};osGame.nodes.push(n);nodeIndex[n.id]=n;}
+  }
+  c.carry=null;terrainDirty=true;
+}
+// Within three tiles of a built clinic, or in its room.
+function nearClinic(p){for(let i=0;i<osGame.buildings.length;i++){let b=osGame.buildings[i];if(b.built&&b.kind==="clinic"&&(sqDistance(p.x,p.y,b.x+b.w/2,b.y+b.h/2)<=16||(b.room>=0&&roomAt(p.x,p.y)&&roomAt(p.x,p.y).id===b.room)))return true;}return false;}
+function chooseJob(c) {let started=perfEnabled?perfNow():0;try{return selectJob(c);}finally{perfRecord("jobSelection",started);}}
+function selectJob(c) {
+  if(c.carry){beginDelivery(c,c.carry);return;}
+  if(startNeedTask(c))return;
+  if(osGame.elapsed<c.waitUntil)return;
+  let choices=[];
+  for(let i=0;i<osGame.jobs.length;i++){
+    let j=osGame.jobs[i],priority=c.priorities[j.category];
+    if(j.type==="treat"&&!priority&&!c.child){let patient=findColonist(j.target);if(patient&&patient.health<22)priority=3;}
+    if(j.claimed||!priority||j.blockedUntil>osGame.elapsed||!jobStillValid(j))continue;
+    if((j.type==="treat"||j.type==="rescue")&&j.target===c.id)continue;
+    if(j.type==="rescue"&&c.child)continue;
+    if(j.type==="hunt"&&weaponStats(c)===UNARMED)continue;
+    if(refusesJob(c,j))continue;
+    let score=priority*100-j.weight*3-autoJobUrgency(c,j)+Math.sqrt(sqDistance(c.x,c.y,j.x,j.y))*0.85-(c.skills[j.category]||3)*2+quirkJobBias(c,j);
+    if(osGame.autoMode&&osGame.coldChain&&osGame.coldChain.active&&j.type==="repair"){let b=getBuilding(j.target);if(b&&(BUILDINGS[b.kind].produce||BUILDINGS[b.kind].wire||b.kind==="freezer"))score-=500;}
+    // Only eight routes are attempted. Keep that stable prefix instead of sorting the entire board.
+    let at=choices.length;while(at>0&&score<choices[at-1].score)at--;
+    if(at<8){choices.splice(at,0,{job:j,score:score});if(choices.length>8)choices.pop();}
+  }
+  for(let i=0;i<Math.min(8,choices.length);i++)if(startWorkTask(c,choices[i].job))return;
+  c.action=choices.length?"Work is blocked: check access or supplies":"Idle · no eligible work";c.waitUntil=osGame.elapsed+1.2;
+  startIdleActivity(c);
+}
+// Work that needs materials starts at the stores: a construction kit, a workstation's crate, medicine for a patient,
+// metal for a repair, feed for a mossback. Only what the warehouse actually holds is carried.
+function hasLocalWarehouse(){return buildingsOfKind("stockpile").concat(buildingsOfKind("lander")).some(function(b){return b.built&&b.on&&onMap(b.x,b.y);});}
+function fetchesFirst(j,inputs){if(!hasLocalWarehouse())return false;if(j.type==="build"||j.type==="supply")return true;return (j.type==="treat"||j.type==="repair"||j.type==="tame")&&!!inputs&&Object.keys(inputs).length>0;}
+function startWorkTask(c,j) {
+  let target=targetForJob(j);if(!target)return false;
+  let d=target.kind?BUILDINGS[target.kind]:null;
+  // Hauling to or from a station needs no power; working it does.
+  if(j.type!=="build"&&j.type!=="collect"&&j.type!=="supply"&&d&&d.power&&(!target.powered||!target.on)){j.reason="No power";j.blockedUntil=osGame.elapsed+5;return false;}
+  let inputs=null,recipe=null;
+  if(j.type==="produce"){recipe=recipeFor(target);if(!recipe||!bufferReady(target,recipe))return false;}
+  if(j.type==="supply"){recipe=recipeFor(target);if(!recipe)return false;let missing=bufferMissing(target,recipe);if(!Object.keys(missing).length)return false;inputs=missing;}
+  if(j.type==="treat")inputs=osGame.stock.medicine>=1?{medicine:1}:{};
+  if(j.type==="tame")inputs={raw:6};
+  if(j.type==="repair")inputs=target.kind==="wall"||target.kind==="bed"?{wood:2}:{metal:2};
+  if(inputs&&!stockHas(inputs)){j.reason=j.type==="supply"?"Nothing in the warehouse to bring":"Waiting for materials";j.blockedUntil=osGame.elapsed+8;return false;}
+  if(j.type==="hunt"&&weaponStats(c)===UNARMED){j.reason="Needs a weapon";j.blockedUntil=osGame.elapsed+15;return false;}
+  let routeOk=fetchesFirst(j,inputs)?warehouseRoute(c,j.type==="build"?target.escrow:inputs):routeTo(c,target,j.type==="survey");
+  if(!routeOk){j.reason="Unreachable";j.blockedUntil=osGame.elapsed+12;return false;}
+  if(inputs&&!stockTake(inputs))return false;
+  j.claimed=c.id;j.reason="";
+  c.task={jobId:j.id,type:j.type,targetId:j.target,phase:fetchesFirst(j,inputs)?"fetchKit":"travel",progress:0,inputs:inputs,recipe:recipe,committed:false};if(j.type==="treat"){c.task.serious=target.health<50||target.bleed>0;if(c.task.serious){if(c.partner===target.id){remember(c,"Ran to "+target.short,3,600);if(!osGame.rescueNoted)osGame.rescueNoted={};if(!(osGame.rescueNoted[c.id]>osGame.minutes-1440)){osGame.rescueNoted[c.id]=osGame.minutes;chronicle(c.short+" drops everything for "+target.short,c.name+" left the work where it lay and ran to "+target.name+".","people");}}else if(hasQuirk(c,"firstIn"))remember(c,"Got there first",3,600);}}
+  c.action=taskAction(c.task);return true;
+}
+function taskAction(t) {
+  let names={build:"Building",repair:"Repairing",gather:"Gathering",sow:"Sowing",harvest:"Harvesting",research:"Researching",produce:"Crafting",supply:"Bringing materials",collect:"Collecting finished goods",treat:"Treating injuries",excavate:"Excavating",survey:"Surveying",strike:"Approaching the raider camp",bury:"Carrying the fallen",rescue:"Bringing a settler to the clinic",hunt:"Hunting",tame:"Taming a mossback"};
+  let b=getBuilding(t.targetId);return (names[t.type]||t.type)+(b?" · "+BUILDINGS[b.kind].name:"");
+}
+// Real work slowly improves the skill used; disciplined settlers learn a little faster.
+function growSkill(c,category,dt) {
+  let index=WORK_KEYS.indexOf(category);if(index<0)return;
+  let current=c.skills[category]||0,before=Math.floor(current),next=Math.min(20,current+dt*0.0012*(traitOf(c,"discipline")>=70?1.25:1)*(c.child&&parentNearby(c)?2.5:1)*knackFactor(c,category));
+  if(c.knacks&&c.knacks[category]>=2)remember(c,"Work I was made for",2,400);
+  c.skills[category]=next;
+  if(Math.floor(next)>before){let label=WORK_LABELS[index].toLowerCase();remember(c,"Getting better at "+label,3,1440*2);chronicle(c.short+" is getting better at "+label,c.name+"'s "+label+" skill has reached "+Math.floor(next)+".","people");viewDirty=true;}
+}
+function workRate(c,category) { return (c.child?0.6:1)*(0.75+(c.skills[category]||3)*0.14)*(c.trait==="Methodical"?0.9:1)*(c.mood<25?0.7:(c.mood>80?1.1:1))*(category==="research"?1+(traitOf(c,"curiosity")-50)/250:1)*quirkWorkFactor(c,category); }
+function updateWorkTask(c,dt) {
+  let t=c.task;if(!t)return;
+  if(t.personal){updateNeedTask(c,dt);return;}
+  if(t.phase==="deliver"){
+    let arrived=walkPath(c,dt,2.2);if(c.pathFailed){dropCarriedGoods(c);blockTask(c,"Warehouse unreachable");return;}
+    if(arrived){if(c.carry){stockGive(c.carry);c.carry=null;if(c.carryQuality){osGame.qualityMeals=(osGame.qualityMeals||0)+c.carryQuality;c.carryQuality=0;}}finishTask(c);}return;
+  }
+  let j=getJob(t.jobId);if(!j||!jobStillValid(j)){releaseTask(c,true);return;}
+  let target=targetForJob(j);
+  if(t.type==="collect"&&t.phase==="work"){
+    let goods=Object.assign({},target.made||{});target.made={};structuresDirty=true;
+    if(target.kind==="kitchen"&&goods.meals)c.carryQuality=goods.meals;
+    if(hasGoods(goods))beginDelivery(c,goods);else finishTask(c);return;
+  }
+  if(t.type==="supply"&&t.phase==="work"){
+    if(!target.input)target.input={};let keys=Object.keys(c.carry||{});for(let i=0;i<keys.length;i++)target.input[keys[i]]=(target.input[keys[i]]||0)+c.carry[keys[i]];
+    c.carry=null;t.inputs=null;t.committed=true;structuresDirty=true;finishTask(c);return;
+  }
+  if(t.type==="hunt"){tickHunt(c,dt,target);return;}
+  if(t.type==="tame"&&t.phase!=="fetchKit"){tickTame(c,dt,target);return;}
+  if(t.phase==="fetchKit"){
+    let arrived=walkPath(c,dt,2.2);if(c.pathFailed){blockTask(c,"Materials are inaccessible");return;}
+    if(arrived){if(t.type==="tame"){c.carry=Object.assign({},t.inputs);t.phase="work";c.action="Bringing feed to "+(target?target.name:"the mossback");return;}
+      if(routeTo(c,target,false)){t.phase="travel";if(t.type==="build"){c.kit=true;c.action="Delivering a construction kit";}else{c.carry=Object.assign({},t.inputs);c.action=t.type==="supply"?"Carrying supplies to the "+BUILDINGS[target.kind].name.toLowerCase():t.type==="treat"?"Bringing medicine to "+target.short:"Bringing materials for repairs";}}else blockTask(c,t.type==="supply"?"Workstation unreachable":t.type==="treat"?"Patient unreachable":"Site unreachable");}return;
+  }
+  if(t.phase==="carry"&&t.type==="rescue"){
+    let arrived=walkPath(c,dt,1.9);if(c.pathFailed){blockTask(c,"Clinic unreachable");return;}
+    if(arrived){let d=findColonist(c.carryBody);if(d){d.carried=false;d.x=c.x;d.y=c.y;remember(d,"Carried to the clinic by "+c.short,4,1440*3);adjustRelation(d,c,6);noteFact("rescues",1);chronicle(c.short+" carries "+d.short+" in",c.name+" carried "+d.name+" to the clinic. Treatment there is better, and the wounded heal faster beside it.","people");}c.carryBody="";finishTask(c);}return;
+  }
+  if(t.phase==="carry"){
+    let arrived=walkPath(c,dt,1.9);if(c.pathFailed){blockTask(c,"Grave unreachable");return;}
+    if(arrived){let grave=getBuilding(t.graveId);if(grave&&grave.built&&!grave.occupant){completeBurial(target,grave,c);finishTask(c);}else blockTask(c,"The grave is no longer available");}return;
+  }
+  if(t.phase==="travel"){
+    let arrived=walkPath(c,dt,2.2);if(c.pathFailed){blockTask(c,"Route blocked");return;}
+    if(arrived){t.phase="work";c.kit=false;if(t.type==="treat"||t.type==="repair")c.carry=null;if(t.type!=="supply")c.action=taskAction(t);}return;
+  }
+  if(t.type==="treat"&&sqDistance(c.x,c.y,target.x,target.y)>8){if(routeTo(c,target,false))t.phase="travel";else blockTask(c,"Patient unreachable");return;}
+  let d=target.kind?BUILDINGS[target.kind]:null;
+  if(j.type!=="build"&&d&&d.power&&(!target.powered||!target.on)){blockTask(c,"Waiting for power");return;}
+  let rate=workRate(c,j.category),amount=dt*rate;t.progress+=amount;growSkill(c,j.category,dt);
+  if(t.type==="build"){
+    let p0=target.progress;target.progress+=amount;if(Math.floor(p0/d.work*20)!==Math.floor(target.progress/d.work*20))structuresDirty=true;if(target.progress>=d.work){finishBuilding(target,c);finishTask(c);}return;
+  }
+  if(t.type==="research"){
+    let id=osGame.researchId;if(!id){finishTask(c);return;}
+    osGame.researchProgress[id]=(osGame.researchProgress[id]||0)+amount;researchDirty=true;
+    let tech=techById(id);if(tech&&osGame.researchProgress[id]>=tech.cost){finishResearch(tech,c);finishTask(c);}return;
+  }
+  if(t.type==="strike"){rouseCamp(target,c);finishTask(c);return;}
+  if(t.type==="rescue"){
+    if(t.progress<2)return;
+    let clinics=nearestBuilding(c,["clinic"],false);if(!clinics.length){blockTask(c,"No clinic");return;}
+    if(target.carried||target.dead||target.health>=22){finishTask(c);return;}
+    target.carried=true;c.carryBody=target.id;t.clinicId=clinics[0].id;
+    if(routeTo(c,clinics[0],false)){t.phase="carry";c.action="Carrying "+target.short+" to the clinic";}else blockTask(c,"Clinic unreachable");
+    return;
+  }
+  if(t.type==="bury"){
+    if(t.progress<4)return;
+    let grave=freeGrave(target.id);if(!grave){blockTask(c,"No free grave");return;}
+    grave.reservedBy=target.id;target.carried=true;c.carryBody=target.id;t.graveId=grave.id;
+    if(routeTo(c,grave,false)){t.phase="carry";c.action="Carrying "+target.short+" to rest";}else blockTask(c,"Grave unreachable");
+    return;
+  }
+  if(t.type==="excavate"){
+    target.progress+=amount*(hasTech("echo")?1.5:1);
+    if(target.progress>=95){completeExcavation(target,c);finishTask(c);}return;
+  }
+  if(t.type==="gather"&&t.progress>=(target.kind==="tree"?9:(target.kind==="pile"?2:12))){
+    let qty=Math.min(target.amount,hasTech("logistics")?24:16);target.amount-=qty;
+    let res=target.kind==="tree"?"wood":(target.kind==="berries"?"raw":(target.kind==="pile"?target.resource:target.kind));
+    if(target.amount<=0){dirtyTerrainRow(target.y);target.marked=false;nodesEpoch++;nodeAtCell[tileId(target.x,target.y)]="";}
+    let goods={};goods[res]=qty;osGame.stats.gathered=(osGame.stats.gathered||0)+qty;if(res==="ore")osGame.stats.oreMined=(osGame.stats.oreMined||0)+qty;beginDelivery(c,goods);return;
+  }
+  if(t.type==="sow"&&t.progress>=12){target.sown=true;target.growth=0;remember(c,"Something new is growing",2,600);finishTask(c);return;}
+  if(t.type==="harvest"&&t.progress>=12){let crop=CROPS[d.crop];target.growth=0;target.sown=false;osGame.stats.harvests++;if(osGame.stats.harvests===1)noteFact("firstHarvestBy",c.short);beginDelivery(c,{raw:crop.yield});return;}
+  if(t.type==="produce"&&t.progress>=t.recipe.work){
+    {let keys=Object.keys(t.recipe.cost);for(let i=0;i<keys.length;i++){let k=keys[i];target.input[k]=Math.max(0,(target.input[k]||0)-t.recipe.cost[k]);}}
+    t.committed=true;if(t.recipe.goods.meals)osGame.stats.mealsCooked+=t.recipe.goods.meals;
+    if(c.hook==="recipes"&&target.kind==="kitchen"&&!c.hookDone){c.hookDone=true;remember(c,"Finally, a real kitchen",8,1440*6);chronicle(c.short+" opens the notebook","The recipes waited for a real kitchen. "+c.name+" cooked the first one tonight.","people");}
+    // Finished goods wait on the workstation for a hauler; the maker stays at the bench.
+    if(!target.made)target.made={};{let keys=Object.keys(t.recipe.goods);for(let i=0;i<keys.length;i++){let k=keys[i];target.made[k]=(target.made[k]||0)+t.recipe.goods[k];}}
+    structuresDirty=true;finishTask(c);return;
+  }
+  if(t.type==="repair"&&Math.floor(t.progress)!==Math.floor(t.progress-amount)&&!reducedMotion)emitVisualFx("muzzle",target.x+target.w/2,target.y+target.h/2,0);
+  if(t.type==="repair"&&t.progress>=8){target.hp=Math.min(d.hp,target.hp+100);rememberEmergencyRepair(c,target);t.committed=true;finishTask(c);return;}
+  if(t.type==="treat"&&t.progress>=7){
+    let medicated=t.inputs&&t.inputs.medicine;let heal=(medicated?20:7)+(c.skills.doctor||3)*1.4+(traitOf(c,"empathy")-50)/10;
+    if(hasTech("medicine"))heal*=1.2;if(nearClinic(target))heal*=1.15;else if(countBuilt("clinic")>0)remember(target,"Treated in the field",-1,600);
+    target.health=clamp(target.health+heal,0,100);target.bleed=0;
+    for(let i=0;i<target.injuries.length;i++)target.injuries[i].tended=true;
+    // Any treatment is remembered; being pulled through when it was serious is the strongest bond there is.
+    if(t.serious){adjustRelation(target,c,8);adjustRelation(c,target,5);remember(target,c.short+" pulled me through",8,1440*10);}
+    remember(target,c.short+" treated my injuries",5,1440*2);remember(c,"Helped someone survive",4,1200);
+    if(target.food<45){let fed=stockTake({meals:1})?57:(stockTake({raw:2})?36:0);if(fed){target.food=clamp(target.food+fed,0,100);remember(target,"Fed by "+c.short,4,600);}}
+    adjustRelation(target,c,12);osGame.stats.treatments++;t.committed=true;
+    if(t.serious)chronicle("Care in a hard place",c.name+" treated "+target.name+(medicated?" with medicine.":" with improvised dressings. Supplies are low."),"people");finishTask(c);return;
+  }
+  if(t.type==="survey"&&t.progress>=3){revealArea(c.x,c.y,10);remember(c,"Made the unknown a little smaller",4,1000);finishTask(c);}
+}
+function setWorkPriority(id,key) {
+  let c=findColonist(id);if(!c||WORK_KEYS.indexOf(key)<0)return;
+  c.priorities[key]=(c.priorities[key]+1)%5;
+  if(c.task&&!c.task.personal){let j=getJob(c.task.jobId);if(j&&j.category===key)releaseTask(c,true);}
+  viewDirty=true;refreshAll();
+}
+function cycleSchedule(id) { let c=findColonist(id);if(!c)return;c.schedule=c.schedule==="day"?"night":(c.schedule==="night"?"flexible":"day");refreshAll(); }
+
+// Steward only designates known resources; it spends through ordinary jobs.
+// Personal needs, disabled priorities, drafted orders and player blueprints remain authoritative.
+function toggleAutoMode() {
+  if(!osGame)return;osGame.autoMode=!osGame.autoMode;autoMode=osGame.autoMode;
+  if(autoMode){runAutoSteward();generateJobs();}
+  chronicle(autoMode?"The colony takes initiative":"The steward stands down",autoMode?"The steward sets population-based production targets once, gathers supply reserves and queues practical research. Enable Build essentials in Work for automatic blueprints. Hollow decisions remain yours.":"Existing work will finish. New resource designations and research choices are yours again.","colony");
+  refreshAll();
+}
+function runAutoSteward() {
+  if(!osGame.autoMode)return;
+  if(!osGame.autoConfigured)configureAutoProduction();
+  for(let i=0;i<osGame.buildings.length;i++){let b=osGame.buildings[i],d=BUILDINGS[b.kind];if(b.built&&b.on&&b.hp<d.hp*.85)addJob("repair",b.id,"build",b.x,b.y,14);}
+  // Weapons lying in the open are collected by whoever is free, before the frontier notices the colony.
+  if(osGame.difficulty!=="peaceful"&&!hostilesPresent()&&osGame.weapons){for(let i=0;i<osGame.weapons.length;i++){let w=osGame.weapons[i];if(w.holder||w.claimedBy||!onMap(w.x,w.y)||!osGame.explored[tileId(w.x,w.y)])continue;let people=alivePeople(),pick=null,best=1e9;
+    for(let k=0;k<people.length;k++){let c=people[k];if(c.child||c.drafted||c.equipTarget||c.health<60||c.carry||c.carryBody||c.autoEquipOptOut||heldWeapon(c))continue;let d=sqDistance(c.x,c.y,w.x,w.y);if(d<best){best=d;pick=c;}}
+    if(pick&&requestWeapon(pick,w,true))break;}}
+  let targets=autoReserveTargets();
+  let kinds=["tree","stone","ore","berries"];
+  for(let k=0;k<kinds.length;k++){
+    let kind=kinds[k],resource=kind==="tree"?"wood":kind==="berries"?"raw":kind;
+    let reserved=0,candidates=[],list=nodesOfKind(kind);
+    for(let i=0;i<list.length;i++){
+      let n=list[i];if(n.amount<=0)continue;
+      if(n.marked){reserved+=n.amount;continue;}
+      if(osGame.explored[tileId(n.x,n.y)]&&sqDistance(n.x,n.y,CENTRE,centreY())<=32*32)candidates.push(n);
+    }
+    for(let i=0;i<osGame.people.length;i++){let c=osGame.people[i];if(c.carry)reserved+=c.carry[resource]||0;}
+    candidates.sort(function(a,b){return sqDistance(a.x,a.y,CENTRE,centreY())-sqDistance(b.x,b.y,CENTRE,centreY());});
+    let count=0;
+    for(let i=0;i<candidates.length&&count<3&&osGame.stock[resource]+reserved<targets[resource];i++){
+      let n=candidates[i];if(!passable(n.x,n.y)||nearestHostile(n.x,n.y,8))continue;
+      n.marked=true;reserved+=n.amount;count++;terrainDirty=true;viewDirty=true;
+    }
+  }
+  if(osGame.autoBuild&&osGame.elapsed>=(osGame.autoPlanAt||0)){osGame.autoPlanAt=osGame.elapsed+20;planAutoEssentials();}
+  if(!osGame.researchId&&anyPowered("lab"))for(let i=0;i<TECHS.length;i++){
+    let t=TECHS[i];if(t.branch!=="Hollow Studies"&&researchCheck(t)==="Available"){osGame.researchId=t.id;chronicle("A practical question", "The steward queued "+t.name+" for the research team.","research");break;}
+  }
+}
+
+function autoReserveTargets() {
+  let n=alivePeople().length;
+  return {wood:Math.max(160,n*80),stone:Math.max(80,n*40),ore:Math.max(48,n*24),raw:Math.max(32,n*16)};
+}
+function configureAutoProduction() {
+  let n=alivePeople().length,targets={meals:Math.min(300,n*24),metal:Math.min(300,n*60),parts:Math.min(300,n*12),fuel:Math.min(300,n*20),medicine:Math.min(300,n*8)};
+  let keys=Object.keys(targets);
+  for(let i=0;i<keys.length;i++){let k=keys[i];if(osGame.policy[k]>0)osGame.policy[k]=Math.max(osGame.policy[k],targets[k]);}
+  osGame.autoConfigured=true;viewDirty=true;
+}
+function resetAutoProduction() {if(!osGame)return;configureAutoProduction();generateJobs();say("Population-based production targets applied. Zero targets remain disabled.");refreshAll();}
+function toggleAutoBuild() {
+  if(!osGame)return;osGame.autoBuild=!osGame.autoBuild;osGame.autoPlanAt=0;
+  if(osGame.autoBuild&&!osGame.autoMode)toggleAutoMode();
+  runAutoSteward();generateJobs();refreshAll();
+}
+function countPlanned(kind) {return buildingsOfKind(kind).length;}
+function autoSiteClear(x,y,d) {
+  // Leave a walking gap, and preserve existing floors/conduits and player plans.
+  for(let yy=y-1;yy<=y+d.h;yy++)for(let xx=x-1;xx<=x+d.w;xx++){
+    if(!passable(xx,yy)||!osGame.explored[tileId(xx,yy)]||cellBuilding[tileId(xx,yy)])return false;
+  }
+  for(let i=0;i<osGame.buildings.length;i++){let b=osGame.buildings[i];if(b.x<x+d.w+1&&b.x+b.w>x-1&&b.y<y+d.h+1&&b.y+b.h>y-1)return false;}
+  for(let yy=y-1;yy<=y+d.h;yy++)for(let xx=x-1;xx<=x+d.w;xx++)if(hasFloor(xx,yy)||hasWire(xx,yy))return false;
+  return true;
+}
+function queueAutoEssential(kind) {
+  let d=BUILDINGS[kind];if(!stockHas(d.cost)){autoPlanText="Waiting for materials: "+d.name;return false;}
+  let people=alivePeople(),builder=null;
+  for(let i=0;i<people.length;i++)if(!people[i].drafted&&people[i].priorities.build&&people[i].health>=22){builder=people[i];break;}
+  if(!builder){autoPlanText="Enable Build for an available colonist.";return false;}
+  for(let r=6;r<=17;r++)for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
+    if(Math.abs(dx)!==r&&Math.abs(dy)!==r)continue;
+    let x=CENTRE+dx,y=centreY()+dy;
+    if(!autoSiteClear(x,y,d)||!placementCheck(kind,x,y,false).ok||nearestHostile(x,y,9))continue;
+    if(findPath(builder.x,builder.y,x-1,y-1)===null)continue;
+    if(queueBuilding(kind,x,y,true)){autoPlanText="Planned "+d.name+" at "+x+", "+y;chronicle("Room to grow", "The steward planned "+d.name+" with a walking gap around it. A builder will fetch the materials.","build");return true;}
+  }
+  autoPlanText="No safe clear site for "+d.name+". Clear or survey nearby ground.";return false;
+}
+// The steward raises the first bunkhouse itself: a sealed room is the difference between a camp and a colony.
+function autoPlanShelter() {
+  if(!stockHas({wood:167,metal:12})){autoPlanText="Saving for a bunkhouse: 167 wood and 12 metal keeps a reserve after the walls.";return false;}
+  let people=alivePeople(),builder=null;
+  for(let i=0;i<people.length;i++)if(!people[i].drafted&&people[i].priorities.build&&people[i].health>=22){builder=people[i];break;}
+  if(!builder){autoPlanText="Enable Build for an available colonist.";return false;}
+  for(let r=7;r<=20;r++)for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
+    if(Math.abs(dx)!==r&&Math.abs(dy)!==r)continue;
+    let x=CENTRE+dx-4,y=centreY()+dy-4;
+    if(!onMap(x-1,y-1)||!onMap(x+8,y+8)||nearestHostile(x+4,y+4,10))continue;
+    let clear=true;for(let yy=y-1;yy<y+9&&clear;yy++)for(let xx=x-1;xx<x+9&&clear;xx++)if(!passable(xx,yy)||!osGame.explored[tileId(xx,yy)]||cellBuilding[tileId(xx,yy)])clear=false;
+    if(!clear||!shelterCheck(x,y).ok||findPath(builder.x,builder.y,x-1,y-1)===null)continue;
+    if(queueShelter(x,y)){autoPlanText="Planned a bunkhouse at "+x+", "+y;chronicle("Four walls and a door","The steward planned an eight-by-eight bunkhouse with four cots. Builders will work through the blueprints.","build");return true;}
+  }
+  autoPlanText="No clear ground for a bunkhouse near camp. Clear an eight-by-eight site or plan one yourself.";return false;
+}
+function planAutoEssentials() {
+  let pending=0;for(let i=0;i<osGame.buildings.length;i++)if(!osGame.buildings[i].built)pending++;
+  if(pending>=3){autoPlanText="Finishing existing blueprints before expanding.";return;}
+  let n=alivePeople().length;
+  let plans=[{kind:"farm",count:Math.max(2,Math.ceil(n/2))},{kind:"bed",count:n},{kind:"table",count:1},{kind:"recreation",count:1},{kind:"fuelpress",count:1},{kind:"memorial",count:1}];
+  for(let i=0;i<plans.length;i++){let plan=plans[i];
+    // Food first; then, from Sol 2 with a reserve to spare, a sealed bunkhouse before loose cots.
+    if(plan.kind==="bed"&&dayNow()>=2&&!(osGame.rooms&&osGame.rooms.length)&&countPlanned("wall")<8&&stockHas({wood:167,metal:12})&&autoPlanShelter())return;
+    if(countPlanned(plan.kind)<plan.count){if(queueAutoEssential(plan.kind))return;}}
+  autoPlanText="Essential buildings are covered. Plan rooms, power and advanced industry yourself.";
+}
+function refreshAutoStatus() {
+  autoBuildEnabled=!!osGame.autoBuild;
+  if(!osGame.autoMode){autoStatusText="Auto steward off · designated jobs still run";return;}
+  let working=0,resting=0,drafted=0,waiting=0,leisure=0;
+  for(let i=0;i<osGame.people.length;i++){let c=osGame.people[i];if(c.dead)continue;if(c.drafted)drafted++;else if(c.task&&c.task.leisure)leisure++;else if(c.task&&c.task.personal||c.breakUntil>osGame.elapsed||c.health<22)resting++;else if(c.task||c.equipTarget)working++;else waiting++;}
+  autoStatusText=working+" working · "+resting+" tending needs · "+waiting+" waiting"+(leisure?" · "+leisure+" enjoying downtime":"")+(drafted?" · "+drafted+" drafted":"");
+  if(waiting){let free=0;for(let i=0;i<osGame.jobs.length;i++){let j=osGame.jobs[i];if(!j.claimed&&j.blockedUntil<=osGame.elapsed)free++;}autoStatusText+=free?" — check work priorities, access and materials":" — reserves met or waiting for crops";}
+  if(!autoBuildEnabled)autoPlanText="Building plans are manual. Enable Build essentials to add farms, beds and communal facilities.";
+}

@@ -1,0 +1,53 @@
+<import World from="./world.ui" />
+<div className="om-title">
+  <div className="om-title-gameplay">
+    <div className="om-demo-header"><span className="om-eyebrow">LIVE GAME SAMPLE / THE REAL SIMULATION AT 4×</span><strong>Greywall is already awake.</strong><p>This is the actual game running: count, breakfast, work details, yard games, dinner, lights out. Your run starts the moment you begin your sentence.</p></div>
+    <div className="om-demo-frame"><div className="om-demo-scene om-demo-live" aria-label="Live gameplay sample: an automatic prison day in the real simulation">
+      <World />
+    </div></div>
+    <div className="om-demo-footer"><div><span className="om-label">{demoCaption()}</span><strong>{demoAction()}</strong></div><button className="om-btn" disabled={reducedMotion} @click={toggleTitleReplay}>{reducedMotion ? "Still preview" : titleReplayPaused ? "Play preview" : "Pause preview"}</button></div>
+    <div className="om-demo-caption"><span>01 / OBSERVE</span><span>02 / PREPARE</span><span>03 / ESCAPE</span></div>
+  </div>
+  <div className="om-title-pane">
+    <span className="om-eyebrow">{"FIRST COUNT / " + OM_VERSION}</span>
+    <img className="om-title-logo" src={asset("assets/art/logo-vector.svg")} alt="Outermate: Build a plan beyond the walls." />
+    <p className="om-lead">One inmate. A remarkably organised obstacle.</p>
+    <p className="om-muted">Greywall runs on shifts, small favours and doors that open for the right people. Become one of them. Or find another way out.</p>
+    <div className="om-title-form">
+      <label><span className="om-label">YOUR NAME</span><input :bind={playerName} maxlength={32} placeholder="Alex Vale" /></label>
+      <label><span className="om-label">PRISON / CAST / STORY SEED</span><input :bind={seedText} maxlength={48} placeholder="GREYWALL-7" /></label>
+      <div className="om-row"><button className="om-btn om-grow" @click={rollNewSeed}>New random seed</button><button className={"om-btn "+(prisonMode === "procedural"?"is-active":"")} @click={() => setPrisonMode("procedural")}>Generated</button><button className={"om-btn "+(prisonMode === "classic"?"is-active":"")} @click={() => setPrisonMode("classic")}>Classic</button></div>
+      <div className="om-design-card"><span className="om-label">PRISON DESIGN</span><strong>{intakeDesign().name}</strong><small className="om-design-sub">{intakeIdentity().name + " / " + intakeIdentity().shape}</small><p>{intakeDesign().description}</p>#if (prisonMode === "procedural")<p className="om-layout-hint">{intakeHistory()}</p>#end#if (prisonMode === "procedural")<small>{"Starting detail: " + jobFor(startingDetail(seedText,backgroundChoice)).name}</small>#end</div>
+      <small>Same seed and version, same prison, cast and story. New seeds vary building outlines, connecting walks and interiors. The live sample shows classic Greywall.</small>
+      <button className="om-btn om-wide" @click={toggleSetup}>{setupOpen ? "Close intake details" : "Intake details: background, seed and difficulty"}</button>
+      #if (setupOpen)
+        <span className="om-label">BACKGROUND</span>
+        <div className="om-backgrounds">
+          #each (b in backgroundCards) key={b.id}
+            <button className={"om-background " + (b.selected ? "is-active" : "")} @click={() => chooseBackground(b.id)}><strong>{b.name}</strong><small>{b.description}</small></button>
+          #end
+        </div>
+        <span className="om-label">PRESSURE</span>
+        <div className="om-row">
+          <button className={"om-btn " + (difficultyChoice === "routine" ? "is-active" : "")} @click={() => chooseDifficulty("routine")}>Routine</button>
+          <button className={"om-btn " + (difficultyChoice === "standard" ? "is-active" : "")} @click={() => chooseDifficulty("standard")}>Standard</button>
+          <button className={"om-btn " + (difficultyChoice === "lockdown" ? "is-active" : "")} @click={() => chooseDifficulty("lockdown")}>Lockdown</button>
+        </div>
+        <span className="om-small om-muted">Routine is gentler. Accessibility options never change your ending.</span>
+        <div className="om-row"><span className="om-label">APPEARANCE</span>
+          <button className="om-face-choice" @click={() => choosePalette(0)}><img src={asset("assets/sprites/inmate0-s0.svg")} alt="Appearance 1" /></button>
+          <button className="om-face-choice" @click={() => choosePalette(1)}><img src={asset("assets/sprites/inmate1-s0.svg")} alt="Appearance 2" /></button>
+          <button className="om-face-choice" @click={() => choosePalette(2)}><img src={asset("assets/sprites/inmate2-s0.svg")} alt="Appearance 3" /></button>
+          <button className="om-face-choice" @click={() => choosePalette(3)}><img src={asset("assets/sprites/inmate3-s0.svg")} alt="Appearance 4" /></button>
+          <button className="om-face-choice" @click={() => choosePalette(4)}><img src={asset("assets/sprites/inmate4-s0.svg")} alt="Appearance 5" /></button>
+          <button className="om-face-choice" @click={() => choosePalette(5)}><img src={asset("assets/sprites/inmate5-s0.svg")} alt="Appearance 6" /></button>
+        </div>
+      #end
+    </div>
+    <button className="om-btn om-primary om-start" @click={confirmNewGame}>Begin your sentence <span>→</span></button>
+    <button className="om-btn om-start om-guided" @click={guidedStart}><span className="om-guided-text"><strong>Guided start</strong><small>The guide plans your story's route and Auto day plays it. You can take over at any moment.</small></span><span>→</span></button>
+    <div className="om-row"><button className="om-btn om-grow" disabled={!saveAvailable} @click={continueRun}>Continue</button><button className="om-btn om-grow" @click={() => openDialog("saves")}>Load / import</button></div>
+    <div className="om-row"><button className="om-link" @click={() => openDialog("help")}>The inmate handbook</button><button className="om-link" @click={() => openDialog("settings")}>Picture and sound</button></div>
+    <div className="om-title-footer">SINGLE PLAYER · LOCAL SAVES · BUILT FOR SOFTN<br /><span><a className="om-credit" href="https://www.lance.name" target="_blank" rel="noopener">Created by Lance</a> · <a className="om-credit" href="https://www.softn.com" target="_blank" rel="noopener">Powered by SoftN</a> · outermate.com</span></div>
+  </div>
+</div>

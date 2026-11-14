@@ -1,0 +1,122 @@
+// What a workstation still needs before its recipe can run, from its own input buffer.
+function bufferMissing(b,recipe){let need={},keys=Object.keys(recipe.cost);for(let i=0;i<keys.length;i++){let k=keys[i],have=(b.input&&b.input[k])||0;if(have<recipe.cost[k])need[k]=recipe.cost[k]-have;}return need;}
+function bufferReady(b,recipe){return Object.keys(bufferMissing(b,recipe)).length===0;}
+function hasGoods(g){if(!g)return false;let keys=Object.keys(g);for(let i=0;i<keys.length;i++)if(g[keys[i]]>0)return true;return false;}
+function bufferText(b){let r=recipeFor(b);if(!r)return hasGoods(b.input)?costText(b.input)+" held":"";let parts=[],keys=Object.keys(r.cost);for(let i=0;i<keys.length;i++){let k=keys[i];parts.push(((b.input&&b.input[k])||0)+"/"+r.cost[k]+" "+k);}return parts.join(" · ");}
+function nearMarsh(b){for(let y=b.y-1;y<=b.y+b.h;y++)for(let x=b.x-1;x<=b.x+b.w;x++)if(onMap(x,y)&&osGame.terrain[tileId(x,y)]===5)return true;return false;}
+// What the colony will have once what is made and what is carried arrives: production targets look at this.
+function projectedStock(kind){let n=osGame.stock[kind]||0;for(let i=0;i<osGame.buildings.length;i++){let m=osGame.buildings[i].made;if(m&&m[kind])n+=m[kind];}for(let i=0;i<osGame.people.length;i++){let c=osGame.people[i];if(!c.dead&&c.carry&&c.carry[kind])n+=c.carry[kind];}return n;}
+const MADE_BATCHES=2;
+function madeFull(b,recipe){if(!b.made)return false;let keys=Object.keys(recipe.goods);for(let i=0;i<keys.length;i++){let k=keys[i];if((b.made[k]||0)>=recipe.goods[k]*MADE_BATCHES)return true;}return false;}
+function baseRecipeFor(b){
+  if(b.kind==="cookfire"&&projectedStock("meals")<osGame.policy.meals)return {cost:{raw:3,wood:1},goods:{meals:3},work:13};
+  if(b.kind==="kitchen"&&projectedStock("meals")<osGame.policy.meals)return {cost:{raw:3},goods:{meals:4},work:11};
+  if(b.kind==="workshop"&&projectedStock("parts")<osGame.policy.parts)return {cost:{metal:6},goods:{parts:2},work:20};
+  if(b.kind==="smelter"&&projectedStock("metal")<osGame.policy.metal)return {cost:{ore:4,fuel:1},goods:{metal:4},work:17};
+  if(b.kind==="fuelpress"&&projectedStock("fuel")<osGame.policy.fuel)return {cost:{wood:10},goods:{fuel:4},work:16};
+  if(b.kind==="chemist"&&projectedStock("medicine")<osGame.policy.medicine)return {cost:{raw:6,parts:1},goods:{medicine:4},work:20};
+  return null;
+}
+function recipeFor(b) {
+  if(!b.built||!b.on)return null;
+  let r=baseRecipeFor(b);if(r&&madeFull(b,r))return null;return r;
+}
+// (the six recipes above replaced the per-station checks that used to live here)
+
+function techById(id) { for(let i=0;i<TECHS.length;i++)if(TECHS[i].id===id)return TECHS[i];return null; }
+function techName(id) { let t=techById(id);return t?t.name:id; }
+function researchCheck(t) {
+  if(osGame.tech[t.id])return "Completed";
+  if(t.stage&&osGame.storyStage<t.stage)return "Explore more Hollow ruins";
+  for(let i=0;i<t.requires.length;i++)if(!hasTech(t.requires[i]))return "Requires "+techName(t.requires[i]);
+  return "Available";
+}
+// A queue of projects: when one finishes, the next available one begins on its own.
+function researchQueue(){if(!osGame.researchQueue)osGame.researchQueue=[];return osGame.researchQueue;}
+function queueResearch(id) {
+  let t=techById(id);if(!t||osGame.tech[id]||osGame.researchId===id)return;
+  let q=researchQueue(),at=q.indexOf(id);
+  if(at>=0){q.splice(at,1);say(t.name+" removed from the queue.");}
+  else{if(q.length>=8){say("The queue holds eight projects.");return;}q.push(id);say(t.name+" queued ("+q.length+" waiting).");}
+  if(!osGame.researchId)startQueuedResearch();
+  viewDirty=true;refreshAll();
+}
+function startQueuedResearch() {
+  let q=researchQueue();
+  // Completed entries drop out; the first entry whose prerequisites are met starts, wherever it sits, so a
+  // project queued ahead of its own prerequisite waits for it instead of blocking it.
+  for(let i=q.length-1;i>=0;i--){let t=techById(q[i]);if(!t||osGame.tech[q[i]])q.splice(i,1);}
+  for(let i=0;i<q.length;i++){let id=q[i],t=techById(id);if(researchCheck(t)!=="Available")continue;q.splice(i,1);osGame.researchId=id;chronicle("Next project: "+t.name,"The queued research begins as the station clears.","research");say("Research continues: "+t.name+".");generateJobs();viewDirty=true;researchDirty=true;return true;}
+  return false;
+}
+function selectResearch(id) {
+  let t=techById(id);if(!t)return;let check=researchCheck(t);
+  if(check!=="Available"){say(check);return;}
+  osGame.researchId=id;viewDirty=true;generateJobs();refreshAll();say("Project selected: "+t.name+". A powered research station and a researcher are required.");
+}
+function finishResearch(t,c) {
+  osGame.tech[t.id]=true;osGame.researchProgress[t.id]=t.cost;osGame.researchId="";startQueuedResearch();
+  chronicle("Discovery: "+t.name,c.name+" completed the research. "+t.description,"research");remember(c,"Understood something new",7,1440);say(t.name+" researched.");viewDirty=true;
+  playCue("discovery");
+}
+function adjustPolicy(key,delta) {
+  if(!osGame||!(key in osGame.policy))return;osGame.policy[key]=clamp(osGame.policy[key]+delta,0,300);viewDirty=true;refreshAll();
+}
+function tickEcology(dt) {
+  let mins=dt*GAME_MINUTES_PER_SECOND;
+  for(let i=0;i<osGame.buildings.length;i++){
+    let b=osGame.buildings[i],d=BUILDINGS[b.kind];if(!b.built||!d.crop||!b.sown||!b.on)continue;
+    let crop=CROPS[d.crop],temp=osGame.temperature,rate=1;
+    if(b.kind==="hydroponics"){if(!b.powered)continue;}
+    else if(d.crop!=="hollowcap"){
+      if(hourNow()<6||hourNow()>20)continue;rate=24/14;
+      if(hasTech("agronomy"))rate*=1.2;
+      if(osGame.terrain[tileId(b.x,b.y)]===2)rate*=1.12;
+      if(nearMarsh(b))rate*=1.1;
+      if(osGame.weather==="Glass Wind")rate*=0.65;
+    }
+    if(b.quarantineUntil&&osGame.minutes<b.quarantineUntil)continue;
+    if((temp<crop.min||temp>crop.max)&&b.kind!=="hydroponics")continue;
+    let g0=b.growth;b.growth=Math.min(1,b.growth+mins/crop.minutes*rate);if(Math.floor(g0*100)!==Math.floor(b.growth*100))structuresDirty=true;
+  }
+  let refrigerated=anyPowered("freezer");
+  // A heat wave works against the freezer and ruins an open larder faster.
+  let chill=(refrigerated?0.12:1)*(osGame.weather==="Heat wave"?(refrigerated?2.5:1.6):1);
+  let rawLoss=osGame.stock.raw*0.065*chill*mins/1440,mealLoss=osGame.stock.meals*0.025*chill*mins/1440;
+  if(osGame.qualityMeals>0&&osGame.stock.meals>0)osGame.qualityMeals=Math.max(0,osGame.qualityMeals-mealLoss*osGame.qualityMeals/osGame.stock.meals);
+  osGame.stock.raw=Math.max(0,osGame.stock.raw-rawLoss);osGame.stock.meals=Math.max(0,osGame.stock.meals-mealLoss);trimQualityMeals();osGame.stats.foodSpoiled+=rawLoss+mealLoss;
+  tickColdChain(refrigerated,rawLoss+mealLoss);
+  if((osGame.weather==="Storm"||osGame.weather==="Glass Wind")&&eventDamageFactor()>0&&randomUnit()<dt*0.015){
+    let candidates=[];for(let i=0;i<osGame.buildings.length;i++){let b=osGame.buildings[i],d=BUILDINGS[b.kind];if(b.built&&!d.underlay&&b.kind!=="lander"&&b.room<0){candidates.push(b);if(osGame.weather==="Glass Wind"&&(b.kind==="solar"||b.kind==="wind"||d.crop))candidates.push(b);}}
+    if(candidates.length){let b=pick(candidates);b.hp=Math.max(1,b.hp-randomInt(10,32)*eventDamageFactor());structuresDirty=true;showIncidentFx(osGame.weather==="Glass Wind"?"debris":"surge",b.x,b.y);viewDirty=true;}
+  }
+}
+
+function tickColdChain(refrigerated,loss) {
+  if(!osGame.coldChain)osGame.coldChain={active:false,lost:0,reported:false};
+  let chain=osGame.coldChain;
+  if(!chain.active&&countBuilt("freezer")>0&&!refrigerated){
+    chain.active=true;chain.lost=0;chain.reported=false;
+    chronicle("The cold room goes quiet","Refrigeration has stopped. Food is warming while the colony checks generation, fuel and damaged equipment.","colony");
+  }
+  if(chain.active&&!refrigerated){
+    chain.lost+=loss;
+    if(chain.lost>=1&&!chain.reported){
+      chain.reported=true;
+      for(let i=0;i<osGame.people.length;i++)remember(osGame.people[i],"Food spoiled during the blackout",-6,1440);
+      chronicle("The smell of a missed repair","The failed cold chain has spoiled a full ration. Hunger now has a name to attach to the colony's worries.","people");
+    }
+  }
+  if(chain.active&&refrigerated){
+    chronicle("The cold room hums again","Power returned after "+chain.lost.toFixed(1)+" food spoiled. The machinery recovers faster than people's memories.","colony");
+    chain.active=false;
+  }
+}
+function rememberEmergencyRepair(c,b) {
+  if(!osGame.coldChain||!osGame.coldChain.active||(!BUILDINGS[b.kind].produce&&!BUILDINGS[b.kind].wire&&b.kind!=="freezer"))return;
+  let night=hourNow()<5||hourNow()>21;
+  remember(c,night?"Worked through the night on the cold chain":"Kept the colony's food from spoiling",night?-7:5,1440);
+  if(night){c.rest=Math.max(0,c.rest-10);c.recreation=Math.max(0,c.recreation-8);}
+  chronicle("A repair with a human cost",c.name+" repaired "+BUILDINGS[b.kind].name+(night?" in the dark, sacrificing sleep to save the food.":" while the food was warming."),"people");
+  if(osGame.storySeen.signal&&!osGame.storySeen.coldEcho){osGame.storySeen.coldEcho=true;chronicle("A voice in the relay", "As "+c.short+" closed the panel, the Hollow signal repeated their name. Then, softly: 'You fixed it this time.'", "hollow");}
+}

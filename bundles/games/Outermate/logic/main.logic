@@ -1,0 +1,27 @@
+// One fixed-step loop. Rendering never draws from the simulation RNG.
+function advanceSimulation(dt){
+  if(!omGame||omGame.over)return;
+  omGame.elapsed+=dt;omGame.minutes+=dt*GAME_MINUTES_PER_SECOND;omGame.step++;
+  tickPeople(dt);tickEscape(dt);
+  omGame.securityClock+=dt;if(omGame.securityClock>=0.2){omGame.securityClock-=0.2;tickPerception(0.2);}
+  omGame.needsClock+=dt;if(omGame.needsClock>=1){omGame.needsClock-=1;tickNeeds(1);updateSecurityPolicy();updateCampaign();tickSeededStory();}
+  omGame.directorClock+=dt;if(omGame.directorClock>=5){omGame.directorClock-=5;tickDirector();}
+}
+function gameLoop(delta){
+  try{
+    if(!booted){booted=true;loadSettings();if(!omGame&&seedText==="GREYWALL-7")rollNewSeed();refreshSlots();refreshAll();registerInput();}
+    let dt=typeof delta==="number"?clamp(delta,0,0.2):0.1;
+    if(toastRemaining>0){toastRemaining-=dt;if(toastRemaining<=0)toastText="";}
+    if(screen==="game"&&omGame){
+      if(!paused&&!isPausedByDialog()&&!omGame.over){loopAccumulator=Math.min(loopAccumulator+dt*gameSpeed,STEP_SECONDS*6);let steps=0;while(loopAccumulator>=STEP_SECONDS-0.000001&&steps<4){loopAccumulator-=STEP_SECONDS;advanceSimulation(STEP_SECONDS);steps++;if(isPausedByDialog()||omGame.over){loopAccumulator=0;break;}}}
+      else loopAccumulator=0;
+      realSaveClock+=dt;if(realSaveClock>=90&&!omGame.challenge&&!omGame.over){realSaveClock=0;saveSlot(autoIndex,true);}
+      actorClock+=dt;viewClock+=dt;
+      let animating=!paused&&!isPausedByDialog()&&!omGame.over;
+      // A full projection includes actors already. Idle screens only need input-driven refreshes.
+      if(viewDirty||(animating&&viewClock>=0.5)){viewClock=0;actorClock=0;refreshAll();}
+      else if(animating&&actorClock>=0.1){actorClock=0;refreshActors();}
+    }else {if(screen==="title")tickDemo(dt);if(viewDirty)refreshAll();}
+    syncAmbience();tickAmbienceRetry(dt);syncAudio(dt);
+  }catch(e){lastError=String(e.message||e);paused=true;dialog="error";toastText="Simulation paused safely. Export your save before restarting.";}
+}

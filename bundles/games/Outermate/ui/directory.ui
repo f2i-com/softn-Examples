@@ -1,0 +1,15 @@
+<p>Find a fixture, supply or escape lead. Door permission is shown for your current assignment and time; walking still checks the full route.</p>
+<label className="om-directory-search" key="directory-search"><span className="om-label">SEARCH GREYWALL</span><input id="om-directory-query" key="directory-query" :bind={directoryQuery} placeholder="Search rooms, supplies or fixtures" maxlength={80} autocomplete="off" spellcheck={false} /></label>
+<div className="om-stash-tabs">
+ <button className={"om-btn "+(directoryFilter === "all"?"is-active":"")} @click={() => setDirectoryFilter("all")}>All</button>
+ <button className={"om-btn "+(directoryFilter === "supplies"?"is-active":"")} @click={() => setDirectoryFilter("supplies")}>Supplies</button>
+ <button className={"om-btn "+(directoryFilter === "work"?"is-active":"")} @click={() => setDirectoryFilter("work")}>Work</button>
+ <button className={"om-btn "+(directoryFilter === "stashes"?"is-active":"")} @click={() => setDirectoryFilter("stashes")}>Stashes</button>
+ <button className={"om-btn "+(directoryFilter === "intel"?"is-active":"")} @click={() => setDirectoryFilter("intel")}>Intel</button>
+</div>
+<div className="om-row om-between"><small>{matchingDirectoryCards().length + " fixtures"}</small><button className="om-link" @click={overviewMap}>Whole-prison view</button></div>
+#if (matchingDirectoryCards().length === 0)<div className="om-empty">No matching fixtures. Try another search or choose All.</div>#end
+#each (s in matchingDirectoryCards()) key={s.id}<div className="om-card om-directory-card"><span className="om-label">{s.zone}</span><h3>{s.name}</h3><small className={s.allowed?"om-access-ok":"om-access-locked"}>{s.access}</small><p>{s.description}</p>
+ #if (s.supply)<div className="om-note">{s.item + " / " + s.stock}</div>#end
+ <div className="om-row"><button className="om-btn om-grow" @click={() => inspectSite(s.id)}>Inspect</button><button className="om-btn om-grow" @click={() => goToSite(s.id)}>Walk here</button><button className="om-btn" @click={() => focusSite(s.id)}>Locate</button></div>
+</div>#end

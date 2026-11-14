@@ -1,0 +1,37 @@
+{
+  "name": "PredatorPrey",
+  "version": "1.1.0",
+  "description": "Interactive 3D predator-prey ecosystem diorama with articulated Blender PBR foxes and rabbits, pine woodland, rabbit warrens, 4-season cycle, GTAO/bloom lighting, soft particles, and nature SFX.",
+  "main": "ui/main.ui",
+  "icon": "assets/icon.svg",
+  "files": {
+    "ui": [
+      "ui/main.ui"
+    ],
+    "logic": [
+      "logic/main.logic"
+    ],
+    "assets": [
+      "assets/icon.svg",
+      "assets/env/sunny-meadow.hdr",
+      "assets/models/burrow-mound.glb",
+      "assets/models/fox.glb",
+      "assets/models/pine-cluster.glb",
+      "assets/models/rabbit.glb",
+      "assets/sfx/alert.wav",
+      "assets/sfx/chirp.wav",
+      "assets/sfx/hop.wav"
+    ]
+  },
+  "config": {
+    "window": {
+      "title": "Predator-Prey Simulator",
+      "width": 1024,
+      "height": 768
+    },
+    "theme": {
+      "primary": "#10b981",
+      "mode": "dark"
+    }
+  }
+}

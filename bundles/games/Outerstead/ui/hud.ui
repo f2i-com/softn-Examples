@@ -1,0 +1,16 @@
+<div className="os-header">
+  <div className="os-brand"><img className="os-hud-logo" src={asset("assets/art/logo-hud.svg")} alt="Outerstead" /><div className="os-brand-colony"><div className="os-brand-meta">{hud.name}</div></div></div>
+  <div className="os-resources">
+    <div className="os-resource" title="Timber in the shared warehouse"><div className="os-resource-top"><span className="os-resource-icon">▰</span>{hud.wood}</div><div className="os-resource-label">Wood</div></div>
+    <div className="os-resource" title="Stone"><div className="os-resource-top"><span className="os-resource-icon">⬡</span>{hud.stone}</div><div className="os-resource-label">Stone</div></div>
+    <div className="os-resource" title="Refined metal"><div className="os-resource-top"><span className="os-resource-icon">▱</span>{hud.metal}</div><div className="os-resource-label">Metal</div></div>
+    <div className="os-resource" title="Electronic components"><div className="os-resource-top"><span className="os-resource-icon">⚙</span>{hud.parts}</div><div className="os-resource-label">Parts</div></div>
+    <div className="os-resource" title="Prepared meals"><div className="os-resource-top"><span className="os-resource-icon">◒</span>{hud.meals}</div><div className="os-resource-label">Meals</div></div>
+    <div className="os-resource" title="Field medicine"><div className="os-resource-top"><span className="os-resource-icon">✚</span>{hud.medicine}</div><div className="os-resource-label">Medicine</div></div>
+    <div className="os-resource" title="Generation / requested electrical load"><div className="os-resource-top" style={{ fontSize: "12px" }}><span className="os-resource-icon">ϟ</span>{hud.power}</div><div className="os-resource-label">Generation / load</div></div>
+  </div>
+  <div className="os-time-controls">
+    <div className="os-clock">Sol {hud.sol} · {hud.time} · {hud.temperature}°C</div>
+    <div className="os-row" style={{ gap: "4px" }}><button className="os-btn os-time-button" oson={String(paused)} @click={togglePause}>{paused ? "▶" : "Ⅱ"}</button><button className="os-btn os-time-button" oson={String(!paused && gameSpeed === 1)} @click={() => setSpeed(1)}>1×</button><button className="os-btn os-time-button" oson={String(!paused && gameSpeed === 2)} @click={() => setSpeed(2)}>2×</button><button className="os-btn os-time-button" oson={String(!paused && gameSpeed === 4)} @click={() => setSpeed(4)}>4×</button><button className="os-btn os-time-button" @click={openMenu}>☰</button></div>
+  </div>
+</div>

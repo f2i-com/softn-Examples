@@ -1,0 +1,34 @@
+// Sight. Explored country is remembered, but only what somebody can see right now is drawn clear: a circle around
+// every settler and rover, and the ground around the colony's structures. Everything else that has been explored
+// lies under mist, an outline without detail; what nobody has reached stays dark. Sight is kept per window in
+// cells of four tiles, stamped on every refresh, and a cell that flips redraws only its four rows.
+const SIGHT_CELL=2,SIGHT_PEOPLE=13,SIGHT_ROVER=11,SIGHT_BUILDING=8,SIGHT_HOLD=12,SIGHT_SLACK=3,MIST_TILE=30;
+let sightStamp=[],sightBase=[],sightVisible=[],sightBaseEpoch=-1;
+// Sight is transient, unlike explored terrain. A restored save can move time
+// backwards, so stamps from the previous session must never light that world.
+function resetSight(){sightStamp=[];sightBase=[];sightVisible=[];sightBaseEpoch=-1;}
+function sightCells(){return MAP_SIZE/SIGHT_CELL;}
+function sightIndexAt(x,y){return Math.floor((y-WY)/SIGHT_CELL)*sightCells()+Math.floor((x-WX)/SIGHT_CELL);}
+function inSight(x,y){if(!onMap(x,y)||!sightVisible.length)return true;return !!sightVisible[sightIndexAt(x,y)];}
+function sightStampCircle(arr,x,y,r,value){
+  let n=sightCells(),cx=(x-WX)/SIGHT_CELL,cy=(y-WY)/SIGHT_CELL,rc=r/SIGHT_CELL,r2=rc*rc;
+  for(let gy=Math.max(0,Math.floor(cy-rc));gy<=Math.min(n-1,Math.ceil(cy+rc));gy++)for(let gx=Math.max(0,Math.floor(cx-rc));gx<=Math.min(n-1,Math.ceil(cx+rc));gx++){let dx=gx+0.5-cx,dy=gy+0.5-cy;if(dx*dx+dy*dy<=r2)arr[gy*n+gx]=value;}
+}
+// A ring just outside the circle keeps an older stamp only if it has none newer: cells at the edge stay lit through a step back.
+function sightStampSlack(arr,x,y,r,value){
+  let n=sightCells(),cx=(x-WX)/SIGHT_CELL,cy=(y-WY)/SIGHT_CELL,rc=r/SIGHT_CELL,r2=rc*rc;
+  for(let gy=Math.max(0,Math.floor(cy-rc));gy<=Math.min(n-1,Math.ceil(cy+rc));gy++)for(let gx=Math.max(0,Math.floor(cx-rc));gx<=Math.min(n-1,Math.ceil(cx+rc));gx++){let dx=gx+0.5-cx,dy=gy+0.5-cy;if(dx*dx+dy*dy<=r2){let k=gy*n+gx;if(arr[k]<value)arr[k]=value;}}
+}
+function refreshSight(){
+  if(!osGame)return;let n=sightCells(),total=n*n,now=osGame.elapsed;
+  if(sightStamp.length!==total){sightStamp=[];sightVisible=[];sightBase=[];for(let i=0;i<total;i++){sightStamp.push(-1e9);sightVisible.push(false);sightBase.push(false);}sightBaseEpoch=-1;}
+  let built=0;for(let i=0;i<osGame.buildings.length;i++)if(osGame.buildings[i].built)built++;let baseKey=osGame.buildings.length*100000+built+WX*7+WY*13;
+  if(sightBaseEpoch!==baseKey){sightBaseEpoch=baseKey;for(let i=0;i<total;i++)sightBase[i]=false;
+    for(let i=0;i<osGame.buildings.length;i++){let b=osGame.buildings[i];if(!b.built||!onMap(b.x,b.y)||!mainWindowHas(b.x,b.y))continue;sightStampCircle(sightBase,b.x+b.w/2,b.y+b.h/2,SIGHT_BUILDING,true);}}
+  for(let i=0;i<osGame.people.length;i++){let c=osGame.people[i];if(c.dead||c.away||!onMap(c.x,c.y))continue;let rad=c.rover?SIGHT_ROVER:SIGHT_PEOPLE;sightStampSlack(sightStamp,c.x,c.y,rad+SIGHT_SLACK,now-SIGHT_HOLD*0.6);sightStampCircle(sightStamp,c.x,c.y,rad,now);}
+  let flipped=0;
+  for(let i=0;i<total;i++){let v=sightBase[i]||now-sightStamp[i]<=SIGHT_HOLD;if(v!==sightVisible[i]){sightVisible[i]=v;flipped++;let y0=Math.floor(i/n)*SIGHT_CELL;for(let k=0;k<SIGHT_CELL;k++){terrainRows[y0+k]=true;}terrainRowsPending=true;}}
+  return flipped;
+}
+// The mist layer for one row: a mist tile over every explored tile nobody can see right now.
+function mistRow(y,ground){let out=[],n=sightCells(),gy=Math.floor(y/SIGHT_CELL)*n;for(let x=0;x<MAP_SIZE;x++){out.push(ground[x]!==31&&sightVisible.length&&!sightVisible[gy+Math.floor(x/SIGHT_CELL)]?MIST_TILE:-1);}return out;}

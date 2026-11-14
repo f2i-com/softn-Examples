@@ -1,0 +1,152 @@
+// Fair security: facing, range, wall occlusion, last-seen positions and bounded evidence.
+// Only the player and actively escaping crew are suspicious targets; compliant background
+// inmates do not create an all-pairs perception workload.
+function knownIntel(id){let k=omGame.knowledge[id];return !!k&&k.confidence!=="rumor";}
+function learnIntel(id,level,notify){
+  let d=INTEL[id];if(!d)return;
+  let k=omGame.knowledge[id],first=!k;
+  if(!k){k={id:id,title:d.title,body:d.body,confidence:"rumor",count:0,firstAt:omGame.minutes,lastAt:0,nextAt:0};omGame.knowledge[id]=k;}
+  if(level==="confirmed"){k.confidence="confirmed";k.count=Math.max(2,k.count);}
+  else if(level==="observed"&&(k.nextAt<=omGame.minutes||k.confidence==="rumor")){k.count++;k.confidence=k.count>=2?"confirmed":"observed";k.nextAt=omGame.minutes+50;omGame.stats.observations++;}
+  k.lastAt=omGame.minutes;
+  if(first||level!=="rumor"){if(notify){say("Notebook: "+d.title+" ("+k.confidence+").");logEvent("Notebook: "+d.title,d.body,"intel");}dirty();}
+}
+function observeNearbySecurity(){
+  let p=player();for(let i=0;i<CAMERAS.length;i++){let c=CAMERAS[i];if(sqDistance(p.x,p.y,c.x,c.y)<=225&&hasLineOfSight(p.x,p.y,c.x,c.y))learnIntel(c.id,"observed",false);}
+  for(let i=0;i<GUARDS.length;i++){let c=actorById(GUARDS[i].id);if(sqDistance(p.x,p.y,c.x,c.y)<=144&&hasLineOfSight(p.x,p.y,c.x,c.y)){
+    let id="guard_"+c.id;INTEL[id]={title:"Officer "+c.short,body:c.trait+". Patrols use an authored waypoint circuit. Shift changes can reverse it. The last observed location was "+Math.floor(c.x)+", "+Math.floor(c.y)+"."};learnIntel(id,"observed",false);
+  }}
+}
+function addEvidence(title,location,suspect,strength){
+  omGame.evidence.unshift({id:entityId("evidence"),title:title,location:location,suspect:suspect||"unknown",strength:strength,at:omGame.minutes,resolved:false});
+  if(omGame.evidence.length>48)omGame.evidence.length=48;
+  omGame.heat=clamp(omGame.heat+strength*0.3,0,100);dirty();
+}
+function evidenceFloor(){let n=0;for(let i=0;i<omGame.evidence.length;i++){let e=omGame.evidence[i];if(!e.resolved&&e.suspect==="player")n+=e.strength*0.2;}return Math.min(35,n);}
+function legitimateZone(c,zone){
+  if(c.role==="guard"||c.role==="staff")return true;
+  let z=zoneById(zone);if(!z||z.access==="public")return true;
+  if(z.access==="staff")return false;
+  if(c.id==="player"&&hasUniformPass()&&timeIn(345,1320)&&currentAlert()<3)return true;
+  if(c.crew&&c.crewState==="following"&&omGame.escape)return true;
+  if((c.job===z.access||(c.job==="kitchen"&&zone==="canteen"))&&(isWorkTime()||c.mode==="routine"||c.role==="inmate"))return true;
+  return false;
+}
+function violationFor(c){
+  if(c.escaped||c.detainedUntil>omGame.minutes||c.crewState==="caught")return {severity:0,reason:""};
+  if(omGame.escape&&omGame.escape.phase==="transit"&&(c.id==="player"||c.crewState==="following"))return {severity:0,reason:""};
+  if(isOutsideInner(c)){
+    if(omGame.escape&&omGame.escape.route==="paper"&&!omGame.escape.alarm)return {severity:0,reason:""};
+    if(omGame.escape&&omGame.escape.route==="maintenance"&&!omGame.escape.alarm&&(c.id!=="player"||hasUniformPass()))return {severity:0,reason:""};
+    return {severity:3,reason:"Beyond the authorised perimeter"};
+  }
+  if(c.id==="player"&&c.dragging)return {severity:2.4,reason:"Dragging an officer"};
+  if(c.id==="player"&&wearingGuardUniform()&&uniformAlertActive())return {severity:2.6,reason:"Wearing a missing officer uniform"};
+  if(c.task&&c.task.phase==="work"&&c.task.illegal)return {severity:c.task.illegal+0.5,reason:c.task.type==="evidence"?"Copying restricted records":"Unscheduled work / exposed contraband"};
+  if(!legitimateZone(c,zoneOf(c)))return {severity:1.3,reason:"Inside a restricted work area"};
+  if(currentAlert()>=3&&!omGame.escape&&zoneOf(c)!==c.homeZone&&c.mode!=="routine")return {severity:1.3,reason:"Outside your block during lockdown"};
+  if(!timeIn(345,1320)&&zoneOf(c)!==c.homeZone&&c.mode!=="routine"&&!(c.id==="player"&&hasUniformPass()))return {severity:1.2,reason:"Moving outside your block after lock-in"};
+  if(c.id==="player"&&omGame.sprinting&&omGame.personalSuspicion>45)return {severity:0.7,reason:"Running while under scrutiny"};
+  return {severity:0,reason:""};
+}
+function inCone(ax,ay,angle,range,halfAngle,c){
+  let dx=c.x-ax,dy=c.y-ay,d2=dx*dx+dy*dy;if(d2>range*range)return false;if(d2<0.01)return true;
+  let dot=(dx*Math.cos(angle)+dy*Math.sin(angle))/Math.sqrt(d2);return dot>=Math.cos(halfAngle)&&hasLineOfSight(ax,ay,c.x,c.y);
+}
+function guardCanSee(g,c){let d=guardDef(g.id);if(!d||isDown(g))return false;if(c.id==="player"&&wearingGuardUniform()&&!uniformAlertActive()&&sqDistance(g.x,g.y,c.x,c.y)>9)return false;let range=d.range*(omGame.weather==="Fog"?0.72:omGame.weather==="Rain"||omGame.weather==="Storm"?0.86:1)*(timeIn(360,1200)?1:0.82);if(sqDistance(g.x,g.y,c.x,c.y)<3.3)return hasLineOfSight(g.x,g.y,c.x,c.y);return inCone(g.x,g.y,g.headingAngle,range,1.05,c);}
+function cameraAngle(c){return c.base+Math.sin(omGame.elapsed*2*Math.PI/(c.id==="lightEast"?c.period*historyFactor("fence"):c.period))*c.sweep;}
+function cameraOn(c){if(omGame.cameraFaults&&omGame.cameraFaults[c.id]>omGame.minutes)return false;return c.backup||omGame.power.offUntil<=omGame.minutes;}
+function suspiciousTargets(){let a=[player()];for(let i=0;i<omGame.people.length;i++){let c=omGame.people[i];if(c.crew&&c.crewState==="following"&&!c.escaped)a.push(c);}return a;}
+function tickPerception(dt){
+  let targets=suspiciousTargets(),maxPlayerNotice=0,bestGain=0;
+  // Target violations are observer-independent during this perception pass.
+  let violations=targets.map(function(c){return violationFor(c);});
+  for(let i=0;i<GUARDS.length;i++){
+    let g=actorById(GUARDS[i].id),seen=null,v=null;let distracted=false;if(isDown(g))continue;let pt=player().task;if(pt&&pt.type==="attack"&&pt.actor===g.id&&pt.phase==="work")continue;
+    for(let j=0;j<omGame.distractions.length;j++){let d=omGame.distractions[j];if(d.until>omGame.elapsed&&sqDistance(g.x,g.y,d.x,d.y)<100)distracted=true;}
+    for(let j=0;j<targets.length;j++){let c=targets[j],bad=violations[j];if(bad.severity>0&&!distracted&&guardCanSee(g,c)){seen=c;v=bad;break;}}
+    if(seen){
+      let gain=dt*(7+v.severity*5)*GUARDS[i].rate*diffSettings().detection;
+      g.notice=clamp(g.notice+gain,0,100);g.lastSeen={x:seen.x,y:seen.y,at:omGame.elapsed};g.lastReason=v.reason;
+      if(g.notice>=45)g.targetId=seen.id;
+      if(seen.id==="player"){maxPlayerNotice=Math.max(maxPlayerNotice,g.notice);bestGain=Math.max(bestGain,dt*v.severity*0.7);}
+      if(g.notice>=65&&seen.id==="player"&&pauseOnNotice&&g.challengeAt<=omGame.minutes&&!omGame.challenge&&currentAlert()<4){raiseChallenge(g,v.reason);}
+    }else g.notice=Math.max(0,g.notice-dt*5);
+  }
+  if(!omGame.cameraNotice)omGame.cameraNotice={};if(!omGame.cameraReported)omGame.cameraReported={};
+  let p=player(),pv=violations[0];
+  for(let i=0;i<CAMERAS.length;i++){
+    let c=CAMERAS[i],notice=omGame.cameraNotice[c.id]||0,visible=pv.severity>0&&!(wearingGuardUniform()&&!uniformAlertActive()&&!p.dragging)&&cameraOn(c)&&inCone(c.x,c.y,cameraAngle(c),c.range,0.46,p);
+    if(visible){notice=clamp(notice+dt*(9+pv.severity*5)*diffSettings().detection,0,100);maxPlayerNotice=Math.max(maxPlayerNotice,notice);bestGain=Math.max(bestGain,dt*pv.severity*0.5);
+      if(notice>=65&&(omGame.cameraReported[c.id]||0)<=omGame.minutes){omGame.cameraReported[c.id]=omGame.minutes+90;addEvidence("Camera log: "+c.name,c.id,"player",12);dispatchNearestGuard(p.x,p.y,"player");say("Camera log recorded. Move out of view.");playCue("warning");}
+    }else notice=Math.max(0,notice-dt*8);
+    omGame.cameraNotice[c.id]=notice;
+  }
+  p.notice=maxPlayerNotice;omGame.personalSuspicion=clamp(omGame.personalSuspicion+bestGain,0,100);
+}
+function dispatchNearestGuard(x,y,target){
+  let best=null,d=1e9;for(let i=0;i<GUARDS.length;i++){let g=actorById(GUARDS[i].id);if(!g||isDown(g))continue;let n=sqDistance(g.x,g.y,x,y);if(n<d){d=n;best=g;}}
+  if(best){best.targetId=target;best.lastSeen={x:x,y:y,at:omGame.elapsed};best.notice=Math.max(70,best.notice);best.retryAt=0;}
+}
+function raiseChallenge(g,reason){
+  if(omGame.challenge||omGame.over)return;
+  omGame.challenge={guard:g.id,reason:reason,at:omGame.minutes};g.challengeAt=omGame.minutes+120;dialog="challenge";playCue("notice");voiceChallenge();dirty();
+}
+function answerChallenge(choice){
+  if(!omGame.challenge)return;let g=actorById(omGame.challenge.guard),p=player(),reason=omGame.challenge.reason;omGame.challenge=null;dialog="";
+  if(choice==="run"){leaveAutoDay();interruptActiveOrder("Waiting until the pursuit is over.");p.mode="manual";omGame.sprinting=true;g.notice=80;g.targetId="player";g.lastSeen={x:p.x,y:p.y,at:omGame.elapsed};say("Move. Use cover to break the line of sight.");dirty();return;}
+  if(choice==="pass"&&hasUniformPass()&&!(wearingGuardUniform()&&uniformAlertActive())&&(!p.task||!p.task.illegal)&&legitimateZone(p,zoneOf(p))){g.notice=0;g.targetId="";say("Authorisation accepted. Don't linger.");castLine("officer","move",true);return;}
+  if(choice==="bluff"&&randomUnit()<(p.background==="talker"?0.72:0.38)&&omGame.personalSuspicion<70){interruptActiveOrder("Waiting for the officer to move on.");g.notice=15;g.targetId="";omGame.personalSuspicion=clamp(omGame.personalSuspicion+5,0,100);say("The explanation holds, for now. Leave the area.");return;}
+  capturePlayer(reason);
+}
+function tickGuardResponse(g,dt){
+  if(g.targetId){
+    let c=actorById(g.targetId),sees=c&&guardCanSee(g,c)&&violationFor(c).severity>0;
+    if(c&&(c.escaped||c.detainedUntil>omGame.minutes||c.crewState==="caught")){g.targetId="";clearPath(g);return false;}
+    if(sees)g.lastSeen={x:c.x,y:c.y,at:omGame.elapsed};
+    if(!g.lastSeen||omGame.elapsed-g.lastSeen.at>12){g.targetId="";g.notice=0;clearPath(g);g.action="Returning to patrol";return false;}
+    if(c&&sees&&sqDistance(g.x,g.y,c.x,c.y)<2.4&&g.notice>=65){if(c.id==="player"){if(!omGame.challenge)capturePlayer(g.lastReason||"Stopped during an escape");}else captureCrew(c);return true;}
+    if(omGame.elapsed>=g.retryAt){let x=g.lastSeen.x,y=g.lastSeen.y;routeNear(g,x,y,1);g.retryAt=omGame.elapsed+0.9;}
+    walkPath(g,dt,2.7);g.action=sees?"Pursuing":"Searching last seen position";return true;
+  }
+  let search=omGame.search;
+  if(search&&search.stage==="walking"&&search.guard===g.id){let d=stashDef(search.stash),s=siteById(d.site);
+    if(nearSite(g,s.id)){finishSearch(search,g);return true;}
+    if(g.pathCursor>=g.path.length&&omGame.elapsed>=g.retryAt)routeTo(g,s.ax,s.ay);
+    walkPath(g,dt,2.1);g.action="Conducting a search";return true;
+  }
+  for(let i=0;i<omGame.distractions.length;i++){
+    let d=omGame.distractions[i];if(d.until<=omGame.elapsed||sqDistance(g.x,g.y,d.x,d.y)>144)continue;
+    if(sqDistance(g.x,g.y,d.x,d.y)>9){if(omGame.elapsed>=g.retryAt){routeNear(g,d.x,d.y,2);g.retryAt=omGame.elapsed+2;}walkPath(g,dt,2.1);}else{g.headingAngle=Math.atan2(d.y-g.y,d.x-g.x);clearPath(g);}g.action="Investigating a distraction";return true;
+  }
+  return false;
+}
+function captureCrew(c){c.crewState="caught";c.detainedUntil=omGame.minutes+90;clearPath(c);c.task=null;c.x=c.homeX+0.5;c.y=c.homeY+0.5;remember(c,"Stopped at the perimeter.");logEvent("Someone did not make it",c.name+" was taken back. The remaining escape can continue.","security");dirty();}
+function capturePlayer(reason){
+  let p=player();if(!p||p.detainedUntil>omGame.minutes)return;
+  interruptActiveOrder("Waiting until your release.");let lost=[],keys=Object.keys(omGame.inventory);
+  for(let i=0;i<keys.length;i++){let id=keys[i];if(ITEMS[id].kind!=="ordinary"){lost.push(ITEMS[id].name);delete omGame.inventory[id];}}
+  if(omGame.escape){omGame.routeHistory.push({route:omGame.escape.route,result:"caught",day:dayNow()});if(omGame.routeHistory.length>24)omGame.routeHistory.shift();}
+  omGame.escape=null;recoverLostDocuments();omGame.wearing=false;omGame.wearingGuard=false;p.dragging="";p.detainedWhere="isolation";omGame.sprinting=false;omGame.challenge=null;omGame.capturedCount++;omGame.scrip=Math.max(0,omGame.scrip-4);omGame.personalSuspicion=35;omGame.heat=30;omGame.lockdownUntil=omGame.minutes+45;
+  p.x=76.5;p.y=24.5;p.mode="routine";p.detainedUntil=omGame.minutes+90;p.notice=0;p.stress=clamp(p.stress+18,0,100);p.routineKey="";
+  for(let i=0;i<GUARDS.length;i++){let g=actorById(GUARDS[i].id);g.targetId="";g.notice=0;g.lastSeen=null;clearPath(g);}
+  for(let i=0;i<omGame.people.length;i++){let c=omGame.people[i];if(c.crew){c.crewState="routine";c.trust=Math.max(0,c.trust-3);clearPath(c);}}
+  addEvidence("Officer report",zoneOf(p),"player",12);logEvent("Back inside",reason+". Confiscated: "+(lost.join(", ")||"nothing")+". Short-stay isolation, not game over.","security");
+  dialog="detained";securityEpoch++;focusPlayer();playCue("door");dirty();
+}
+function releaseFromDetention(){let p=player();p.detainedUntil=0;p.x=p.homeX+0.5;p.y=p.homeY+0.5;p.mode="routine";p.routineKey="";clearPath(p);omGame.lockdownUntil=0;dialog="";logEvent("Another morning","Escorted back to your cell. Stashes and paid project work still exist. Rebuild the plan.","life");say("Back in your cell. The plan is still yours.");securityEpoch++;focusPlayer();}
+function serveDetention(){if(!omGame||player().detainedUntil<=omGame.minutes)return;dialog="";paused=false;gameSpeed=4;say("Time accelerated. You can inspect your notebook while waiting.");}
+function announceSearch(){
+  let stash=omGame.stats.searches%3===2?"workshop":"cell";
+  omGame.search={stash:stash,at:omGame.nextSearch,stage:"announced",guard:"walker",started:0};
+  logEvent("Search scheduled",stashDef(stash).name+" at about "+clockText(omGame.nextSearch)+". Hide items somewhere else or keep your routine clean.","security");say("Search scheduled: "+stashDef(stash).name+".");playCue("notice");
+}
+function finishSearch(s,g){
+  let def=stashDef(s.stash),bag=omGame.stashes[s.stash],risk=def.risk*diffSettings().search+(omGame.personalSuspicion>60?0.2:0);
+  if(s.stash==="cell"&&projectReady("niche"))risk*=0.35;
+  let found=[],keys=Object.keys(bag);for(let i=0;i<keys.length;i++){let k=keys[i];if(ITEMS[k].kind!=="ordinary"&&randomUnit()<risk){found.push(ITEMS[k].name);delete bag[k];}}
+  if(found.length){addEvidence("Found stash contents",s.stash,"player",15);omGame.personalSuspicion=clamp(omGame.personalSuspicion+12,0,100);}
+  if(s.stash==="cell"&&projectState("tunnel")&&randomUnit()<risk*0.7)damageProject("tunnel");
+  recoverLostDocuments();omGame.stats.searches++;omGame.search=null;omGame.nextSearch=omGame.minutes+Math.round((1440+randomInt(0,720))*historyFactor("staffing"));g.pauseUntil=omGame.elapsed+4;clearPath(g);
+  logEvent(found.length?"Search found contraband":"Search complete",found.length?"Confiscated from "+def.name+": "+found.join(", ")+".":"Nothing was found in "+def.name+". It was an ordinary day, officially.","security");say(found.length?"Stash searched. Some contraband was confiscated.":"Search complete. Nothing found.");dirty();
+}

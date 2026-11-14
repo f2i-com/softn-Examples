@@ -1,0 +1,58 @@
+function dialogPausesSimulation(){return !!dialog&&dialog!=="story"&&dialog!=="archive";}
+// Entry point. Main simulation code stays static; mods run in separate ZIPP workers.
+// A single Softn Loop drives simulation. No background timers or offscreen catch-up.
+function advanceSimulation(dt) {if(!simulationFrameActive)roverRouteBudget=2;let started=perfEnabled?perfNow():0;try{return simulationTick(dt);}finally{perfRecord("tick",started);}}
+function simulationTick(dt) {
+  if(!osGame||osGame.over)return;
+  serviceTopology();osGame.elapsed+=dt;osGame.minutes+=dt*GAME_MINUTES_PER_SECOND;osGame.step++;
+  tickPeople(dt);tickAnimals(dt);
+  osGame.needsClock+=dt;osGame.jobClock+=dt;osGame.socialClock+=dt;osGame.directorClock+=dt;
+  if(osGame.needsClock>=1){let elapsed=osGame.needsClock;osGame.needsClock=0;tickPower(elapsed*GAME_MINUTES_PER_SECOND);updateClimate(elapsed*GAME_MINUTES_PER_SECOND);tickNeeds(elapsed);tickWeatherEffects(elapsed*GAME_MINUTES_PER_SECOND);tickEcology(elapsed);updateMilestones();}
+  if(osGame.jobClock>=1){osGame.jobClock=0;serviceWindow();serviceTopology();runAutoSteward();autoHunt();generateJobs();}
+  if(osGame.socialClock>=20){osGame.socialClock=0;tickSocial();}
+  if(osGame.directorClock>=5){osGame.directorClock=0;tickDirector();}
+}
+function gameLoop(dt) {
+  dt=clamp(typeof dt==="number"?dt:0.1,0,backgroundPlay?BACKGROUND_CATCHUP:0.2);
+  audioClock+=dt;
+  tickOpening(dt);
+  if(toastRemaining>0){toastRemaining-=dt;if(toastRemaining<=0)toastText="";}
+  syncQuietAudio();syncWeatherAudio();
+  tickMods();
+  // A host reload can re-run this logic with fresh globals while the UI still shows a settlement. Recover to the title instead of crashing.
+  if(!osGame&&screen==="game"){recoverToTitle();return;}
+  if(!osGame||screen!=="game")return;
+  tickEdgePan(dt);tickCameraEase(dt);tickStoryCaption(dt);
+  roverRouteBudget=2;simulationFrameActive=true;
+  try{
+    if(serviceMapJump())return;
+    if(!paused&&!dialogPausesSimulation()&&!osGame.over){
+      loopAccumulator=Math.min(loopAccumulator+dt*gameSpeed,BACKGROUND_CATCHUP);let iterations=0,maxSteps=dt>0.5?Math.ceil(BACKGROUND_CATCHUP/STEP_SECONDS):8;
+      while(loopAccumulator+0.000001>=STEP_SECONDS&&iterations<maxSteps&&!paused&&!dialogPausesSimulation()){loopAccumulator-=STEP_SECONDS;advanceSimulation(STEP_SECONDS);iterations++;}
+      if(paused||dialogPausesSimulation())loopAccumulator=0;
+      realSaveClock+=dt;
+      if(realSaveClock>=90){realSaveClock=0;saveSlot(autosaveIndex,true);autosaveIndex=(autosaveIndex+1)%3;}
+    }else loopAccumulator=0;
+    if(paused||dialogPausesSimulation()||osGame.over){if(viewDirty){refreshAll();viewClock=0;agentClock=0;}else if(!presentationIdle)refreshActors();presentationIdle=true;return;}
+    presentationIdle=false;
+    viewClock+=dt;agentClock+=dt;
+    if(viewClock>=0.5){viewClock=0;agentClock=0;refreshPeriodic();}
+    else if(agentClock>=0.095){agentClock=0;refreshActors();}
+  }catch(error){
+    paused=true;lastFrameError=String(error.message||error);debugStatus="Simulation paused: "+lastFrameError;say(debugStatus);archiveTitle="The simulation paused safely";archiveBody=lastFrameError+"\n\nExport your save from the menu and include it with a bug report. No further simulation ticks will run until you resume.";dialog="runtime-error";
+  }finally{simulationFrameActive=false;}
+}
+function recoverToTitle() {
+  screen="title";dialog="";storyCard=null;paused=true;selectedId="";selectedType="";toolKind="select";mobilePanelOpen=false;
+  try{refreshSlots();}catch(error){saveAvailable=false;}
+  say("The settlement state was lost after a reload. Continue from your latest save, or begin again.");
+}
+function initialiseOuterstead() {
+  if(booted)return;booted=true;loadPresentationPreferences();initialiseTitleScene();initialiseOpeningShots();initialiseMods();
+  try{refreshSlots();}catch(error){saveAvailable=false;}
+  try{if(typeof softn!=="undefined"&&softn.input)softn.input.captureKeys([" ","1","2","3","4","ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Home"],function(){});}catch(error){/* Hosts without key capture still support toolbar controls. */}
+  if(typeof window!=="undefined"&&window.addEventListener){window.addEventListener("keydown",onGameKey);window.addEventListener("blur",onGameBlur);window.addEventListener("pointerdown",resumeAudioAfterGesture);window.addEventListener("keydown",resumeAudioAfterGesture);window.addEventListener("pagehide",onGameUnload);window.addEventListener("beforeunload",onGameUnload);window.addEventListener("visibilitychange",onGameHidden);}
+  refreshCamera();
+  resumeFromLastSession();
+}
+initialiseOuterstead();

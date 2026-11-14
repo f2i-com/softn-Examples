@@ -1,0 +1,136 @@
+// People (0.10.0): every inmate gets a profile (traits, a skill, a weakness, a bias), relationships
+// with one another, a want they will come and ask about, memories that carry weight, and favours
+// they owe. All of it is drawn from the seed on its own stream, so a change here never reshuffles
+// the prison, the cast names or the story.
+const TRAITS={
+ observant:{name:"Observant",text:"Notices routines. A talk brings a second piece of news."},
+ talkative:{name:"Talkative",text:"Happy to talk again within the hour."},
+ cautious:{name:"Cautious",text:"Needs 50 trust before joining a plan, and sits out when officers are alert."},
+ bold:{name:"Bold",text:"Joins a plan at 25 trust and meets under any alert."},
+ loyal:{name:"Loyal",text:"After a kept promise, trust grows half again as fast."},
+ generous:{name:"Generous",text:"Trades for one scrip less."},
+ steady:{name:"Steady",text:"Every conversation earns one more trust."},
+ proud:{name:"Proud",text:"Slights are remembered twice as hard."}
+};
+const SKILLS={
+ electronics:{name:"Electronics",intel:"power",line:"how the backup circuit is wired"},
+ paperwork:{name:"Paperwork",intel:"paper",line:"how transfer forms move through records"},
+ freight:{name:"Freight",intel:"cargo",line:"the freight timetable and the departure check"},
+ groundwork:{name:"Groundwork",intel:"tunnel",line:"the old service space below the block"},
+ fences:{name:"Fences",intel:"breach",line:"where the fence is weakest and when it is watched"},
+ service:{name:"Service corridors",intel:"service",line:"which service authorisations open which doors"}
+};
+const WEAKNESSES={
+ nervous:{name:"Nervous",text:"May freeze at a rendezvous while officers are alert."},
+ hotheaded:{name:"Hot-headed",text:"Arguments with a rival draw officers over."},
+ forgetful:{name:"Forgetful",text:"Keeps only the last four memories."},
+ indebted:{name:"In debt",text:"Owes another inmate and pays in favours gladly."}
+};
+const BIASES={
+ colleague:{name:"Respects work",text:"+1 trust for every batch you finish on their detail."},
+ trader:{name:"Likes a trader",text:"+2 trust for every trade."},
+ wary:{name:"Wary of new faces",text:"Half trust from conversation on your first two days."}
+};
+const GOAL_LINES={tea:"Any tea going spare?",cloth:"Need a cloth bundle. Cold nights.",scrap:"Could you find me some scrap?",paper:"Got any blank forms? I owe a letter."};
+const GOAL_REASONS={tea:"The nights are long without it.",cloth:"The blankets here are a rumour.",scrap:"Something on the bench needs fixing.",paper:"A letter home is overdue."};
+const ARGUE_LINES=["Say that again.","Not your table.","You still owe me.","Walk away.","Everyone heard that.","Keep my name out of it."];
+const TRAIT_TALK={cautious:["Not here. Later.","Walls have ears."],bold:["Ask me anything.","Loud plans, quiet voices."],talkative:["And another thing.","Did I tell you about the kitchen?"],observant:["I noticed that too.","Watch the second officer, not the first."]};
+function profileOf(c){return c&&c.profile?c.profile:{traits:[],skill:"",weakness:"",bias:""};}
+function hasTrait(c,id){return !!(c&&c.profile&&c.profile.traits.indexOf(id)>=0);}
+function relationKey(a,b){return a<b?a+"|"+b:b+"|"+a;}
+function relationBetween(a,b){if(!omGame||!omGame.relations)return "";let r=omGame.relations[relationKey(a,b)];return r?r.kind:"";}
+function relationsOf(id){let out=[];if(!omGame||!omGame.relations)return out;for(let k in omGame.relations){let parts=k.split("|");if(parts[0]!==id&&parts[1]!==id)continue;let r=omGame.relations[k];out.push({id:parts[0]===id?parts[1]:parts[0],kind:r.kind,debtor:r.debtor||""});}return out;}
+function relationText(id){let parts=[];for(let r of relationsOf(id)){let o=actorById(r.id);if(!o)continue;parts.push(r.kind==="friend"?"Friends with "+o.short:r.kind==="rival"?"Rival of "+o.short:r.kind==="kin"?"Family of "+o.short:r.debtor===id?"Owes "+o.short:"Owed by "+o.short);}return parts.join(" · ");}
+// Profiles and relationships for the whole cast. Called once a new prison is populated (and after the
+// generated cast has its names and jobs), and again for saves from before 0.10.0.
+function assignProfiles(){
+ generationRng=hashSeed(omGame.seedLabel+":profiles:v1");
+ let inmates=omGame.people.filter(function(c){return c.role==="inmate";}),traitIds=Object.keys(TRAITS),skillIds=Object.keys(SKILLS),weakIds=Object.keys(WEAKNESSES),biasIds=Object.keys(BIASES);
+ for(let c of inmates){
+  let pool=traitIds.slice(),picks=[],n=2+generationRoll(2);
+  while(picks.length<n&&pool.length)picks.push(pool.splice(generationRoll(pool.length),1)[0]);
+  if(picks.indexOf("bold")>=0&&picks.indexOf("cautious")>=0)picks.splice(picks.indexOf("cautious"),1);
+  c.profile={traits:picks,skill:skillIds[generationRoll(skillIds.length)],weakness:weakIds[generationRoll(weakIds.length)],bias:biasIds[generationRoll(biasIds.length)]};
+  if(c.owed===undefined)c.owed=0;if(!c.holding)c.holding={};if(c.asked===undefined)c.asked=0;if(c.shared===undefined)c.shared=false;
+ }
+ omGame.relations={};if(!omGame.argued)omGame.argued={};
+ function link(a,b,kind,debtor){if(!a||!b||a.id===b.id||relationBetween(a.id,b.id))return false;omGame.relations[relationKey(a.id,b.id)]={kind:kind,debtor:debtor||""};return true;}
+ for(let a of inmates)for(let t=0;t<6;t++)if(link(a,inmates[generationRoll(inmates.length)],"friend"))break;
+ for(let i=0;i<4;i++)for(let t=0;t<8;t++)if(link(inmates[generationRoll(inmates.length)],inmates[generationRoll(inmates.length)],"rival"))break;
+ for(let i=0;i<2;i++)for(let t=0;t<8;t++)if(link(inmates[generationRoll(inmates.length)],inmates[generationRoll(inmates.length)],"kin"))break;
+ for(let a of inmates){if(a.profile.weakness!=="indebted")continue;for(let t=0;t<8;t++){let b=inmates[generationRoll(inmates.length)];if(link(a,b,"debt",a.id))break;}}
+}
+function ensureCast(){if(!omGame)return;let missing=false;for(let c of omGame.people)if(c.role==="inmate"&&!c.profile)missing=true;if(missing||!omGame.relations)assignProfiles();if(!omGame.argued)omGame.argued={};}
+// Rules the rest of the game asks about.
+function recruitTrust(c){return hasTrait(c,"cautious")?50:hasTrait(c,"bold")?25:35;}
+function rivalInCrew(c){for(let m of crewMembers())if(m.id!==c.id&&relationBetween(c.id,m.id)==="rival")return m;return null;}
+function talkGain(c,base){let g=base;if(hasTrait(c,"loyal")&&c.favorStage===2)g*=1.5;if(profileOf(c).bias==="wary"&&dayNow()<=2)g*=0.5;if(hasTrait(c,"steady"))g+=1;return g;}
+function tradePrice(c,item){return Math.max(1,ITEMS[item].price-(hasTrait(c,"generous")?1:0));}
+function talkCooldown(c){return hasTrait(c,"talkative")?60:120;}
+// A memory with a kind (help, promise, plan, slight, note) and an optional trust change; proud
+// inmates take slights twice as hard, forgetful ones keep fewer memories.
+function rememberKind(c,text,kind,delta){remember(c,text);c.memories[0].kind=kind||"note";if(delta){let d=delta;if(d<0&&hasTrait(c,"proud"))d*=2;c.trust=clamp(c.trust+d,0,100);}if(profileOf(c).weakness==="forgetful"&&c.memories.length>4)c.memories.length=4;}
+// What a talk gives beyond the rumour: an observant contact's second piece, and a specialist's
+// knowledge once they trust you (30): their skill's route intel, as if you had studied it yourself.
+function shareKnowledge(c){
+ let pr=profileOf(c),skill=SKILLS[pr.skill];
+ if(hasTrait(c,"observant")&&skill)learnIntel(skill.intel,"rumor",false);
+ if(skill&&!c.shared&&c.trust>=30){let k=omGame.knowledge[skill.intel];if(!k||(k.confidence!=="observed"&&k.confidence!=="confirmed")){c.shared=true;learnIntel(skill.intel,"observed",false);rememberKind(c,"Explained "+skill.line+" to "+player().short+".","help",0);logEvent("A specialist's word",c.name+" explains "+skill.line+". Notebook: "+INTEL[skill.intel].title+" is now observed.","social");say(c.short+" explains "+skill.line+". Notebook updated.");return true;}}
+ return false;
+}
+function onPlayerTalk(c){for(let r of relationsOf(c.id))if(r.kind==="kin"){let k=actorById(r.id);if(k)k.trust=clamp(k.trust+2,0,100);}}
+function onPlayerTrade(c){if(profileOf(c).bias==="trader"){c.trust=clamp(c.trust+2,0,100);}}
+function onPlayerWork(){let p=player();for(let c of omGame.people)if(c.role==="inmate"&&!c.escaped&&c.job===p.job&&profileOf(c).bias==="colleague")c.trust=clamp(c.trust+1,0,100);}
+function onRecruit(c){for(let m of crewMembers()){if(m.id===c.id)continue;let k=relationBetween(c.id,m.id);if(k==="friend"||k==="kin"){m.trust=clamp(m.trust+5,0,100);rememberKind(m,c.short+" is in the plan too.","help",0);}}}
+// Social pairing: friends and family first, never a rival, then whoever is left.
+function pairSocial(cast){
+ let free=cast.slice(),pairs=[];
+ if(free.length%2===1){let drop=free.length-1;if(free[drop].role==="player")drop--;free.splice(drop,1);}
+ while(free.length>=2){let a=free.shift(),best=-1,score=-9;
+  for(let i=0;i<free.length;i++){let k=relationBetween(a.id,free[i].id),s=k==="friend"||k==="kin"?2:k==="rival"?-1:0;if(s>score){score=s;best=i;}}
+  pairs.push([a,free.splice(best,1)[0]]);}
+ return pairs;
+}
+// During meals and social time an inmate with something to ask comes over once and asks for it.
+function tickApproaches(){
+ let p=player();if(!p||omGame.escape||p.escaped||p.detainedUntil>omGame.minutes)return;let r=routineNow();if(r.kind!=="social"&&r.kind!=="eat")return;
+ for(let c of omGame.people){
+  if(c.role!=="inmate"||c.escaped||c.favorStage!==0||c.asked||c.detainedUntil>omGame.minutes)continue;
+  // Not while talking to someone else: they ask when they are free or when you are the one they are with.
+  if(speechOf(c)||(c.action.indexOf("Chatting with ")===0&&c.action.indexOf("Chatting with "+p.short)!==0))continue;
+  if(dayNow()<1+(activityIndex(c)%3))continue;
+  if(sqDistance(c.x,c.y,p.x,p.y)>36||!hasLineOfSight(c.x,c.y,p.x,p.y))continue;
+  let d=inmateDef(c.id);c.asked=dayNow();c.favorStage=1;speak(c,GOAL_LINES[d.favorItem]||"Could you get me something?",4);
+  logEvent("A favour asked",c.name+" asks for one "+ITEMS[d.favorItem].name+". "+(GOAL_REASONS[d.favorItem]||""),"social");say(c.short+" asks for "+ITEMS[d.favorItem].name+". Bring it in person; they will remember.");
+  return;
+ }
+}
+// Rivals who end up close during social time trade words once a day; a hot-headed one draws officers.
+function tickArguments(){
+ let r=routineNow();if(r.kind!=="social")return;let day=dayNow();if(!omGame.argued)omGame.argued={};
+ let inmates=omGame.people.filter(function(c){return c.role==="inmate"&&!c.escaped&&c.detainedUntil<=omGame.minutes;});
+ for(let i=0;i<inmates.length;i++)for(let j=i+1;j<inmates.length;j++){let a=inmates[i],b=inmates[j];if(relationBetween(a.id,b.id)!=="rival")continue;
+  let key=relationKey(a.id,b.id);if(omGame.argued[key]===day||sqDistance(a.x,a.y,b.x,b.y)>9)continue;
+  omGame.argued[key]=day;if((profileOf(a).weakness==="hotheaded"||profileOf(b).weakness==="hotheaded")&&(a.stress>=55||b.stress>=55)){fightBreaksOut(a,b);return;}
+  speak(a,pickLine(ARGUE_LINES,day+i),4);speak(b,pickLine(ARGUE_LINES,day+j+1),4);a.stress=Math.min(100,a.stress+6);b.stress=Math.min(100,b.stress+6);
+  if(profileOf(a).weakness==="hotheaded"||profileOf(b).weakness==="hotheaded"){omGame.distractions.push({id:entityId("div"),x:(a.x+b.x)/2,y:(a.y+b.y)/2,until:omGame.elapsed+18,source:a.id});logEvent("Voices raised",a.short+" and "+b.short+" are at it again. Nearby officers go to separate them.","social");playCueNear("whistle",a);}
+  else logEvent("Bad blood",a.short+" and "+b.short+" trade words and part.","social");
+  return;
+ }
+}
+// Favours owed: an inmate who owes you will keep a piece of contraband out of sight until you ask.
+function holdableItem(){for(let id in omGame.inventory)if(omGame.inventory[id]>0&&ITEMS[id]&&ITEMS[id].kind==="contraband")return id;return "";}
+function heldCount(c){let n=0;for(let id in c.holding||{})n+=c.holding[id];return n;}
+function heldText(c){let parts=[];for(let id in c.holding||{})if(c.holding[id]>0)parts.push(ITEMS[id].name+" ×"+c.holding[id]);return parts.join(", ");}
+function completeCastTask(t,c){
+ let p=player();
+ if(t.type==="hold"){let id=holdableItem();if(!id||c.owed<1)return;takeItem(id,1);c.holding[id]=(c.holding[id]||0)+1;c.owed--;rememberKind(c,"Kept "+p.short+"'s "+ITEMS[id].name.toLowerCase()+" out of sight.","help",0);logEvent("Out of sight",c.short+" is holding your "+ITEMS[id].name.toLowerCase()+". Searches of your cell will not find it; ask for it back in person.","social");say(c.short+" takes the "+ITEMS[id].name.toLowerCase()+". One favour used.");}
+ else if(t.type==="collect"){let got=[];for(let id in c.holding){while(c.holding[id]>0&&inventoryRoom(id,1)){c.holding[id]--;giveItem(id,1);got.push(ITEMS[id].name);}if(!c.holding[id])delete c.holding[id];}if(got.length)say(c.short+" hands back: "+got.join(", ")+".");else say("Your pockets are full.");}
+ else if(t.type==="dismiss"){c.crew=false;c.crewState="routine";c.crewTarget=null;c.routineKey="";clearPath(c);rememberKind(c,"Asked to step back from "+p.short+"'s plan.","slight",-4);c.grudge=clamp((c.grudge||0)+25,0,100);logEvent("Stepping back",c.name+" is no longer part of the plan. They will remember being asked.","social");say(c.short+" steps back from the plan.");}
+}
+function castTaskFailure(t,c){
+ if(t.type==="hold"){if(c.owed<1)return c.short+" owes you nothing yet. A kept favour earns one.";if(!holdableItem())return "Nothing in your pockets needs hiding.";if(heldCount(c)>=2)return c.short+" is already holding two things for you.";}
+ if(t.type==="collect"&&!heldCount(c))return c.short+" is holding nothing of yours.";
+ if(t.type==="dismiss"&&!c.crew)return c.short+" is not in your crew.";
+ return "";
+}

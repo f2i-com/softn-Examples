@@ -1,0 +1,12 @@
+<div className="os-stack">
+  <div><div className="os-section-title">The things we carry.</div><span className="os-small os-dim">Warehouse stock excludes reserved construction kits, meals in hand, and supplies still being hauled.</span></div>
+  <div className="os-card"><span className="os-label">PRODUCTION TARGETS</span><div className="os-item-desc">Enabled workshops create repeat jobs until the warehouse reaches the target. Set a target to zero to stop that production chain.</div></div>
+  #each (r in storageCards) key={r.id}
+    <div className="os-card"><div className="os-between"><span>{r.name}</span><b className="os-amber">{r.amount}</b></div>
+      #if (r.hasTarget)
+        <div className="os-between" style={{ marginTop: "7px" }}><span className="os-tiny os-dim">Make until {r.target}</span><div className="os-row"><button className="os-btn os-time-button" @click={() => adjustPolicy(r.id, -5)}>−5</button><button className="os-btn os-time-button" @click={() => adjustPolicy(r.id, 5)}>+5</button></div></div>
+      #end
+    </div>
+  #end
+  <span className="os-prose">Ore becomes metal at a smelter. Metal becomes components at a fabrication bench. Wood becomes generator fuel at a biomass press. Food spoils more slowly with a powered cold store.</span>
+</div>

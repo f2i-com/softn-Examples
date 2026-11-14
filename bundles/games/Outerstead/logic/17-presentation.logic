@@ -1,0 +1,77 @@
+// Local presentation preferences, independent of colony saves and simulation RNG.
+const picturePreviewLayers=[[[0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3,0,1],[1,2,3,0,1,2,12,13,12,13,12,13,2,3,0,1,2,3],[2,3,0,1,2,3,13,12,13,12,13,12,3,0,1,2,3,0],[3,0,1,2,3,0,12,13,12,13,12,13,0,1,2,3,0,1]]];
+let highDetail=false;
+let terrainAsset="assets/sprites/terrain.png";
+let terrainTileSize=32;
+let terrainScale=1;
+let colourPreset="natural";
+let imageBrightness=100;
+let visualStyle={filter:"brightness(1.08) saturate(1.12) contrast(1.03)"};
+let visualPreferenceMessage="Changes are remembered on this device.";
+let weatherSoundEnabled=true;
+let weatherAudioHandle="";
+let weatherAudioKey="";
+let weatherAudioRevision=0;
+let weatherPreviewKind="";
+let weatherPreviewUntil=0;
+function refreshVisualStyle(){
+ let light=colourPreset==="natural"?1.08:colourPreset==="vivid"?1.10:1;
+ let saturation=colourPreset==="natural"?1.12:colourPreset==="vivid"?1.35:colourPreset==="soft"?0.82:1;
+ let contrast=colourPreset==="natural"?1.03:colourPreset==="vivid"?1.08:colourPreset==="soft"?0.95:1;
+ visualStyle={filter:colourPreset==="original"&&imageBrightness===100?"none":"brightness("+(light*imageBrightness/100)+") saturate("+saturation+") contrast("+contrast+")"};
+}
+// Background play keeps the colony running when the window loses focus and lets a
+// throttled (hidden) tab recover up to a minute of simulation per callback.
+let backgroundPlay=true;
+let audioResumePending=false;
+function resumeAudioAfterGesture(){if(!audioResumePending)return;audioResumePending=false;if(soundEnabled&&!audioHandle)restartBackgroundAudio();}
+const BACKGROUND_CATCHUP=60;
+function toggleBackgroundPlay(){backgroundPlay=!backgroundPlay;savePresentationPreferences();say(backgroundPlay?"Background play on. The colony keeps running when the window is not in focus.":"Background play off. The colony pauses when the window loses focus.");}
+function savePresentationPreferences(){
+ try{localStorage.setItem("outerstead.presentation.v1",JSON.stringify({colourPreset:colourPreset,brightness:imageBrightness,weatherSound:weatherSoundEnabled,highDetail:highDetail,backgroundPlay:backgroundPlay,sound:soundEnabled,music:musicEnabled,effects:effectsEnabled,volume:audioVolume,narration:narrationEnabled,captions:storyCaptions}));visualPreferenceMessage="Changes are remembered on this device.";}catch(error){visualPreferenceMessage="Changes apply for this session; device storage is unavailable.";}
+}
+function loadPresentationPreferences(){
+ try{let p=JSON.parse(localStorage.getItem("outerstead.presentation.v1")||"null");if(p&&typeof p==="object"){
+  if(["natural","vivid","soft","original"].indexOf(p.colourPreset)>=0)colourPreset=p.colourPreset;
+  if(typeof p.brightness==="number"&&Number.isFinite(p.brightness))imageBrightness=Math.round(clamp(p.brightness,70,150)/10)*10;
+  if(typeof p.highDetail==="boolean")highDetail=p.highDetail;
+  if(typeof p.weatherSound==="boolean")weatherSoundEnabled=p.weatherSound;
+  if(typeof p.backgroundPlay==="boolean")backgroundPlay=p.backgroundPlay;
+  if(typeof p.captions==="boolean")storyCaptions=p.captions;
+  if(typeof p.music==="boolean")musicEnabled=p.music;if(typeof p.effects==="boolean")effectsEnabled=p.effects;if(typeof p.narration==="boolean")narrationEnabled=p.narration;
+  if([0.35,0.65,1].indexOf(p.volume)>=0){audioVolume=p.volume;audioVolumeText=audioVolume===1?"Volume: high":audioVolume===0.35?"Volume: low":"Volume: medium";}
+  // Browsers refuse audio before a gesture, so a remembered "on" waits for the first click or key.
+  if(p.sound===true&&!soundEnabled){soundEnabled=true;audioResumePending=true;ambienceText="Sound ready · tap to play";}
+ }}catch(error){}refreshVisualStyle();refreshTerrainQuality();
+}
+function setColourPreset(value){if(["natural","vivid","soft","original"].indexOf(value)<0)return;colourPreset=value;refreshVisualStyle();savePresentationPreferences();}
+function changeImageBrightness(delta){if(delta!==10&&delta!==-10)return;imageBrightness=clamp(imageBrightness+delta,70,150);refreshVisualStyle();savePresentationPreferences();}
+function resetVisuals(){colourPreset="natural";imageBrightness=100;refreshVisualStyle();savePresentationPreferences();}
+function openPresentation(){if(screen==="game")paused=true;dialog="presentation";}
+function toggleWeatherSound(){weatherSoundEnabled=!weatherSoundEnabled;weatherPreviewUntil=0;savePresentationPreferences();syncWeatherAudio();}
+function previewWeatherSound(kind){if(!soundEnabled||!effectsEnabled||!weatherSoundEnabled||(kind!=="rain"&&kind!=="storm"))return;weatherPreviewKind=kind;weatherPreviewUntil=audioClock+5;syncWeatherAudio();}
+function desiredWeatherAudio(){
+ if(!soundEnabled||!effectsEnabled||!weatherSoundEnabled)return "";
+ if(weatherPreviewUntil>audioClock)return weatherPreviewKind+":preview";
+ if(screen==="title")return openingVisible&&openingStarted&&openingStage===4?"storm:trailer":"";
+ if(!osGame||osGame.over)return "";
+ return osGame.weather==="Storm"?"storm:world":osGame.weather==="Rain"||osGame.weather==="Echo Rain"?"rain:world":"";
+}
+function stopWeatherAudio(){
+ weatherAudioRevision++;weatherAudioKey="";
+ try{if(weatherAudioHandle&&typeof softn!=="undefined"&&softn.audio)softn.audio.stop(weatherAudioHandle,function(){});}catch(error){}
+ weatherAudioHandle="";
+}
+function syncWeatherAudio(){
+ let desired=desiredWeatherAudio();if(desired===weatherAudioKey)return;
+ stopWeatherAudio();if(!desired)return;
+ weatherAudioKey=desired;let revision=weatherAudioRevision,storm=desired.indexOf("storm:")===0;
+ try{if(typeof softn!=="undefined"&&softn.audio)softn.audio.play("assets/audio/"+(storm?"storm-loop.mp3":"rain-loop.mp3"),{loop:true,volume:desired==="storm:trailer"?0.25:storm?0.42:0.32},function(result){
+  if(!result||!result.handle)return;
+  if(revision!==weatherAudioRevision||desired!==desiredWeatherAudio())softn.audio.stop(result.handle,function(){});
+  else weatherAudioHandle=result.handle;
+ });}catch(error){/* Weather audio is optional; no retry loop or simulation effect. */}
+}
+
+function refreshTerrainQuality(){terrainAsset=highDetail?"assets/sprites/terrain-hd.svg":"assets/sprites/terrain.png";terrainTileSize=highDetail?128:32;terrainScale=highDetail?0.25:1;}
+function toggleTerrainQuality(){highDetail=!highDetail;refreshTerrainQuality();savePresentationPreferences();}

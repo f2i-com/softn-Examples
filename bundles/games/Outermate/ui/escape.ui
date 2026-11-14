@@ -1,0 +1,35 @@
+#if (!escapeCard)
+ <div className="om-section-title">CHOOSE YOUR PLAN</div><div className="om-stash-tabs">#each (r in routeCards) key={r.id}<button className={"om-btn "+(r.selected?"is-active":"")} @click={() => selectRoute(r.id)}>{r.name}</button>#end</div>
+#end
+#if (routePlan && !escapeCard)
+ <div className="om-chapter"><span className="om-label">YOUR LIVE PREPARATION CHECKLIST</span><h3>{routePlan.name}</h3><p>{routePlan.window}</p>
+ <p>{routePlan.known ? "✓ Route observed" : "○ Observe the route in person"} · {routePlan.complete ? "✓ Project ready" : "Project " + routePlan.progress + "%"}</p>
+ #if (routePlan.paid && !routePlan.complete)<small>Project materials are reserved. Resume without paying again.</small>#end
+ #each (s in routeSupplyCards) key={s.id}<div className="om-card"><strong>{(s.done ? "✓ " : "○ ") + s.name + " · " + s.carried + "/" + s.needed + " carried"}</strong><small>{s.stored + " stored · " + s.missing + " still to acquire"}</small><p className="om-small">{s.source}</p>
+ #if (s.site)<button className="om-link" @click={() => inspectSite(s.site)}>Inspect source</button>#end
+ #if (s.recipe)<button className="om-link" @click={() => setPanel("inventory")}>Crafting details</button>#end
+ </div>#end
+ #if (!routePlan.wearing)<p className="om-warning">Wear your uniform and carry the work pass before departure.</p>#end
+ <div className="om-row"><button className="om-btn" @click={() => inspectSite(routePlan.intelSite)}>Inspect intel site</button><button className="om-btn" @click={() => focusSite(routePlan.site)}>Show project</button></div>
+ #if (!routePlan.complete)<button className="om-btn om-wide" disabled={!!routePlan.projectReason} @click={() => requestProject(routePlan.projectId)}>{routePlan.paid ? "Resume project" : "Walk there and prepare"}</button><small>{routePlan.projectReason}</small>#end
+ <p className="om-note">{routePlan.reason}</p></div>
+#end
+#if (escapeCard)
+ <div className="om-chapter"><span className="om-label">PLAN IN MOTION / {escapeCard.phase}</span><h3>{escapeCard.name}</h3><p>{escapeCard.body}</p><small>{escapeCard.crew} allies joined this attempt.</small>
+ #if (escapeCard.phase === "transit")<div className="om-meter"><i style={escapeCard.progress} /></div>#end
+ #if (escapeCard.route === "blackout")<div className="om-warning">Power returns in {escapeCard.powerRemaining} game minutes.</div>#end
+ <button className="om-btn om-primary om-wide" disabled={!escapeCard.ready} @click={finishEscape}>Leave prison →</button>
+ <button className="om-btn om-wide" disabled={escapeCard.phase === "transit"} @click={continueEscape}>Move to extraction</button>
+ <button className="om-btn om-wide" @click={() => focusAt(escapeCard.exit.x,escapeCard.exit.y)}>Show exit on map</button>
+ <div className="om-row"><button className="om-link" @click={abortEscape}>Abort inside the walls</button><button className="om-link" @click={() => openDialog("surrender")}>Surrender</button></div></div>
+#else
+ <p>The perimeter is only the first threshold. Every route ends with a physical extraction point outside the prison.</p>
+ <div className="om-note">Start with <strong>Under the Walls</strong> for a patient solo plan worked after lock-in over a few nights, or <strong>Wrong Truck</strong> for a timed escape. Study the relevant fixture before attempting a route; each card says how long it usually takes.</div>
+ <button className="om-btn om-wide" @click={() => [guideEnabled || toggleGuide(), setPanel("day")]}>Open the escape guide (step-by-step choices)</button>
+#end
+<div className="om-row"><button className="om-btn om-grow" @click={requestCrewMeet}>Call crew to selected route</button><button className="om-btn" @click={() => setPanel("crew")}>Crew</button></div>
+#each (r in routeCards) key={r.id}<div className={"om-card om-route "+(r.selected?"selected":"")}><span className="om-label">{r.tag}</span><h3>{r.name}</h3><p>{r.description}</p><div className="om-route-check"><span className={r.known?"done":""}>{r.known ? "✓" : "○"} Intel {r.known ? "observed" : r.rumor ? "rumoured" : "unknown"}</span><span className={r.prepared?"done":""}>{r.prepared ? "✓" : "○"} Project prepared</span></div><small>Risk: {r.risk}</small><small>Pace: {r.pace}</small>
+ <button className={"om-btn om-wide "+(r.selected?"is-active":"")} @click={() => selectRoute(r.id)}>{r.selected ? "Selected plan" : "Choose this plan"}</button>
+ <button className="om-btn om-primary om-wide" disabled={r.disabled} @click={() => requestEscape(r.id)}>Begin at {r.siteName}</button><small>{r.reason}</small>
+ <div className="om-row"><button className="om-link" @click={() => inspectSite(r.intelSite)}>Study route</button><button className="om-link" @click={() => setPanel("schemes")}>Prepare project</button></div>
+</div>#end

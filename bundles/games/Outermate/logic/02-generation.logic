@@ -1,0 +1,277 @@
+// Versioned, constrained generation. Gameplay RNG and stable actor/site IDs stay independent.
+let prisonMode="procedural",generationRng=1;
+function generationRoll(n){generationRng=(Math.imul(generationRng,1664525)+1013904223)>>>0;return Math.floor(generationRng/4294967296*n);}
+function generationPick(a){return a[generationRoll(a.length)];}
+function shuffleGenerated(a){let out=a.slice();for(let i=out.length-1;i>0;i--){let j=generationRoll(i+1),v=out[i];out[i]=out[j];out[j]=v;}return out;}
+function rollNewSeed(){seedText="GW-"+Math.floor(Math.random()*4294967296).toString(36).toUpperCase();dirty();}
+function setPrisonMode(mode){if(mode==="classic"||mode==="procedural"){prisonMode=mode;dirty();}}
+function generationProtected(){
+ let reserved={};
+ function keep(x,y,r){for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++)if(onMap(x+dx,y+dy))reserved[tileId(x+dx,y+dy)]=true;}
+ for(let s of SITES)keep(s.ax,s.ay,2);
+ for(let pt of mealSeats.concat(mealQueuePoints).concat(MEAL_COUNTERS))keep(pt.x,pt.y,0);
+ for(let id of Object.keys(dutySlots))for(let pt of dutySlots[id].slice(0,6))keep(pt.x,pt.y,0);
+ for(let d of omGame.doors)keep(d.x,d.y,1);
+ for(let c of omGame.people){keep(Math.floor(c.x),Math.floor(c.y),1);keep(c.homeX,c.homeY,1);for(let zone of ["count","canteen","yard","association","work"]){let pt=routineTarget(c,{zone:zone});keep(pt.x,pt.y,1);}}
+ for(let d of GUARDS.concat(STAFF))for(let pt of d.route)keep(pt[0],pt[1],1);
+ for(let r of ROUTES)keep(r.exit.x,r.exit.y,1);
+ return reserved;
+}
+// Flood fills use stamped arrays rather than per-call objects: the generator runs them dozens of
+// times inside one host call, and object-keyed scratch was the largest cost of starting a run.
+let componentSeen=[],componentLabels=[],componentStamp=0;
+function roomComponents(z,blocked){
+ componentStamp++;if(componentStamp>1000000000){componentSeen=[];componentStamp=1;}
+ let seen=componentSeen,stamp=componentStamp,groups=[],x0=z.x+1,x1=z.x+z.w-1,y0=z.y+1,y1=z.y+z.h-1;
+ for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){
+  let start=y*96+x;if(blocked[start]||seen[start]===stamp)continue;
+  let queue=[start],group=[];seen[start]=stamp;
+  for(let head=0;head<queue.length;head++){let id=queue[head],xx=id%96,yy=(id-xx)/96;group.push(id);
+   if(xx+1<x1&&!blocked[id+1]&&seen[id+1]!==stamp){seen[id+1]=stamp;queue.push(id+1);}
+   if(xx-1>=x0&&!blocked[id-1]&&seen[id-1]!==stamp){seen[id-1]=stamp;queue.push(id-1);}
+   if(yy+1<y1&&!blocked[id+96]&&seen[id+96]!==stamp){seen[id+96]=stamp;queue.push(id+96);}
+   if(yy-1>=y0&&!blocked[id-96]&&seen[id-96]!==stamp){seen[id-96]=stamp;queue.push(id-96);}
+  }groups.push(group);
+ }return groups;
+}
+function preservesRoomConnections(z,blocked,before){
+ let after=roomComponents(z,blocked),labels=componentLabels;for(let i=0;i<after.length;i++){let cells=after[i];for(let k=0;k<cells.length;k++)labels[cells[k]]=i;}
+ for(let group of before){let label=-1;for(let k=0;k<group.length;k++){let cell=group[k];if(blocked[cell])continue;if(label<0)label=labels[cell];else if(label!==labels[cell])return false;}}
+ return true;
+}
+const PRISON_DESIGNS=[
+ {id:"courts",name:"Courtyard wings",description:"Recessed wings open onto divided courts. Read the connecting passages before making your move.",hint:"Courtyard screens break long sightlines. Learn the gaps between wings.",corners:2,depth:4},
+ {id:"galleries",name:"Gallery complex",description:"Long galleries link the prison's daily routines. Cross-passages make each journey a little different.",hint:"Gallery walls channel foot traffic. Leave time to reach count.",corners:1,depth:3},
+ {id:"pavilions",name:"Garden pavilions",description:"Stepped buildings sit among planted walks and small courts. Open ground makes observation easier.",hint:"Open walks offer direct views. Use building corners when planning a quiet journey.",corners:3,depth:4},
+ {id:"screens",name:"Screenwall compound",description:"Staggered walls and narrow connecting walks divide the grounds into smaller pockets.",hint:"Staggered screens create corners and detours. Scout your route before carrying restricted supplies.",corners:2,depth:2}
+];
+function designForSeed(seed){return PRISON_DESIGNS[hashSeed(String(seed).slice(0,48)+":architecture:v3")%PRISON_DESIGNS.length];}
+function intakeDesign(){return prisonMode==="procedural"?designForSeed(seedText):{name:"Classic Greywall",description:"The original prison plan, cast and starting story."};}
+function currentPrisonDesign(){let v=omGame&&omGame.generation;return v&&v.version>=3?PRISON_DESIGNS.find(function(d){return d.id===v.design;}):null;}
+const PRISON_SHAPES=[{id:"octagon",name:"Octagonal perimeter"},{id:"bastion",name:"Bastion perimeter"},{id:"shield",name:"Shield perimeter"},{id:"crown",name:"Crowned perimeter"}];
+function shapeForSeed(seed){let h=hashSeed(String(seed).slice(0,48)+":outline:v4");return PRISON_SHAPES[((h^(h>>>13)^(h>>>21))>>>0)%4];}
+function nameForSeed(seed){seed=String(seed).slice(0,48);let a=["Ashwater","Northmere","Redstone","Stillwater","Blackfen","Windward","Hollowridge","Emberwick"],b=["Hold","Penitentiary","Detention Centre","Correctional Annex","Prison","Keep"];
+ return a[hashSeed(seed+":name:a")%a.length]+" "+b[hashSeed(seed+":name:b")%b.length];}
+function intakeIdentity(){return prisonMode==="procedural"?{name:nameForSeed(seedText),shape:shapeForSeed(seedText).name}:{name:"Greywall",shape:"Original perimeter"};}
+function prisonName(){return omGame&&omGame.generation&&omGame.generation.prisonName||"Greywall";}
+function perimeterRows(shape,cut){let rows=[];for(let y=0;y<96;y++){let left=96,right=-1;
+ if(y>=8&&y<=87){left=9;right=86;
+  if(shape==="octagon"){let inset=Math.max(0,cut-Math.min(y-8,87-y));left+=inset;right-=inset;}
+  if(shape==="shield"){let inset=y<13?13-y:y>78?y-78:0;left+=inset;right-=inset;}
+  if(shape==="bastion"&&((y>=18&&y<=30)||(y>=72&&y<=79))){left=4;right=91;}
+ }
+ // A broad northern wing has a recessed central crown. The inner security ring remains intact.
+ if(shape==="crown"&&y>=3&&y<8){left=9;right=86;}
+ rows.push([left,right]);}return rows;}
+function perimeterContains(rows,x,y){x=Math.floor(x);y=Math.floor(y);return y>=0&&y<96&&x>=rows[y][0]&&x<=rows[y][1];}
+function generatePerimeter(){let v=omGame.generation,shape=shapeForSeed(omGame.seedLabel);v.shape=shape.id;v.cut=6+hashSeed(omGame.seedLabel+":cut")%3;v.outerBounds=perimeterRows(v.shape,v.cut);v.prisonName=nameForSeed(omGame.seedLabel);
+ // Erase only the old outer fence, preserving every inner wall and gate identity.
+ for(let y=8;y<=87;y++)for(let x=9;x<=86;x++)if(x===9||x===86||y===8||y===87)omGame.walls[tileId(x,y)]=0;
+ for(let y=0;y<96;y++)for(let x=0;x<96;x++){if(!perimeterContains(v.outerBounds,x,y))continue;
+  let edge=!perimeterContains(v.outerBounds,x-1,y)||!perimeterContains(v.outerBounds,x+1,y)||!perimeterContains(v.outerBounds,x,y-1)||!perimeterContains(v.outerBounds,x,y+1);
+  if(edge)omGame.walls[tileId(x,y)]=2;else if(x<14||x>81||y<13||y>82)omGame.ground[tileId(x,y)]=1;
+ }
+ // The crown's notch is an exterior court, enclosed on three sides, not an extra exit.
+ if(v.shape==="crown")for(let y=3;y<8;y++)for(let x=40;x<=55;x++){omGame.walls[tileId(x,y)]=(x===40||x===55||y===7)?2:0;omGame.ground[tileId(x,y)]=0;}
+ for(let d of omGame.doors)omGame.walls[tileId(d.x,d.y)]=0;
+ // Scenic vegetation must not obscure the newly built fence.
+ omGame.props=omGame.props.filter(function(p){if(["rock","shrub"].indexOf(p.kind)<0)return true;for(let y=p.y;y<p.y+p.h;y++)for(let x=p.x;x<p.x+p.w;x++)if(omGame.walls[tileId(x,y)])return false;return true;});
+ for(let i=0;i<omGame.props.length;i++)omGame.props[i].id="prop"+i;
+ rebuildSpatial();
+}
+// Test architecture with restricted doors shut: public circulation may never rely on a work/staff shortcut.
+function architectureBlocked(){let blocked=navBlocked.slice();for(let d of omGame.doors)if(["work","staff","freight","service","perimeter"].indexOf(d.kind)>=0)blocked[tileId(d.x,d.y)]=1;return blocked;}
+function generateArchitecture(design){
+ let reserved=generationProtected(),world={x:0,y:0,w:96,h:96},reshaped=0,screenTiles=0;
+ // One walkability picture is kept across corner attempts; the spatial index is rebuilt once at the end.
+ let cornerBlocked=architectureBlocked(),cornerBefore=roomComponents(world,cornerBlocked);
+ // Recess complete corners, including the old facade, to make actual L/stepped footprints.
+ // Never cut into a fixture, cell, activity station, entrance or its approach.
+ for(let z of ZONES){if(["yard","canteen","infirmary","laundry","workshop","maintenance","records","association","loading"].indexOf(z.id)<0)continue;
+  let corners=shuffleGenerated([0,1,2,3]).slice(0,design.corners);
+  for(let corner of corners){let depth=2+generationRoll(design.depth-1),right=corner%2===1,bottom=corner>=2,x0=right?z.x+z.w-1:z.x,y0=bottom?z.y+z.h-1:z.y,sx=right?-1:1,sy=bottom?-1:1,remove=[],add=[],okay=true;
+   for(let y=0;y<=depth;y++)for(let x=0;x<=depth;x++){let xx=x0+x*sx,yy=y0+y*sy,id=tileId(xx,yy);
+    if(reserved[id]||doorAt[id]||omGame.props.some(function(p){return xx>=p.x&&yy>=p.y&&xx<p.x+p.w&&yy<p.y+p.h;}))okay=false;
+    if(x===depth||y===depth)add.push(id);else if(x===0||y===0)remove.push(id);
+   }
+   if(!okay)continue;
+   let blocked=cornerBlocked.slice(),court=[];
+   for(let y=0;y<depth;y++)for(let x=0;x<depth;x++)court.push(tileId(x0+x*sx,y0+y*sy));
+   // The carved court changes district ownership; only the remaining room must retain its connections.
+   let before=cornerBefore.map(function(group){return group.filter(function(id){return court.indexOf(id)<0;});});
+   for(let id of remove)blocked[id]=0;for(let id of add)blocked[id]=1;
+   if(!preservesRoomConnections(world,blocked,before))continue;
+   for(let id of remove)omGame.walls[id]=0;for(let id of add)omGame.walls[id]=z.id==="yard"?2:1;
+   for(let id of court){omGame.ground[id]=design.id==="pavilions"?3:2;omGame.generation.courtyards.push(id);}
+   reshaped++;cornerBlocked=blocked;cornerBefore=roomComponents(world,cornerBlocked);
+  }
+ }
+ if(reshaped)rebuildSpatial();
+ let blocked=architectureBlocked(),before=roomComponents(world,blocked),lines=[];
+ if(design.id==="courts")lines=[[16,17,16,79],[39,35,39,70],[65,17,65,79],[79,17,79,79],[17,51,79,51],[17,71,79,71]];
+ if(design.id==="galleries")lines=[[16,16,79,16],[16,34,79,34],[16,50,79,50],[16,71,79,71],[16,81,79,81],[39,35,39,70]];
+ if(design.id==="pavilions")lines=[[16,37,16,48],[39,37,39,47],[65,37,65,47],[79,56,79,68]];
+ if(design.id==="screens")lines=[[16,17,16,79],[38,35,38,70],[40,35,40,70],[64,17,64,79],[66,17,66,79],[79,17,79,79],[17,51,79,51],[17,71,79,71]];
+ for(let line of lines){let dx=Math.sign(line[2]-line[0]),dy=Math.sign(line[3]-line[1]),length=Math.max(Math.abs(line[2]-line[0]),Math.abs(line[3]-line[1])),gap=generationRoll(9),cells=[];
+  for(let i=0;i<=length;i++){let x=line[0]+dx*i,y=line[1]+dy*i,id=tileId(x,y);
+   if((i+gap)%11<3||reserved[id]||blocked[id]||zoneAt[id]!=="grounds"||omGame.props.some(function(p){return x>=p.x&&y>=p.y&&x<p.x+p.w&&y<p.y+p.h;}))continue;
+   cells.push(id);blocked[id]=1;
+  }
+  if(!preservesRoomConnections(world,blocked,before)){for(let id of cells)blocked[id]=0;continue;}
+  for(let id of cells)omGame.walls[id]=design.id==="courts"?2:1;screenTiles+=cells.length;
+ }
+ // Landscaped courts and circulation paving are actual terrain; kept out of rooms and exit lanes.
+ for(let y=15;y<82;y++)for(let x=15;x<81;x++){let id=tileId(x,y);if(zoneAt[id]!=="grounds"||blocked[id])continue;
+  omGame.ground[id]=design.id==="pavilions"?((x%7<2||y%9<2)?2:3):design.id==="galleries"?(y%2?4:2):design.id==="courts"?((x+y)%7<2?3:2):6;
+ }
+ if(design.id==="pavilions")for(let y=16;y<81;y+=7)for(let x=16;x<80;x+=7){let id=tileId(x,y);if(zoneAt[id]==="grounds"&&!blocked[id]&&!reserved[id])addProp("shrub",x,y,1,1,false);}
+ rebuildSpatial();return {reshaped:reshaped,screenTiles:screenTiles};
+}
+function generatePrison(){
+ generationRng=hashSeed(omGame.seedLabel+":layout:v3");
+ let design=designForSeed(omGame.seedLabel);
+ omGame.generation={version:4,mode:"procedural",design:design.id,courtyards:[],reshaped:0,screenTiles:0,changedTiles:0,partitions:0,furnishings:0,movedDoors:0,layout:layoutApplied?JSON.parse(JSON.stringify(layoutApplied)):null};
+ generatePerimeter();
+ let architecture=generateArchitecture(design);
+ let movedDoors=0;
+ // Reposition district entrances along their existing frontage. Gate policy stays on the door ID.
+ for(let d of omGame.doors){
+  let z=zoneById(d.job);if(!z||["block","public","work","staff"].indexOf(d.kind)<0||d.y!==z.y&&d.y!==z.y+z.h-1)continue;
+  let insideY=d.y+(d.y===z.y?1:-1),outsideY=d.y+(d.y===z.y?-1:1),groups=roomComponents(z,navBlocked),homeGroup=null;
+  for(let group of groups)if(group.indexOf(tileId(d.x,insideY))>=0)homeGroup=group;
+  if(!homeGroup)continue;
+  let options=[];for(let x=Math.max(z.x+2,d.x-4);x<=Math.min(z.x+z.w-3,d.x+4);x++)if(homeGroup.indexOf(tileId(x,insideY))>=0&&!navBlocked[tileId(x,outsideY)]&&!doorAt[tileId(x,d.y)])options.push(x);
+  if(!options.length)continue;let x=generationPick(options);omGame.walls[tileId(d.x,d.y)]=1;omGame.walls[tileId(x,d.y)]=0;d.x=x;movedDoors++;
+ }
+ rebuildSpatial();
+ let reserved=generationProtected(),blocked=navBlocked.slice(),changes=0,partitions=0,furnishings=0;
+ let rooms=shuffleGenerated(ZONES.filter(function(z){return ["yard","canteen","laundry","workshop","maintenance","records","loading","association"].indexOf(z.id)>=0;}));
+ for(let z of rooms){
+  let before=roomComponents(z,blocked);
+  let placed=0;for(let attempt=0;attempt<48&&placed<5;attempt++){
+   let x=z.x+2+generationRoll(z.w-4),y=z.y+2+generationRoll(z.h-4),horizontal=generationRoll(2)===0,length=2+generationRoll(3),cells=[],okay=true;
+   for(let i=0;i<length;i++){let xx=x+(horizontal?i:0),yy=y+(horizontal?0:i),id=tileId(xx,yy);if(xx>=z.x+z.w-2||yy>=z.y+z.h-2||zoneAt[id]!==z.id||reserved[id]||blocked[id]){okay=false;break;}cells.push(id);}
+   if(!okay)continue;for(let id of cells)blocked[id]=1;
+   if(!preservesRoomConnections(z,blocked,before)){for(let id of cells)blocked[id]=0;continue;}
+   let wall=generationRoll(2)===0;
+   if(wall){for(let id of cells)omGame.walls[id]=1;partitions++;}
+   else {let kit=ROOM_KITS[z.id]||[["shelf",2,1]],piece=kit[generationRoll(kit.length)];addProp(piece[0],x,y,horizontal?length:1,horizontal?1:length,true);furnishings++;}
+   changes+=cells.length;placed++;
+  }
+  // Floor finishes vary independently of collision; this also makes the seed visually legible.
+  let tile=generationPick(z.id==="yard"?[3,3,2]:[4,5,6,7]);
+  for(let yy=z.y+1;yy<z.y+z.h-1;yy++)for(let xx=z.x+1;xx<z.x+z.w-1;xx++)if(zoneAt[tileId(xx,yy)]===z.id)omGame.ground[tileId(xx,yy)]=tile;
+ }
+ let v=omGame.generation;v.reshaped=architecture.reshaped;v.screenTiles=architecture.screenTiles;v.changedTiles=changes;v.partitions=partitions;v.furnishings=furnishings;v.movedDoors=movedDoors;
+ rebuildSpatial();
+}
+const GENERATED_FIRST=["Arden","Mika","Tavi","Rowan","Ellis","Sage","Jules","Remy","Ari","Noor","Kit","Dara","Sol","Perry","Wren","Casey","Morgan","Reese","Luca","Indigo","Avery","Rory","Quinn","Sky","Finley","Blair","Eden","Harper","River","Alexis","Maren","Hollis","Ren","Cleo","Inez","Soren","Nico","Zuri","Ansel","Leonie"];
+const GENERATED_LAST=["Voss","Mercer","Vale","Sato","Okoro","Bennett","Hale","Navarro","Chen","Reed","Silva","Patel","Marin","Cross","Ibrahim","Park","Finch","Bell","Moss","Quill","Clarke","Stone","Singh","Frost","Costa","Ward","Brooks","Lane","Ortiz","West","Rowe","Duarte","Khan","Adler","Wells","Mensah","Vega","Novak","Laurent","Kim"];
+const STORY_MOTIVES=[
+ {title:"The Missing Testimony",opening:"Your testimony vanished before the hearing. Somebody inside knows who signed the transfer order.",ending:"Outside the walls, your testimony finally has somewhere to go."},
+ {title:"A Promise Before Winter",opening:"A letter arrived six weeks late. Someone you promised to return to is running out of patience, and perhaps time.",ending:"You can finally answer the letter in person."},
+ {title:"The Borrowed Name",opening:"Your intake file belongs to somebody else. Every correction disappears into another locked cabinet.",ending:"Beyond Greywall, you can begin reclaiming your own name."},
+ {title:"The Quiet Witness",opening:"You saw what happened on the transport. Your sentence is someone else's way of keeping that account quiet.",ending:"You are no longer a witness they can keep behind a door."},
+ {title:"The Silent Workshop",opening:"An industrial accident was filed as sabotage. You refused to sign the report, and became its missing explanation.",ending:"The workshop account can finally be heard by someone beyond the company gates."},
+ {title:"A Voice on the Radio",opening:"A forbidden broadcast used your old call sign. The station went silent the night you were taken in.",ending:"Beyond the walls, your call sign can become a voice again."}
+];
+const CONTACT_STYLES=[
+ {name:"Welcoming",risk:.4,gain:6,line:"Pull up a chair. Useful news is better shared."},
+ {name:"Reserved",risk:.75,gain:3,line:"Keep your voice down. I will tell you what I know."},
+ {name:"Practical",risk:.5,gain:4,line:"Everyone needs something. A kept promise counts more than a good speech."},
+ {name:"Wry",risk:.3,gain:5,line:"Another perfectly ordinary day. That is what the noticeboard says, anyway."}
+];
+function startingDetail(seed,background){if(background==="clerk")return "records";if(background==="technician")return "maintenance";let h=hashSeed(seed+":intake-job:v1");return ["laundry","workshop","kitchen"][((h^(h>>>16))>>>0)%3];}
+function generateExperience(){
+ generationRng=hashSeed(omGame.seedLabel+":experience:v1");
+ let jobs=shuffleGenerated(INMATES.map(function(d){return d.job;})),trades=shuffleGenerated(INMATES.map(function(d){return d.trade;})),rumors=shuffleGenerated(INMATES.map(function(d){return d.rumor;}));
+ let e={version:1,contacts:{},wages:{},dutyOffsets:{},order:shuffleGenerated(JOBS.map(function(j){return j.id;})),target:3+generationRoll(3),contract:null};omGame.experience=e;
+ for(let j of JOBS){e.wages[j.id]=3+generationRoll(2);e.dutyOffsets[j.id]=generationRoll(3);}
+ for(let i=0;i<INMATES.length;i++){let c=actorById(INMATES[i].id),style=generationRoll(CONTACT_STYLES.length);c.job=jobs[i];c.trait=CONTACT_STYLES[style].name;c.risk=CONTACT_STYLES[style].risk;c.trust=10+generationRoll(9);
+  e.contacts[c.id]={id:c.id,trade:trades[i],rumor:rumors[i],favorItem:generationPick(["tea","cloth","scrap","paper"]),style:style,restock:25+generationRoll(4)*10};
+  c.bio=c.name+" works the "+jobFor(c.job).name.toLowerCase()+" detail. "+CONTACT_STYLES[style].line+" "+generationPick(["Knows who shares a table with whom.","Has learned which promises are worth keeping.","Keeps a careful eye on the shift board.","Has a reason to want a different future."]);
+ }
+ let contact=e.contacts[omGame.story.contact],lead=routeById(omGame.story.route).intel;
+ for(let id of Object.keys(e.contacts))if(e.contacts[id].rumor===lead){e.contacts[id].rumor=contact.rumor;contact.rumor=lead;break;}
+ player().job=startingDetail(omGame.seedLabel,player().background);rebuildActivityStations();
+}
+function workPay(id){return omGame&&omGame.experience?omGame.experience.wages[id]:3;}
+function siteWorkPay(id){let j=JOBS.find(function(d){return d.site===id;});return j?workPay(j.id):3;}
+function workDuty(c,phase){let list=WORK_DUTIES[c.job]||["Assigned duties"],offset=omGame.experience?omGame.experience.dutyOffsets[c.job]:0;return list[(phase+offset)%list.length];}
+function priorityContract(){let e=omGame&&omGame.experience;if(!e)return null;let day=dayNow(),job=e.order[(day-1)%e.order.length],saved=e.contract,active=saved&&saved.day===day;
+ return {day:day,job:job,target:e.target,progress:active?saved.progress:0,claimed:active?saved.claimed:false,bonus:5};}
+function awardPriorityWork(c){let offer=priorityContract();if(!offer||c.job!==offer.job||offer.claimed)return;
+ let e=omGame.experience;e.contract={day:offer.day,progress:Math.min(offer.target,offer.progress+1),claimed:false};
+ if(e.contract.progress===offer.target){e.contract.claimed=true;omGame.scrip=Math.min(9999,omGame.scrip+offer.bonus);logEvent("Priority detail completed",jobFor(c.job).name+": today's work order is complete. +5 scrip.","work");say("Priority detail complete. +5 scrip bonus.");playCue("complete");}
+}
+function generateCastAndStory(){
+ generationRng=hashSeed(omGame.seedLabel+":cast:v2");let first=shuffleGenerated(GENERATED_FIRST),last=shuffleGenerated(GENERATED_LAST),i=0;
+ for(let c of omGame.people)if(c.role!=="player"){
+  c.name=first[i]+" "+last[i];c.short=first[i];i++;c.palette=generationRoll(c.role==="inmate"?6:3);
+  if(c.role==="inmate")c.bio=c.name+" works the "+jobFor(c.job).name.toLowerCase()+" detail. "+c.trait+". "+generationPick(["Keeps a folded letter close.","Remembers every promise made at the meal counter.","Has been counting freight departures for months.","Shares tea carefully and information more carefully still.","Sketches the skyline on the backs of discarded forms.","Saves a place at the table for anyone eating alone.","Counts the seasons by the sound of the ventilation.","Repairs broken buttons without asking for payment."]);
+ }
+ generationRng=hashSeed(omGame.seedLabel+":story:v2");let motive=generationRoll(STORY_MOTIVES.length),contact=generationPick(INMATES).id,route=generationPick(ROUTES).id;
+ let clues=[["a duplicate transfer docket","a docket with a second signature"],["a returned letter with its original postmark","a letter hidden in a supply invoice"],["an intake photograph filed under your name","a register page with two matching intake numbers"],["a list of missing transport numbers","a passenger list with a name crossed out"],["a workshop log from the night of the accident","a rejected maintenance report"],["a broadcast schedule marked with your call sign","a handwritten fragment of the final transmission"]];
+ omGame.story={version:2,motive:motive,contact:contact,route:route,clue:generationPick(clues[motive]),stages:[false,false,false,false],outsideContact:first[23]+" "+last[23],destination:generationPick(["Harbour Relay","Northbridge Archive","the Lantern Exchange","Westhaven Station","the Salt Road clinic","the Old Quarry post office"]),complication:generationRoll(4)};
+ omGame.history=historyForSeed(omGame.seedLabel);logEvent("Prison history",historyText(omGame.history)+" "+historyPlayText(omGame.history),"chapter");
+ generateExperience();let c=actorById(contact);logEvent(STORY_MOTIVES[motive].title,storyOpening(omGame.story)+" A note mentions "+c.name+" and "+omGame.story.clue+".","chapter");
+}
+const STORY_COMPLICATIONS=["The next inspection will seal the old files.","A transfer order could separate the people who remember.","The institution is replacing its registers with a cleaner version of events.","An unsigned message suggests that somebody outside has started asking questions."];
+function storyOpening(s){return STORY_MOTIVES[s.motive].opening+(s.version===2?" At "+prisonName()+", "+STORY_COMPLICATIONS[s.complication].charAt(0).toLowerCase()+STORY_COMPLICATIONS[s.complication].slice(1):"");}
+function tickSeededStory(){
+ let s=omGame.story;if(!s)return;let c=actorById(s.contact),r=routeById(s.route);
+ let intel=omGame.knowledge[r.intel];
+ let checks=[c.met,c.favorStage===2,!!intel&&(intel.confidence==="observed"||intel.confidence==="confirmed"),projectReady(r.project)];
+ let lines=[c.name+" recognises the reference to "+s.clue+". First, they need to know you keep your word.","A kept promise earns a lead: study "+siteById(findIntelSite(r.intel)).name+". +1 favour.","The observed routine fits the story. "+r.name+" could turn this lead into a way out.","The preparation is real. The lead has become a choice; you can use it or take another route."];
+ for(let i=0;i<checks.length;i++)if(checks[i]&&!s.stages[i]&&(i===0||s.stages[i-1])){s.stages[i]=true;if(i===1)omGame.favors++;logEvent("Personal story / "+(i+1),lines[i],"chapter");say(lines[i]);}
+}
+const STORY_REVELATIONS=[
+ ["The transfer docket carries two signatures. Your contact knows which one was added after the hearing.","The ledger names a transport supervisor who can corroborate your account outside Greywall."],
+ ["The returned letter was held deliberately. Your contact quietly kept its original postmark.","The next freight relay passes close to the address on the letter. There may still be time to answer."],
+ ["The torn file contains two intake photographs under the same name. The mistake was useful to somebody.","A clerk outside the annex kept the matching register. Reaching them could give you your name back."],
+ ["A missing transport number matches the vehicle you arrived in. Your contact remembers its passengers.","A second witness was transferred before they could speak. The route records could help find them."],
+ ["Your contact kept the workshop log. The equipment was already marked unsafe before your shift began.","The duplicate report went to an independent inspector. Someone outside may still have it."],
+ ["The call sign was a warning, not an accusation. Your contact copied the final transmission before it vanished.","The broadcast schedule points to a relay that was never listed in the official shutdown order."]
+];
+function storyChoiceFailure(){let s=omGame&&omGame.story;if(!s||!s.stages[1])return "Keep your contact's promise first.";if(s.approach)return "You have already made this promise.";if(!canInteractNow())return "You cannot meet right now.";let c=actorById(s.contact);if(c.escaped||c.detainedUntil>omGame.minutes||c.crewState==="caught")return "Your contact is unavailable.";if(player().task||!nearPerson(player(),c))return "Meet your contact in person to decide.";return "";}
+function meetStoryContact(){let s=omGame&&omGame.story;if(!s||!s.stages[1]||s.approach)return false;return queueTask({type:"inspect",actor:s.contact,duration:2,illegal:0});}
+function chooseStoryApproach(choice){
+ if(choice!=="protect"&&choice!=="share")return false;let failure=storyChoiceFailure();if(failure){say(failure);return false;}
+ let s=omGame.story,c=actorById(s.contact);s.approach=choice;
+ let line=choice==="protect"?"You promise to keep "+c.short+"'s name out of the account. +10 trust.":"You agree to carry "+c.short+"'s account beyond "+prisonName()+". +1 favour.";
+ if(choice==="protect")c.trust=clamp(c.trust+10,0,100);else omGame.favors++;
+ remember(c,choice==="protect"?"You promised to protect my name.":"You promised to share my account outside.");c.pauseUntil=omGame.elapsed+4;
+ logEvent("A story worth carrying",line,"chapter");say(line);playCue("complete");refreshAll();return true;
+}
+function personalStoryEpilogue(){let s=omGame.story;if(!s)return "";let c=actorById(s.contact),line=STORY_MOTIVES[s.motive].ending.replace(/Greywall/g,prisonName());if(s.version===2)line+=" Your next lead is "+s.outsideContact+" at "+s.destination+".";
+ if(s.approach==="protect")line+=" You tell the story without naming "+c.short+". "+(c.escaped?"They leave with their own future to choose.":"Your promise protects the person still inside.");
+ if(s.approach==="share")line+=itemCount("records")?" The records support the account you promised to share; it is more than one person's word now.":" You carry the account you promised to share, though without the quota records it still needs corroboration.";
+ return line;
+}
+let storyCard=null,storyGoals=[],laundryContactName="Tam";
+function projectSeededStory(){
+ laundryContactName=(omGame.experience?omGame.people.find(function(c){return c.role==="inmate"&&c.job==="laundry";}):actorById("tam")).short;storyCard=null;storyGoals=[];let s=omGame.story;if(!s)return;
+ let motive=STORY_MOTIVES[s.motive],c=actorById(s.contact),r=routeById(s.route);
+ storyCard={title:motive.title,body:storyOpening(s)+" Your lead is "+s.clue+".",contact:c.id,name:c.name,route:r.id,routeName:r.name,seed:omGame.seedLabel,layout:currentPrisonDesign()?currentPrisonDesign().name:omGame.generation?omGame.generation.partitions+" partitions / "+omGame.generation.furnishings+" furnishing groups":"Classic Greywall"};
+ if(omGame.experience)storyCard.body+=" Your contact works the "+jobFor(c.job).name.toLowerCase()+" detail and knows about "+r.name+".";
+ storyCard.prison=prisonName();storyCard.shape=omGame.generation.version>=4?PRISON_SHAPES.find(function(d){return d.id===omGame.generation.shape;}).name:"Original perimeter";
+ storyCard.layoutHint=currentPrisonDesign()?currentPrisonDesign().hint:"Learn the schedule and watch the doors between districts.";
+ storyCard.history=historyText(omGame.history);storyCard.historyPlay=historyPlayText(omGame.history);
+ storyCard.chapter=s.stages[3]?"A way out":s.stages[2]?"The account takes shape":s.stages[1]?"A confidence earned":s.stages[0]?"A name to trust":"A first lead";
+ storyCard.revelation=s.stages[2]?STORY_REVELATIONS[s.motive][1]:s.stages[1]?STORY_REVELATIONS[s.motive][0]:"Your contact will share more once you have kept their promise.";
+ if(s.version===2&&s.stages[1])storyCard.revelation+=" Ask for "+s.outsideContact+" at "+s.destination+" once you are outside. This is a lead, not a timed mission.";
+ storyCard.revelation=storyCard.revelation.replace(/Greywall/g,prisonName());
+ storyCard.choiceReady=s.stages[1]&&!s.approach;storyCard.choiceReason=storyCard.choiceReady?storyChoiceFailure():"";storyCard.choiceAllowed=storyCard.choiceReady&&!storyCard.choiceReason;
+ storyCard.approach=s.approach==="protect"?"Your promise: protect your contact's identity.":s.approach==="share"?"Your promise: share your contact's account outside.":"";
+ storyCard.portrait=actorPortrait(c);
+ let firstWords=["I kept the copy they told me to destroy. I needed to know you would keep your word, too.","I recognised the handwriting. Nobody should have to wait that long for a letter.","Two photographs. One name. That is not a mistake you fix by asking the same office again.","I remember the transport. I remember who stopped asking questions about it.","The machine was failing before you touched it. Someone needed the report to say otherwise.","I copied those words because I knew your call sign. Someone wanted you to hear them."];
+ let laterWords=["A signature is a place to start. Find someone outside who can say when it was added.","If you reach that address, tell them the silence was never your choice.","Keep the register in mind. Getting out is only the first part of getting your name back.","The other witness may still be out there. Give them a reason to speak.","An independent copy is harder to erase. Find the person who kept it.","A quiet relay is not always a dead one. Carry the call sign with you."];
+ storyCard.quote=s.stages[2]?laterWords[s.motive]:s.stages[1]?firstWords[s.motive]:s.stages[0]?"People here learn to make promises cheaply. Show me yours means something.":"Find me when you have a quiet moment. There is something about your file.";
+ let names=["Meet "+c.name,"Keep their promise (+1 bonus favour)","Observe the "+r.name+" lead","Prepare "+projectById(r.project).name];
+ storyGoals=names.map(function(text,i){return {id:i,text:text,done:s.stages[i]};});
+}
+function castText(text){
+ if(!omGame||!omGame.story)return text;
+ let names={};for(let d of INMATES)names[d.short]=actorById(d.id).short;if(omGame.experience)names.Tam=laundryContactName;
+ return String(text).split(/(\W+)/).map(function(word){return names[word]||word;}).join("");
+}

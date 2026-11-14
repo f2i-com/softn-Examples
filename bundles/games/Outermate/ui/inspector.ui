@@ -1,0 +1,18 @@
+#if (selectedCard)
+ <div className="om-inspect-heading"><img src={asset(selectedCard.portrait)} alt="" /><div><span className="om-label">{selectedCard.subtitle}</span><h3>{selectedCard.name}</h3></div></div>
+ <p>{selectedCard.description}</p><div className="om-note">{selectedCard.detail}</div>
+ #if (selectedCard.role === "inmate")
+  <div className="om-section-title">TRUST <strong>{selectedCard.trust} / 100</strong></div><div className="om-meter"><i style={{width:selectedCard.trust+"%"}} /></div><p className="om-small">{selectedCard.favor}</p>
+  #if (selectedCard.profile)<div className="om-profile"><div className="om-chips">#each (t in selectedCard.profile.traits) key={t}<span className="om-chip">{t}</span>#end#if (selectedCard.profile.skill)<span className="om-chip is-skill">{selectedCard.profile.skill}</span>#end</div>
+   #each (n in selectedCard.profile.traitNotes) key={n}<small>{n}</small>#end<small>{selectedCard.profile.skillNote}</small><small>{selectedCard.profile.weakness}</small><small>{selectedCard.profile.bias}</small>
+   #if (selectedCard.relations)<small className="om-relations">{selectedCard.relations}</small>#end#if (selectedCard.holding)<small className="om-holding">{selectedCard.holding}</small>#end</div>#end
+ #end
+ #if (selectedCard.role === "player")<button className="om-btn om-wide" @click={toggleRoutine}>{hud.mode === "Routine" ? "Break routine" : "Return to routine"}</button><button className="om-btn om-wide" @click={() => setPanel("inventory")}>Pockets and equipment →</button>#end
+ <div className="om-actions">
+  #each (a in actionCards) key={a.id}<div className="om-action"><button className="om-btn om-wide" disabled={a.disabled} @click={() => a.force ? requestForce(a.target,a.id) : a.social ? requestSocial(a.target,a.id) : requestAction(a.target,a.id)}>{a.label}</button>#if (a.id === "work")<button className="om-btn om-wide" disabled={a.disabled} @click={() => requestWorkBatches(a.target,3)}>{"Work up to 3 batches · +" + (a.pay * 3) + " scrip"}</button><small>Stops when the shift ends. Cancel anytime.</small>#end<small>{a.hint}</small></div>#end
+ </div>
+ #if (selectedCard.type === "site")<div className="om-row"><button className="om-btn om-grow" @click={() => goToSite(selectedCard.id)}>Walk here</button><button className="om-btn om-grow" @click={() => focusSite(selectedCard.id)}>Show on map</button></div>#end
+ #each (m in selectedCard.memories)<div className={"om-memory is-"+m.kind}>{m.text}</div>#end
+#else
+ <div className="om-empty">Select a person, fixture or door on the map. You can also use the directory to find a place.</div><button className="om-btn om-wide" @click={() => setPanel("map")}>Prison directory</button>
+#end

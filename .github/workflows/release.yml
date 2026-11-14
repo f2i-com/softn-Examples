@@ -1,73 +1,131 @@
-# A tag of the form vX.Y.Z packs every example and publishes the archives as a
-# GitHub Release, with their checksums and the catalogue record that softn.com
-# pins. The tag must equal "v" + package.json's version, so a release can never
-# carry a number the repository does not report.
+# Builds every .softn bundle from source, runs the full test/validation suite,
+# and outputs the compiled dist/*.softn files, SHA256SUMS.txt, catalogue.json,
+# and release notes to both workflow artifacts and the GitHub Release.
 #
-# A published release is immutable. softn.com pins one by URL and digest, and
-# a platform build from any later date must be able to fetch exactly the bytes
-# it verified: a re-run of this workflow on an existing tag may confirm the
-# archives it already carries, and refuses to replace them with different
-# ones. New bytes are a new version:
+# Triggers:
+#   1. Pushing a version tag (`git tag vX.Y.Z && git push origin vX.Y.Z`)
+#   2. Publishing a GitHub Release in the GitHub UI (`release: published`)
+#   3. Manual `workflow_dispatch` (with optional `tag` input, or defaults to v<package.json.version>)
 #
-#   git tag v1.0.1 && git push origin v1.0.1
-#
-# GitHub starts no workflow for a tag whose commit message carries
-# `[skip ci]`; such a tag is released by starting this workflow by hand from
-# the tag itself (`gh workflow run release.yml --ref v1.0.2`), never from a
-# branch.
+# Releases remain immutable once SHA256SUMS.txt is published: re-runs verify
+# identical digests and fill any missing release assets without replacing
+# previously published bytes with different ones.
 name: Release
 
 on:
   push:
     tags: ['v*']
+  release:
+    types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version tag to compile and release (e.g. v1.0.4; defaults to current tag or v<package.json.version>)'
+        required: false
+        type: string
 
-# Nothing here may write to the repository except the step that publishes,
-# which gets exactly that, in its own job.
+concurrency:
+  group: release-${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
 jobs:
   release:
-    # Started by hand, only from a version tag: the name is what is published.
-    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'release' && format('refs/tags/{0}', github.event.release.tag_name) || (github.event_name == 'workflow_dispatch' && inputs.tag != '' && format('refs/tags/{0}', inputs.tag) || github.ref) }}
+
+      - name: Resolve release tag
+        id: meta
+        run: |
+          set -euo pipefail
+          TAG=""
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            TAG="${{ github.event.release.tag_name }}"
+          elif [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAG="${{ github.ref_name }}"
+          elif [[ -n "${{ inputs.tag }}" ]]; then
+            TAG="${{ inputs.tag }}"
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAG="${{ github.ref_name }}"
+          else
+            TAG="v$(node -p "require('./package.json').version")"
+            if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
+              git checkout "refs/tags/$TAG"
+            fi
+          fi
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid release tag '$TAG'. Expected vX.Y.Z." >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
+
       - run: npm ci
       - run: npm test
-      - run: node scripts/build-release.cjs --expect-tag "$GITHUB_REF_NAME"
-      - name: Publish the bundles
+      - run: node scripts/build/build-release.cjs --expect-tag "${{ steps.meta.outputs.tag }}"
+
+      - name: Upload compiled .softn workflow artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: softn-examples-${{ steps.meta.outputs.tag }}
+          path: dist/
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Publish compiled .softn files to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+          RELEASE_SHA: ${{ steps.meta.outputs.sha }}
         run: |
           set -euo pipefail
-          title="SoftN Examples $GITHUB_REF_NAME"
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            if gh release download "$GITHUB_REF_NAME" --pattern SHA256SUMS.txt --output published-SHA256SUMS.txt 2>/dev/null; then
+          title="SoftN Examples $RELEASE_TAG"
+          mapfile -t ASSETS < <(ls dist/*.softn dist/SHA256SUMS.txt dist/catalogue.json)
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            if gh release download "$RELEASE_TAG" --pattern SHA256SUMS.txt --output published-SHA256SUMS.txt 2>/dev/null; then
               if cmp -s published-SHA256SUMS.txt dist/SHA256SUMS.txt; then
-                echo "$GITHUB_REF_NAME is already published with these exact archives; nothing to replace."
-                # A tag deleted and pushed again leaves its release a draft; the bytes are the same, so it is published again.
-                gh release edit "$GITHUB_REF_NAME" --draft=false --title "$title" --notes-file dist/RELEASE_NOTES.md
+                existing=$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')
+                missing=()
+                for f in "${ASSETS[@]}"; do
+                  base=$(basename "$f")
+                  if ! grep -Fxq "$base" <<< "$existing"; then
+                    missing+=("$f")
+                  fi
+                done
+                if (( ${#missing[@]} > 0 )); then
+                  echo "Uploading ${#missing[@]} missing release asset(s) for $RELEASE_TAG..."
+                  gh release upload "$RELEASE_TAG" "${missing[@]}"
+                else
+                  echo "$RELEASE_TAG is already published with these exact archives; nothing to replace."
+                fi
+                gh release edit "$RELEASE_TAG" --draft=false --title "$title" --notes-file dist/RELEASE_NOTES.md
                 exit 0
               fi
-              echo "Refusing to publish: $GITHUB_REF_NAME already carries different archives, and a published release is immutable." >&2
+              echo "Refusing to publish: $RELEASE_TAG already carries different archives, and a published release is immutable." >&2
               diff published-SHA256SUMS.txt dist/SHA256SUMS.txt >&2 || true
               echo "Bump package.json and tag a new version instead." >&2
               exit 1
             fi
-            # The release exists without checksums: a draft a moved tag left before anything was uploaded. Fill it.
-            gh release upload "$GITHUB_REF_NAME" dist/*.softn dist/SHA256SUMS.txt dist/catalogue.json
-            gh release edit "$GITHUB_REF_NAME" --draft=false --title "$title" --notes-file dist/RELEASE_NOTES.md
+            # The release exists without checksums (e.g., created from GitHub UI or a moved tag draft).
+            gh release upload "$RELEASE_TAG" "${ASSETS[@]}" --clobber
+            gh release edit "$RELEASE_TAG" --draft=false --title "$title" --notes-file dist/RELEASE_NOTES.md
           else
-            gh release create "$GITHUB_REF_NAME" \
-              dist/*.softn dist/SHA256SUMS.txt dist/catalogue.json \
+            gh release create "$RELEASE_TAG" \
+              "${ASSETS[@]}" \
+              --target "$RELEASE_SHA" \
               --title "$title" \
               --notes-file dist/RELEASE_NOTES.md
           fi

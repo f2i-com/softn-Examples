@@ -1,0 +1,91 @@
+// Facets: a procedural layer around the three authored mysteries. Every world also rolls, from its own seed,
+// the state of the thing under the ridge, who already knows about it, what the connected settler's link is,
+// and one outside complication. The core story is unchanged; the flavour, the timing, the factions' behaviour
+// and a handful of storylets are not. Facets are hidden and reveal themselves in play.
+const FACET_STATES=["dormant","deteriorating","waking"];
+const FACET_KNOWERS=["nobody","meridian","helix","choir"];
+const FACET_CONNECTIONS=["parent","self","name"];
+const FACET_COMPLICATIONS=["none","choir","glasswind","helix","ashwalkers"];
+let facetsOverride=null;
+function pickFacets(seed){
+  if(facetsOverride)return Object.assign({},facetsOverride);
+  let r=crewRng(hashSeed(String(seed>>>0)+"|facets"));
+  let f={state:r.pick(FACET_STATES),knows:r.pick(FACET_KNOWERS),connection:r.pick(FACET_CONNECTIONS),complication:r.pick(FACET_COMPLICATIONS)};
+  // A faction that already knows is not also the outside complication; the far Hollow's beacon is nobody's to sell.
+  if(f.complication===f.knows)f.complication="none";
+  return f;
+}
+function facetsOf(){if(!osGame.facets)osGame.facets=pickFacets(osGame.seed||0);return osGame.facets;}
+function facet(key){return facetsOf()[key];}
+// What each mystery is about, in a phrase the factions can allude to without saying it.
+const MYSTERY_HINTS={rehearsal:"what the engine under the ridge is for",sleepers:"who is sleeping under the south-east",mirror:"whose voice the beacon under the ridge is"};
+function mysteryHint(){return MYSTERY_HINTS[mysteryId()]||"what is under the ridge";}
+// The connected settler's link, by mystery and facet.
+const FACET_FAMILIAR={
+ rehearsal:{parent:"{scientist} finally says it at the table: the engine has rehearsed this settlement before, and one of its rehearsals had a parent of one of you in it. The layout of the bunkhouse was familiar because a mother or father built it here, once, and was forgotten with the rest.",
+  self:"{scientist} finally says it at the table: the engine has rehearsed this settlement before, and it rehearsed it with a version of one of you in it. The bunkhouse was familiar because you had already built it, over and over, and forgotten each time.",
+  name:"{scientist} finally says it at the table: the engine's rehearsals kept a roll of names, and one of your names is on it in every iteration. Not the person; the name. It has been waiting for somebody to answer to it."},
+ sleepers:{parent:"{scientist} finds the name in the manifest and does not say anything until dinner. It is a family name, and it belongs to one of you, and a parent of that settler is on the Cradle's list, asleep under the south-east. The Compact knew, because the Compact keeps the old charters.",
+  self:"{scientist} finds the name in the manifest and does not say anything until dinner. One of you is on the Cradle's founding list, by full name and birth year, and the years do not add up unless somebody went to sleep and woke elsewhere. Hollow-7 felt familiar because it was.",
+  name:"{scientist} finds the name in the manifest and does not say anything until dinner. It is a family name, and it is on the Cradle's founding list, and it belongs to one of you. The Compact knew, because the Compact keeps the old charters. Hollow-7 felt familiar because a great-great-grandparent went to sleep under it, and is still there."},
+ mirror:{parent:"{scientist} finds the seat tags in the second lander and counts them twice. One tag carries a family name that belongs to one of you, in a parent's handwriting, three hundred years old. Somebody's mother or father has already been here, at the far end of the loop, and left the map that was mostly right.",
+  self:"{scientist} finds the seat tags in the second lander and counts them twice. One name is there twice: once on a seat, once on the crew list of the ship that sent the lander down, three hundred years earlier. Hollow-7 felt familiar to one of you because one of you has already been here, at the far end of the loop.",
+  name:"{scientist} finds the seat tags in the second lander and counts them twice. One name on the tags is one of yours, letter for letter, and the chronicle inside gives it a different face. The loop has been round with that name before, and it will be again unless you decide otherwise."}
+};
+function facetFamiliar(){let by=FACET_FAMILIAR[mysteryId()];return (by&&by[facet("connection")])||mysteryOf().familiar;}
+// Lines the facets add to authored cards, by story id.
+function facetLine(id){
+  let f=facetsOf(),out=[];
+  if(id==="signal"){
+    if(f.complication==="glasswind")out.push("There is no need to search for the source. The last Glass Wind stripped the ridge to the stone, and the structure is standing open to the sky, in plain sight of camp.");
+    if(f.state==="deteriorating")out.push("The transmission stutters. Whatever is keeping it has begun to fail.");
+    if(f.state==="waking")out.push("The transmission is getting stronger. It was not, last night.");
+  }
+  if(id==="caravan"&&f.knows==="meridian"&&!osGame.storySeen.caravan)out.push("The leader glances at the ridge before the lamps are even down, the way people look at something they already know is there.");
+  if(id==="choirPlea"&&f.complication==="choir")out.push("They have been on the band since your first Sol, a beat behind everything you said. They know the words.");
+  if(id==="helixOffer"&&f.knows==="helix")out.push("The representative names the third site before you do. Helix has had the survey for years.");
+  if(id==="tracks"&&f.complication==="ashwalkers")out.push("Somebody has been watching the camp from the western road for days. These are not the first tracks; they are the first you found.");
+  return out.join("\n\n");
+}
+// Facet storylets: what the knowing faction does with what it knows, and what a deteriorating ground does.
+const FACET_STORIES={
+  meridianKnows:{title:"They already knew",tag:"MERIDIAN / OLD MAPS",priority:true,body:"The caravan leader waits until the trading is done, then asks how far down you have been. Not whether. How far.\n\nThe Compact has a map of the ridge older than the colony, with the first structure on it, and a note against it in a hand that is not the leader's: {truth}. They would rather you heard it from them.",choices:[{id:"share",label:"Compare notes",detail:"Meridian standing rises and Hollow research gains 20. Everyone remembers that the Compact knew."},{id:"keep",label:"Keep your own counsel",detail:"No cost. Meridian standing falls a little; the map stays theirs."}],
+    when:function(){return facet("knows")==="meridian"&&osGame.storyStage>=1&&osGame.traderUntil>osGame.minutes;}},
+  helixKnows:{title:"A prior claim",tag:"HELIX / THE SURVEY",priority:true,body:"Helix Recovery's representative has a survey of the ridge dated before your ship launched, and the first structure is on it, annotated in the dry style of people who bill by the hour: {truth}.\n\nThey will pay well for your archive of it, and they will not explain why they never dug it up themselves.",choices:[{id:"sell",label:"Sell them a copy of the archive",detail:"Receive 20 metal and 8 components. Helix standing rises. The Choir hears of it."},{id:"refuse",label:"Keep the archive",detail:"Helix standing falls. Everyone remembers keeping it."}],
+    when:function(){return facet("knows")==="helix"&&osGame.storyStage>=1&&dayNow()>=6;}},
+  choirKnows:{title:"They sing its name",tag:"THE CHOIR / THE OLD HYMN",priority:true,body:"The hymn on the band changes tonight. Under the harmony is a line that repeats, and {scientist} works out that it is a description, sung the way people sing things they were told never to write down: {truth}.\n\nThe Choir has known for generations. They did not think anyone would ask.",choices:[{id:"ask",label:"Ask them to teach it",detail:"Choir standing rises and Hollow research gains 20. Settlers drawn to the Echo are glad."},{id:"quiet",label:"Turn the mast down for the night",detail:"Everyone sleeps better. Choir standing falls a little."}],
+    when:function(){return facet("knows")==="choir"&&osGame.storyStage>=1&&anyPowered("radio");}},
+  tremor:{title:"The ground shifts",tag:"HOLLOW / TREMOR",priority:true,body:"The floor moves. Not much: a cup walks to the edge of the table and stops. Under it, something that has been holding for three hundred years lets go of a little of its weight.\n\n{engineer} goes round the walls with a lamp. One of them has a new crack.",choices:[{id:"shore",label:"Shore up the walls",detail:"Spend 6 stone. Nothing is damaged."},{id:"wait",label:"See what it does",detail:"One structure takes damage. Builders can repair it."}],
+    when:function(){return facet("state")==="deteriorating"&&osGame.storyStage>=1&&dayNow()>=7;}}
+};
+function resolveFacetStory(id,choice){
+  let people=alivePeople();
+  if(id==="meridianKnows"){if(choice==="share"){osGame.standing.Meridian+=10;if(!grantResearch(20,"Hollow Studies"))grantResearch(10);for(let p of people)remember(p,"The Compact knew all along",-1,1440*3);}else osGame.standing.Meridian-=4;}
+  if(id==="helixKnows"){if(choice==="sell"){stockGive({metal:20,parts:8});osGame.standing.Helix=(osGame.standing.Helix||0)+12;osGame.standing.Choir=(osGame.standing.Choir||0)-4;}else{osGame.standing.Helix=(osGame.standing.Helix||0)-8;for(let p of people)remember(p,"We kept the archive",3,1440*3);}}
+  if(id==="choirKnows"){if(choice==="ask"){osGame.standing.Choir=(osGame.standing.Choir||0)+12;if(!grantResearch(20,"Hollow Studies"))grantResearch(10);for(let p of people)if(hasQuirk(p,"echoDrawn"))remember(p,"They taught us the old hymn",6,1440*4);}else{osGame.standing.Choir=(osGame.standing.Choir||0)-4;for(let p of people)remember(p,"A quiet night",2,1440);}}
+  if(id==="tremor"){
+    if(choice==="shore"){if(!stockTake({stone:6})){say("Six stone is needed to shore up the walls.");return false;}chronicle("Shored up","The cracked wall was braced before the next shift. The ground has not moved again.","colony");}
+    else{let built=osGame.buildings.filter(function(b){return b.built&&b.kind!=="lander"&&BUILDINGS[b.kind].hp>40;});let b=built.length?pick(built):null;if(b){b.hp=Math.max(8,b.hp-Math.round(BUILDINGS[b.kind].hp*0.4));structuresDirty=true;chronicle("The ground shifted",BUILDINGS[b.kind].name+" cracked in the tremor. Builders will repair it.","danger");}}
+  }
+  return true;
+}
+// Facets acting on the world at landing and on the factions' timing.
+function applyFacetsAtLanding(){
+  let f=facetsOf();
+  if(f.complication==="glasswind"&&osGame.sites.length){let s=osGame.sites[0];s.known=true;revealArea(s.x+1,s.y+1,6);}
+  if(f.complication==="choir")osGame.standing.Choir=(osGame.standing.Choir||0)+10;
+  if(f.complication==="helix")osGame.standing.Helix=(osGame.standing.Helix||0)+10;
+  if(f.knows==="meridian")osGame.standing.Meridian+=5;
+}
+function facetChoirChapter(){return facet("complication")==="choir"?2:3;}
+function facetHelixChapter(){return facet("complication")==="helix"?3:5;}
+function facetAshwalkerDay(){return facet("complication")==="ashwalkers"?3:5;}
+// Clues wait on a dormant ground and hurry on a waking one.
+function facetClueDay(){let s=facet("state");return s==="dormant"?12:s==="waking"?4:6;}
+function facetClueGap(){return facet("state")==="waking"?1440:1440*2;}
+function facetLegend(){
+  let f=facetsOf(),out=[];
+  if(f.knows==="meridian")out.push("The Compact had known all along.");if(f.knows==="helix")out.push("Helix had held the survey for years.");if(f.knows==="choir")out.push("The Choir had been singing it for generations.");
+  if(f.state==="deteriorating")out.push("The ground was failing under them the whole time.");if(f.state==="waking")out.push("It had been waking since they landed.");
+  return out.join(" ");
+}

@@ -1,0 +1,240 @@
+// Compact projections, following Outerstead's VM/UI separation. These functions never
+// consume random numbers, award rewards or change game state.
+let panelTitle="The day",panelIntro="",stashChoiceCards=[],securityCards=[],mapLights=[],inventorySummary="",jobSummary="",crewSummary="",knownSummary="",routeSelection="",gameplayClass="",mapSelected=null;
+const PANEL_TITLES={day:"The day",inspect:"Inspect",routine:"Routine & access",crew:"The network",inventory:"Pockets & crafting",security:"Security",schemes:"Escape projects",escape:"Beyond the walls",notebook:"The notebook",map:"Greywall directory"};
+function setVisibleTileRange(r){if(!r||typeof r!=="object")return;for(let k of ["x","y","width","height"])if(!isFiniteNumber(r[k])||r[k]<0||r[k]>96)return;if(r.x+r.width>96||r.y+r.height>96)return;visibleTileRange={x:r.x,y:r.y,width:r.width,height:r.height};dirty();}
+function tileInView(x,y,w,h){let r=visibleTileRange;if(r)return x+(w||1)>=r.x-3&&y+(h||1)>=r.y-3&&x<=r.x+r.width+3&&y<=r.y+r.height+3;let cx=48-panX/(TILE*zoomLevel),cy=48-panY/(TILE*zoomLevel),hw=viewportWidth/(2*TILE*zoomLevel)+4,hh=viewportHeight/(2*TILE*zoomLevel)+4;return x+(w||1)>=cx-hw&&x<=cx+hw&&y+(h||1)>=cy-hh&&y<=cy+hh;}
+function boxStyle(x,y,w,h,z){return {left:round1(x*TILE)+"px",top:round1(y*TILE)+"px",width:round1(w*TILE)+"px",height:round1(h*TILE)+"px",zIndex:z||10};}
+function percentStyle(n){return {width:clamp(n,0,100)+"%"};}
+let careCards=[],careActions={},priorityCard=null,nextStepCard=null,orderCards=[];
+// One concrete next thing to do, from the first unmet chapter goal. Guidance, never a lock.
+function projectNextStep(){
+ nextStepCard=null;if(omGame.over)return;let ch=omGame.chapter,goal=-1;
+ // A chapter can be complete before the campaign tick records it; look ahead to the next unmet goal.
+ for(;ch<CHAPTERS.length&&goal<0;ch++){let tests=chapterTests(ch);for(let i=0;i<tests.length;i++)if(!tests[i]){goal=i;break;}if(goal<0&&ch===CHAPTERS.length-1)return;}
+ ch--;if(goal<0)return;let p=player(),story=omGame.story,observeSite=story?findIntelSite(routeById(story.route).intel):"laundryCart";
+ let steps={
+  "0:0":{text:"Counts are at 06:00 and 21:00 in the count square. Routine mode walks you there in time.",label:p.mode==="manual"?"Return to routine":"",action:"routine"},
+  "0:1":{text:"Meet people in the yard (11:30 and 16:30) or association (19:00). Click an inmate and choose Talk, or join a game.",label:"Find an inmate to talk to",action:"inmate"},
+  "1:0":{text:"Complete two work batches at your station during a shift: 07:15 to 11:30 or 13:00 to 16:30.",label:"Go to your work station",action:"work"},
+  "1:1":{text:"Study a route's key location in person. A rumour is not enough; observation is.",label:"Study "+castText(siteById(observeSite).name),action:"observe"},
+  "2:0":{text:"Ask an inmate what they need, then bring the item to them in person.",label:"Find someone with a favour",action:"favor"},
+  "2:1":{text:"Open your cell stash and store or withdraw something. Stashes protect pocket items from searches.",label:"Open your cell stash",action:"stash"},
+  "3:0":{text:"Craft something. A tool kit needs two salvage pieces at the workbench.",label:"Open crafting",action:"craft"},
+  "3:1":{text:"Study a second location. The directory lists every fixture with something to learn.",label:"Open the directory",action:"directory"},
+  "4:0":{text:"Finish an escape project. Choose one on the Projects panel and walk there with the materials.",label:"Open projects",action:"projects"},
+  "4:1":{text:"Learn the route's timing by observing its key location again.",label:"Open the escape planner",action:"escape"},
+  "5:0":{text:"Choose a route on the Escape panel and read its live checklist.",label:"Choose a route",action:"escape"},
+  "5:1":{text:"Begin the escape from its start point while its window is open. Call your crew first if you have one.",label:"Escape planner",action:"escape"}
+ };
+ let step=steps[ch+":"+goal]||{text:"Reach the marked extraction point and choose Leave prison.",label:"Escape status",action:"escape"};
+ nextStepCard={title:CHAPTERS[ch].goals[goal],text:step.text,label:step.label,action:step.action,chapter:CHAPTERS[ch].title};
+}
+function projectCurrentActivity(){
+ let offer=priorityContract();priorityCard=offer?{job:jobFor(offer.job).name,progress:offer.progress,target:offer.target,claimed:offer.claimed,pay:workPay(offer.job),style:percentStyle(offer.progress/offer.target*100)}:null;
+ let p=player(),t=p.task,name="",detail="",label="ROUTINE",value=0,manual=false,phase="work",remaining=0;
+ if(t){name=taskDescription(t)+(t.batches>1?" / "+t.batches+" batches left":"");manual=true;phase=t.phase;label=phase==="travel"?"ON THE WAY":"YOUR ORDER";
+  remaining=Math.max(0,t.duration-t.progress);if(t.type==="project")remaining/=Math.max(.1,projectRate(t.project));
+  value=phase==="travel"?0:t.progress/Math.max(.1,t.duration)*100;detail=phase==="travel"?"Walking to the interaction point":Math.ceil(remaining)+" s remaining at 1×";
+  if(t.type==="rest"&&p.action==="Settling in to rest")detail="Getting into position before recovery begins";if(t.type==="rest"&&p.action==="Lying down")detail="Lying down · "+Math.ceil(remaining)+" s remaining at 1×";
+ }else if(p.mode==="manual"&&p.pathCursor<p.path.length){name="Walking to your destination";phase="travel";label="ON THE WAY";manual=true;detail=(p.path.length-p.pathCursor)+" route steps remaining";}
+ else if(p.mode==="routine"&&p.action.indexOf("Working:")===0){name="Work batch · +"+workPay(p.job)+" scrip";value=p.workClock/12*100;detail=p.action.slice(9)+" · "+Math.ceil(12-p.workClock)+" s at 1×";}
+ let meal=p.meal,mealActive=meal&&((t&&t.type==="eat"&&t.phase==="work")||seatedAtTable(p)||p.mode==="routine"&&activeMealRoutine(p));
+ if(mealActive&&(!t||t.type==="eat")&&meal.key.indexOf(dayNow()+":")===0){
+  name="Canteen meal";phase="work";let descriptions={queue:"Waiting for a serving position",counter:"Walking to the counter",serve:"Collecting your food",seat:"Carrying your tray to a seat",eat:"Eating at the table",done:"Meal finished"};
+  detail=descriptions[meal.phase]||"Following the meal routine";value=meal.phase==="eat"?meal.progress/8*100:meal.phase==="done"?100:0;
+  if(meal.phase==="eat")detail+=" · "+Math.ceil(8-meal.progress)+" s at 1×";
+ }
+ let orders=orderList();
+ if(t&&t.type==="walk"){name=taskDescription(t);phase="travel";label="ON THE WAY";manual=true;detail=(p.path.length-p.pathCursor)+" route steps remaining";}
+ progressCard=name?{name:name,label:label,detail:detail,manual:manual,stopLabel:t?"Cancel":"Stop",phase:phase,progress:Math.round(clamp(value,0,100)),bar:percentStyle(value),queued:orders.length,waiting:false}:null;
+ if(!progressCard&&orders.length){let next=orders[0];progressCard={name:"Next: "+taskDescription(next),label:"ORDER WAITING",detail:next.blocked||"Starting as soon as possible",manual:true,stopLabel:"Cancel",phase:"wait",progress:0,bar:percentStyle(0),queued:orders.length-1,waiting:true};}
+ orderCards=orders.map(function(o,i){return {id:i,name:taskDescription(o),status:o.blocked?o.blocked:i===0&&!p.task?"Starting as soon as possible":"Waiting its turn",blocked:!!o.blocked};});
+ careCards=[{id:"health",name:"Health",value:Math.round(p.health),low:p.health<50},{id:"energy",name:"Energy",value:Math.round(p.energy),low:p.energy<30},{id:"food",name:"Fed",value:Math.round(p.food),low:p.food<30},{id:"stress",name:"Stress",value:Math.round(p.stress),low:p.stress>70}];
+ let available=canInteractNow(),mealFailure=taskFailure({type:"eat",site:"canteen"},false);
+ careActions={disabled:!available,tea:available&&itemCount("tea")>0,meal:available&&!mealFailure,mealReason:mealFailure||"Queue, take a seat and eat.",workSite:jobFor(p.job).site,injury:isInjured(p)?"Injured until "+clockText(p.injuredUntil)+": slower, weaker in a fight. Rest heals.":""};
+}
+let minimapSource="";
+function makeMinimap(){
+ let colors=["#243a40","#3b5257","#79867e","#64816d","#a5ab91","#aaaf93","#8b9e97","#abb9ad","#999c79","#556e70"],paths=[],svg="<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96' shape-rendering='crispEdges'>";
+ // Merge equal horizontal terrain runs; one image updates only when geometry changes.
+ for(let y=0;y<96;y++)for(let x=0;x<96;){let start=x,color=omGame.ground[tileId(x,y)];while(x<96&&omGame.ground[tileId(x,y)]===color)x++;paths[color]=(paths[color]||"")+"M"+start+" "+y+"h"+(x-start)+"v1h-"+(x-start)+"z";}
+ for(let i=0;i<paths.length;i++)if(paths[i])svg+="<path fill='"+(colors[i]||colors[0])+"' d='"+paths[i]+"'/>";
+ let solid="";for(let y=0;y<96;y++)for(let x=0;x<96;){if(!navBlocked[tileId(x,y)]){x++;continue;}let start=x;while(x<96&&navBlocked[tileId(x,y)])x++;solid+="M"+start+" "+y+"h"+(x-start)+"v1h-"+(x-start)+"z";}
+ svg+="<path fill='#20383f' d='"+solid+"'/>";
+ for(let d of omGame.doors)svg+="<rect x='"+d.x+"' y='"+d.y+"' width='1' height='1' fill='#e0ba73'/>";
+ minimapSource="data:image/svg+xml,"+(svg+"</svg>").replace(/#/g,"%23").replace(/</g,"%3C").replace(/>/g,"%3E");
+}
+function makeTerrain(){let floor=[],walls=[];for(let y=0;y<96;y++){let a=[],b=[];for(let x=0;x<96;x++){let i=tileId(x,y),t=omGame.walls[i],mask=0;a.push(omGame.ground[i]);if(t){for(let n of [{x:x,y:y-1,b:1},{x:x+1,y:y,b:2},{x:x,y:y+1,b:4},{x:x-1,y:y,b:8}])if(onMap(n.x,n.y)&&(omGame.walls[tileId(n.x,n.y)]||doorAt[tileId(n.x,n.y)]))mask+=n.b;b.push((t===1?16:32)+mask);}else b.push(-1);}floor.push(a);walls.push(b);}terrainLayers=[floor,walls];makeMinimap();terrainDirty=false;}
+function rayEnd(x,y,angle,range){let dx=Math.cos(angle),dy=Math.sin(angle),end={x:x,y:y};for(let d=.5;d<=range;d+=.5){let xx=x+dx*d,yy=y+dy*d;if(!onMap(xx,yy))break;let id=tileId(xx,yy),door=doorAt[id];if(omGame.walls[id]===1||(door&&door.openUntil<=omGame.elapsed&&door.kind!=="perimeter"&&door.kind!=="cell"))break;end={x:xx,y:yy};}return end;}
+function coneView(id,x,y,angle,range,half,kind){let a=["50% 50%"],r=range;for(let i=0;i<=18;i++){let p=rayEnd(x,y,angle-half+half*2*i/18,r);a.push(round1(50+(p.x-x)/r*50)+"% "+round1(50+(p.y-y)/r*50)+"%");}return {id:id,kind:kind,style:{left:(x-r)*TILE+"px",top:(y-r)*TILE+"px",width:r*2*TILE+"px",height:r*2*TILE+"px",clipPath:"polygon("+a.join(",")+")"}};}
+function actorPortrait(c){let role=c.role==="player"?(omGame.wearingGuard?"guard":omGame.wearing?"staff":"inmate"):c.role;let palette=c.role==="player"?(omGame.wearingGuard?0:omGame.wearing?1:c.palette):c.palette;return "assets/sprites/"+role+palette+"-s0.svg";}
+function seatedAtTable(c){
+ if(c.task&&c.task.type==="rest"&&c.task.site==="bench"&&c.action==="Resting at the table"){let s=siteById("bench");if(sqDistance(c.x,c.y,s.ax+.5,s.ay+.5)<.09)return {x:s.ax,y:s.ay,face:"n"};}
+ if(c.action==="Playing cards"){let plan=socialPlans[c.id];if(plan&&plan.group==="cards"&&sqDistance(c.x,c.y,plan.target.x+.5,plan.target.y+.5)<.09)return {x:plan.target.x,y:plan.target.y,face:plan.face};return null;}
+ if(!c.meal||!mealSeats.length||(c.action!=="Eating at the table"&&c.action!=="Finished meal"))return null;
+ let seat=mealSeats[c.meal.seat%mealSeats.length];return seat&&sqDistance(c.x,c.y,seat.x+.5,seat.y+.5)<.09?seat:null;
+}
+function refreshActors(){
+ if(!omGame)return;
+ viewRevision++;
+ if(followPlayer&&!pointerState&&!pinchState){panX=(48-player().x)*TILE*zoomLevel;panY=(48-player().y)*TILE*zoomLevel;visibleTileRange=null;}refreshCamera();
+ let actors=[],doors=[],cones=[],marks=[],path=[],p=player();
+ for(let c of omGame.people){if(c.escaped||!tileInView(c.x,c.y,1,1))continue;if(omGame.escape&&omGame.escape.phase==="transit"&&(c.id==="player"||c.crewState==="following"))continue;
+  let direction=Math.abs(c.headingX)>Math.abs(c.headingY)?(c.headingX>0?"e":"w"):(c.headingY<0?"n":"s"),moving=c.pathCursor<c.path.length&&!paused&&!dialog,frame=moving&&!reducedMotion?1+Math.floor(omGame.elapsed*6)%2:0;
+  let role=c.role==="player"?(omGame.wearingGuard?"guard":omGame.wearing?"staff":"inmate"):c.role,palette=c.role==="player"?(omGame.wearingGuard?0:omGame.wearing?1:c.palette):c.palette;
+  let seat=seatedAtTable(c),bed=bedPose(c),chatting=c.action.indexOf("Chatting with ")===0||c.action.indexOf("Talking with ")===0,resting=c.action==="Resting at the table"||c.action==="Recovering"||c.action==="Playing cards",busy=c.action.indexOf("Working")===0||c.action.indexOf("Crafting:")===0||c.task&&c.task.phase==="work"&&c.task.type==="project";
+  if(seat)direction=seat.face;if(bed)direction="s";
+  let visualX=c.x+(seat?(direction==="e"?.35:direction==="w"?-.35:0):0),visualY=c.y+(seat?(direction==="s"?.8:direction==="n"?-.65:0):0);
+  // A bed occupant is drawn on the fixture: lying with the head at the pillow, or sitting on its lower edge.
+  if(bed){let b=bed.bed;visualX=b.x+b.w/2+bed.slot*.5;visualY=bed.lying?b.y+(b.h>2?1.31:1.125)-bed.slot*.3:b.y+b.h-.0625;}
+  let speech=speechOf(c);
+  let pose=isDown(c)?"doze":bed?(bed.lying?"sleep":"bedsit"):seat?(resting?"sit":"eat"):c.action==="Shooting hoops"?"play":resting?"recover":chatting?"chat":c.action==="Dozing on the floor"?"doze":busy?"work":"idle";
+  actors.push({id:c.id,name:c.id==="player"?"YOU":c.short,role:c.role,selected:c.id===selectedId,crew:c.crew,notice:Math.round(c.notice),noticeStyle:percentStyle(c.notice),label:c.id==="player"||c.crew||c.id===selectedId||zoomLevel>=1.05,sprite:"assets/sprites/"+role+palette+"-"+direction+(role!=="guard"&&(seat||(bed&&!bed.lying))?"-sit":bed?"0":frame)+".svg",direction:direction,chatting:chatting&&!speech,speech:speech,eating:!!seat&&!resting&&c.meal.phase==="eat",resting:resting&&c.action!=="Playing cards",pose:pose,style:{left:(visualX*TILE-16)+"px",top:(visualY*TILE-32)+"px",zIndex:80+Math.floor(c.y),animationDelay:-(activityIndex(c)%7)*.23+"s"},carryingTray:c.action==="Carrying tray to a seat",sleeping:!!bed&&bed.lying||c.action==="Dozing on the floor",blanket:!!bed&&bed.lying});
+ }
+ let doorProfile=accessProfile(p);
+ for(let d of omGame.doors)if(tileInView(d.x,d.y,1,1)){let allowed=doorPasses(doorProfile,d),open=d.openUntil>omGame.elapsed;doors.push({id:d.id,open:open,allowed:allowed,sprite:"assets/sprites/door-"+(open?"open":"closed")+".svg",style:boxStyle(d.x,d.y,1,1,72),label:d.label});}
+ if(showSecurity){for(let c of CAMERAS)if(cameraOn(c)&&(fullSecurity||knownIntel(c.id))&&tileInView(c.x-c.range,c.y-c.range,c.range*2,c.range*2))cones.push(coneView(c.id,c.x,c.y,cameraAngle(c),c.range,.46,c.backup?"backup":"camera"));
+ for(let def of GUARDS){let c=actorById(def.id);if((fullSecurity||knownIntel("guard_"+c.id))&&tileInView(c.x-def.range,c.y-def.range,def.range*2,def.range*2))cones.push(coneView(c.id,c.x,c.y,c.headingAngle,def.range*(omGame.weather==="Fog"?.72:omGame.weather==="Clear"?1:.86)*(timeIn(360,1200)?1:.82),1.05,c.notice>=45?"danger":"guard"));}}
+ if(p.destination&&p.path){for(let i=p.pathCursor;i<p.path.length;i+=2){let cell=p.path[i],x=cell%96,y=Math.floor(cell/96);if(tileInView(x,y,1,1))path.push({id:"p"+i,style:{left:(x+.5)*TILE+"px",top:(y+.5)*TILE+"px"}});}marks.push({id:"dest",text:"DESTINATION",kind:"destination",style:boxStyle(p.destination.x,p.destination.y,1,1,190)});}
+ let route=omGame.escape?routeById(omGame.escape.route):routeById(omGame.selectedRoute);if(route)marks.push({id:"exit",text:"EXTRACTION",kind:"exit",style:boxStyle(route.exit.x,route.exit.y,1,1,190)});
+ if(omGame.escape&&omGame.escape.route==="cargo"){let e=omGame.escape;let y=e.phase==="transit"?76+e.transitProgress*14:90;marks.push({id:"truck",kind:"truck",text:"FREIGHT",sprite:"assets/sprites/truck.svg",style:boxStyle(62.7,y,2.5,4,170)});}
+ mapActors=actors;mapDoors=doors;mapCones=cones;mapMarkers=marks;mapPath=path;
+ minimapPlayerStyle={left:(p.x/96*100)+"%",top:(p.y/96*100)+"%"};
+ if(selectedType==="site"){let s=siteById(selectedId);mapSelected=s?boxStyle(s.x-.12,s.y-.12,s.w+.24,s.h+.24,188):null;}else mapSelected=null;
+}
+function projectWorld(){
+ if(terrainDirty)makeTerrain();let props=[],rooms=[],lights=[];
+ for(let b of omGame.props)if(tileInView(b.x,b.y,b.w,b.h)){props.push({id:b.id,kind:b.kind,sprite:"assets/sprites/"+b.kind+".svg",style:boxStyle(b.x,b.y,b.w,b.h,20+Math.floor(b.y+b.h))});if((b.kind==="lamp"||b.kind==="tower")&&(mainPowerOn()||b.kind==="tower"))lights.push({id:b.id,style:boxStyle(b.x-3,b.y-3,b.w+6,b.h+6,6)});}
+ for(let z of ZONES)if(tileInView(z.x,z.y,z.w,z.h))rooms.push({id:z.id,name:z.name,style:{left:z.x*TILE+"px",top:(z.y+z.h-.1)*TILE+"px",width:z.w*TILE+"px"}});
+ mapProps=props;mapRooms=rooms;mapLights=lights;worldNight=timeIn(360,1140)?0:timeIn(345,360)||timeIn(1140,1260)?.1:isLightsOut()?.34:.22;weatherClass=omGame.weather.toLowerCase();
+}
+// Actions available on a person or fixture: label, availability and the reason when unavailable.
+function actionCardsFor(type,id){
+ let cards=[];
+ if(type==="person"){let c=actorById(id),d=c?inmateDef(c.id):null;
+  for(let f of forceCardsFor(c))cards.push({id:f.id,label:f.label,hint:f.hint,disabled:f.disabled,target:f.target,social:false,force:true});
+  if(d){for(let type of ["talk","accept","favor","trade","recruit","distract","hold","collect","dismiss"]){if((type==="collect"&&!heldCount(c))||(type==="dismiss"&&!c.crew)||(type==="hold"&&!(c.owed>0)&&!holdableItem()))continue;let labels={talk:"Talk / trade information",accept:"Ask about a favour",favor:"Deliver the promised item",trade:"Buy "+ITEMS[d.trade].name+" · "+tradePrice(c,d.trade)+" scrip",recruit:"Invite to your escape",distract:"Arrange yard distraction · 1 favour",hold:"Ask them to hold contraband · 1 owed favour",collect:"Collect what they are holding"+(heldCount(c)?" · "+heldText(c):""),dismiss:"Ask them to step back from the plan"};let fail=taskFailure({type:type,actor:c.id},false),queued=queuedCount({type:type,actor:c.id}),full=!!queued&&queued>=repeatLimit({type:type}),queuedNote=queued?(full?"Already in your list"+(queued>1?" ×"+queued:"")+".":"In your list ×"+queued+"; press again for another."):"";cards.push({id:type,label:labels[type],queued:queued,disabled:!!fail||full,hint:fail||queuedNote||(omGame.experience?(type==="talk"?"Conversation: +"+(CONTACT_STYLES[d.style].gain+(player().background==="talker"?4:0))+" trust.":type==="trade"?"Restocks after "+d.restock+" game minutes.":"Walk over and speak in person."):"Walk over and speak in person."),target:c.id,social:true});}}
+ }else if(type==="site"){let s=siteById(id);if(!s)return cards;
+  for(let v of s.verbs){let label={inspect:"Inspect",shop:"Commissary window",rest:s.kind==="bunk"?"Lie down and rest":s.kind==="medbed"?"Lie down in the rest bay":"Rest and recover",stash:"Open this stash",observe:"Study the routine",projects:"Plan projects",escape:"View escape routes",craft:"Craft at this station",work:"Complete a work batch · +"+siteWorkPay(s.id)+" scrip",take:"Collect "+(s.item?ITEMS[s.item].name:"supply"),eat:"Eat a meal",buytea:"Buy tea · 3 scrip",assignment:"Read work assignments",evidence:"Copy the quota records"}[v]||v;let menu=["craft","escape","projects","shop"].indexOf(v)>=0;let fail=menu?"":taskFailure({type:v,site:s.id},false),queued=menu?0:queuedCount({type:v,site:s.id}),full=!!queued&&queued>=repeatLimit({type:v,site:s.id}),queuedNote=queued?(full?"Already in your list"+(queued>1?" ×"+queued:"")+".":"In your list ×"+queued+"; press again for another."):"";cards.push({id:v,label:label,queued:queued,disabled:!!fail||full,hint:fail||queuedNote||(menu?"Open the planning panel.":"Requires physical access; can be interrupted."),target:s.id,pay:siteWorkPay(s.id),social:false});}
+ }
+ return cards;
+}
+function projectInspector(){
+ selectedCard=null;actionCards=actionCardsFor(selectedType,selectedId);
+ if(selectedType==="person"){
+  let c=actorById(selectedId);if(!c)return;let z=zoneById(zoneOf(c));let d=inmateDef(c.id);
+  selectedCard={id:c.id,type:"person",name:c.name,subtitle:c.id==="player"?"Your inmate · "+c.background:c.role+" · "+c.trait,description:c.id==="player"?"Routine keeps you fed, rested and on the attendance sheet. Manual orders let you do everything else.":c.bio,portrait:actorPortrait(c),detail:(z?z.label:"Prison grounds")+" · "+c.action,trust:Math.round(c.trust),crew:c.crew,role:c.role,health:Math.round(c.health),energy:Math.round(c.energy),met:c.met,favor:d?(c.favorStage===0?"Ask what they need.":c.favorStage===1?"Bring one "+ITEMS[d.favorItem].name+". "+(GOAL_REASONS[d.favorItem]||""):"Favour completed. A promise kept."+(c.owed?" Owes you "+c.owed+" favour"+(c.owed===1?"":"s")+".":"")):"",memories:c.memories.map(function(m){return {text:m.text,kind:m.kind||"note"};}),profile:c.role==="inmate"?profileCard(c):null,relations:c.role==="inmate"?relationText(c.id):"",holding:c.role==="inmate"&&heldCount(c)?"Holding for you: "+heldText(c):""};
+
+ }else if(selectedType==="site"){
+  let s=siteById(selectedId);if(!s)return;let z=zoneById(s.zone);selectedCard={id:s.id,type:"site",name:castText(s.name),subtitle:z?z.label:"Prison grounds",description:castText(s.description),portrait:"assets/sprites/"+s.kind+".svg",detail:nearSite(player(),s.id)?"Within reach":"Actions will walk your inmate here first.",role:"site",trust:0,memories:[]};
+
+ }else if(selectedType==="door"){
+  for(let d of omGame.doors)if(d.id===selectedId)selectedCard={id:d.id,type:"door",name:d.label,subtitle:"Access policy · "+d.kind,description:doorPasses(accessProfile(player()),d)?"Your current access profile permits this door. It opens when you reach it.":"This route is locked to your current access profile. Work doors require the correct assignment during a shift. Perimeter gates require an active escape route.",portrait:"assets/sprites/door-closed.svg",detail:"Door animation does not change the navigation topology.",role:"door",trust:0,memories:[]};
+ }
+}
+function waitText(minutes){let m=Math.max(0,Math.ceil(minutes)),h=Math.floor(m/60),r=m%60;return (h?h+" h "+(r?r+" min":""):r+" min").trim()+(m>=720?" (tomorrow)":"");}
+function projectShop(){
+ let near=nearSite(player(),"canteen");
+ shopCards=SHOP.map(function(d){let fail=shopFailure(d.id,true),left=Math.max(0,d.limit-shopSold(d.id)),queued=queuedCount({type:"buy",site:"canteen",line:d.id});return {id:d.id,name:d.name,price:d.price,description:d.description,left:left,limit:d.limit,disabled:!!fail,near:near,label:near?"Buy":"Queue",reason:fail||(queued?"In your list ×"+queued+" · ":"")+(left+" of "+d.limit+" left today"+(near?".":"; the order walks to the counter."))};});
+ shopCard={near:near,scrip:omGame.scrip,status:near?"Within reach · "+omGame.scrip+" scrip":omGame.scrip+" scrip · orders walk to the meal counter"};
+}
+function projectInventory(){
+ projectShop();let bag=omGame.inventory,keys=Object.keys(bag),a=[];for(let id of keys)if(bag[id]>0){let d=ITEMS[id];a.push({id:id,name:d.name,count:bag[id],kind:d.kind,description:d.description,icon:"assets/sprites/icon-"+d.icon+".svg",bulk:d.bulk});}inventoryCards=a;inventorySummary=goodsBulk(bag)+" / "+INVENTORY_CAPACITY+" pocket spaces";
+ stashChoiceCards=STASHES.map(function(d){return {id:d.id,name:d.name,site:d.site,near:nearSite(player(),d.site),selected:d.id===selectedStash,count:goodsBulk(omGame.stashes[d.id]),capacity:d.capacity};});
+ let stash=stashDef(selectedStash)||STASHES[0],goods=omGame.stashes[stash.id];stashCards=Object.keys(goods).filter(function(id){return goods[id]>0;}).map(function(id){return {id:id,name:ITEMS[id].name,count:goods[id],icon:"assets/sprites/icon-"+ITEMS[id].icon+".svg",disabled:!nearSite(player(),stash.site)||!inventoryRoom(id,1)};});
+ cellCard={name:stash.name,near:nearSite(player(),stash.site),site:stash.site,id:stash.id,summary:goodsBulk(goods)+" / "+stash.capacity+" spaces",risk:Math.round(stash.risk*(stash.id==="cell"&&projectReady("niche")?.35:1)*100)};
+ recipeCards=RECIPES.map(function(r){let fail=taskFailure({type:"craft",recipe:r.id,site:r.site,paid:false},false);return {id:r.id,name:r.name,description:r.description,cost:goodsText(r.cost),site:siteById(r.site).name,siteId:r.site,seconds:r.work,disabled:!!fail,reason:fail||"Ready to make at the station.",icon:"assets/sprites/icon-"+r.output+".svg"};});
+ projectCards=PROJECTS.map(function(d){let s=projectState(d.id),fail=projectFailure(d.id);return {id:d.id,name:d.name,subtitle:d.subtitle,description:castText(d.description),site:siteById(d.site).name,siteId:d.site,cost:goodsText(d.cost),tools:d.requires.length?d.requires.map(function(id){return ITEMS[id].name;}).join(", "):"No reusable tool required",progress:s?Math.round(s.progress/d.work*100):0,bar:percentStyle(s?s.progress/d.work*100:0),complete:!!s&&s.complete,paid:!!s&&s.paid,seconds:Math.ceil((d.work-(s?s.progress:0))/projectRate(d.id)),disabled:!!fail,reason:fail||"Ready. Work can be paused and resumed."};});
+}
+let routePlan=null,routeSupplyCards=[],shopCards=[],shopCard=null;
+function projectRoutePlan(){
+ let r=routeById(omGame.selectedRoute);routePlan=null;routeSupplyCards=[];if(!r)return;
+ let d=projectById(r.project),s=projectState(d.id),needs={};
+ if(!s||!s.complete){
+  if(!s||!s.paid)for(let id of Object.keys(d.cost))needs[id]=d.cost[id];
+  for(let id of d.requires)needs[id]=(needs[id]||0)+1;
+ }
+ if(r.id==="maintenance"){needs.uniform=Math.max(needs.uniform||0,1);needs.pass=Math.max(needs.pass||0,1);}
+ if(r.id==="paper"&&s&&s.complete)needs.release=1;
+ for(let id of Object.keys(needs)){
+  let carried=itemCount(id),stored=totalItemCount(id)-carried,sources=[],site="",recipe="";
+  for(let stash of STASHES)if(omGame.stashes[stash.id][id]){sources.push(stash.name+" ×"+omGame.stashes[stash.id][id]);if(!site)site=stash.site;}
+  for(let supply of SITES)if(supply.item===id){sources.push(supply.name);if(!site)site=supply.id;}
+  for(let craft of RECIPES)if(craft.output===id){recipe=craft.id;sources.push("Craft: "+goodsText(craft.cost)+" at "+siteById(craft.site).name);if(!site)site=craft.site;}
+  routeSupplyCards.push({id:id,name:ITEMS[id].name,needed:needs[id],carried:carried,stored:stored,done:carried>=needs[id],missing:Math.max(0,needs[id]-carried-stored),source:sources.join(" · ")||"Ask inmate contacts or inspect the prison fixtures.",site:site,recipe:recipe});
+ }
+ let start=r.id==="maintenance"?840:r.id==="cargo"?810:r.id==="paper"?480:0,end=r.id==="maintenance"?990:r.id==="cargo"?870:r.id==="paper"?1080:1440;
+ let open=timeIn(start,end),wait=(start-minuteNow()+1440)%1440;
+ routePlan={name:r.name,project:d.name,projectId:d.id,site:d.site,intelSite:findIntelSite(r.intel),known:knownIntel(r.intel),complete:!!s&&s.complete,paid:!!s&&s.paid,progress:Math.round((s?s.progress:0)/d.work*100),window:start===0&&end===1440?"No daily departure window":clockText(start)+"–"+clockText(end)+(open?" · Open now":" · Opens in "+waitText(wait)),reason:escapeFailure(r.id)||"Ready to begin at "+siteById(r.site).name+".",projectReason:projectFailure(d.id),wearing:r.id!=="maintenance"||hasUniformPass()};
+}
+function projectRoutes(){
+ if(activePanel==="escape")projectRoutePlan();
+ routeSelection=omGame.selectedRoute;if(activePanel==="escape")routeCards=ROUTES.map(function(r){let fail=escapeFailure(r.id);return {id:r.id,name:r.name,tag:r.tag,description:r.description,risk:r.risk,pace:r.pace||"",known:knownIntel(r.intel),rumor:!!omGame.knowledge[r.intel],prepared:projectReady(r.project),project:projectById(r.project).name,projectId:r.project,site:r.site,siteName:siteById(r.site).name,selected:omGame.selectedRoute===r.id,disabled:!!fail,reason:fail||"Ready to attempt. Your inmate will walk to the start.",intelSite:findIntelSite(r.intel)};});
+ let e=omGame.escape;escapeCard=e?{name:routeById(e.route).name,phase:e.phase,ready:!!e.ready,route:e.route,alarm:e.alarm,body:e.phase==="transit"?(e.route==="cargo"?(e.departed?"The truck is crossing the perimeter.":"Hidden until the 14:30 departure. Inspection fails at 60+ personal suspicion or during lockdown."):"Travelling through the completed underground route."):"Reach the marked extraction point. Wait for your crew or choose Leave prison.",progress:percentStyle(e.transitProgress*100),crew:e.members.length,exit:routeById(e.route).exit,powerRemaining:Math.max(0,Math.ceil(omGame.power.offUntil-omGame.minutes))}:null;
+}
+function findIntelSite(id){for(let s of SITES)if(s.intel===id)return s.id;return "noticeboard";}
+function profileCard(c){let p=profileOf(c);return {traits:p.traits.map(function(t){return TRAITS[t]?TRAITS[t].name:t;}),traitNotes:p.traits.map(function(t){return TRAITS[t]?TRAITS[t].name+": "+TRAITS[t].text:t;}),skill:SKILLS[p.skill]?SKILLS[p.skill].name:"",skillNote:SKILLS[p.skill]?"Knows "+SKILLS[p.skill].line+"; shares it at 30 trust.":"",weakness:WEAKNESSES[p.weakness]?WEAKNESSES[p.weakness].name+": "+WEAKNESSES[p.weakness].text:"",bias:BIASES[p.bias]?BIASES[p.bias].name+": "+BIASES[p.bias].text:""};}
+function projectSocial(){
+ let a=[];for(let c of omGame.people)if(c.role==="player"||c.role==="inmate"){let z=zoneById(zoneOf(c)),d=inmateDef(c.id);a.push({id:c.id,name:c.name,short:c.short,portrait:actorPortrait(c),role:c.role,trust:Math.round(c.trust),met:c.met,crew:c.crew,location:z?z.label:"Grounds",action:c.action,job:c.job,trait:c.trait,traits:c.role==="inmate"?profileCard(c).traits.join(" · "):"",skill:c.role==="inmate"?profileCard(c).skill:"",relations:c.role==="inmate"?relationText(c.id):"",selected:c.id===selectedId,state:c.crewState,favor:d?(c.favorStage===1?"Needs "+ITEMS[d.favorItem].name:c.favorStage===2?"Favour completed":"Has a favour to ask"):"Your inmate"});}
+ inmateCards=a.filter(function(c){return c.role!=="player";});crewSummary=crewMembers().length+" / 3 allies · "+omGame.favors+" favours available";
+}
+function projectCrewStrip(){
+ crewCards=omGame.people.filter(function(c){return !c.escaped&&(c.role==="player"||c.crew);}).map(function(c){return {id:c.id,name:c.name,short:c.short,role:c.role,action:c.action,portrait:actorPortrait(c),selected:c.id===selectedId};});
+}
+function projectIntel(){
+ let keys=Object.keys(omGame.knowledge);keys.sort();intelCards=keys.map(function(id){let k=omGame.knowledge[id];return {id:id,title:k.title,body:k.body,status:k.confidence,count:k.count,site:findIntelSite(id)};});knownSummary=keys.length+" notebook entries · observation is not omniscience";
+ securityCards=CAMERAS.map(function(c){return {id:c.id,name:c.name,known:fullSecurity||knownIntel(c.id),on:cameraOn(c),circuit:c.backup?"Emergency circuit":"Main circuit",description:c.backup?"Operates during a main-power fault.":"Offline when the main circuit fails.",status:Math.round((omGame.cameraNotice||{})[c.id]||0)};});
+ evidenceCards=omGame.evidence.map(function(e){return {id:e.id,title:e.title,status:e.resolved?"Archived":e.suspect==="player"?"Linked to you":"Unattributed",strength:e.strength,active:!e.resolved};});logCards=omGame.chronicle.slice(0,35);
+}
+function projectRoutine(){
+ let now=routineNow();routineCards=SCHEDULE.map(function(s){return {id:s.id,name:s.name,time:clockText(s.start)+" – "+clockText(s.end),hint:s.hint,current:s.id===now.id};});
+ workCards=JOBS.map(function(j){let unlocked=!j.unlock||omGame.stats.work>=2||(player().background==="clerk"&&j.id==="records")||(player().background==="technician"&&j.id==="maintenance");return {id:j.id,name:j.name,description:"Earn "+workPay(j.id)+" scrip per batch. "+(castText(j.hint)||("Access to "+j.name+" during the work shifts.")),colleagues:omGame.people.filter(function(c){return c.role==="inmate"&&c.job===j.id;}).map(function(c){return c.short;}).join(", "),selected:player().job===j.id,disabled:!unlocked||!nearSite(player(),"noticeboard"),reason:!unlocked?"Complete two work batches to qualify.":!nearSite(player(),"noticeboard")?"Visit the work noticeboard to change assignment.":"Available at this noticeboard."};});jobSummary="Assigned to "+jobFor(player().job).name+" · "+omGame.stats.work+" completed batches";
+ roomCards=ZONES.map(function(z){let site=null;for(let s of SITES)if(s.zone===z.id){site=s.id;break;}return {id:z.id,name:z.label,description:z.description,site:site||"noticeboard",x:z.anchor.x,y:z.anchor.y,access:z.access};});
+}
+function refreshAll(){
+ viewRevision++;
+ backgroundCards=BACKGROUNDS.map(function(d){return {id:d.id,name:d.name,tag:d.tag,description:d.description,selected:d.id===backgroundChoice};});
+ gameplayClass=(reducedMotion?" reduce-motion":"")+(highContrast?" high-contrast":"");panelTitle=PANEL_TITLES[activePanel]||"Greywall";
+ if(!omGame){viewDirty=false;return;}
+ projectSeededStory();let p=player(),r=routineNow(),z=zoneById(zoneOf(p));let next=SCHEDULE[(SCHEDULE.indexOf(r)+1)%SCHEDULE.length];
+ hud={alarm:currentAlert()>=3||!!omGame.riot,autoDay:!!omGame.autoDay,autoAction:p.action,day:dayNow(),time:clockText(minuteNow()),routine:r.name,next:next.name+" · "+clockText(next.start),routineHint:r.hint,scrip:omGame.scrip,favors:omGame.favors,suspicion:Math.round(omGame.personalSuspicion),heat:Math.round(omGame.heat),alert:alertName(currentAlert()),alertLevel:currentAlert(),weather:omGame.weather,power:mainPowerOn()?"Main online":"Main fault · "+Math.ceil(omGame.power.offUntil-omGame.minutes)+" min",mode:p.mode==="routine"?"Routine":"Manual",zone:z?z.label:"Prison grounds",energy:Math.round(p.energy),food:Math.round(p.food),stress:Math.round(p.stress),notice:Math.round(p.notice),daylight:timeIn(360,1140),lightsOut:isLightsOut(),uniform:omGame.wearing,guardUniform:!!omGame.wearingGuard,hasGuardUniform:itemCount("guardUniform")>0,dragging:p.dragging?actorById(p.dragging).short:"",riot:omGame.riot?zoneById(omGame.riot.zone).label:"",detainedWhere:p.detainedWhere||"isolation",sprint:omGame.sprinting,version:OM_VERSION};
+ playerCard={name:p.name,portrait:actorPortrait(p),action:p.action,mode:p.mode,health:Math.round(p.health),energy:Math.round(p.energy),food:Math.round(p.food),stress:Math.round(p.stress),healthBar:percentStyle(p.health),energyBar:percentStyle(p.energy),foodBar:percentStyle(p.food),stressBar:percentStyle(p.stress),noticeBar:percentStyle(p.notice),detained:p.detainedUntil>omGame.minutes,detention:Math.max(0,Math.ceil(p.detainedUntil-omGame.minutes))};
+ let ch=CHAPTERS[omGame.chapter];chapterCard={title:ch.title,line:ch.line};let tests=chapterTests(omGame.chapter);goalCards=ch.goals.map(function(text,i){return {id:i,text:text,done:tests[i]};});
+ projectCurrentActivity();projectNextStep();projectGuide();
+ searchCard=omGame.search?{name:stashDef(omGame.search.stash).name,stage:omGame.search.stage,when:omGame.search.stage==="announced"?"At "+clockText(omGame.search.at):"Officer en route"}:null;
+ eventCard=omGame.challenge?{name:actorById(omGame.challenge.guard).name,reason:omGame.challenge.reason,pass:hasUniformPass()&&!(wearingGuardUniform()&&uniformAlertActive())}:null;
+ endingCard=omGame.ending;statusText=omGame.lastAnnouncement||"GREYWALL CIVIL DETENTION ANNEX K-12 · Routine creates opportunity.";
+ debugText="24 actors · "+pathRequests+" path requests · "+pathHits+" cache hits";
+ projectWorld();refreshActors();projectRoutes();projectCrewStrip();projectAttendance();if(contextMenu)refreshContextMenu();
+ // Hidden panel cards are derived on opening; the world/HUD and escape banner stay live.
+ if(activePanel==="inspect")projectInspector();
+ if(activePanel==="inventory"||activePanel==="schemes")projectInventory();
+ if(activePanel==="crew")projectSocial();
+ if(activePanel==="security"||activePanel==="notebook")projectIntel();
+ if(activePanel==="routine")projectRoutine();
+ if(activePanel==="map")projectDirectory();
+ viewDirty=false;
+}
+function selectStash(id){if(stashDef(id)){selectedStash=id;refreshAll();}}
+let directoryQuery="",directoryFilter="all",directoryCards=[],attendanceCard=null;
+function setDirectoryFilter(id){if(["all","supplies","work","stashes","intel"].indexOf(id)>=0){directoryFilter=id;dirty();}}
+function projectDirectory(){
+ let profile=accessProfile(player());
+ directoryCards=SITES.map(function(s){let zone=zoneById(s.zone),door=null;for(let d of omGame.doors)if(d.job===s.zone&&d.kind!=="cell"&&d.kind!=="perimeter")door=d;
+  let allowed=!door||doorPasses(profile,door),stash=false;for(let d of STASHES)if(d.site===s.id)stash=true;
+  let name=castText(s.name),description=castText(s.description),item=s.item?ITEMS[s.item].name:"",cooldown=Math.max(0,Math.ceil((omGame.siteCooldown[s.id]||0)-omGame.minutes));
+  return {id:s.id,name:name,zone:zone?zone.label:"Grounds",description:description,item:item,work:s.verbs.indexOf("work")>=0,stash:stash,intel:!!s.intel,allowed:allowed,access:allowed?"Door access permitted":"Door access restricted",supply:s.verbs.indexOf("take")>=0&&!!s.item,stock:cooldown?"Restocks in "+cooldown+" game minutes":"Supply available",search:(name+" "+description+" "+item+" "+(zone?zone.label:"")).toLowerCase()};
+ });
+}
+function matchingDirectoryCards(){
+ let query=String(directoryQuery).trim().toLowerCase();return directoryCards.filter(function(s){return (!query||s.search.indexOf(query)>=0)&&(directoryFilter==="all"||directoryFilter==="supplies"&&s.supply||directoryFilter==="work"&&s.work||directoryFilter==="stashes"&&s.stash||directoryFilter==="intel"&&s.intel);});
+}
+function projectAttendance(){
+ attendanceCard=null;let p=player();if(p.mode!=="manual"||omGame.escape||omGame.over||p.detainedUntil>omGame.minutes)return;
+ let now=minuteNow();for(let r of SCHEDULE)if(r.kind==="count"){
+  let due=r.start+diffSettings().grace;if(now<r.start-30||now>due||omGame.countKeys[dayNow()+":"+r.id])continue;
+  let present=p.x>=22&&p.x<=61&&p.y>=31&&p.y<=34.8;
+  attendanceCard={name:r.name,time:clockText(due),remaining:Math.max(0,Math.ceil(due-now)),present:present,decoy:projectReady("decoy"),body:present?"You are in the count square. Stay until attendance is recorded.":"Return to routine to walk to count. This interrupts your current order."};return;
+ }
+}

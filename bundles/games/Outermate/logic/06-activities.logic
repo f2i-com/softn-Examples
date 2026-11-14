@@ -1,0 +1,106 @@
+// Shared physical routines for automatic inmates and manually requested meals.
+let mealSeats=[],mealQueuePoints=[],dutySlots={},socialStations={},socialPlans={},socialPlanKey="",groupStations={};
+const MEAL_COUNTERS=[{x:44,y:39},{x:46,y:39},{x:48,y:39}];
+const WORK_DUTIES={laundry:["Loading washers","Folding linen","Stacking clean laundry"],workshop:["Sorting salvage","Assembling parts","Checking finished pieces"],kitchen:["Preparing ingredients","Serving meals","Washing trays"],maintenance:["Checking meters","Servicing equipment","Logging inspections"],records:["Sorting files","Reviewing forms","Filing records"],loading:["Sorting freight","Packing crates","Checking manifests"]};
+function activityIndex(c){for(let i=0;i<omGame.people.length;i++)if(omGame.people[i].id===c.id)return i;return 0;}
+function activeMealRoutine(c,current){
+ if(!current)current=routineNow();if(current.kind==="eat")return current;
+ if(c.meal&&c.meal.phase!=="done")for(let r of SCHEDULE)if(r.kind==="eat"&&c.meal.key===dayNow()+":"+r.id&&minuteNow()>=r.end&&minuteNow()<r.end+60)return r;
+ return null;
+}
+function rebuildActivityStations(){
+ mealSeats=[];mealQueuePoints=[];dutySlots={};socialStations={};socialPlans={};socialPlanKey="";let used={};
+ function seat(x,y,face){let id=tileId(x,y);if(!onMap(x,y)||navBlocked[id]||used[id]||MEAL_COUNTERS.some(function(p){return p.x===x&&p.y===y;}))return;used[id]=true;mealSeats.push({x:x,y:y,face:face});}
+ for(let b of omGame.props)if(b.kind==="table"&&b.x>=41&&b.x<63&&b.y>=35&&b.y<49){
+  for(let x=b.x;x<b.x+b.w;x++){seat(x,b.y-1,"s");seat(x,b.y+b.h,"n");}
+  for(let y=b.y;y<b.y+b.h;y++){seat(b.x-1,y,"e");seat(b.x+b.w,y,"w");}
+ }
+ for(let y=40;y<=46;y++)for(let x=49;x<=53;x++)if(!navBlocked[tileId(x,y)]&&!used[tileId(x,y)])mealQueuePoints.push({x:x,y:y});
+ for(let j of JOBS){let s=siteById(j.site),z=zoneById(s.zone),slots=[];
+  for(let radius=0;radius<=4;radius++)for(let dy=-radius;dy<=radius;dy++)for(let dx=-radius;dx<=radius;dx++){
+   if(Math.max(Math.abs(dx),Math.abs(dy))!==radius)continue;let x=s.ax+dx,y=s.ay+dy;
+   if(x<=z.x||y<=z.y||x>=z.x+z.w-1||y>=z.y+z.h-1||navBlocked[tileId(x,y)]||!hasLineOfSight(x+.5,y+.5,s.ax+.5,s.ay+.5))continue;
+   slots.push({x:x,y:y});
+  }dutySlots[j.id]=slots;
+ }
+ // Group activities: up to four at the yard hoop, up to six around the small association table.
+ groupStations={};let taken={};
+ {let z=zoneById("yard"),spots=[];for(let b of omGame.props)if(b.kind==="hoop"&&zoneAt[tileId(b.x,b.y)]==="yard"){let y=b.y+b.h+1;/* one clear row keeps the hoop visible above the players */for(let x=b.x-1;x<=b.x+b.w;x++){let id=tileId(x,y);if(x>z.x&&x<z.x+z.w-1&&y<z.y+z.h-1&&!navBlocked[id]&&!doorAt[id]&&!taken[id]){taken[id]=true;spots.push({x:x,y:y,face:"n"});}}}groupStations.yard={kind:"hoops",spots:spots.slice(0,4)};}
+ {let z=zoneById("association"),spots=[];for(let b of omGame.props)if(b.kind==="table"&&b.w<=3&&zoneAt[tileId(b.x,b.y)]==="association"){for(let x=b.x;x<b.x+b.w;x++)for(let side of [{y:b.y-1,face:"s"},{y:b.y+b.h,face:"n"}]){let id=tileId(x,side.y);if(side.y>z.y&&side.y<z.y+z.h-1&&!navBlocked[id]&&!doorAt[id]&&!taken[id]){taken[id]=true;spots.push({x:x,y:side.y,face:side.face});}}}groupStations.association={kind:"cards",spots:spots.slice(0,6)};}
+ for(let id of ["yard","association"]){let z=zoneById(id),spots=[];
+  for(let y=z.y+2;y<z.y+z.h-1;y+=3)for(let x=z.x+2;x<z.x+z.w-2;x+=3){
+   if(!navBlocked[tileId(x,y)]&&!navBlocked[tileId(x+1,y)]&&!doorAt[tileId(x,y)]&&!doorAt[tileId(x+1,y)]&&!taken[tileId(x,y)]&&!taken[tileId(x+1,y)])spots.push({a:{x:x,y:y},b:{x:x+1,y:y}});
+  }socialStations[id]=spots;
+ }
+}
+// Plans are temporary, derived from the schedule, and rebuilt after load/world changes.
+// Pair once per social interval instead of searching every actor on every tick.
+function socialAvailable(c){return c&&(c.role==="inmate"||(c.role==="player"&&omGame.autoDay&&c.mode==="routine"&&!omGame.escape))&&!c.escaped&&c.detainedUntil<=omGame.minutes&&c.crewState==="routine"&&c.pauseUntil<=omGame.elapsed;}
+function tickSocialLife(c,dt,r){
+ if(!socialAvailable(c))return false;
+ let round=Math.floor(Math.max(0,minuteNow()-r.start)/60),key=dayNow()+":"+r.id+":"+round;
+ if(socialPlanKey!==key){
+  socialPlanKey=key;socialPlans={};let cast=omGame.people.filter(function(a){return a.role==="inmate"||(a.role==="player"&&omGame.autoDay&&a.mode==="routine");}),spots=socialStations[r.zone]||[];
+  if(cast.length>2){let offset=(dayNow()+round)%cast.length;cast=cast.slice(offset).concat(cast.slice(0,offset));}
+  // A rotating group takes the hoop or the card table; everyone else pairs off.
+  let group=groupStations[r.zone],members=[];
+  if(group&&group.spots.length>=2&&cast.length>=4){let n=Math.min(group.spots.length,Math.floor(cast.length/2));members=cast.slice(0,n);cast=cast.slice(n);
+   for(let i=0;i<n;i++){let s=group.spots[i];socialPlans[members[i].id]={group:group.kind,target:{x:s.x,y:s.y},face:s.face,peers:members.map(function(m){return m.id;}),joined:false};}}
+  let paired=pairSocial(cast),pairs=Math.min(paired.length,spots.length);
+  for(let i=0;i<pairs;i++){let a=paired[i][0],b=paired[i][1],spot=spots[(Math.floor(i*spots.length/pairs)+round)%spots.length];socialPlans[a.id]={peer:b.id,target:spot.a};socialPlans[b.id]={peer:a.id,target:spot.b};}
+  // Spread the new walks over a second so no single host call plans every route.
+  let stagger=0;for(let id of Object.keys(socialPlans)){let a=actorById(id);if(a)a.retryAt=Math.max(a.retryAt,omGame.elapsed+(stagger++%12)*0.1);}
+ }
+ let plan=socialPlans[c.id];if(!plan)return false;
+ if(plan.group){
+  c.action=plan.group==="hoops"?"Heading to the hoop":"Joining the card table";
+  if(!approachActivity(c,plan.target,dt))return true;
+  c.headingX=plan.face==="e"?1:plan.face==="w"?-1:0;c.headingY=plan.face==="s"?1:plan.face==="n"?-1:0;
+  c.action=plan.group==="hoops"?"Shooting hoops":"Playing cards";c.stress=Math.max(0,c.stress-dt*.1);
+  if(c.role==="player"&&!plan.joined){plan.joined=true;let names=[];for(let id of plan.peers){let a=actorById(id);if(!a||a.id==="player")continue;names.push(a.short);if(!a.met){a.met=true;omGame.stats.met++;}a.trust=clamp(a.trust+1,0,100);}
+   if(names.length)logEvent(plan.group==="hoops"?"A game in the yard":"A hand of cards",(plan.group==="hoops"?"Shooting hoops with ":"Playing cards with ")+names.join(", ")+". +1 trust each.","social");}
+  let slot=Math.floor(omGame.elapsed/4);if(slot!==Math.floor((omGame.elapsed-dt)/4)&&plan.peers[(slot+round)%plan.peers.length]===c.id)speak(c,pickLine(plan.group==="hoops"?HOOP_LINES:CARD_LINES,slot+activityIndex(c)),3);
+  return true;
+ }
+ let peer=actorById(plan.peer);
+ if(!socialAvailable(peer))return false;
+ c.action="Walking over to "+peer.short;
+ if(!approachActivity(c,plan.target,dt))return true;
+ let other=socialPlans[peer.id];
+ if(!other||sqDistance(peer.x,peer.y,other.target.x+.5,other.target.y+.5)>.09){c.action="Waiting for "+peer.short;return true;}
+ let dx=peer.x-c.x,dy=peer.y-c.y,length=Math.sqrt(dx*dx+dy*dy)||1;c.headingX=dx/length;c.headingY=dy/length;
+ let topics=["the next match","canteen food","news from home","work stories","the weather","the officers","old times","rumours"];
+ let topic=topics[(activityIndex(c)+activityIndex(peer)+round)%topics.length];c.action="Chatting with "+peer.short+" about "+topic;
+ let slot=Math.floor(omGame.elapsed/4);if(slot!==Math.floor((omGame.elapsed-dt)/4)&&((slot%2===0)===(activityIndex(c)<activityIndex(peer))))speak(c,pickLine(CHAT_LINES[topic],slot+activityIndex(c)+round),3.4);
+ if(c.role==="player"&&!peer.met){peer.met=true;peer.trust=clamp(peer.trust+2,0,100);omGame.stats.met++;learnIntel(inmateDef(peer.id).rumor,"rumor",false);logEvent("A familiar face",peer.name+" shares a little news during social time. +2 trust.","social");}
+ c.stress=Math.max(0,c.stress-dt*.12);return true;
+}
+function dutyTarget(c){let slots=dutySlots[c.job]||[],rank=0;for(let a of omGame.people){if(a.id===c.id)break;if((a.role==="inmate"||a.role==="player")&&a.job===c.job)rank++;}return slots[rank%Math.max(1,slots.length)]||{x:jobFor(c.job)?siteById(jobFor(c.job).site).ax:72,y:jobFor(c.job)?siteById(jobFor(c.job).site).ay:45};}
+function approachActivity(c,pt,dt){
+ if(sqDistance(c.x,c.y,pt.x+.5,pt.y+.5)<.04){clearPath(c);return true;}
+ if((c.pathCursor>=c.path.length||!c.destination||c.destination.x!==pt.x||c.destination.y!==pt.y)&&omGame.elapsed>=c.retryAt){if(!routeTo(c,pt.x,pt.y))c.retryAt=omGame.elapsed+1.5;}
+ walkPath(c,dt);return sqDistance(c.x,c.y,pt.x+.5,pt.y+.5)<.04;
+}
+function tickMeal(c,dt,r){
+ if(!mealSeats.length||!mealQueuePoints.length){c.action="Waiting for canteen seating";return false;}
+ let key=dayNow()+":"+r.id,index=activityIndex(c);
+ if(!c.meal||c.meal.key!==key){c.meal={key:key,phase:"queue",lane:index%MEAL_COUNTERS.length,seat:index%mealSeats.length,progress:0};c.retryAt=Math.max(c.retryAt,omGame.elapsed+(index%12)*0.1);}
+ let m=c.meal,seat=mealSeats[m.seat%mealSeats.length],counter=MEAL_COUNTERS[m.lane%MEAL_COUNTERS.length];
+ if(m.phase==="queue"){
+  c.action="Queuing for food";if(!approachActivity(c,mealQueuePoints[index%mealQueuePoints.length],dt))return false;
+  let busy=omGame.people.some(function(a){return a.id!==c.id&&a.meal&&a.meal.key===key&&a.meal.lane===m.lane&&(a.meal.phase==="counter"||a.meal.phase==="serve")&&(a.mode==="routine"||a.role==="inmate"&&a.crewState==="routine"&&a.pauseUntil<=omGame.elapsed||a.task&&a.task.type==="eat")&&!a.escaped&&a.detainedUntil<=omGame.minutes;});
+  if(!busy){m.phase="counter";clearPath(c);}return false;
+ }
+ if(m.phase==="counter"){c.action="Collecting a meal tray";if(approachActivity(c,counter,dt)){m.phase="serve";m.progress=0;}return false;}
+ if(m.phase==="serve"){
+  if(!approachActivity(c,counter,dt))return false;c.action="Being served food";m.progress+=dt;
+  if(m.progress>=1.2){m.phase="seat";m.progress=0;clearPath(c);}return false;
+ }
+ if(m.phase==="seat"){c.action="Carrying tray to a seat";if(approachActivity(c,seat,dt)){m.phase="eat";m.progress=0;}return false;}
+ if(m.phase==="eat"){
+  if(!approachActivity(c,seat,dt))return false;c.action="Eating at the table";c.headingX=seat.face==="e"?1:seat.face==="w"?-1:0;c.headingY=seat.face==="s"?1:seat.face==="n"?-1:0;
+  m.progress=Math.min(8,m.progress+dt);c.food=Math.min(100,c.food+dt*10);c.stress=Math.max(0,c.stress-dt*.5);
+  if(m.progress>=8){m.phase="done";c.action="Finished meal";dirty();return true;}return false;
+ }
+ c.action="Finished meal";return true;
+}

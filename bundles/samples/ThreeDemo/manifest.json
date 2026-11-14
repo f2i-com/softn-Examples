@@ -1,0 +1,32 @@
+{
+  "name": "ThreeDemo",
+  "version": "1.1.0",
+  "description": "Blender PBR centerpiece orrery & seven sculpted shapes drifting over a mirrored grid floor: drag to orbit, click any relic or shape to inspect, add relics and shapes",
+  "main": "ui/main.ui",
+  "icon": "assets/icon.svg",
+  "files": {
+    "ui": [
+      "ui/main.ui"
+    ],
+    "logic": [
+      "logic/main.logic"
+    ],
+    "assets": [
+      "assets/icon.svg",
+      "assets/env/studio-dusk.hdr",
+      "assets/models/chrono-orrery.glb",
+      "assets/models/crystal-relic.glb"
+    ]
+  },
+  "config": {
+    "window": {
+      "title": "3D Scene",
+      "width": 900,
+      "height": 750
+    },
+    "theme": {
+      "primary": "#f59e0b",
+      "mode": "dark"
+    }
+  }
+}

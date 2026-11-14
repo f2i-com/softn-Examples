@@ -1,0 +1,95 @@
+// Relationships are earned through physical meetings, finite favours and commitments.
+function inmateDef(id){for(let i=0;i<INMATES.length;i++)if(INMATES[i].id===id)return omGame&&omGame.experience?omGame.experience.contacts[id]:INMATES[i];return null;}
+function guardDef(id){for(let i=0;i<GUARDS.length;i++)if(GUARDS[i].id===id)return GUARDS[i];return null;}
+function staffDef(id){for(let i=0;i<STAFF.length;i++)if(STAFF[i].id===id)return STAFF[i];return null;}
+function crewMembers(){let a=[];for(let i=0;i<omGame.people.length;i++){let c=omGame.people[i];if(c.crew&&!c.escaped)a.push(c);}return a;}
+function nearPerson(a,b){return !!b&&sqDistance(a.x,a.y,b.x,b.y)<=7&&hasLineOfSight(a.x,a.y,b.x,b.y);}
+function routeToPerson(c,target){
+  if(nearPerson(c,target)){clearPath(c);return true;}
+  let options=[];for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){let x=Math.floor(target.x)+dx,y=Math.floor(target.y)+dy;if(sqDistance(x+0.5,y+0.5,target.x,target.y)>6)continue;if(passableFor(c,x,y)&&hasLineOfSight(x+0.5,y+0.5,target.x,target.y))options.push({x:x,y:y});}
+  options.sort(function(a,b){return sqDistance(a.x,a.y,c.x,c.y)-sqDistance(b.x,b.y,c.x,c.y);});
+  for(let i=0;i<Math.min(12,options.length);i++)if(routeTo(c,options[i].x,options[i].y))return true;return false;
+}
+function requestSocial(id,type){if(["talk","accept","favor","trade","recruit","distract","hold","collect","dismiss"].indexOf(type)<0)return false;return queueTask({type:type,actor:id,duration:3,illegal:0});}
+function completeSocialTask(t,c){
+  let d=inmateDef(c.id),p=player();c.pauseUntil=omGame.elapsed+4;
+  if(t.type==="inspect"){setPanel("day");say(c.short+" is ready to discuss the promise. Choose in your personal story.");}
+  else if(t.type==="talk"){
+    if(!c.met){c.met=true;omGame.stats.met++;}
+    let style=omGame.experience?CONTACT_STYLES[d.style]:null;c.trust=clamp(c.trust+talkGain(c,(style?style.gain:4)+(p.background==="talker"?4:0)),0,100);c.talkAt=omGame.minutes+talkCooldown(c);
+    learnIntel(d.rumor,"rumor",true);remember(c,"Talked with "+p.short+".");onPlayerTalk(c);if(!shareKnowledge(c))say(c.short+": "+(style?style.line+" ":"")+INTEL[d.rumor].body);
+  }else if(t.type==="accept"){
+    c.favorStage=1;say(c.short+" needs one "+ITEMS[d.favorItem].name+". Bring it back in person.");logEvent("A favour for "+c.short,"Bring one "+ITEMS[d.favorItem].name+". This favour can only be completed once.","social");
+  }else if(t.type==="favor"){
+    if(c.favorStage===1&&takeItem(d.favorItem,1)){c.favorStage=2;c.trust=clamp(c.trust+24+(p.background==="medic"?8:0),0,100);omGame.favors++;omGame.stats.favors++;c.owed=(c.owed||0)+1;c.grudge=Math.max(0,(c.grudge||0)-30);rememberKind(c,"A promise kept by "+p.short+".","promise",0);logEvent("A promise kept",c.name+" remembers. +1 favour; trust increased.","social");say(c.short+" trusts you a little more. +1 favour.");playCue("complete");}
+  }else if(t.type==="trade"){
+    let id=d.trade,price=tradePrice(c,id);if(omGame.scrip>=price&&giveItem(id,1)){omGame.scrip-=price;c.tradeAt=omGame.minutes+(d.restock||35);onPlayerTrade(c);say("Traded for "+ITEMS[id].name+" · "+price+" scrip.");}
+  }else if(t.type==="recruit"){
+    c.crew=true;c.crewState="routine";rememberKind(c,"A place in "+p.short+"'s escape plan.","plan",0);onRecruit(c);logEvent("Not alone",c.name+" agreed to consider an escape. Choose a route and ask the crew to meet.","social");say(c.short+" joins your crew. Promises have weight.");
+  }else if(t.type==="distract"){
+    if(omGame.favors>0&&c.crew){omGame.favors--;c.crewState="diversion";c.crewTarget={x:27,y:43};c.routineKey="";clearPath(c);say(c.short+" will start an argument in the yard. Watch for the signal.");}
+  }
+  completeCastTask(t,c);
+  if(t.type!=="inspect")speak(c,reactionLine(t.type,c),4);
+  dirty();
+}
+function requestCrewMeet(){
+  let r=routeById(omGame.selectedRoute);if(!r){say("Choose a route first.");return;}
+  let s=siteById(r.site),pt={x:s.ax,y:s.ay};if(r.id==="cargo"){let d=DOORS.find(function(x){return x.id==="dockDoor";});pt={x:d.x,y:d.y-2};}if(r.id==="blackout"){let z=zoneById("maintenance");pt={x:z.x+z.w+1,y:z.y};}
+  let crew=crewMembers();if(!crew.length){say("No allies recruited yet. Solo escape is always possible.");return;}
+  for(let i=0;i<crew.length;i++){let c=crew[i];if(c.crewState==="caught")continue;if(!hasTrait(c,"bold")&&((currentAlert()>=2&&c.risk>0.65&&c.trust<60)||(hasTrait(c,"cautious")&&currentAlert()>=1))){say(c.short+" will not risk this alert level yet.");continue;}
+    if(profileOf(c).weakness==="nervous"&&currentAlert()>=1&&(dayNow()+activityIndex(c))%3===0){rememberKind(c,"Lost their nerve at the rendezvous.","note",0);say(c.short+" freezes. Nerves.");continue;}c.crewState="meeting";c.crewTarget={x:pt.x,y:pt.y};c.routineKey="";clearPath(c);}
+  logEvent("The meeting point",r.name+": allies are travelling there under their own access permissions. Check who actually arrives.","scheme");dirty();
+}
+function releaseCrew(){for(let i=0;i<omGame.people.length;i++){let c=omGame.people[i];if(c.crew&&!c.escaped&&c.crewState!=="caught"){if(c.crewState==="meeting"&&c.crewTarget&&sqDistance(c.x,c.y,c.crewTarget.x+0.5,c.crewTarget.y+0.5)<=3)rememberKind(c,"Waited at a rendezvous for nothing.","slight",-2);c.crewState="routine";c.routineKey="";clearPath(c);}}dirty();}
+function tickCrew(c,dt){
+  if(c.crewState==="caught"){c.action="Held for questioning";return true;}
+  if(c.crewState==="meeting"||c.crewState==="diversion"){
+    let pt=c.crewTarget;if(!pt)return false;
+    if(sqDistance(c.x,c.y,pt.x+0.5,pt.y+0.5)>3){if(c.pathCursor>=c.path.length&&omGame.elapsed>=c.retryAt){if(!routeTo(c,pt.x,pt.y)){c.action="Waiting for an authorised route";return true;}}walkPath(c,dt);c.action="Going to the meeting point";}
+    else {clearPath(c);if(c.crewState==="diversion"){omGame.distractions.push({id:entityId("div"),x:c.x,y:c.y,until:omGame.elapsed+22,source:c.id});c.crewState="routine";c.routineKey="";logEvent("The agreed distraction",c.short+" has opinions about the yard rules. Nearby officers are on their way.","scheme");playCue("notice");}else c.action="Waiting at rendezvous";}
+    return true;
+  }
+  if(c.crewState==="following"&&omGame.escape){
+    let p=player();if(omGame.escape.phase==="transit"){c.action="Travelling with the plan";return true;}
+    if(sqDistance(c.x,c.y,p.x,p.y)>5){if(omGame.elapsed>=c.retryAt){c.retryAt=omGame.elapsed+1.3;routeNear(c,p.x,p.y,1);}walkPath(c,dt,2.5);}else clearPath(c);
+    c.action="Following the escape";return true;
+  }
+  return false;
+}
+function tickPatrol(c,dt){
+  let d=c.role==="guard"?guardDef(c.id):staffDef(c.id);if(!d)return;
+  if(isDown(c)){c.action="Down";return;}
+  if(c.role==="guard"&&tickRiotGuard(c,dt))return;
+  if(c.role==="guard"&&tickGuardResponse(c,dt))return;
+  if(c.id===ROUNDS_GUARD&&tickRounds(c,dt))return;
+  if(omGame.elapsed<c.pauseUntil){c.action=c.role==="guard"?"Watching":"Taking a moment";return;}
+  let route=d.route,index=c.patrolIndex%route.length;
+  let pt=route[index];
+  if(sqDistance(c.x,c.y,pt[0]+0.5,pt[1]+0.5)<(navBlocked[tileId(pt[0],pt[1])]?2.2:0.6)){c.patrolIndex=(c.patrolIndex+(omGame.patrolReverse?route.length-1:1))%route.length;c.pauseUntil=omGame.elapsed+(d.pause||3);clearPath(c);return;}
+  if(c.pathCursor>=c.path.length&&omGame.elapsed>=c.retryAt){if(!routeTo(c,pt[0],pt[1]))routeNear(c,pt[0],pt[1],1);}
+  walkPath(c,dt,c.role==="guard"?1.9:1.7);c.action=c.role==="guard"?"Patrolling":"On duty";
+}
+function tickPeople(dt){
+  for(let i=0;i<omGame.people.length;i++){
+    let c=omGame.people[i];if(c.escaped)continue;
+    if(c.role==="guard"||c.role==="staff"){tickPatrol(c,dt);continue;}
+    if(c.id==="player"){
+      if(c.detainedUntil>omGame.minutes){c.action="Short-stay isolation";c.energy=Math.min(100,c.energy+dt*0.4);continue;}
+      if(c.detainedUntil>0){releaseFromDetention();continue;}
+      if(omGame.escape&&omGame.escape.phase==="transit"){c.action="In transit";continue;}
+      if(c.dragging)tickDragging(c);
+      if(c.task){c.idleClock=0;tickPlayerTask(dt);continue;}
+      if(c.mode==="routine"&&!omGame.escape){tickRoutine(c,dt);continue;}
+      c.idleClock=0;if(c.pathCursor<c.path.length){let done=walkPath(c,dt);c.action=omGame.sprinting?"Running":"Moving";if(done)c.action="Standing by";}
+    }else if(c.crewState==="caught"){
+      if(c.detainedUntil>omGame.minutes)continue;
+      c.detainedUntil=0;c.crewState="routine";c.trust=Math.max(0,c.trust-3);c.routineKey="";clearPath(c);rememberKind(c,"Questioned after "+player().short+"'s plan.","slight",0);
+      logEvent("Back on the block",c.short+" has returned from questioning. They can join a later plan.","social");
+    }else if(isDown(c)){c.action="Down";continue;}
+    else if(c.rioting&&tickRioter(c,dt))continue;
+    else if(c.crew&&tickCrew(c,dt))continue;
+    else if(omGame.elapsed>=c.pauseUntil)tickRoutine(c,dt);
+    tickGreetings(c);
+  }
+}

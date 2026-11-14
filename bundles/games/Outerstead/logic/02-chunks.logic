@@ -1,0 +1,100 @@
+// Chunks. The world is a grid of MAP_SIZE tiles (96, 192 or 288, chosen on the title screen and fixed per save),
+// made of 96-tile chunks. The home chunk is generated at landing exactly as the original map was; every other chunk
+// is "unmade" (terrain 6: unexplored, impassable, unrendered) until exploration comes within reach of it, when it is
+// generated from its own seed so the same seed always gives the same country whenever it is first seen.
+function chunkOf(v){return Math.floor(v/HOME_SIZE);}
+function chunkKey(cx,cy){return cx+","+cy;}
+function chunkGenerated(cx,cy){return !!(osGame&&osGame.chunks&&osGame.chunks[chunkKey(cx,cy)]);}
+function tileMade(x,y){return onMap(x,y)&&osGame.terrain[tileId(x,y)]!==6;}
+// Feature spots for one chunk: lakes, marsh, ridges, forests and debris by biome, placed inside the chunk, and,
+// for the home chunk, outside the camp clearing.
+function chunkFeatures(ox,oy,rint,home){
+  let biome=osGame.biome,f={lakes:[],marsh:[],ridges:[],forests:[],debris:[]};
+  function spots(n,minR2,maxR2){let out=[],tries=0;while(out.length<n&&tries<80){tries++;let x=rint(ox+6,ox+HOME_SIZE-7),y=rint(oy+6,oy+HOME_SIZE-7);if(home&&Math.abs(x-CENTRE)<27&&Math.abs(y-CENTRE)<25)continue;out.push({x:x,y:y,r2:rint(minR2,maxR2)});}return out;}
+  if(biome==="rust"){f.lakes=spots(1,36,60);f.ridges=spots(2,18,36);f.debris=spots(3,1,1);}
+  else if(biome==="verdant"){f.lakes=spots(3,50,110);f.marsh=spots(4,10,26);f.forests=spots(5,60,150);f.ridges=spots(1,18,30);}
+  else{f.lakes=spots(2,60,100);f.ridges=spots(4,24,64);f.forests=spots(2,40,80);}
+  return f;
+}
+function biomeFeatures(){return chunkFeatures(homeOrigin(),homeOrigin(),randomInt,true);}
+// Regions are real places: the site of each one is cleared ground with its feature drawn on it, in whichever chunk holds it.
+function regionSitesIn(ox,oy){
+  if(!osGame||!osGame.regions)return [];let out=[],list=regionsOf();
+  for(let i=0;i<list.length;i++){let s=regionSite(list[i]);if(s.x>=ox-6&&s.x<ox+HOME_SIZE+6&&s.y>=oy-6&&s.y<oy+HOME_SIZE+6)out.push({x:s.x,y:s.y,feature:list[i].feature,kind:list[i].kind});}
+  return out;
+}
+function nearSite(sites,x,y,r){for(let i=0;i<sites.length;i++){let dx=x-sites[i].x,dy=y-sites[i].y;if(dx*dx+dy*dy<=r*r)return true;}return false;}
+function paintSite(s,rint){
+  let put=function(x,y,kind,amount,res){if(!onMap(x,y)||osGame.terrain[tileId(x,y)]>=3||nodeAtCell[tileId(x,y)])return null;let n=addResourceNode(x,y,kind,amount);if(n&&res){n.resource=res;n.debris=true;}return n;};
+  let ter=function(x,y,type,t){if(!onMap(x,y))return;let i=tileId(x,y);osGame.terrain[i]=type;osGame.groundTiles[i]=t;if(navBlocked&&navBlocked.length===MAP_SIZE*MAP_SIZE)navBlocked[i]=(type===3||type===4)?1:0;if(nodeAtCell[i]){let n=getNode(nodeAtCell[i]);if(n)n.amount=0;nodeAtCell[i]="";}};
+  let x=s.x,y=s.y,f=s.feature;
+  if(f==="wreck"){for(let k=0;k<12;k++)put(x+rint(-3,3),y+rint(-2,2),k<3?"glass":"pile",k<3?2:6,k<3?"":"metal");}
+  else if(f==="spring"){ter(x,y,3,8);ter(x+1,y,3,9);ter(x,y+1,3,8);ter(x+1,y+1,3,9);for(let k=0;k<6;k++)put(x+rint(-3,4),y+rint(-3,4),"berries",8);}
+  else if(f==="beacon"){ter(x,y,4,10);ter(x+1,y,4,11);for(let k=0;k<5;k++)put(x+rint(-3,4),y+rint(-3,3),"glass",2);}
+  else if(f==="waystation"){for(let k=0;k<4;k++)put(x-2+(k%2)*4,y-1+Math.floor(k/2)*3,"stone",12);put(x,y,"pile",6,"metal");}
+  else if(f==="ashcamp"){for(let k=0;k<5;k++){let a=k/5*Math.PI*2;put(Math.round(x+Math.cos(a)*3),Math.round(y+Math.sin(a)*3),"stone",4);}}
+  else if(f==="grove"){for(let gy=-2;gy<=2;gy+=2)for(let gx=-4;gx<=4;gx+=2)put(x+gx,y+gy,"tree",14);}
+}
+// Rasterize each feature only inside its possible bounds. Wobble is in
+// [0.52, 1.48]; share it across all masks without changing seeded RNG draws.
+function chunkFeatureMask(list,ox,oy,scale,wobble){
+  let mask=[];
+  for(let k=0;k<list.length;k++){
+    let f=list[k],radius=Math.ceil(Math.sqrt(f.r2*scale*1.48))+1;
+    let x0=Math.max(ox,f.x-radius),x1=Math.min(ox+HOME_SIZE-1,f.x+radius),y0=Math.max(oy,f.y-radius),y1=Math.min(oy+HOME_SIZE-1,f.y+radius);
+    for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
+      let i=(y-oy)*HOME_SIZE+x-ox;if(mask[i])continue;
+      let w=wobble[i];if(w===undefined){w=featureWobble(x,y);wobble[i]=w;}
+      let dx=x-f.x,dy=y-f.y;if(dx*dx+dy*dy<f.r2*(scale*w))mask[i]=true;
+    }
+  }
+  return mask;
+}
+// Generate one chunk into the tile arrays. The home chunk draws on the simulation RNG (as the original map did, so
+// seeds keep their landings); outer chunks use their own generator so timing of discovery changes nothing.
+function generateChunk(cx,cy,force){
+  if(!osGame)return false;if(!osGame.chunks)osGame.chunks={};
+  if(contextDepth>0&&mainWindowState&&(WX!==mainWindowState.wx||WY!==mainWindowState.wy||MAP_SIZE!==mainWindowState.size)&&chunkInWindow(mainWindowState,cx,cy)){let m=mainWindowState,made=false;if(!chunkGenerated(cx,cy))made=withContext(m,function(){return generateChunk(cx,cy);});if(chunkInWindow({wx:WX,wy:WY,size:MAP_SIZE},cx,cy)&&(made||osGame.terrain[tileId(cx*HOME_SIZE,cy*HOME_SIZE)]===6)){copyChunkFrom(m,cx,cy);pathEpoch++;pathCache={};pathCacheKeys=[];}return made;}
+  let ox=cx*HOME_SIZE,oy=cy*HOME_SIZE;if(ox<WX||oy<WY||ox+HOME_SIZE>WX+MAP_SIZE||oy+HOME_SIZE>WY+MAP_SIZE||(!force&&chunkGenerated(cx,cy)))return false;
+  let home=ox===homeOrigin()&&oy===homeOrigin();if(force&&home)return false;
+  let r=home?null:crewRng(hashSeed(String(osGame.seed>>>0)+"|chunk|"+cx+"|"+cy));
+  let rnd=home?randomUnit:function(){return r.next();},rint=home?randomInt:function(a,b){return r.int(a,b);};
+  let features=chunkFeatures(ox,oy,rint,home),b=biomeOf(),sites=home?[]:regionSitesIn(ox,oy);
+  let wobble=[],lakes=chunkFeatureMask(features.lakes,ox,oy,1,wobble),marshes=chunkFeatureMask(features.marsh,ox,oy,1,wobble),ridges=chunkFeatureMask(features.ridges,ox,oy,1,wobble),forests=chunkFeatureMask(features.forests,ox,oy,1,wobble),rims=chunkFeatureMask(features.ridges,ox,oy,1.9,wobble);
+  let terrain=osGame.terrain,ground=osGame.groundTiles,explored=osGame.explored,floors=osGame.floorTiles,wires=osGame.wireTiles,hasNav=navBlocked&&navBlocked.length===MAP_SIZE*MAP_SIZE;
+  for(let y=oy;y<oy+HOME_SIZE;y++)for(let x=ox;x<ox+HOME_SIZE;x++){
+    let i=(y-WY)*MAP_SIZE+x-WX,k=(y-oy)*HOME_SIZE+x-ox,rr=rnd();let near=home&&Math.abs(x-CENTRE)<19&&Math.abs(y-CENTRE)<18,site=sites.length>0&&nearSite(sites,x,y,5);
+    let lake=!near&&!!lakes[k],marsh=!near&&!lake&&!!marshes[k];
+    let ridge=(!near&&((home&&((x-ox<8&&y-oy>13&&y-oy<82)||(y-oy<8&&x-ox>13)))||!!ridges[k]));
+    let forest=!near&&!!forests[k],rim=!near&&!ridge&&!!rims[k];
+    let type=lake?3:(ridge?4:marsh?5:(rr<0.11?2:(rr<0.26?1:0)));
+    if(near)type=(rr<0.16?2:(rr<0.29?1:0));if(site)type=(rr<0.2?1:0);
+    let t=type===0?Math.floor(rnd()*4):(type===1?4+Math.floor(rnd()*2):(type===2||type===5?6+Math.floor(rnd()*2):(type===3?8+Math.floor(rnd()*2):10+Math.floor(rnd()*2))));
+    terrain[i]=type;ground[i]=t;explored[i]=false;floors[i]=0;wires[i]=0;
+    if(hasNav)navBlocked[i]=(type===3||type===4)?1:0;
+    if((type<3||type===5)&&!near&&!site&&rnd()<b.density*(forest?2.6:1)*(type===5?0.5:1)){
+      let kind=rr<b.ore*(rim?2.2:1)?"ore":(rr<b.stone?"stone":(rr<b.berries?"berries":"tree"));
+      if(forest&&kind!=="ore"&&rnd()<0.8)kind="tree";
+      addResourceNode(x,y,kind,kind==="tree"?14:(kind==="berries"?8:12));
+    }
+  }
+  // Debris fields on the Flats: wreckage with metal in it and Hollowglass shards among the plates.
+  for(let i=0;i<features.debris.length;i++){let d=features.debris[i];
+    for(let k=0;k<14;k++){let x=d.x+rint(-4,4),y=d.y+rint(-3,3);if(!onMap(x,y)||osGame.terrain[tileId(x,y)]>=3||nodeAtCell[tileId(x,y)])continue;let n=addResourceNode(x,y,k<4?"glass":"pile",k<4?2:6);if(n&&n.kind==="pile"){n.resource="metal";n.debris=true;}}
+  }
+  for(let i=0;i<sites.length;i++)paintSite(sites[i],rint);
+  if(!home)cacheReference(cx,cy);
+  if(force)return true;
+  osGame.chunks[chunkKey(cx,cy)]=true;
+  if(!home){pathEpoch++;pathCache={};pathCacheKeys=[];terrainDirty=true;minimapEpoch++;nodesEpoch++;chronicle("New country","Explorers have opened ground "+(cx<chunkOf(CENTRE)?"west":cx>chunkOf(CENTRE)?"east":cy<chunkOf(CENTRE)?"north":"south")+" of the colony.","colony");}
+  return true;
+}
+// Generate any chunk within reach of a point, so ground exists before anyone can see or walk it.
+function ensureChunksAround(x,y,margin){
+  if(!osGame||!osGame.chunks)return;let made=false,limit=contextDepth>0?1:1e9,todo=[];
+  for(let cy=chunkOf(y-margin);cy<=chunkOf(y+margin);cy++)for(let cx=chunkOf(x-margin);cx<=chunkOf(x+margin);cx++){if(chunkGenerated(cx,cy))continue;let ox=cx*HOME_SIZE+HOME_SIZE/2,oy=cy*HOME_SIZE+HOME_SIZE/2;if(ox<WX||oy<WY||ox>WX+MAP_SIZE||oy>WY+MAP_SIZE)continue;todo.push({cx:cx,cy:cy,d:(ox-x)*(ox-x)+(oy-y)*(oy-y)});}
+  todo.sort(function(a,b){return a.d-b.d;});
+  let n=0;for(let i=0;i<todo.length&&n<limit;i++){if(generateChunk(todo[i].cx,todo[i].cy)){made=true;n++;}}
+  return made;
+}
+function chunkCount(){return osGame&&osGame.chunks?Object.keys(osGame.chunks).length:0;}

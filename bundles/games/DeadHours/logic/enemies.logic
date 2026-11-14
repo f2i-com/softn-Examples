@@ -1,0 +1,720 @@
+// DeadHours — Zombie AI, articulated .glb animations, spitter projectiles & pickups
+
+let ENEMY_TYPES = [
+  {
+    id: "walker",
+    label: "Walker",
+    modelUrl: "assets/models/zombie-walker.glb",
+    fit: 1.85,
+    scale: 1.0,
+    hitRadius: 0.48,
+    hitHeight: 1.88,
+    hp: 96,
+    speed: 2.25,
+    dmg: 12,
+    range: 1.45,
+    score: 100,
+    scrap: 18
+  },
+  {
+    id: "runner",
+    label: "Feral Runner",
+    modelUrl: "assets/models/zombie-runner.glb",
+    fit: 1.72,
+    scale: 0.94,
+    hitRadius: 0.44,
+    hitHeight: 1.75,
+    hp: 68,
+    speed: 4.55,
+    dmg: 9,
+    range: 1.35,
+    score: 145,
+    scrap: 24
+  },
+  {
+    id: "spitter",
+    label: "Bile Spitter",
+    modelUrl: "assets/models/zombie-spitter.glb",
+    fit: 1.88,
+    scale: 1.02,
+    hitRadius: 0.50,
+    hitHeight: 1.90,
+    hp: 112,
+    speed: 2.05,
+    dmg: 14,
+    range: 11.5,
+    score: 185,
+    scrap: 32
+  },
+  {
+    id: "brute",
+    label: "Riot Brute",
+    modelUrl: "assets/models/zombie-brute.glb",
+    fit: 2.55,
+    scale: 1.38,
+    hitRadius: 0.72,
+    hitHeight: 2.58,
+    hp: 440,
+    speed: 1.65,
+    dmg: 26,
+    range: 1.85,
+    score: 420,
+    scrap: 85
+  }
+]
+
+let zombies = []
+let nextZid = 1
+let showcaseZombies = []
+let acidShots = []
+let nextAid = 1
+let pickups = []
+let nextPid = 1
+let particles = []
+
+let bossAnchorId = ""
+let bossLabel = ""
+let bossHpPct = 0
+
+function initShowcaseZombies() {
+  showcaseZombies = [
+    { id: 901, kind: 0, x: -3.2, z: -2.5, yaw: 0.3, phase: 0.2, flinch: 0, attackAnim: 0, jawOpen: 0.15, scale: 1.0 },
+    { id: 902, kind: 3, x: 0.2, z: -4.2, yaw: 0.0, phase: 1.4, flinch: 0, attackAnim: 0, jawOpen: 0.25, scale: 1.38 },
+    { id: 903, kind: 2, x: 3.4, z: -2.2, yaw: -0.35, phase: 2.6, flinch: 0, attackAnim: 0, jawOpen: 0.45, scale: 1.02 }
+  ]
+}
+
+function chooseZombieKind(forWave) {
+  let r = randFloat()
+  if (forWave === 1) { return 0 }
+  if (forWave === 2) { return r < 0.72 ? 0 : 1 }
+  if (forWave === 3) {
+    if (r < 0.50) { return 0 }
+    if (r < 0.80) { return 1 }
+    return 2
+  }
+  if (forWave % 3 === 0 && !waveHasBrute() && toSpawn <= 2) {
+    return 3
+  }
+  if (r < 0.40) { return 0 }
+  if (r < 0.70) { return 1 }
+  if (r < 0.90) { return 2 }
+  return forWave >= 4 && r > 0.92 ? 3 : 1
+}
+
+function waveHasBrute() {
+  let i = 0
+  while (i < zombies.length) {
+    if (zombies[i].kind === 3) { return true }
+    i = i + 1
+  }
+  return false
+}
+
+function spawnZombieFromGate() {
+  let g = SPAWN_GATES[Math.floor(randFloat() * SPAWN_GATES.length)]
+  let kind = chooseZombieKind(wave)
+  let spec = ENEMY_TYPES[kind]
+  let hpBoost = 1.0 + (wave - 1) * 0.14
+  let sx = g.x + (randFloat() - 0.5) * 1.8
+  let sz = g.z + (randFloat() - 0.5) * 1.8
+  let z = {
+    id: nextZid,
+    kind: kind,
+    scale: spec.scale,
+    x: sx,
+    z: sz,
+    yaw: Math.atan2(px - sx, pz - sz),
+    hp: Math.round(spec.hp * hpBoost),
+    maxHp: Math.round(spec.hp * hpBoost),
+    speed: spec.speed * (0.94 + randFloat() * 0.14),
+    phase: randFloat() * 6.28,
+    attackCd: 0.4,
+    spitCd: 1.5 + randFloat() * 1.8,
+    flinch: 0.0,
+    attackAnim: 0.0,
+    jawOpen: 0.12,
+    stunTimer: 0.0
+  }
+  zombies.push(z)
+  nextZid = nextZid + 1
+  if (kind === 3) {
+    playSfx("assets/sfx/brute_roar.wav", 0.72)
+    waveBanner = "WAVE " + wave + " · RIOT BRUTE BREACH"
+    bannerTimer = 2.6
+  } else if (randFloat() < 0.35) {
+    playSfx("assets/sfx/groan.wav", 0.38)
+  }
+}
+
+function maybeDropSupplyCrate(x, z, kind) {
+  let chance = kind === 3 ? 0.95 : (kind === 2 ? 0.42 : 0.16)
+  if (randFloat() > chance) { return }
+  let roll = randFloat()
+  let pk = "ammo"
+  if (hp < 55 && roll < 0.55) { pk = "medkit" }
+  else if (roll < 0.42) { pk = "ammo" }
+  else if (roll < 0.72) { pk = "medkit" }
+  else if (roll < 0.90) { pk = "armor" }
+  else { pk = "overdrive" }
+  pickups.push({ id: nextPid, kind: pk, x: clampVal(x, -17.5, 17.5), z: clampVal(z, -17.5, 17.5), age: 0.0 })
+  nextPid = nextPid + 1
+}
+
+function pushZombieSafe(z, dx, dz) {
+  let nx = z.x + dx
+  let nz = z.z + dz
+  if (Math.abs(nx) < HALF_ARENA - 0.5 && Math.abs(nz) < HALF_ARENA - 0.5) {
+    let resolved = resolveCircleCollisions(nx, nz, 0.42 * z.scale)
+    z.x = resolved.x
+    z.z = resolved.z
+  } else {
+    z.x = nx
+    z.z = nz
+  }
+}
+
+function damageZombie(idx, dmg, wasHeadshot, kx, kz) {
+  if (idx < 0 || idx >= zombies.length) { return }
+  let z = zombies[idx]
+  z.hp = z.hp - dmg
+  z.flinch = 0.24
+  z.jawOpen = 0.55
+  let kb = z.kind === 3 ? 0.08 : 0.22
+  pushZombieSafe(z, (kx || 0) * kb, (kz || 0) * kb)
+
+  if (dmg >= 18) {
+    addSurfaceDecal(
+      "blood",
+      z.x + (randFloat() - 0.5) * 0.45,
+      0.015,
+      z.z + (randFloat() - 0.5) * 0.45,
+      0.0, 1.0, 0.0,
+      z.hp <= 0 ? (1.15 + randFloat() * 0.45) : (0.58 + randFloat() * 0.25),
+      z.kind === 2 ? "#86efac" : "#ffffff",
+      null
+    )
+  }
+
+  if (z.hp <= 0) {
+    let spec = ENEMY_TYPES[z.kind]
+    kills = kills + 1
+    if (wasHeadshot) { headshots = headshots + 1 }
+    streakCount = streakCount + 1
+    streakTimer = 4.0
+    let streakMult = streakCount >= 6 ? 1.5 : (streakCount >= 3 ? 1.25 : 1.0)
+    let pts = Math.round((spec.score + (wasHeadshot ? 50 : 0)) * streakMult)
+    score = score + pts
+    scrap = scrap + spec.scrap + (wasHeadshot ? 8 : 0)
+
+    spawnBurstParticles(z.x, 1.05 * z.scale, z.z, z.kind === 2 ? 16 : 12, z.kind === 2 ? "#4ade80" : "#b91c1c", 4.2, 0.22, 0.58)
+    maybeDropSupplyCrate(z.x, z.z, z.kind)
+    if (z.kind === 3) {
+      playSfx("assets/sfx/explosion.wav", 0.45)
+    }
+    zombies.splice(idx, 1)
+  }
+}
+
+function spawnAcidGlob(sx, sz, targetX, targetZ) {
+  let dx = targetX - sx
+  let dz = targetZ - sz
+  let d = Math.max(0.5, Math.sqrt(dx * dx + dz * dz))
+  let spd = 11.5
+  let flight = d / spd
+  acidShots.push({
+    id: nextAid,
+    x: sx,
+    y: 1.48,
+    z: sz,
+    vx: (dx / d) * spd,
+    vy: (1.25 - 1.48) / flight + 0.5 * 9.5 * flight,
+    vz: (dz / d) * spd,
+    age: 0.0
+  })
+  nextAid = nextAid + 1
+  playSfx("assets/sfx/spit.wav", 0.48)
+}
+
+function updateAcidShots(dt) {
+  let i = acidShots.length - 1
+  while (i >= 0) {
+    let a = acidShots[i]
+    a.vy = a.vy - 9.5 * dt
+    a.x = a.x + a.vx * dt
+    a.y = a.y + a.vy * dt
+    a.z = a.z + a.vz * dt
+    a.age = a.age + dt
+
+    let dPlayer = dist2D(a.x, a.z, px, pz)
+    if (dPlayer < 0.72 && Math.abs(a.y - 1.15) < 0.95) {
+      spawnBurstParticles(a.x, a.y, a.z, 10, "#4ade80", 3.5, 0.20, 0.45)
+      applyPlayerDamage(14)
+      acidShots.splice(i, 1)
+      i = i - 1
+      continue
+    }
+    if (a.y <= 0.1 || a.age > 3.2) {
+      spawnBurstParticles(a.x, 0.18, a.z, 8, "#22c55e", 2.8, 0.18, 0.40)
+      if (dPlayer < 1.65) { applyPlayerDamage(7) }
+      acidShots.splice(i, 1)
+    }
+    i = i - 1
+  }
+}
+
+function updateZombies(dt) {
+  bossAnchorId = ""
+  bossLabel = ""
+  bossHpPct = 0
+
+  let i = 0
+  while (i < zombies.length) {
+    let z = zombies[i]
+    let spec = ENEMY_TYPES[z.kind]
+    if (z.flinch > 0) { z.flinch = Math.max(0.0, z.flinch - dt) }
+    if (z.attackAnim > 0) { z.attackAnim = Math.max(0.0, z.attackAnim - dt) }
+    if (z.attackCd > 0) { z.attackCd = Math.max(0.0, z.attackCd - dt) }
+    if (z.spitCd > 0) { z.spitCd = Math.max(0.0, z.spitCd - dt) }
+    if (z.stunTimer > 0) { z.stunTimer = Math.max(0.0, z.stunTimer - dt) }
+    z.jawOpen = Math.max(0.08, z.jawOpen - dt * 1.4)
+
+    let dx = px - z.x
+    let dz = pz - z.z
+    let d = Math.max(0.01, Math.sqrt(dx * dx + dz * dz))
+    let desiredYaw = Math.atan2(dx, dz)
+    z.yaw = desiredYaw
+
+    if (z.kind === 3 && bossAnchorId === "") {
+      bossAnchorId = "z-" + z.id
+      bossLabel = "RIOT BRUTE · " + Math.max(1, z.hp) + " HP"
+      bossHpPct = Math.round((Math.max(0, z.hp) / Math.max(1, z.maxHp)) * 100)
+    }
+
+    if (z.stunTimer <= 0.0) {
+      let spd = z.speed
+      // Spitter pauses to spit when in mid-range line-of-sight
+      if (z.kind === 2 && d < spec.range && d > 3.6 && z.spitCd <= 0.0) {
+        let wallCheck = rayHitsArenaBlocker(z.x, 1.4, z.z, dx / d, 0, dz / d, d)
+        if (wallCheck >= d - 0.5) {
+          z.spitCd = 3.1
+          z.attackAnim = 0.45
+          z.jawOpen = 0.85
+          spawnAcidGlob(z.x, z.z, px, pz)
+        }
+      } else if (d > (z.kind === 2 ? 3.2 : spec.range * 0.86)) {
+        // Separation force from nearby zombies
+        let sepX = 0.0
+        let sepZ = 0.0
+        let j = 0
+        while (j < zombies.length) {
+          if (j !== i) {
+            let oz = zombies[j]
+            let sdx = z.x - oz.x
+            let sdz = z.z - oz.z
+            let sd2 = sdx * sdx + sdz * sdz
+            if (sd2 > 0.0001 && sd2 < 1.35) {
+              let sd = Math.sqrt(sd2)
+              sepX = sepX + (sdx / sd) * (1.16 - sd) * 1.8
+              sepZ = sepZ + (sdz / sd) * (1.16 - sd) * 1.8
+            }
+          }
+          j = j + 1
+        }
+        let vx = (dx / d) * spd + sepX
+        let vz = (dz / d) * spd + sepZ
+        let nx = z.x + vx * dt
+        let nz = z.z + vz * dt
+        // Allow exterior spawning gate entry before clamping to courtyard blockers
+        if (Math.abs(nx) < HALF_ARENA - 0.5 && Math.abs(nz) < HALF_ARENA - 0.5) {
+          let resolved = resolveCircleCollisions(nx, nz, 0.42 * z.scale)
+          z.x = resolved.x
+          z.z = resolved.z
+        } else {
+          z.x = nx
+          z.z = nz
+        }
+        z.phase = z.phase + dt * spd * 3.1
+      }
+
+      // Melee strike
+      if (d <= spec.range && z.attackCd <= 0.0) {
+        z.attackCd = z.kind === 1 ? 0.82 : (z.kind === 3 ? 1.45 : 1.15)
+        z.attackAnim = 0.36
+        z.jawOpen = 0.72
+        applyPlayerDamage(spec.dmg)
+      }
+    }
+    i = i + 1
+  }
+}
+
+function updatePickups(dt) {
+  let i = pickups.length - 1
+  while (i >= 0) {
+    let p = pickups[i]
+    p.age = p.age + dt
+    if (dist2D(px, pz, p.x, p.z) < 1.45) {
+      if (p.kind === "medkit") {
+        hp = Math.min(maxHp, hp + 35)
+        showToast("+35 HEALTH")
+      } else if (p.kind === "armor") {
+        armorPts = Math.min(maxArmor, armorPts + 35)
+        showToast("+35 KEVLAR ARMOR")
+      } else if (p.kind === "overdrive") {
+        overdriveTimer = 10.0
+        showToast("ADRENALINE OVERDRIVE (10s)")
+      } else {
+        resAmmo[1] = resAmmo[1] + 12
+        if (weaponUnlocked[2]) { resAmmo[2] = resAmmo[2] + 64 }
+        grenadesLeft = Math.min(4, grenadesLeft + 1)
+        showToast("+AMMO & FRAG GRENADE")
+      }
+      playSfx("assets/sfx/pickup.wav", 0.55)
+      pickups.splice(i, 1)
+    } else if (p.age > 32.0) {
+      pickups.splice(i, 1)
+    }
+    i = i - 1
+  }
+}
+
+function buildZombieRenderList(out, list) {
+  let i = 0
+  while (i < list.length) {
+    let z = list[i]
+    let spec = ENEMY_TYPES[z.kind]
+    let stride = Math.sin(z.phase)
+    let legSwing = stride * (z.kind === 1 ? 0.72 : 0.48)
+    let swayRoll = Math.sin(z.phase * 0.5) * 0.07
+    let flinchTilt = z.flinch > 0 ? -(z.flinch / 0.24) * 0.36 : 0.0
+    let lunge = z.attackAnim > 0 ? Math.sin((z.attackAnim / 0.36) * Math.PI) * 0.65 : 0.0
+    let armPitch = -0.78 - lunge + Math.sin(z.phase * 2.0) * 0.14
+    let forwardHunch = (z.kind === 1 ? 0.22 : (z.kind === 3 ? 0.12 : 0.08)) + flinchTilt
+
+    out.push({
+      id: "z-" + z.id,
+      type: "model",
+      modelUrl: spec.modelUrl,
+      fit: spec.fit,
+      position: { x: z.x, y: 0, z: z.z },
+      rotation: { x: forwardHunch, y: z.yaw, z: swayRoll },
+      parts: {
+        Head: { rotation: { x: flinchTilt * 0.8 + Math.sin(z.phase * 0.7) * 0.08, y: Math.cos(z.phase * 0.5) * 0.14, z: 0 } },
+        Jaw: { rotation: { x: z.jawOpen, y: 0, z: 0 } },
+        Arm_L: { rotation: { x: armPitch + legSwing * 0.25, y: 0, z: 0.08 } },
+        Arm_R: { rotation: { x: armPitch - legSwing * 0.25, y: 0, z: -0.08 } },
+        Leg_L: { rotation: { x: legSwing, y: 0, z: 0 } },
+        Leg_R: { rotation: { x: -legSwing, y: 0, z: 0 } }
+      },
+      castShadow: true,
+      receiveShadow: true
+    })
+    i = i + 1
+  }
+}
+
+function buildDynamicArenaObjects(out) {
+  // Zombies (active or showcase)
+  if (started) {
+    buildZombieRenderList(out, zombies)
+  } else {
+    buildZombieRenderList(out, showcaseZombies)
+  }
+
+  // Destructible Quarantine Pickup Wreck
+  let hoodOpen = Math.min(0.46, carHoodHits * 0.08 + (carExploded ? 0.22 : 0.0))
+  let doorLOpen = -Math.min(0.65, carDoorLHits * 0.14 + (carExploded ? 0.25 : 0.0))
+  let doorROpen = Math.min(0.65, carDoorRHits * 0.14 + (carExploded ? 0.20 : 0.0))
+  let tailOpen = Math.min(0.95, carTailgateHits * 0.22 + (carExploded ? 0.35 : 0.0))
+  let carParts = {
+    Windshield_Intact: { visible: !carWindshieldBroken },
+    Windshield_Shattered: { visible: carWindshieldBroken },
+    Headlight_L: { visible: !carHeadlightLBroken },
+    HeadlightDead_L: { visible: carHeadlightLBroken },
+    Headlight_R: { visible: !carHeadlightRBroken },
+    HeadlightDead_R: { visible: carHeadlightRBroken },
+    Lightbar: { rotation: carLightbarBroken ? { x: 0.16, y: 0, z: 0.22 } : { x: 0, y: 0, z: 0 } },
+    Hood: { rotation: { x: hoodOpen, y: 0, z: carHoodHits > 0 ? 0.03 : 0.0 } },
+    Door_L: { rotation: { x: 0, y: doorLOpen, z: 0 } },
+    Door_R: { rotation: { x: 0, y: doorROpen, z: 0 } },
+    Tailgate: { rotation: { x: tailOpen, y: 0, z: 0 } }
+  }
+  if (carWheelHit[0]) { carParts.Wheel_FL = { position: { x: 0, y: -0.07, z: 0 }, rotation: { x: 0, y: 0, z: 0.14 } } }
+  if (carWheelHit[1]) { carParts.Wheel_FR = { position: { x: 0, y: -0.07, z: 0 }, rotation: { x: 0, y: 0, z: -0.14 } } }
+  if (carWheelHit[2]) { carParts.Wheel_RL = { position: { x: 0, y: -0.07, z: 0 }, rotation: { x: 0, y: 0, z: 0.14 } } }
+  if (carWheelHit[3]) { carParts.Wheel_RR = { position: { x: 0, y: -0.07, z: 0 }, rotation: { x: 0, y: 0, z: -0.14 } } }
+
+  let carAppearance = null
+  if (carExploded) {
+    carAppearance = {
+      colors: {
+        RustTruck: "#1a1513",
+        RustChassis: "#0c0a09",
+        RustSpot: "#28150c",
+        QuarantineStripe: "#2b2113",
+        HazardAmber: "#18100a",
+        HeadlightGlow: "#111214",
+        TailRed: "#1e0909",
+        DarkCargo: "#12100e",
+        ChromeTrim: "#282a2e"
+      }
+    }
+  } else if (carLightbarBroken || carHp < carMaxHp * 0.45) {
+    carAppearance = {
+      colors: {
+        RustTruck: carHp < carMaxHp * 0.45 ? "#20241f" : "#3d4a3a",
+        HazardAmber: carLightbarBroken ? "#1c130b" : "#f28c14"
+      }
+    }
+  }
+  let shakeX = carShake > 0.01 ? Math.sin(bobPhase * 28.0) * carShake * 0.024 : 0.0
+  let shakeZ = carShake > 0.01 ? Math.cos(bobPhase * 24.0) * carShake * 0.028 : 0.0
+  let truckObj = {
+    id: "truck-wreck",
+    type: "model",
+    modelUrl: "assets/models/pickup-wreck.glb",
+    fit: 4.5,
+    position: { x: TRUCK_X, y: carExploded ? -0.04 : 0.0, z: TRUCK_Z },
+    rotation: { x: shakeX + (carExploded ? 0.02 : 0.0), y: TRUCK_YAW + (carExploded ? 0.03 : 0.0), z: shakeZ + (carExploded ? -0.03 : 0.0) },
+    parts: carParts,
+    castShadow: true,
+    receiveShadow: true
+  }
+  if (carAppearance) { truckObj.appearance = carAppearance }
+  out.push(truckObj)
+
+  // Dynamic Courtyard Streetlamps (glass shatters when shot!)
+  let lmi = 0
+  while (lmi < courtyardLamps.length) {
+    let lm = courtyardLamps[lmi]
+    out.push({
+      id: lm.id,
+      type: "model",
+      modelUrl: "assets/models/streetlamp.glb",
+      fit: 4.8,
+      position: { x: lm.x, y: 0, z: lm.z },
+      parts: {
+        Bulb: { visible: !lm.broken },
+        BulbBroken: { visible: lm.broken }
+      },
+      castShadow: true,
+      receiveShadow: true
+    })
+    lmi = lmi + 1
+  }
+
+  // Dynamic Fire Drum Embers (flares brightly when struck by bullets)
+  let fdi = 0
+  while (fdi < FIRE_DRUMS.length) {
+    let fd = FIRE_DRUMS[fdi]
+    let flare = fireDrumFlares[fdi] || 0.0
+    out.push({
+      id: fd.id + "-coal",
+      type: "sphere",
+      position: { x: fd.x, y: 1.05 + flare * 0.08, z: fd.z },
+      radius: 0.25 + flare * 0.08,
+      color: "#ff7b24",
+      emissive: "#ff6618",
+      emissiveIntensity: 3.2 + flare * 3.6,
+      pickable: false,
+      castShadow: false
+    })
+    fdi = fdi + 1
+  }
+
+  // Explosive Hazard Barrels (wobble + heat scorch + pressurized flame leak jet)
+  let bi = 0
+  while (bi < explosiveBarrels.length) {
+    let eb = explosiveBarrels[bi]
+    if (eb.alive) {
+      let bxRot = eb.shake > 0.01 ? Math.sin(bobPhase * 32.0 + eb.id) * eb.shake * 0.09 : 0.0
+      let bzRot = eb.shake > 0.01 ? Math.cos(bobPhase * 28.0 + eb.id) * eb.shake * 0.09 : 0.0
+      let bObj = {
+        id: "barrel-" + eb.id,
+        type: "model",
+        modelUrl: "assets/models/hazard-barrel.glb",
+        fit: 1.22,
+        position: { x: eb.x, y: 0, z: eb.z },
+        rotation: { x: bxRot, y: 0, z: bzRot },
+        castShadow: true,
+        receiveShadow: true
+      }
+      if (eb.leaking) {
+        let pulse = Math.sin(bobPhase * 26.0 + eb.id) > 0.0
+        bObj.appearance = {
+          colors: {
+            HazardRed: pulse ? "#ea580c" : "#c2410c",
+            HazardYellow: "#fde047"
+          }
+        }
+        out.push({
+          id: "barrel-jet-" + eb.id,
+          type: "sphere",
+          position: { x: eb.leakX + eb.leakNx * 0.08, y: eb.leakY, z: eb.leakZ + eb.leakNz * 0.08 },
+          radius: 0.11 + (pulse ? 0.04 : 0.0),
+          color: "#fde047",
+          emissive: "#ff6b1a",
+          emissiveIntensity: 4.5,
+          opacity: 0.92,
+          pickable: false,
+          castShadow: false
+        })
+      }
+      out.push(bObj)
+    }
+    bi = bi + 1
+  }
+
+  // Supply Crate Drops
+  let pi = 0
+  while (pi < pickups.length) {
+    let pk = pickups[pi]
+    let bobY = 0.14 + Math.sin(pk.age * 3.5) * 0.07
+    let ringColor = pk.kind === "medkit" ? "#4ade80" : (pk.kind === "armor" ? "#38bdf8" : (pk.kind === "overdrive" ? "#facc15" : "#fb923c"))
+    out.push({
+      id: "pickup-" + pk.id,
+      type: "model",
+      modelUrl: "assets/models/crate-drop.glb",
+      fit: 0.72,
+      position: { x: pk.x, y: bobY, z: pk.z },
+      rotation: { x: 0, y: pk.age * 1.4, z: 0 },
+      castShadow: true
+    })
+    out.push({
+      id: "pickup-ring-" + pk.id,
+      type: "ring",
+      position: { x: pk.x, y: 0.03, z: pk.z },
+      rotation: { x: -Math.PI / 2, y: 0, z: 0 },
+      radius: 0.62 + Math.sin(pk.age * 4.0) * 0.06,
+      color: ringColor,
+      emissive: ringColor,
+      emissiveIntensity: 1.6,
+      opacity: 0.55,
+      pickable: false,
+      castShadow: false
+    })
+    pi = pi + 1
+  }
+
+  // Thrown Frag Grenades
+  let gi = 0
+  while (gi < thrownGrenades.length) {
+    let g = thrownGrenades[gi]
+    out.push({
+      id: "gren-" + g.id,
+      type: "model",
+      modelUrl: "assets/models/frag-grenade.glb",
+      fit: 0.34,
+      position: { x: g.x, y: g.y, z: g.z },
+      rotation: { x: g.rot, y: g.rot * 0.7, z: 0 },
+      castShadow: true
+    })
+    gi = gi + 1
+  }
+
+  // Spitter Acid Projectiles
+  let ai = 0
+  while (ai < acidShots.length) {
+    let a = acidShots[ai]
+    out.push({
+      id: "acid-" + a.id,
+      type: "sphere",
+      position: { x: a.x, y: a.y, z: a.z },
+      radius: 0.16,
+      color: "#4ade80",
+      emissive: "#22c55e",
+      emissiveIntensity: 3.5,
+      pickable: false,
+      castShadow: false
+    })
+    ai = ai + 1
+  }
+
+  // Bullet Tracer Streaks
+  let ti = 0
+  while (ti < bulletTracers.length) {
+    let tr = bulletTracers[ti]
+    let fade = clampVal(tr.life / tr.maxLife, 0.0, 1.0)
+    out.push({
+      id: "tracer-" + tr.id,
+      type: "box",
+      position: { x: tr.mx, y: tr.my, z: tr.mz },
+      lookAt: { x: tr.tx, y: tr.ty, z: tr.tz },
+      width: 0.022,
+      height: 0.022,
+      depth: tr.len,
+      color: tr.color,
+      emissive: tr.color,
+      emissiveIntensity: 4.5 * fade,
+      opacity: 0.85 * fade,
+      pickable: false,
+      castShadow: false
+    })
+    ti = ti + 1
+  }
+
+  // Ejected Brass Shell Casings
+  let ci = 0
+  while (ci < shellCasings.length) {
+    let sc = shellCasings[ci]
+    out.push({
+      id: "casing-" + sc.id,
+      type: "cylinder",
+      position: { x: sc.x, y: sc.y, z: sc.z },
+      rotation: { x: sc.rx, y: 0, z: sc.rz },
+      radius: sc.shotgun ? 0.018 : 0.012,
+      height: sc.shotgun ? 0.068 : 0.044,
+      color: sc.shotgun ? "#b91c1c" : "#eab308",
+      metalness: sc.shotgun ? 0.35 : 0.88,
+      roughness: 0.32,
+      pickable: false,
+      castShadow: false
+    })
+    ci = ci + 1
+  }
+
+  // Oriented Cutout Decals (bullet holes on walls/car/barrels, ground blood & scorch craters)
+  let di = 0
+  let csY = Math.cos(TRUCK_YAW + (carExploded ? 0.03 : 0.0))
+  let snY = Math.sin(TRUCK_YAW + (carExploded ? 0.03 : 0.0))
+  while (di < decals.length) {
+    let dc = decals[di]
+    let wx = dc.x
+    let wy = dc.y
+    let wz = dc.z
+    let wnx = dc.nx
+    let wny = dc.ny
+    let wnz = dc.nz
+    if (dc.carLocal) {
+      wx = TRUCK_X + dc.lx * csY + dc.lz * snY
+      wy = Math.max(0.02, dc.ly + (carExploded ? -0.04 : 0.0))
+      wz = TRUCK_Z - dc.lx * snY + dc.lz * csY
+      wnx = dc.lnx * csY + dc.lnz * snY
+      wny = dc.lny
+      wnz = -dc.lnx * snY + dc.lnz * csY
+    }
+    let dObj = {
+      id: "dec-" + dc.id,
+      type: "plane",
+      position: { x: wx, y: wy, z: wz },
+      width: dc.size,
+      height: dc.size,
+      color: dc.color,
+      texture: dc.tex,
+      doubleSided: true,
+      alphaTest: 0.08,
+      opacity: dc.tex === "bullethole" ? 0.96 : (dc.tex === "scorch" ? 0.92 : 0.90),
+      pickable: false,
+      castShadow: false,
+      receiveShadow: true
+    }
+    if (Math.abs(wny) >= 0.985) {
+      dObj.rotation = { x: wny > 0 ? -Math.PI / 2 : Math.PI / 2, y: 0, z: dc.rot }
+    } else {
+      dObj.lookAt = { x: wx + wnx * 2.0, y: wy + wny * 2.0, z: wz + wnz * 2.0 }
+    }
+    out.push(dObj)
+    di = di + 1
+  }
+}

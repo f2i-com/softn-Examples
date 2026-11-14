@@ -1,0 +1,105 @@
+// A* gives up after this many expansions; it scales with the map so a bigger grid is a setting, not a bug hunt.
+function navExpansionLimit(){return Math.max(4200,Math.floor(4200*Math.sqrt(MAP_SIZE*MAP_SIZE/9216)));}
+// A* with a binary heap, reusable visit stamps, and diagonal corner checks.
+let navSeen=[];let navClosed=[];let navCost=[];let navFrom=[];let navSerial=0;
+function isSolidBuilding(b) {
+  let d=BUILDINGS[b.kind];if(!b.built || d.underlay || d.wire)return false;
+  if(d.solid)return true;
+  return d.w>1 && !d.crop && b.kind!=="stockpile" && b.kind!=="cookfire";
+}
+function rebuildSpatial() {
+  let cells=MAP_SIZE*MAP_SIZE,terrain=osGame.terrain;
+  navBlocked=Array(cells).fill(0);cellBuilding=Array(cells).fill("");nodeAtCell=Array(cells).fill("");objectIndex={};nodeIndex={};underlayAtCell=Array(cells).fill("");wireAtCell=Array(cells).fill("");
+  for(let i=0;i<cells;i++){let t=terrain[i];if(t===3||t===4||t===6)navBlocked[i]=1;}
+  for(let i=0;i<osGame.nodes.length;i++){let n=osGame.nodes[i];nodeIndex[n.id]=n;if(n.amount>0)nodeAtCell[tileId(n.x,n.y)]=n.id;}
+  for(let i=0;i<osGame.buildings.length;i++){
+    let b=osGame.buildings[i];objectIndex[b.id]=b;let d=BUILDINGS[b.kind];
+    if(d.underlay||d.wire||!onMap(b.x,b.y)||!onMap(b.x+b.w-1,b.y+b.h-1))continue;
+    for(let y=b.y;y<b.y+b.h;y++)for(let x=b.x;x<b.x+b.w;x++){let t=tileId(x,y);cellBuilding[t]=b.id;if(isSolidBuilding(b))navBlocked[t]=1;}
+  }
+  pathEpoch++;pathCache={};pathCacheKeys=[];topologyDirty=false;
+  // A wall finishing beneath a passing settler must not imprison them in a blocked tile.
+  for(let i=0;i<osGame.people.length;i++){
+    let c=osGame.people[i];if(c.dead||!navBlocked[tileId(c.x,c.y)])continue;
+    let found=false;
+    for(let r=1;r<5&&!found;r++)for(let dy=-r;dy<=r&&!found;dy++)for(let dx=-r;dx<=r;dx++){
+      let xx=Math.floor(c.x)+dx,yy=Math.floor(c.y)+dy;
+      if(onMap(xx,yy)&&!navBlocked[tileId(xx,yy)]){c.x=xx+0.5;c.y=yy+0.5;c.path=[];found=true;break;}
+    }
+  }
+}
+function passable(x,y) { return onMap(x,y)&&!navBlocked[tileId(x,y)]; }
+function heuristic(a,b) { let dx=Math.abs(a%MAP_SIZE-b%MAP_SIZE),dy=Math.abs(Math.floor(a/MAP_SIZE)-Math.floor(b/MAP_SIZE));return Math.max(dx,dy)+0.41421356*Math.min(dx,dy); }
+let pathCache={};let pathCacheKeys=[];let pathRequests=0;let pathHits=0;
+function findPath(sx,sy,gx,gy) {
+  let started=perfEnabled?perfNow():0;pathRequests++;
+  let key=Math.floor(sx)+","+Math.floor(sy)+":"+Math.floor(gx)+","+Math.floor(gy);
+  if(Object.prototype.hasOwnProperty.call(pathCache,key)){pathHits++;let cached=pathCache[key];return cached===null?null:cached.slice();}
+  let result=searchPath(sx,sy,gx,gy);
+  if(pathCacheKeys.length>=256){let oldest=pathCacheKeys.shift();delete pathCache[oldest];}
+  pathCacheKeys.push(key);pathCache[key]=result===null?null:result.slice();perfRecord("astar",started);return result;
+}
+function searchPath(sx,sy,gx,gy) {
+  sx=Math.floor(sx);sy=Math.floor(sy);gx=Math.floor(gx);gy=Math.floor(gy);
+  if(!onMap(sx,sy)||!passable(gx,gy))return null;
+  let start=tileId(sx,sy),goal=tileId(gx,gy);if(start===goal)return [];
+  navSerial++;if(navSerial>100000000){navSerial=1;navSeen=[];navClosed=[];}
+  let stamp=navSerial,heapI=[start],heapF=[heuristic(start,goal)],expanded=0;
+  navSeen[start]=stamp;navCost[start]=0;navFrom[start]=-1;
+  while(heapI.length&&expanded<navExpansionLimit()){
+    let cur=heapI[0],lastI=heapI.pop(),lastF=heapF.pop();
+    if(heapI.length){heapI[0]=lastI;heapF[0]=lastF;let p=0;while(true){let l=p*2+1,r=l+1,b=p;if(l<heapI.length&&heapF[l]<heapF[b])b=l;if(r<heapI.length&&heapF[r]<heapF[b])b=r;if(b===p)break;let ti=heapI[p],tf=heapF[p];heapI[p]=heapI[b];heapF[p]=heapF[b];heapI[b]=ti;heapF[b]=tf;p=b;}}
+    if(navClosed[cur]===stamp)continue;navClosed[cur]=stamp;expanded++;
+    if(cur===goal){let out=[],at=goal;while(at!==start&&at!==-1){out.push(at);at=navFrom[at];if(out.length>MAP_SIZE*MAP_SIZE)return null;}out.reverse();return out;}
+    let x=cur%MAP_SIZE+WX,y=Math.floor(cur/MAP_SIZE)+WY;
+    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+      if((dx===0&&dy===0)||!passable(x+dx,y+dy))continue;
+      if(dx&&dy&&(!passable(x+dx,y)||!passable(x,y+dy)))continue;
+      let id=tileId(x+dx,y+dy);if(navClosed[id]===stamp)continue;
+      let cost=navCost[cur]+(dx&&dy?1.41421356:1)*(osGame.terrain[id]===5?1.67:1);
+      if(navSeen[id]===stamp&&cost>=navCost[id])continue;
+      navSeen[id]=stamp;navCost[id]=cost;navFrom[id]=cur;
+      let k=heapI.length;heapI.push(id);heapF.push(cost+heuristic(id,goal));
+      while(k>0){let p=Math.floor((k-1)/2);if(heapF[p]<=heapF[k])break;let ti=heapI[p],tf=heapF[p];heapI[p]=heapI[k];heapF[p]=heapF[k];heapI[k]=ti;heapF[k]=tf;k=p;}
+    }
+  }
+  return null;
+}
+function accessPoints(target) {
+  let w=target.w||1,h=target.h||1,x=Math.floor(target.x),y=Math.floor(target.y),out=[];
+  for(let xx=x;xx<x+w;xx++){if(passable(xx,y-1))out.push({x:xx,y:y-1});if(passable(xx,y+h))out.push({x:xx,y:y+h});}
+  for(let yy=y;yy<y+h;yy++){if(passable(x-1,yy))out.push({x:x-1,y:yy});if(passable(x+w,yy))out.push({x:x+w,y:yy});}
+  if(target.kind==="bed"||target.kind==="bedroll"||target.kind==="clinic"||target.kind==="stockpile")if(passable(x,y))out.unshift({x:x,y:y});
+  return out;
+}
+function routeTo(c,target,exact) {
+  let points=exact?[{x:Math.floor(target.x),y:Math.floor(target.y)}]:accessPoints(target);
+  points.sort(function(a,b){return sqDistance(a.x,a.y,c.x,c.y)-sqDistance(b.x,b.y,c.x,c.y);});
+  for(let i=0;i<Math.min(points.length,10);i++){
+    let p=findPath(c.x,c.y,points[i].x,points[i].y);if(p!==null){c.path=p;c.pathCursor=0;c.pathEpoch=pathEpoch;c.pathFailed=false;c.destination={x:points[i].x,y:points[i].y};return true;}
+  }
+  return false;
+}
+function walkPath(c,dt,multiplier) {
+  if(!c.path || c.pathCursor>=c.path.length)return true;
+  if(c.pathEpoch!==pathEpoch){let p=findPath(c.x,c.y,c.destination.x,c.destination.y);if(p===null){c.path=[];c.pathFailed=true;return false;}c.path=p;c.pathCursor=0;c.pathEpoch=pathEpoch;}
+  let wounded=c.isAnimal?c.health<animalMaxHealth(c.kind)*0.45:c.health<45;
+  // Marsh is slow going for people; a mossback is at home in it.
+  let onMarsh=osGame.terrain[tileId(Math.floor(c.x),Math.floor(c.y))]===5;
+  let budget=dt*(multiplier||2.2)*(hasTech("logistics")&&!c.isAnimal?1.15:1)*(wounded?0.62:1)*(onMarsh&&!(c.isAnimal&&c.kind==="mossback")?0.6:1);
+  while(budget>0 && c.pathCursor<c.path.length){
+    let cell=c.path[c.pathCursor],tx=cell%MAP_SIZE+WX+0.5,ty=Math.floor(cell/MAP_SIZE)+WY+0.5;
+    if(navBlocked[cell]){c.pathEpoch=-1;return false;}
+      let dx=tx-c.x,dy=ty-c.y,d=Math.sqrt(dx*dx+dy*dy);
+      if(c.isAnimal&&d>0.0001){faceAnimal(c,dx,dy);c.movingUntil=osGame.elapsed+0.15;}
+      if(!c.isAnimal&&d>0.0001){c.headingX=dx/d;c.headingY=dy/d;}
+    if(d<=budget){c.x=tx;c.y=ty;budget-=d;c.pathCursor++;}else{c.x+=dx/d*budget;c.y+=dy/d*budget;budget=0;}
+    if(Math.abs(dx)>0.01)c.facing=dx<0?-1:1;
+  }
+  return c.pathCursor>=c.path.length;
+}
+function hasLineOfSight(ax,ay,bx,by) {
+  let dx=bx-ax,dy=by-ay,n=Math.ceil(Math.max(Math.abs(dx),Math.abs(dy))*2);
+  for(let i=1;i<n;i++){let x=Math.floor(ax+dx*i/n),y=Math.floor(ay+dy*i/n);if(!onMap(x,y))return false;let b=getBuilding(cellBuilding[tileId(x,y)]);if(osGame.terrain[tileId(x,y)]===4||(b&&b.built&&(b.kind==="wall"||b.kind==="door")))return false;}
+  return true;
+}

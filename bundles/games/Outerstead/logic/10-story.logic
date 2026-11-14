@@ -1,0 +1,202 @@
+// Bounded, state-driven encounters. Crises are telegraphed and followed by recovery.
+const STORY_EVENTS = {
+  flare:{title:"Heat at the fuel vent",tag:"INCIDENT / FUEL FLARE",body:"A fuel valve is sticking. The safety vent can release the pressure, but a small amount of fuel may ignite around the machinery. The flare will burn out locally; the equipment may need repairs.",choices:[{id:"vent",label:"Replace the valve",detail:"Spend 2 components. Vent the fuel safely."},{id:"burn",label:"Let the safety vent burn off",detail:"Equipment takes damage based on incident severity. Builders can repair it."}]},
+  surge:{title:"A blue light in the switchboard",tag:"INCIDENT / ELECTRICAL SURGE",body:"A relay is chattering. {engineer} can isolate the circuit with spare components, or let the protection system take the load. If it fails, a piece of power or climate equipment will need repairs.",choices:[{id:"isolate",label:"Replace the relay",detail:"Spend 2 components to protect the equipment."},{id:"endure",label:"Trust the breakers",detail:"One connected system takes damage. Severity follows your incident settings."}]},
+  scrapfall:{title:"A small star comes down",tag:"FRONTIER / ORBITAL DEBRIS",body:"A fragment of old orbital machinery trails amber light across the sky. It lands beyond the shelters. The settlers find warm metal and a glassy instrument housing.",choices:[{id:"metal",label:"Recover the metal",detail:"Receive 16 metal."},{id:"glass",label:"Study the instrument",detail:"Receive 2 Hollowglass and a hopeful memory."}]},
+  signal:{title:"A voice below the stone",tag:"HOLLOW / SIGNAL 01",body:"The lifeboat has picked up a maintenance beacon under the eastern ridge. Its identifier is human. It has been transmitting for 312 years.\n\n{engineer} checks the date twice. {scientist} asks who maintained it.",choices:[{id:"mark",label:"Mark the source",detail:"Reveal Structure 17. Exploration remains your choice."},{id:"wait",label:"Log it for later",detail:"The signal stays in the frontier archive."}]},
+  caravan:{title:"Lanterns on the ridge",tag:"MERIDIAN / TRADE",body:"A Meridian caravan has found your camp. Their leader offers supplies and asks only that you keep a light on for travellers. They will remain for one Sol.",choices:[{id:"trade",label:"Welcome the caravan",detail:"Open trade. No automatic purchases."},{id:"leave",label:"Let them make camp",detail:"They remain available in the Frontier panel."}]},
+  refugee:{title:"One more place at the table",tag:"FRONTIER / ARRIVAL",body:"A surveyor has walked through the night to reach your lights. Their old camp is gone. They carry a seed pouch, a damaged map, and no explanation they can finish saying.",choices:[{id:"welcome",label:"Offer a home",detail:"One colonist joins; six meals arrive with their pack."},{id:"supplies",label:"Share provisions",detail:"Spend four meals. Gain Meridian goodwill."},{id:"decline",label:"Point them toward Meridian",detail:"They leave unharmed."}]},
+  cache:{title:"An intact supply case",tag:"SURVEY / RECOVERY",body:"A weatherproof case lies beside a forgotten landing marker. The contents are still usable. There is room to bring back either the medical cabinet or the bulk materials before the tide rises.",choices:[{id:"medical",label:"Recover the cabinet",detail:"Receive 10 medicine and 4 components."},{id:"materials",label:"Recover the materials",detail:"Receive 24 metal and 10 fuel."}]},
+  quietfall:{title:"The world holds its breath",tag:"HOLLOW / QUIETFALL",body:"The wind is moving the grass, but making no sound. Even the generator seems distant. A colonist places a cup on the table. Everyone watches it without speaking.\n\nThe silence will pass. The people will remember it.",choices:[{id:"together",label:"Gather in the common room",detail:"Everyone gains a reassuring memory."},{id:"observe",label:"Document the phenomenon",detail:"Gain 30 progress on your current research; a brief unsettling memory."}]},
+  tracks:{title:"Fresh tracks at the perimeter",tag:"SECURITY / EARLY WARNING",body:"{ranger} has found deep, three-toed tracks near the eastern approach. Something is circling the camp. You have roughly two in-world hours to position defenders, repair equipment, or set out a distraction.",choices:[{id:"prepare",label:"Prepare the defence",detail:"Two predators approach after two in-world hours. Later packs may include a ranged spitter."},{id:"bait",label:"Leave a food decoy",detail:"Spend 12 raw food to send the creatures away."}]},
+  spores:{title:"The crop that grows too quickly",tag:"AGRICULTURE / QUARANTINE",body:"One plot is dusted with silver spores. Its leaves have doubled overnight. {keeper} does not think that is a good sign. The neighbouring fields still look normal.",choices:[{id:"isolate",label:"Isolate the affected plot",detail:"One growing plot pauses for half a Sol; no harvest is lost."},{id:"burn",label:"Clear and replant",detail:"One plot loses its current growth. Gain 2 Hollowglass."}]},
+  aid:{title:"A call for medicine",tag:"MERIDIAN / DISTRESS",body:"A nearby outpost has injured settlers and an empty medical cabinet. Their transmission is brief and carefully polite. Nobody asks whether you can spare what they need.",choices:[{id:"send",label:"Send eight medicine",detail:"Spend 8 medicine; gain 20 goodwill and 8 components."},{id:"cannot",label:"Explain your own shortages",detail:"No penalty. Survival is not always generosity."}]},
+  helix:{title:"A very professional offer",tag:"HELIX / RECOVERY CONTRACT",body:"Helix Recovery has noticed the unusual glass in your inventory. Their representative knows what it is called before you tell them. They offer industrial supplies, and carefully avoid asking where it came from.",choices:[{id:"sell",label:"Sell three Hollowglass",detail:"Spend 3 Hollowglass. Receive 20 metal and 8 components."},{id:"refuse",label:"Keep your discoveries",detail:"No trade. The archive remains yours."}]},
+  aurora:{title:"A sky worth staying for",tag:"HOLLOW / ASHLIGHT",body:"Bands of amber and pale blue cross the horizon. Work slows. Someone brings the last kettle outside. For a little while, the settlement is not a problem to solve. It is simply a place to be.",choices:[{id:"watch",label:"Take a moment",detail:"Everyone gains recreation and a beautiful memory."}]},
+  gift:{title:"A thank-you, without a return address",tag:"FRONTIER / RECIPROCITY",body:"Someone has left a crate beside the approach light. Inside are provisions and a handwritten note: 'We saw the smoke. We remembered the way.'",choices:[{id:"accept",label:"Bring it inside",detail:"Receive 12 meals, 6 medicine, and 8 fuel."}]},
+  expedition:{title:"The party returns",tag:"EXPEDITION / RETURN",body:"The gate light was on for them.",choices:[{id:"unpack",label:"Unpack the crates",detail:"Everyone hears what the country is like out there."}]},
+  storm:{title:"Pressure falling",tag:"WEATHER / ADVISORY",body:"The barometer is falling faster than the weather model predicts. A charged front will reach the colony shortly. Keep critical equipment connected and give your builders time for repairs.",choices:[{id:"ready",label:"Prepare for the storm",detail:"A storm begins after two in-world hours."}]}
+};
+// The second time an incident comes round it should not read like the first.
+const STORY_VARIANTS={
+  cache:["Another case, a different marker: this one half-buried where a stream has moved since somebody set it down. The seals held. The tide will not.","A third case. Whoever kept dropping supplies along this line had a route in mind, and the route ran past your door. The label has a name on it that nobody here recognises."],
+  refugee:["Two lamps on the ridge tonight, moving together. A pair from a mining claim that flooded, carrying one pack between them and a radio that only receives.","A single figure at the perimeter light, standing very still until somebody waves. They have walked from the coast. They know your colony's name; they heard it on the band."],
+  aurora:["The ashlight again, lower this time, close enough that the ridge throws a shadow on the underside of the sky. Somebody who has seen it before goes out anyway.","Ashlight on a working night. Nobody stops until {keeper} turns the lamp off and the whole settlement realises what it has been ignoring."],
+  caravan:["The same Meridian caravan, a different season. The lead trader asks after the settler who bought the last spear, and whether the light on the ridge is still yours.","A Meridian caravan with a new face at the front; the old leader has retired to the coast. The new one has heard you keep a light on, and has come to see it."],
+  scrapfall:["Another fragment down, smaller, spinning as it fell. It lands close enough to rattle the panes. The housing is warm and the instrument inside is still counting something."]
+};
+// Captions: a story shows over the map instead of a modal, the colony keeps running,
+// and an unanswered story resolves to a safe default when its timer runs out.
+let storyCaptions=true;
+let storyTimer=0;
+let storyTimerTotal=1;
+let storyTimerStyle={width:"100%"};
+let storyAutoText="";
+const STORY_AUTO={expedition:"unpack",funeral:"silence",flare:"burn",surge:"endure",refugee:"decline",tracks:"prepare",aid:"cannot",helix:"refuse",pod:"ignore",ashwalkers:"refuse",solTable:"quiet",seasonTurn:"work",helixOffer:"refuse",choirPlea:"decline",meridianCharter:"independent",jinWayfarer:"notReady",minaNotebook:"keep",firstLoss:"words",choirVisit:"records"};
+function storyAutoChoice(e,id){let auto=STORY_AUTO[id]||e.auto||e.choices[0].id;for(let i=0;i<e.choices.length;i++)if(e.choices[i].id===auto)return e.choices[i];return e.choices[0];}
+function storyTimeout(e){return clamp(30+e.body.length/12,45,150);}
+function openStoryModal(){if(osGame&&osGame.pendingEvent){resetMapGesture();dialog="story";refreshAll();}}
+function showStoryCaptions(){if(dialog==="story"&&storyCaptions){dialog="";refreshAll();}}
+function toggleStoryCaptions(){storyCaptions=!storyCaptions;if(osGame&&osGame.pendingEvent){if(storyCaptions&&dialog==="story")dialog="";else if(!storyCaptions&&!dialog)dialog="story";}savePresentationPreferences();say(storyCaptions?"Stories appear as captions over the map and resolve on their own if ignored.":"Stories open as dialogs and wait for your answer.");refreshAll();}
+function autoResolveStory(){
+  if(!osGame||!osGame.pendingEvent)return;
+  let id=osGame.pendingEvent.id,e=STORY_EVENTS[id];if(!e)return;
+  let first=storyAutoChoice(e,id),order=[first];for(let i=0;i<e.choices.length;i++)if(e.choices[i].id!==first.id)order.push(e.choices[i]);
+  for(let i=0;i<order.length&&osGame.pendingEvent;i++)chooseStory(order[i].id);
+  if(!osGame.pendingEvent){say("No answer given. "+first.label+".");chronicle("Left to run its course",e.title+": nobody answered, so "+first.label.toLowerCase()+".","event");}
+}
+function tickStoryCaption(dt){
+  if(!osGame||!osGame.pendingEvent||!storyCaptions||dialog||paused)return;
+  storyTimer-=dt;if(storyTimer<=0)autoResolveStory();
+}
+function projectStoryCaption(){
+  if(!osGame||!osGame.pendingEvent||!storyCard){storyAutoText="";storyTimerStyle={width:"100%"};return;}
+  let e=STORY_EVENTS[osGame.pendingEvent.id],auto=e?storyAutoChoice(e,osGame.pendingEvent.id):null;
+  storyTimerStyle={width:Math.max(0,Math.min(100,storyTimer/storyTimerTotal*100))+"%"};
+  storyAutoText=auto?"If nobody answers: "+auto.label+" · "+Math.max(0,Math.ceil(storyTimer))+" s":"";
+}
+function openStory(id,extra) {
+  if(!STORY_EVENTS[id]||osGame.pendingEvent)return;
+  let base=STORY_EVENTS[id],seen=osGame.storySeen[id]||0,variants=STORY_VARIANTS[id],card=mysteryStory(id,base),body=card.body;
+  if(variants&&seen>0)body=castText(variants[(seen-1)%variants.length]);
+  if(extra)body+="\n\n"+castText(extra);
+  {let fl=facetLine(id);if(fl)body+="\n\n"+castText(fl);}
+  let d=directorState();d.lastStoryAt=osGame.minutes;if(MYSTERY_CLUES[id])d.lastClueAt=osGame.minutes;
+  osGame.pendingEvent={id:id};storyCard=Object.assign({},card,{body:body});dialog=storyCaptions?"":"story";storyTimerTotal=storyTimeout(storyCard);storyTimer=storyTimerTotal;projectStoryCaption();
+  chronicle(storyCard.title,storyCard.body,"event");playCue("discovery");viewDirty=true;
+  if(storyNarrationFile(id))playChapterNarration();else storyNarration=false;
+}
+function chooseStory(choice) {
+  if(!osGame||!osGame.pendingEvent)return;
+  let id=osGame.pendingEvent.id,e=STORY_EVENTS[id];if(!e)return;
+  let valid=false;for(let i=0;i<e.choices.length;i++)if(e.choices[i].id===choice)valid=true;if(!valid)return;
+  if(id==="refugee"&&choice==="supplies"&&!stockTake({meals:4})){say("Four meals are needed to share provisions.");return;}
+  if(id==="tracks"&&choice==="bait"&&!stockTake({raw:12})){say("The decoy needs twelve raw ingredients.");return;}
+  if(id==="aid"&&choice==="send"&&!stockTake({medicine:8})){say("You need eight medicine to send aid.");return;}
+  if(id==="helix"&&choice==="sell"&&!stockTake({glass:3})){say("You need three Hollowglass for this trade.");return;}
+  if(id==="surge"&&choice==="isolate"&&!stockTake({parts:2})){say("Two components are needed to replace the relay.");return;}
+  if(id==="flare"&&choice==="vent"&&!stockTake({parts:2})){say("Two components are needed for the valve.");return;}
+  if(SIDE_STORIES[id]&&!resolveSideStory(id,choice))return;
+  if(id.indexOf("mod:")===0)resolveModStory(id,choice);
+  let people=alivePeople();
+  if(id.indexOf("chapter:")===0)resolveChapterBeat(id.slice(8),choice);
+  reactToStory(id,choice);
+  if(id==="flare")resolveFuelFlare(choice==="vent");
+  if(id==="surge")resolvePowerIncident(choice==="isolate");
+  if(id==="scrapfall"){stockGive(choice==="metal"?{metal:16}:{glass:2});showIncidentFx("impact",CENTRE,centreY()+6);if(choice==="glass")for(let p of people)remember(p,"A small star came down",5,1440);}
+
+  if(id==="signal") {let s=osGame.sites[0];s.known=true;revealArea(s.x+1,s.y+1,5);if(choice==="mark")focusAt(s.x+1,s.y+1);}
+  if(id==="caravan"){revealRegion("The caravan spoke of");osGame.traderUntil=osGame.minutes+1440;osGame.trades={};if(choice==="trade")activePanel="frontier";}
+  if(id==="refugee"){
+    if(choice==="welcome"){
+      if(everyoneAlive().length>=24){say("This expedition supports at most 24 living colonists. You can share provisions instead.");return;}
+      let names=["Ivo Sen","Tess Rowan","Elias Quinn","Neri Bell","Ada Fen","Kit Orrell","Ren Voss","Lea Arden"],n=names[osGame.people.length%names.length];
+      let template=FOUNDERS[osGame.people.length%FOUNDERS.length];let profile=JSON.parse(JSON.stringify(template));profile.name=n;profile.short=n.split(" ")[0];profile.age=randomInt(24,52);profile.role="Frontier surveyor";profile.trait="Adaptable";profile.bio="They followed the approach lights to this settlement. Their previous camp survives mostly in stories.";
+      let c=createColonist(profile,CENTRE+1,centreY()+8);for(let i=0;i<people.length;i++){c.relations[people[i].id]=20;people[i].relations[c.id]=20;}stockGive({meals:6});chronicle("A place for "+c.short,c.name+" joined the settlement.","arrival");
+    }else if(choice==="supplies")osGame.standing.Meridian+=10;
+  }
+  if(id==="cache")stockGive(choice==="medical"?{medicine:10,parts:4}:{metal:24,fuel:10});
+  if(id==="quietfall"){
+    osGame.quietUntil=osGame.minutes+180;
+    if(choice==="observe"&&osGame.researchId){let t=techById(osGame.researchId);osGame.researchProgress[t.id]=Math.min(t.cost-1,(osGame.researchProgress[t.id]||0)+30);}
+    for(let i=0;i<people.length;i++)remember(people[i],choice==="together"?"We waited out the silence together":"The impossible silence",choice==="together"?6:-3,1440);
+  }
+  if(id==="tracks"&&choice==="prepare")osGame.eventQueue.push({kind:"attack",due:osGame.minutes+120,count:eventConfig().severity==="severe"?4:2});
+  if(id==="spores"){
+    for(let i=0;i<osGame.buildings.length;i++){let b=osGame.buildings[i];if(BUILDINGS[b.kind].crop&&b.built&&b.sown){if(choice==="isolate")b.quarantineUntil=osGame.minutes+720;else{b.sown=false;b.growth=0;stockGive({glass:2});}break;}}
+  }
+  if(id==="aid"&&choice==="send"){osGame.standing.Meridian+=20;stockGive({parts:8});for(let i=0;i<people.length;i++)remember(people[i],"We helped another settlement",6,1440);}
+  if(id==="helix"&&choice==="sell"){stockGive({metal:20,parts:8});osGame.standing.Helix+=10;}
+  if(id==="aurora")for(let i=0;i<people.length;i++){people[i].recreation=Math.min(100,people[i].recreation+25);remember(people[i],"The sky was worth staying for",9,1440*2);}
+  if(id==="gift")stockGive({meals:12,medicine:6,fuel:8});
+  if(id==="storm")osGame.eventQueue.push({kind:"storm",due:osGame.minutes+120});
+  stopChapterNarration();storyNarration=false;
+  osGame.storySeen[id]=(osGame.storySeen[id]||0)+1;osGame.pendingEvent=null;storyCard=null;dialog="";viewDirty=true;terrainDirty=true;refreshAll();say(paused?"Decision recorded. The colony remains paused.":"Decision recorded. The colony continues.");
+}
+function tickDirector() {
+  if(osGame.over)return;
+  for(let i=osGame.eventQueue.length-1;i>=0;i--){let q=osGame.eventQueue[i];if(q.due<=osGame.minutes){osGame.eventQueue.splice(i,1);if(q.kind==="attack"&&eventDamageFactor()>0)launchThreat(q.count,q.kinds);if(q.kind==="storm"&&eventDamageFactor()>0){osGame.weatherFront=null;osGame.weather="Storm";osGame.weatherUntil=osGame.minutes+360;chronicle("The charged front arrives","Repairs and stable power matter tonight.","weather");onWeatherArrives("Storm");}}}
+  tickWildlife();tickThreats();tickCamps();tickFuneral();tickExpeditions();
+  if(osGame.pendingEvent||dialog)return;
+  if(!osGame.storySeen.signal&&osGame.elapsed>65&&!osGame.ending){openStory("signal");return;}
+  if(openCampaignBeat())return;
+  let urgent=prioritySideStory();if(urgent){openStory(urgent);return;}
+  let queued=nextModStory();if(queued){openStory(queued);return;}
+  if(osGame.ending)return;
+  if(eventConfig().frequency==="off"||osGame.minutes<osGame.nextEvent)return;
+  osGame.nextEvent=osGame.minutes+incidentDelay();
+  if(colonyInCrisis()){osGame.nextEvent=osGame.minutes+90;return;}
+  let sides=sideStoryOptions();if(sides.length&&randomUnit()<0.6){openStory(directorPick(sides));return;}
+  let glass=osGame.weather==="Glass Wind";
+  let list=glass?["cache","aurora","quietfall","scrapfall"]:["caravan","cache","aurora","refugee","quietfall","scrapfall"];
+  if(!peacefulEvents()&&hasSurgeTarget()&&(dayNow()>3||eventConfig().frequency==="mayhem"))list.push("surge");
+  if(!peacefulEvents()&&hasFlareTarget()&&(dayNow()>3||eventConfig().frequency==="mayhem"))list.push("flare");
+  if(dayNow()>3){list.push("aid");if(!peacefulEvents())list.push("spores","storm");}
+  if(eventConfig().frequency==="mayhem"&&!peacefulEvents())list.push("storm");
+  if(osGame.stock.glass>=3)list.push("helix");
+  if(osGame.standing.Meridian>=35)list.push("gift");
+  let wounded=false,people=alivePeople();for(let i=0;i<people.length;i++)if(people[i].health<65)wounded=true;
+  if(!wounded&&!peacefulEvents()&&osGame.minutes-osGame.lastCrisis>(eventConfig().frequency==="mayhem"?180:2300)&&dayNow()>3)list.push("tracks");
+  if(!osGame.storySeen.caravan&&dayNow()>=3&&!glass){openStory("caravan");return;}
+  list=list.filter(storyCastReady);if(!list.length)return;
+  let event=pick(list);if(event==="tracks")osGame.lastCrisis=osGame.minutes;
+  if(wounded&&!glass&&randomUnit()<0.5)event="caravan";
+  openStory(event);
+}
+function buyTrade(id) {
+  if(!osGame||osGame.traderUntil<=osGame.minutes){say("There is no caravan in camp.");return;}
+  for(let i=0;i<TRADE_OFFERS.length;i++){let t=TRADE_OFFERS[i];if(t.id!==id)continue;
+    if((osGame.trades[id]||0)>=tradeLimit(t)){say("This caravan has no more of that offer.");return;}
+    if(t.weapon&&osGame.weapons.length>=128){say("The equipment limit has been reached.");return;}
+    if(!stockTake(t.give)){say("Not enough materials for this exchange.");return;}
+    if(t.weapon){if(!groundWeapon(t.weapon,CENTRE-1.5,centreY()+7.5)){stockGive(t.give);say("Clear a delivery space south of camp first.");return;}say(WEAPONS[t.weapon].name+" delivered south of camp. Select a settler to collect it.");}
+    stockGive(t.receive);osGame.trades[id]=(osGame.trades[id]||0)+1;osGame.standing.Meridian+=1;chronicle("An exchange at the gate",costText(t.give)+" exchanged for "+(t.weapon?WEAPONS[t.weapon].name:costText(t.receive))+".","trade");refreshAll();return;
+  }
+}
+function callCaravan() {
+  if(!anyPowered("radio")){say("A connected, powered radio mast is required.");return;}
+  if(osGame.traderUntil>osGame.minutes){activePanel="frontier";refreshAll();return;}
+  if(osGame.weather==="Glass Wind"){say("No caravan will move in a glass wind. Call again when it passes.");return;}
+  if(osGame.lastRadio&&osGame.minutes-osGame.lastRadio<(osGame.charter?720:1440)){say(osGame.charter?"The next Compact caravan can answer after half a Sol.":"The next caravan can answer after one Sol.");return;}
+  osGame.lastRadio=osGame.minutes;osGame.traderUntil=osGame.minutes+1440;osGame.trades={};chronicle("A voice answers the radio","A Meridian trader agrees to make camp for one Sol.","trade");say("A caravan is available in Frontier.");refreshAll();
+}
+function getSite(id) { for(let i=0;i<osGame.sites.length;i++)if(osGame.sites[i].id===id)return osGame.sites[i];return null; }
+function excavationCheck(s) {
+  if(s.studied)return "Archive recovered";
+  if(!s.known)return "Undiscovered";
+  let index=osGame.sites.indexOf(s);
+  if(index===1&&!hasTech("hollow"))return "Requires Hollow materials";
+  if(index===2&&!hasTech("echo"))return "Requires Echo interpretation";
+  return "Ready to explore";
+}
+function scheduleExcavation(id) {
+  let s=getSite(id);if(!s)return;let reason=excavationCheck(s);if(reason!=="Ready to explore"){say(reason);return;}
+  s.assigned=true;addJob("excavate",s.id,"explore",s.x,s.y,8);say("An explorer will investigate "+s.name+".");viewDirty=true;refreshAll();
+}
+function completeExcavation(s,c) {
+  if(s.studied)return;s.studied=true;s.assigned=false;s.progress=95;osGame.storyStage++;osGame.stats.studied++;factsOf().excavations[s.name]=c.short;
+  let recoveredWeapon=groundWeapon("carbine",c.x,c.y);
+  stockGive({glass:s.glass,cores:s.cores});remember(c,"The stone remembered us",7,2880);
+  // Reveal the next lead, but leave navigation and the research gate to the player.
+  let index=osGame.sites.indexOf(s);if(index+1<osGame.sites.length){let next=osGame.sites[index+1];next.known=true;revealArea(next.x+1,next.y+1,5);}
+  chronicle(s.title,s.text,"hollow");archiveTitle=s.title;archiveBody=castText(s.text)+"\n\nRecovered: "+s.glass+" Hollowglass and "+s.cores+" Echo core(s)."+(recoveredWeapon?" A survey carbine was recovered and left beside the explorer; collect it from Frontier.":"");if(!dialog)dialog="archive";else say("Archive recovered. Read it from Frontier when ready.");playCue("discovery");viewDirty=true;
+}
+function readArchive(id) {let s=getSite(id);if(!s||!s.studied)return;archiveTitle=s.title;archiveBody=castText(s.text);dialog="archive";}
+function endingCheck(kind) {
+  if(osGame.storyStage<3)return "Recover the three Hollow archives first.";
+  if(kind==="departure")return hasTech("orbital")&&anyPowered("beacon")?"Ready":"Requires orbital research and a powered departure beacon.";
+  return hasTech("integration")&&anyPowered("archive")?"Ready":"Requires integration research and a powered archive interface.";
+}
+function chooseEnding(kind) {
+  if(["departure","integration","silence"].indexOf(kind)<0)return;let check=endingCheck(kind);if(check!=="Ready"){say(check);return;}
+  osGame.ending=kind;osGame.endingAt=osGame.minutes;paused=true;
+  let lines={departure:mysteryEnding("departure"),integration:mysteryEnding("integration"),silence:mysteryEnding("silence")};
+  let coda=endingCoda(kind)+endingDissent(kind);archiveTitle=lines[kind][0];archiveBody=castText(lines[kind][1])+coda+"\n\n"+colonyLegend()+"\n\nYour settlement survives. Continue playing or preserve this ending in a save.";dialog="ending";chronicle(archiveTitle,lines[kind][1],"ending");playCue("discovery");viewDirty=true;
+}
+function updateMilestones() {
+  let checks={beds:countBuilt("bed")>=4,shelter:osGame.rooms&&osGame.rooms.length>0,food:osGame.stats.harvests>0,power:osGame.power&&osGame.power.generation>0,research:Object.keys(osGame.tech).length>0,hollow:osGame.storyStage>0};
+  let labels={beds:"Four places to sleep",shelter:"A roof over our heads",food:"The first harvest",power:"A light in the wilderness",research:"More than survival",hollow:"The stone answers"};
+  let keys=Object.keys(checks);for(let i=0;i<keys.length;i++){let k=keys[i];if(checks[k]&&!osGame.objectives[k]){osGame.objectives[k]=true;chronicle(labels[k],"The colony completed a founding milestone.","milestone");}}
+  if(dayNow()!==osGame.lastDay){let seasonIndex=Math.floor((dayNow()-1)/12)%4,previous=Math.floor((osGame.lastDay-1)/12)%4;if(seasonIndex!==previous){let notes=["Thaw begins","Longlight begins","Emberfall begins","Deepcold begins"],advice=["Mild days return. Outdoor plots grow again and the nights ease.","The warmest, brightest season: crops race, solar arrays peak, heat waves are possible.","Cooling days and cold nights ahead. Stock fuel, finish heaters, and expect outdoor sunroot to slow.","Nights fall well below freezing for twelve Sols. Outdoor sunroot stops; hydroponics, Hollowcap beds, heaters and fuel carry the colony through."];chronicle(notes[seasonIndex],advice[seasonIndex],"weather");say(notes[seasonIndex]+". "+advice[seasonIndex]);}osGame.lastDay=dayNow();considerBirth();considerComingOfAge();tickChildhood();tickOutposts();chronicle("Sol "+dayNow()+" begins",alivePeople().length+" people. "+Math.floor(osGame.stock.meals)+" prepared meals. Another morning on Hollow-7.","day");}
+  updateCampaign(false);
+}

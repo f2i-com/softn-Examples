@@ -1,0 +1,14 @@
+<div>
+  <div className="os-section-title">We were here.</div>
+  <span className="os-prose">A record of the people and the place they made. Most recent entries first.</span>
+  <button className="os-btn os-link" @click={exportChronicle}>Export the chronicle as text</button>
+  <div className="os-rule" />
+  <span className="os-label">THE RECORD</span>
+  #each (row in recordCards) key={row.name}
+    <div className="os-detail"><span>{row.name}</span><b>{row.value}</b></div>
+  #end
+  <div className="os-rule" />
+  #each (entry in journalCards) key={entry.id}
+    <div className="os-journal-entry" oskind={String(entry.type)}><div className="os-journal-date">{entry.date}</div><div className="os-journal-title">{entry.title}</div><div className="os-journal-body">{entry.body}</div></div>
+  #end
+</div>

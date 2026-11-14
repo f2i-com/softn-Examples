@@ -1,0 +1,134 @@
+#if (selectedCard)
+  <div className="os-stack">
+    #if (selectedCard.sprite)
+      <div className="os-row" style={{ alignItems: "flex-start", gap: "12px" }}><img className="os-portrait" src={asset(selectedCard.sprite)} alt="" /><div><div className="os-selected-title">{selectedCard.name}</div><div className="os-small os-dim" style={{ marginTop: "5px" }}>{selectedCard.subtitle}</div><div className="os-small os-amber" style={{ marginTop: "5px" }}>{selectedCard.action}</div></div></div>
+    #else
+      <div><div className="os-selected-title">{selectedCard.name}</div><span className="os-small os-amber">{selectedCard.action}</span></div>
+    #end
+    #if (selectedCard.type === "colonist")
+      <div className="os-row"><button className="os-btn os-tab" oson={String(inspectTab === "overview")} @click={() => selectInspectorTab("overview")}>Needs</button><button className="os-btn os-tab" oson={String(inspectTab === "gear")} @click={() => selectInspectorTab("gear")}>Gear</button><button className="os-btn os-tab" oson={String(inspectTab === "skills")} @click={() => selectInspectorTab("skills")}>Skills</button><button className="os-btn os-tab" oson={String(inspectTab === "social")} @click={() => selectInspectorTab("social")}>Social</button></div>
+      #if (!selectedCard.dead)
+        #if (selectedCard.rover && selectedCard.party)
+          <div className="os-card os-party-card" oson={String(selectedCard.watching)}><div className="os-item-name">On the road · {selectedCard.rations} rations</div><div className="os-item-desc">{selectedCard.party}. Carrying {selectedCard.pack}.</div><div className="os-row" style={{ marginTop: "8px", flexWrap: "wrap" }}><button className="os-btn os-tab" oson={String(selectedCard.watching)} @click={() => watchRover(selectedCard.id)}>{selectedCard.watching ? "Watching · back to colony" : "Watch"}</button><button className="os-btn os-tab" @click={() => recallParty(selectedCard.partyId)}>Bring the party home</button><button className="os-btn os-tab" @click={() => setPanel("frontier")}>Frontier chart</button></div></div>
+        #end
+        #if (selectedCard.rover && !selectedCard.party)
+          <div className="os-card"><div className="os-item-name">Roving · {selectedCard.rations} rations · {selectedCard.walked} tiles walked</div><div className="os-item-desc">Alone on the plane. Right-click the ground to send them on; the country is made as they reach it, and it will be the same when they come back. Carrying {selectedCard.pack}.</div><div className="os-row" style={{ marginTop: "8px", flexWrap: "wrap" }}><button className="os-btn os-tab" @click={() => roverHead(selectedCard.id, 0, -1)}>North</button><button className="os-btn os-tab" @click={() => roverHead(selectedCard.id, 0, 1)}>South</button><button className="os-btn os-tab" @click={() => roverHead(selectedCard.id, -1, 0)}>West</button><button className="os-btn os-tab" @click={() => roverHead(selectedCard.id, 1, 0)}>East</button><button className="os-btn os-tab" @click={() => roverForage(selectedCard.id)}>Forage nearby</button>#if (!selectedCard.atCamp)<button className="os-btn os-tab" @click={() => makeFarCamp(selectedCard.id)}>Make camp · 6 wood</button>#end#if (selectedCard.canSettle)<button className="os-btn os-tab os-primary" @click={() => settleHere(selectedCard.id)}>Settle here</button>#end<button className="os-btn os-tab os-primary" @click={() => roverReturn(selectedCard.id)}>Return to colony</button></div></div>
+        #end
+        #if (selectedCard.canSetOut)
+          <button className="os-btn os-wide" @click={() => setOutRover(selectedCard.id)}>Set out alone · takes up to 8 meals</button>
+        #end
+        <div className="os-row">#if (!selectedCard.rover)<button className="os-btn os-tab" oson={String(selectedCard.drafted)} @click={() => toggleDraft(selectedCard.id)}>{selectedCard.drafted ? "Stand down" : "Draft"}</button>#end<button className="os-btn os-tab" @click={() => focusColonist(selectedCard.id)}>Locate</button><button className="os-btn os-tab" oson={String(followColonistId === selectedCard.id)} @click={() => toggleFollowColonist(selectedCard.id)}>{followColonistId === selectedCard.id ? "Stop following" : "Follow"}</button></div>
+      #end
+      <div className="os-card"><span className="os-prose">{selectedCard.why}</span></div>
+      #if (inspectTab === "gear")
+      <div className="os-card"><span className="os-label">EQUIPMENT</span><div className="os-item-name">{selectedCard.weapon}</div><div className="os-item-desc">{selectedCard.weaponDetail}</div>
+        #if (!selectedCard.dead)
+          <div className="os-small os-dim">Choose a ground weapon to collect. Resume to walk there; your current weapon is dropped only after pickup.</div>
+          <div className="os-stack" style={{ marginTop: "8px" }}><button className="os-btn os-wide" disabled={!selectedCard.canEquip} @click={() => equipNearest("spear")}>Collect nearest spear</button><button className="os-btn os-wide" disabled={!selectedCard.canEquip} @click={() => equipNearest("pistol")}>Collect nearest pistol</button><button className="os-btn os-wide" disabled={!selectedCard.canEquip} @click={() => equipNearest("carbine")}>Collect nearest carbine</button><button className="os-btn os-wide" disabled={!selectedCard.hasWeapon && !selectedCard.pickup} @click={dropSelectedWeapon}>Drop weapon / cancel pickup</button></div>
+        #end
+      </div>
+      #end
+      #if (inspectTab === "overview")
+        <div className="os-detail"><span>Weapon</span><b>{selectedCard.weapon}</b></div>
+        <span className="os-label">{selectedCard.mood} · {selectedCard.trait}</span>
+        <span className="os-tiny os-dim">{selectedCard.personality}</span>
+        #if (selectedCard.quirks)
+          <span className="os-tiny os-amber" title={selectedCard.quirkDetail}>{selectedCard.quirks}</span>
+        #end
+        #if (selectedCard.knacks)
+          <span className="os-tiny os-cyan" title="Knacks learn faster; a calling is also a comfort">{selectedCard.knacks}</span>
+        #end
+        #if (selectedCard.values)
+          <span className="os-tiny os-cyan">{selectedCard.values}</span>
+        #end
+        #each (n in selectedCard.needs) key={n.name}
+          <div className="os-need-row"><span className="os-need-label">{n.name}</span><div className="os-bar"><div className="os-bar-fill" style={n.style} /></div><span className="os-need-value">{n.value}</span></div>
+        #end
+        #if (selectedCard.bleeding)
+          <div className="os-injury">Bleeding. Treatment is urgent.</div>
+        #end
+        #each (injury in selectedCard.injuries)
+          <div className="os-injury">{injury.text}</div>
+        #end
+        <span className="os-label">RECENT THOUGHTS</span>
+        <div>
+          #each (m in selectedCard.memories) key={m.text}
+            <div className="os-thought" ospositive={String(m.positive)}><span>{m.text}</span><b>{m.value}</b></div>
+          #end
+        </div>
+      #end
+      #if (inspectTab === "skills")
+        <span className="os-prose">{selectedCard.description}</span>
+        <span className="os-label">PRACTICAL SKILLS</span>
+        <div>
+          #each (skill in selectedCard.skills) key={skill.name}
+            <div className="os-detail"><span>{skill.name}</span><b>{skill.value} / 10</b></div>
+          #end
+        </div>
+        <div className="os-detail"><span>Schedule</span><b>{selectedCard.schedule}</b></div>
+        <div className="os-detail"><span>Carrying</span><b>{selectedCard.carrying}</b></div>
+        <button className="os-btn os-wide" @click={openWork}>Change work priorities</button>
+      #end
+      #if (inspectTab === "social")
+        <span className="os-prose">Shared work, conversations, disagreements, and treatment create lasting impressions.</span>
+        #each (r in relationshipCards) key={r.id}
+          <div className="os-card"><div className="os-between"><span>{r.name}</span><b className="os-cyan">{r.value}</b></div><span className="os-tiny os-dim">{r.label}</span></div>
+        #end
+      #end
+    #end
+    #if (selectedCard.type === "building")
+      #if (selectedCard.name === "Grazing pen" && selectedCard.built)
+        <button className="os-btn os-wide" @click={cullSelectedPen}>Cull one mossback for 18 raw food</button>
+      #end
+      <span className="os-prose">{selectedCard.description}</span>
+      <div className="os-card"><span className="os-small os-amber">{selectedCard.why}</span></div>
+      <div>
+        #each (d in selectedCard.details) key={d.name}
+          <div className="os-detail"><span>{d.name}</span><b>{d.value}</b></div>
+        #end
+      </div>
+      #if (selectedCard.built)
+        <button className="os-btn os-wide" @click={toggleSelectedBuilding}>{selectedCard.on ? "Switch off" : "Switch on"}</button>
+      #end
+      #if (selectedCard.isStore)
+        <button className="os-btn os-wide" @click={cycleStoreFilter}>Change what this stockpile takes</button>
+      #end
+      #if (selectedCard.canDismantle)
+        <button className="os-btn os-danger os-wide" @click={dismantleSelected}>{selectedCard.built ? "Dismantle · half materials returned" : "Cancel blueprint · full refund"}</button>
+      #end
+    #end
+    #if (selectedCard.type === "camp")
+      <span className="os-prose">{selectedCard.description}</span>
+      <div className="os-card"><span className="os-label">STOLEN GOODS</span><div className="os-amber">{selectedCard.goods}</div></div>
+      <button className="os-btn os-primary os-wide" disabled={selectedCard.roused} @click={() => scheduleStrike(selectedCard.id)}>Send a strike party</button>
+      <span className="os-tiny os-dim">An explorer approaches the camp; the raiders turn to fight. Drafted defenders and turrets finish it.</span>
+    #end
+    #if (selectedCard.type === "ruin")
+      <span className="os-prose">{selectedCard.description}</span>
+      <div className="os-card"><span className="os-label">RECOVERY PROGRESS</span><div className="os-amber">{selectedCard.progress}%</div></div>
+      #if (selectedCard.studied)
+        <button className="os-btn os-wide" @click={() => readArchive(selectedCard.id)}>Read recovered archive</button>
+      #else
+        <button className="os-btn os-primary os-wide" disabled={!selectedCard.ready} @click={() => scheduleExcavation(selectedCard.id)}>Assign an explorer</button>
+      #end
+    #end
+    #if (selectedCard.type === "animal")
+      <span className="os-prose">{selectedCard.description}</span>
+      #if (selectedCard.tameable)
+        <button className="os-btn os-primary os-wide" disabled={selectedCard.dead} @click={tameSelected}>{selectedCard.taming ? "Cancel taming" : "Tame with six raw food"}</button><span className="os-tiny os-dim">A farmer approaches with food. The mossback joins a grazing pen with room and gives 6 raw food a Sol.</span>
+      #end
+      #if (selectedCard.huntable)
+        <button className="os-btn os-primary os-wide" disabled={selectedCard.dead} @click={toggleHuntSelected}>{selectedCard.marked ? "Cancel the hunt" : "Designate for hunting"}</button><span className="os-tiny os-dim">An armed settler with Explore enabled tracks it and brings it down. The meat is hauled in afterwards.</span>
+      #end
+      <button className="os-btn os-wide" disabled={selectedCard.dead} @click={orderHuntSelected}>Assign nearest settler to target</button><span className="os-tiny os-dim">The selected settler enters command mode. Move within range to fire.</span>
+    #end
+    #if (selectedCard.type === "weapon")
+      <span className="os-prose">{selectedCard.description}</span><button className="os-btn os-primary os-wide" disabled={!selectedCard.available} @click={collectSelectedWeapon}>Nearest unarmed settler: collect</button><span className="os-small os-dim">Or select a particular settler and choose their equipment.</span>
+    #end
+    #if (selectedCard.type === "node")
+      <span className="os-prose">{selectedCard.description}</span><button className="os-btn os-primary os-wide" @click={markSelectedNode}>{selectedCard.marked ? "Cancel gathering designation" : "Designate for gathering"}</button>
+    #end
+  </div>
+#else
+  <div className="os-prose">Select a colonist, structure, creature, or resource on the map.</div>
+#end

@@ -1,0 +1,150 @@
+<import Presentation from="./presentation.ui" />
+<import EventSettings from="./event-settings.ui" />
+<import Mods from="./mods.ui" />
+<import WorkSheet from="./work.ui" />
+<import FieldGuide from="./help.ui" />
+#if (dialog)
+  <div className="os-modal-wrap">
+    <div className={dialog === "work" || dialog === "help" || dialog === "gallery" ? "os-modal os-modal-wide" : "os-modal"} osdialog={dialog}>
+      #if (dialog === "presentation")<Presentation />#end
+      #if (dialog === "arrival")
+        <span className="os-label">WAYFARER / EMERGENCY PROTOCOL</span>
+        <div className="os-modal-title" style={{ marginTop: "10px" }}>{landingScenario === "established" ? "A foothold in the wilderness." : "Atmosphere: survivable."}</div>
+        <img className="os-modal-art" src={asset("assets/art/key-art.webp")} alt="Outerstead promotional concept art" />
+        <div className="os-modal-body">{landingScenario === "established" ? "Welcome to Lantern Reach. The shelter, fields, industry, and power network are already built. The simulation is live: settlers eat, work, rest, and carry their supplies.\n\nChoose a research project, inspect your people, and follow the signal when it arrives." : "Four people made it to the surface. The Wayfarer is no longer responding. The lifeboat contains provisions, tools, and enough timber to begin.\n\nPlan a bunkhouse on clear ground. Plant at least two sunroot plots. Designate nearby trees and minerals for gathering. A generator and a research station will help you look beyond tomorrow."}</div>
+        <div className="os-card" style={{ marginTop: "16px" }}><span className="os-small os-dim">Space or the play button pauses. Mouse: drag in Select mode to pan; right-click to cancel a tool or order a selected settler. Touch: drag to pan, pinch to zoom, and tap a build tile then Apply here. Select a person to see why they are doing something. Your colony starts paused so you can plan.</span></div>
+        <div className="os-modal-footer"><button className="os-btn" @click={closeDialog}>Let me plan first</button><button className="os-btn os-primary" @click={startAfterArrival}>Begin the first shift</button></div>
+      #end
+      #if (dialog === "story" && storyCard)
+        <span className="os-label os-cyan">{storyCard.tag}</span>
+        <div className="os-modal-title" style={{ marginTop: "12px", marginBottom: "20px" }}>{storyCard.title}</div>
+        <div className="os-modal-body">{storyCard.body}</div>
+        <div className="os-rule" />
+        #each (choice in storyCard.choices) key={choice.id}
+          <button className="os-btn os-modal-choice" @click={() => chooseStory(choice.id)}><div>{choice.label}</div><span className="os-choice-detail">{choice.detail}</span></button>
+        #end
+        <span className="os-tiny os-dim" style={{ display: "block", marginTop: "16px" }}>{paused ? "Colony paused. Your decision is recorded in the chronicle." : "Colony running. Your decision is recorded in the chronicle."}</span>
+        <div className="os-row" style={{ marginTop: "10px" }}>
+          #if (storyNarration)
+            <button className="os-btn os-tab" @click={toggleStoryNarration}>{narrationEnabled ? "Narration: on" : "Narration: off"}</button><button className="os-btn os-tab" @click={toggleSound}>{ambienceText}</button>
+          #end
+          #if (storyCaptions)
+            <button className="os-btn os-tab" @click={showStoryCaptions}>Show as captions</button>
+          #end
+        </div>
+      #end
+      #if (dialog === "archive" || dialog === "ending" || dialog === "runtime-error")
+        <span className="os-label os-cyan">{dialog === "ending" ? "THE COLONY CHRONICLE" : dialog === "runtime-error" ? "RECOVERY NOTICE" : "HOLLOW / RECOVERED ARCHIVE"}</span>
+        <div className="os-modal-title" style={{ marginTop: "12px", marginBottom: "20px" }}>{archiveTitle}</div>
+        <div className="os-modal-body">{archiveBody}</div>
+        <div className="os-modal-footer"><button className="os-btn" @click={openSaves}>Preserve the colony</button><button className="os-btn os-primary" @click={closeDialog}>Return to the settlement</button></div>
+      #end
+      #if (dialog === "saves")
+        <div className="os-modal-head"><div><span className="os-label">LOCAL ARCHIVE</span><div className="os-modal-title">Keep the lights on.</div></div><button className="os-btn os-icon-btn" title="Close menu" @click={closeDialog}>×</button></div>
+        <div className="os-stack">
+          #each (saveEntry in slotCards) key={saveEntry.id}
+            <div className="os-save-slot"><div><div className="os-small">{saveEntry.label}</div><span className="os-tiny os-dim">{saveEntry.description}</span></div><div className="os-row">
+              #if (!saveEntry.automatic && screen === "game")
+                <button className="os-btn" @click={() => saveSlot(saveEntry.index, false)}>Save</button>
+              #end
+              <button className="os-btn" disabled={!saveEntry.filled} @click={() => loadSlot(saveEntry.index, saveEntry.automatic)}>Load</button>
+            </div></div>
+          #end
+        </div>
+        <div className="os-rule" />
+        <span className="os-prose">{saveMessage}</span>
+        <div className="os-row" style={{ margin: "12px 0" }}><button className="os-btn os-primary" disabled={screen !== "game"} @click={exportSave}>Download save file</button><button className="os-btn" @click={importSaveFile}>Open a save file…</button><button className="os-btn" @click={importSave}>Import pasted text</button></div>
+        <textarea className="os-save-field" :bind={saveText} placeholder="Downloaded saves also appear here as text. Paste an Outerstead JSON save to restore it." />
+        <span className="os-tiny os-dim" style={{ display: "block", marginTop: "8px" }}>Local storage belongs to this app in this browser. Refreshing or closing the page autosaves and resumes on return. A downloaded save file is the copy to keep outside the browser.</span>
+      #end
+      #if (dialog === "menu")
+        <div className="os-modal-head"><div><span className="os-label">{"FIRST LIGHT / " + OS_VERSION}</span><div className="os-modal-title">A quiet moment.</div></div><button className="os-btn os-icon-btn" title="Close menu" @click={closeDialog}>×</button></div>
+        <div className="os-stack"><button className="os-btn os-primary os-wide" @click={closeDialog}>Return to colony</button><button className="os-btn os-wide" @click={showTitle}>Title screen · colony stays paused</button><button className="os-btn os-wide" @click={openSaves}>Save, load, and export</button><button className="os-btn os-wide" @click={openPresentation}>Picture &amp; weather sound</button><button className="os-btn os-wide" @click={openEventSettings}>Weather & incidents</button><button className="os-btn os-wide" @click={toggleStoryCaptions}>{storyCaptions ? "Stories: captions over the map · resolve on their own if ignored" : "Stories: dialogs that wait for an answer"}</button><button className="os-btn os-wide" @click={toggleBackgroundPlay}>{backgroundPlay ? "Background play: on · keeps running when the window is not in focus" : "Background play: off · pauses when the window loses focus"}</button><button className="os-btn os-wide" @click={openMods}>User mods</button><button className="os-btn os-wide" @click={openHelp}>Field guide and controls</button><div className="os-row"><button className="os-btn os-tab" @click={toggleSound}>{ambienceText}</button><button className="os-btn os-tab" oson={String(reducedMotion)} @click={setMotion}>{reducedMotion ? "Reduced motion on" : "Reduce motion"}</button></div><div className="os-row"><button className="os-btn os-tab" @click={toggleMusic}>{musicEnabled ? "Background: music" : "Background: wind"}</button><button className="os-btn os-tab" @click={toggleEffects}>{effectsEnabled ? "Effects on" : "Effects off"}</button></div><div className="os-row"><button className="os-btn os-tab" @click={cycleAudioVolume}>{audioVolumeText}</button><button className="os-btn os-tab" disabled={!soundEnabled || !effectsEnabled} @click={previewSound}>Preview chime</button></div><div className="os-muted">First Light · original generated instrumental. Switch to wind for an ambient soundscape. Enable sound to listen.</div><button className="os-btn os-wide" @click={openGallery}>Art and development credits</button></div>
+      #end
+      #if (dialog === "confirm-new")
+        <span className="os-label">NEW EXPEDITION</span><div className="os-modal-title" style={{ margin: "10px 0 17px" }}>Leave this chapter?</div><span className="os-modal-body">Starting a new settlement replaces the active, unsaved colony. Existing manual and autosave slots will remain. Preserve a save before beginning again.</span><div className="os-modal-footer"><button className="os-btn" @click={closeDialog}>Keep this colony</button><button className="os-btn" @click={openSaves}>Save first</button><button className="os-btn os-primary" @click={confirmNewSettlement}>Begin new expedition</button></div>
+      #end
+      #if (dialog === "crew")
+        <div className="os-modal-head"><div><span className="os-label">LANDFALL CREW // {seedText}</span><div className="os-modal-title">Four settlers survived the descent.</div></div><div className="os-row"><button className="os-btn os-primary" @click={startNewSettlement}>Landfall</button><button className="os-btn os-icon-btn" title="Back to the title" @click={closeDialog}>×</button></div></div>
+        <div className="os-crew-controls">
+          <button className="os-btn os-tab" oson={String(crewMode === "generated")} @click={() => setCrewMode("generated")}>Generated crew</button>
+          <button className="os-btn os-tab" oson={String(crewMode === "first")} @click={() => setCrewMode("first")}>First Light crew · Jin, Mara, Mina, Sol</button>
+          #if (crewMode === "generated")<button className="os-btn os-tab" @click={rerollCrew}>↻ Reroll all four</button><button className="os-btn os-tab" oson={String(crewAllowHard)} @click={toggleCrewHard}>{crewAllowHard ? "Difficult crews allowed" : "Viable crews only"}</button>#end
+        </div>
+        <div className="os-crew-summary">
+          #each (s in crewSummary.strengths) key={s}<span className="os-crew-good">✓ {s}</span>#end
+          #each (w in crewSummary.weaknesses) key={w}<span className="os-crew-bad">! {w}</span>#end
+        </div>
+        <div className="os-crew-grid">
+          #each (card in crewCards) key={card.slot}
+            <div className="os-crew-card">
+              <div className="os-crew-head"><div className="os-crew-portrait"><img src={asset(card.sprite)} alt="" /></div><div className="os-crew-ident"><div className="os-crew-name">{card.name}</div><div className="os-small os-dim">{card.role + " · " + card.age}</div><div className="os-crew-chips"><span className="os-chip-mini">{card.trait}</span>#each (k in card.knackList) key={k.id}<span className="os-chip-mini" oskind={k.kind}>{k.label}</span>#end</div></div></div>
+              <div className="os-crew-skills">
+                #each (s in card.skills) key={s.id}
+                  <div className="os-crew-skill" osstrong={String(s.strong)}><span className="os-crew-skill-label">{s.label}</span><div className="os-bar"><div className="os-bar-fill" style={s.barStyle} /></div><span className="os-crew-skill-value">{s.value}{s.knack}</span></div>
+                #end
+              </div>
+              <div className="os-crew-bio">{card.bio}</div>
+              #if (card.ties)<div className="os-crew-ties">{card.ties}</div>#end
+              #if (card.motto)<div className="os-crew-motto">{"“" + card.motto + "”"}</div>#end
+              #if (crewMode === "generated")<button className="os-btn os-tab" @click={() => rerollSettler(card.slot)}>↻ Reroll</button>#end
+            </div>
+          #end
+        </div>
+        <div className="os-crew-codeline"><span className="os-tiny os-dim">Crew code · paste it into the world seed to land this crew again</span><span className="os-crew-code">{crewCodeText}</span></div>
+        <div className="os-modal-footer"><button className="os-btn" @click={closeDialog}>Back</button><button className="os-btn os-primary" @click={startNewSettlement}>Landfall</button></div>
+      #end
+      #if (dialog === "expedition")
+        <div className="os-modal-head"><div><span className="os-label">EXPEDITION · {expeditionPlanView.kind}</span><div className="os-modal-title">{expeditionPlanView.title}</div></div><button className="os-btn os-icon-btn" @click={closeDialog}>×</button></div>
+        <span className="os-prose">{expeditionPlanView.purpose}</span>
+        <div className="os-plan-stats">
+          <div className="os-plan-stat"><span className="os-label">WALK</span><b>{expeditionPlanView.walk}</b><span className="os-tiny os-dim">each way, on foot</span></div>
+          <div className="os-plan-stat"><span className="os-label">WORK</span><b>{expeditionPlanView.work}</b><span className="os-tiny os-dim">at the site</span></div>
+          <div className="os-plan-stat"><span className="os-label">DANGER</span><b className={"os-danger-" + expeditionPlanView.dangerLevel}>{expeditionPlanView.danger}</b><span className="os-tiny os-dim">{expeditionPlanView.dangerNote}</span></div>
+          <div className="os-plan-stat"><span className="os-label">TAKES</span><b>{expeditionPlanView.cost}</b><span className="os-tiny os-dim">{expeditionPlanView.have}</span></div>
+        </div>
+        <span className="os-label os-plan-who">WHO GOES · press to choose</span>
+        <div className="os-plan-grid">
+          #each (c in expeditionCandidates) key={c.id}
+            <button className="os-plan-card" oson={String(c.chosen)} disabled={!c.ok} @click={() => toggleExpeditionMember(c.id)}>
+              <span className="os-plan-check">{c.chosen ? "✓" : ""}</span>
+              <span className="os-plan-name">{c.name}</span>
+              <span className="os-plan-role">{c.role}</span>
+              <span className="os-plan-skill"><i style={c.exploreStyle} /></span>
+              <span className="os-tiny os-dim">explore {c.explore} · health {c.health}</span>
+              <span className={"os-tiny " + (c.ok ? "os-cyan" : "os-amber")}>{c.note}</span>
+            </button>
+          #end
+        </div>
+        <div className="os-plan-check-line" oson={String(expeditionCheckText === "Ready")}>{expeditionCheckText === "Ready" ? "Ready · " + expeditionPlanView.summary : expeditionCheckText}</div>
+        <div className="os-modal-footer"><button className="os-btn" @click={closeDialog}>Not now</button><button className="os-btn os-primary" disabled={expeditionCheckText !== "Ready"} @click={sendExpedition}>Send them</button></div>
+      #end
+      #if (dialog === "event-settings")
+        <div className="os-modal-head"><div><span className="os-label">YOUR COLONY / YOUR PACE</span><div className="os-modal-title">Quiet evenings or mayhem?</div></div><button className="os-btn os-icon-btn" title="Close menu" @click={closeDialog}>×</button></div>
+        <EventSettings />
+        <p className="os-prose">Changes apply immediately to future encounters and are saved with this colony. Gentle or Off cancels queued random attacks and storms. Existing creatures and damage remain.</p>
+      #end
+      #if (dialog === "mods")
+        <Mods />
+      #end
+      #if (dialog === "work")
+        <WorkSheet />
+      #end
+      #if (dialog === "help")
+        <FieldGuide />
+      #end
+      #if (dialog === "gallery")
+        <div className="os-modal-head"><div><span className="os-label">FROM A SKETCH TO A SETTLEMENT</span><div className="os-modal-title">The Outerstead archive.</div></div><button className="os-btn os-icon-btn" title="Close menu" @click={closeDialog}>×</button></div>
+        <span className="os-prose">Outerstead was conceived for the Softn platform. First Light is a modular, original colony-survival game. The supplied concept artwork and logo establish the world and palette. Gameplay uses a separate, original SVG sprite set and textured tile atlas, generated for the project and documented in docs/ART_PROVENANCE.md.</span>
+        <div className="os-art-grid" style={{ marginTop: "18px" }}><div><img src={asset("assets/art/day-concept.webp")} alt="Daytime gameplay concept" /><span className="os-tiny os-dim">Concept study: a growing settlement. Not a captured gameplay frame.</span></div><div><img src={asset("assets/art/night-concept.webp")} alt="Nighttime defence concept" /><span className="os-tiny os-dim">Concept study: the eastern approach.</span></div><div><img src={asset("assets/art/key-art.webp")} alt="Original Outerstead promotional key art" /><span className="os-tiny os-dim">Promotional key art supplied with the game plan.</span></div><div><img className="os-art-logo" src={asset("assets/art/logo.png")} alt="Outerstead original logo" /><span className="os-tiny os-dim">Original supplied logo, presented without alteration.</span></div></div>
+        <span className="os-prose" style={{ display: "block", marginTop: "18px" }}>First Light includes three landing sites, two starts, thirty-five buildable definitions, autonomous colonists with quirks and convictions, production chains, research, raids and camps, overland roving, births and coming of age, three ruins, six chapters, and three narrative endings. It does not yet include ground vehicles or the complete long-term design. No AI service or backend is needed to play.</span>
+      #end
+      #if (dialog === "story" || dialog === "archive")
+        <button className="os-btn os-wide" style={{ marginTop: "12px" }} @click={togglePause}>{paused ? "Resume colony" : "Pause colony"}</button>
+      #end
+      #if (dialog !== "story" && dialog !== "crew")
+        <div className="os-modal-close"><button className="os-btn" @click={closeDialog}>Close menu</button></div>
+      #end
+    </div>
+  </div>
+#end

@@ -1,0 +1,16 @@
+<div className="os-roster">
+  <div className="os-between"><span className="os-label">OUR PEOPLE</span><span className="os-chip">{hud.population}</span></div>
+  #each (c in colonistCards) key={c.id}
+    <button className="os-colonist" oson={String(c.selected)} @click={() => focusColonist(c.id)}>
+      <div className="os-row"><img className="os-avatar" src={asset(c.sprite)} alt="" /><div><div className="os-colonist-name">{c.name}</div><div className="os-colonist-role">{c.role}</div><span className="os-tiny os-amber">{c.drafted ? "COMMAND MODE" : c.mood}</span></div></div>
+      #if (c.quirks)
+        <div className="os-tiny os-amber">{c.quirks}</div>
+      #end
+      <div className="os-colonist-action">{c.action}</div>
+      <div className="os-mini-bars" title="Health / nutrition / rest"><div className="os-bar"><div className="os-bar-fill" style={c.healthStyle} /></div><div className="os-bar"><div className="os-bar-fill" style={c.foodStyle} /></div><div className="os-bar"><div className="os-bar-fill" style={c.restStyle} /></div></div>
+    </button>
+  #end
+  <button className="os-btn os-wide" @click={() => setPanel("work")}>Work priorities</button>
+  <div className="os-row"><button className="os-btn os-tab" @click={draftEveryone}>Draft all</button><button className="os-btn os-tab" @click={standDownEveryone}>Stand down</button></div>
+  <div className="os-roster-note"><b>People, not pieces.</b><br />Food, rest, injury, and friendships shape how each settler works.<br /><br />Select a person to understand what they need.</div>
+</div>

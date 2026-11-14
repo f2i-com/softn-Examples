@@ -1,0 +1,25 @@
+<div className="os-picture-settings">
+<span className="os-label">MAKE YOURSELF AT HOME</span>
+<div className="os-modal-title">Picture &amp; weather sound</div>
+<div className="os-picture-preview" style={visualStyle}>
+  <TileMap key={terrainAsset} src={asset(terrainAsset || "assets/sprites/terrain.png")} tileSize={terrainTileSize} tilesetColumns={8} layers={picturePreviewLayers} mapWidth={18} mapHeight={4} scale={terrainScale} />
+  <img className="os-picture-house" src={asset("assets/sprites/lander.svg")} alt="Lifeboat colour preview" />
+  <img className="os-picture-person" src={asset("assets/sprites/colonist0-east.svg")} alt="Colonist colour preview" />
+</div>
+<div className="os-muted">Adjust the world, title scenery and trailer. Menus keep their original colours.</div>
+<div className="os-picture-presets">
+<button className="os-btn" oson={String(colourPreset === "natural")} @click={() => setColourPreset("natural")}>Natural</button>
+<button className="os-btn" oson={String(colourPreset === "vivid")} @click={() => setColourPreset("vivid")}>Vivid</button>
+<button className="os-btn" oson={String(colourPreset === "soft")} @click={() => setColourPreset("soft")}>Soft</button>
+<button className="os-btn" oson={String(colourPreset === "original")} @click={() => setColourPreset("original")}>Original</button>
+</div>
+<button className="os-btn os-wide" oson={String(highDetail)} @click={toggleTerrainQuality}>{highDetail ? "High detail · 128px tiles" : "Standard detail · 32px tiles"}</button>
+<div className="os-muted">High detail draws a new vector terrain atlas at four times the resolution. Only visible terrain is drawn, at screen resolution. Standard keeps the original pixel style. Buildings and people stay vector sharp in both modes.</div>
+<div className="os-picture-brightness"><button className="os-btn" disabled={imageBrightness <= 70} @click={() => changeImageBrightness(-10)}>Dimmer</button><span>Brightness {imageBrightness}%</span><button className="os-btn" disabled={imageBrightness >= 150} @click={() => changeImageBrightness(10)}>Brighter</button></div>
+<div className="os-row"><button className="os-btn os-tab" @click={resetVisuals}>Reset picture</button><button className="os-btn os-tab" @click={toggleWeatherSound}>{weatherSoundEnabled ? "Weather audio: on" : "Weather audio: off"}</button></div>
+<div className="os-row"><button className="os-btn os-tab" @click={toggleSound}>{ambienceText}</button><button className="os-btn os-tab" @click={toggleEffects}>{effectsEnabled ? "Effects on" : "Effects off"}</button></div>
+<div className="os-row"><button className="os-btn os-tab" disabled={!soundEnabled || !effectsEnabled || !weatherSoundEnabled} @click={() => previewWeatherSound("rain")}>Hear rain · 5s</button><button className="os-btn os-tab" disabled={!soundEnabled || !effectsEnabled || !weatherSoundEnabled} @click={() => previewWeatherSound("storm")}>Hear storm · 5s</button></div>
+<p className="os-muted">{visualPreferenceMessage} Rain and distant thunder follow the weather, including the trailer storm.</p>
+<button className="os-btn os-primary os-wide" @click={closeDialog}>Done</button>
+
+</div>

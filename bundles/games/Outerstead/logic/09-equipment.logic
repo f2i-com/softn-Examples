@@ -1,0 +1,76 @@
+// Physical weapons have one owner or one ground position. Pickup claims prevent duplication.
+const WEAPONS={
+  spear:{name:"Salvage spear",range:2,damage:9,cooldown:1.35,accuracy:0.95,melee:true,description:"A dependable close-range weapon. Keep ranged defenders behind the spear line."},
+  pistol:{name:"Service pistol",range:6,damage:11,cooldown:1.65,accuracy:0.8,melee:false,description:"A compact sidearm for defending narrow approaches."},
+  carbine:{name:"Survey carbine",range:9,damage:16,cooldown:2.1,accuracy:0.9,melee:false,description:"A slower, accurate long-range weapon. Outranges spitting predators."}
+};
+const UNARMED={name:"Unarmed",range:1.35,damage:3,cooldown:1.5,accuracy:0.9,melee:true};
+let weaponCards=[];
+let mapWeapons=[];
+function getWeapon(id) {if(!osGame||!osGame.weapons)return null;for(let i=0;i<osGame.weapons.length;i++)if(osGame.weapons[i].id===id)return osGame.weapons[i];return null;}
+function heldWeapon(c) {if(!osGame.weapons)return null;for(let i=0;i<osGame.weapons.length;i++)if(osGame.weapons[i].holder===c.id)return osGame.weapons[i];return null;}
+function weaponStats(c) {let w=heldWeapon(c);return w?WEAPONS[w.kind]:UNARMED;}
+function groundWeapon(kind,x,y) {
+  if(["spear","pistol","carbine"].indexOf(kind)<0||osGame.weapons.length>=128)return null;
+  if(!passable(x,y)){
+    let spot=null;
+    for(let radius=1;radius<=6&&!spot;radius++)for(let dy=-radius;dy<=radius&&!spot;dy++)for(let dx=-radius;dx<=radius;dx++)if(passable(x+dx,y+dy)){spot={x:Math.floor(x+dx)+.5,y:Math.floor(y+dy)+.5};break;}
+    if(!spot)return null;x=spot.x;y=spot.y;
+  }
+  let w={id:entityId("w"),kind:kind,x:clamp(x,WX,WX+MAP_SIZE-0.1),y:clamp(y,WY,WY+MAP_SIZE-0.1),holder:"",claimedBy:""};osGame.weapons.push(w);viewDirty=true;return w;
+}
+function initialiseWeapons() {
+  if(osGame.weapons!==undefined)return;
+  osGame.weapons=[];
+  for(let i=0;i<osGame.people.length;i++)osGame.people[i].equipTarget="";
+  groundWeapon("pistol",CENTRE-1.5,CENTRE+7.5);groundWeapon("pistol",CENTRE-0.5,CENTRE+7.5);groundWeapon("spear",CENTRE+0.5,CENTRE+7.5);groundWeapon("spear",CENTRE+1.5,CENTRE+7.5);
+  chronicle("The emergency equipment locker","Two pistols and two salvage spears are laid out south of camp. Select a settler to collect a weapon, or locate equipment in Frontier.","colony");
+}
+function cancelWeaponPickup(c) {let w=getWeapon(c.equipTarget);if(w&&w.claimedBy===c.id)w.claimedBy="";if(c.equipTarget){c.path=[];c.pathCursor=0;}c.equipTarget="";}
+function dropWeapon(c) {let w=heldWeapon(c);if(w){w.holder="";w.x=c.x;w.y=c.y;w.claimedBy="";viewDirty=true;}}
+function dropSelectedWeapon() {let c=findColonist(selectedId);if(!c)return;cancelWeaponPickup(c);dropWeapon(c);c.autoEquipOptOut=true;say(c.short+" put their weapon down.");refreshAll();}
+function requestWeapon(c,w,automatic) {
+  if(!c||c.dead||c.health<22||!w||w.holder||w.claimedBy&&w.claimedBy!==c.id)return false;
+  if(!osGame.explored[tileId(w.x,w.y)])return false;
+  if(nearestHostile(c.x,c.y,6)){say("Move clear of the immediate threat before collecting equipment.");return false;}
+  releaseTask(c,true);cancelWeaponPickup(c);c.order=null;c.combatTarget="";c.drafted=false;c.autoDefend=false;
+  if(!routeTo(c,w,true)){say("That weapon cannot be reached. Clear a route first.");return false;}
+  if(!automatic)c.autoEquipOptOut=false;
+  w.claimedBy=c.id;c.equipTarget=w.id;c.action="Collecting "+WEAPONS[w.kind].name;viewDirty=true;return true;
+}
+function equipNearest(kind) {
+  let c=findColonist(selectedId);if(!c)return;
+  let list=osGame.weapons.filter(function(w){return w.kind===kind&&!w.holder&&(!w.claimedBy||w.claimedBy===c.id)&&osGame.explored[tileId(w.x,w.y)];});
+  list.sort(function(a,b){return sqDistance(c.x,c.y,a.x,a.y)-sqDistance(c.x,c.y,b.x,b.y);});
+  if(!list.length){say("No unclaimed "+WEAPONS[kind].name+" is available. Check the caravan.");return;}
+  for(let i=0;i<list.length;i++)if(requestWeapon(c,list[i])){say(c.short+" will collect the weapon when you resume.");break;}
+  refreshAll();
+}
+function tickWeaponPickup(c,dt) {
+  let w=getWeapon(c.equipTarget);
+  if(!w||w.holder||w.claimedBy!==c.id){cancelWeaponPickup(c);return;}
+  if(c.pathEpoch!==pathEpoch&&!routeTo(c,w,true)){cancelWeaponPickup(c);c.action="Weapon route blocked";return;}
+  let arrived=walkPath(c,dt,2.2);
+  if(c.pathFailed){cancelWeaponPickup(c);c.action="Weapon route blocked";return;}
+  if(arrived){
+    if(sqDistance(c.x,c.y,w.x,w.y)>2.5){cancelWeaponPickup(c);return;}
+    dropWeapon(c);w.holder=c.id;w.claimedBy="";c.equipTarget="";c.action="Equipped "+WEAPONS[w.kind].name;c.equippedUntil=osGame.elapsed+.55;playCue("place");viewDirty=true;
+  }
+}
+function selectWeapon(id) {let w=getWeapon(id);if(!w)return;if(w.holder){focusColonist(w.holder);return;}selectedId=id;selectedType="weapon";activePanel="inspect";mobilePanelOpen=true;toolKind="select";focusAt(w.x,w.y);refreshAll();}
+function collectSelectedWeapon() {
+  let w=getWeapon(selectedId);if(!w)return;
+  let people=alivePeople().filter(function(c){return c.health>=22&&!c.drafted&&!c.equipTarget&&!heldWeapon(c);});
+  people.sort(function(a,b){return sqDistance(a.x,a.y,w.x,w.y)-sqDistance(b.x,b.y,w.x,w.y);});
+  for(let i=0;i<people.length;i++)if(requestWeapon(people[i],w)){selectColonist(people[i].id);say(people[i].short+" will pick up the weapon when you resume.");return;}
+  say("Select a healthy settler to swap weapons, or clear a safe pickup route.");
+}
+function projectWeapons() {
+  let cards=[],ground=[];
+  for(let i=0;i<osGame.weapons.length;i++){
+    let w=osGame.weapons[i],owner=w.holder?findColonist(w.holder):null;if(!owner&&!osGame.explored[tileId(w.x,w.y)])continue;
+    if(activePanel==="frontier")cards.push({id:w.id,name:WEAPONS[w.kind].name,status:owner?"Carried by "+owner.short:w.claimedBy?"Pickup assigned":"On the ground · "+Math.floor(w.x)+", "+Math.floor(w.y)});
+    if(!owner&&tileInView(w.x-1,w.y-1,2,2))ground.push({id:w.id,sprite:spritePath("weapon-"+w.kind),name:WEAPONS[w.kind].name,style:{position:"absolute",left:(worldPx(w.x)-12)+"px",top:(worldPy(w.y)-12)+"px",width:"24px",height:"24px",zIndex:5,pointerEvents:"none"}});
+  }
+  weaponCards=cards;mapWeapons=ground;
+}

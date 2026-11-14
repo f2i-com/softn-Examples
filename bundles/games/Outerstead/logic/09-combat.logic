@@ -1,0 +1,333 @@
+// Species are plain data. Squared reach preserves the original melee and ranged distances.
+const ANIMAL_STATS={
+  mossback:{name:"Mossback",meat:18,health:85,roam:0.65,hunt:1.45,reachSq:2.7,cooldown:2.8,damage:[6,12],size:42,rotate:false,hostile:false},
+  needlehare:{name:"Needlehare",meat:4,health:20,roam:1.3,hunt:1.75,reachSq:2.7,cooldown:2.8,damage:[6,12],size:24,rotate:false,hostile:false},
+  crawler:{name:"Spinecrawler",health:65,roam:1.3,hunt:1.75,reachSq:2.7,cooldown:2.8,damage:[6,12],size:42,rotate:true,hostile:true,gnaw:4},
+  spitter:{name:"Glass spitter",health:48,roam:1.3,hunt:1.75,reachSq:25,cooldown:3.2,damage:[5,9],size:42,rotate:true,hostile:true,shot:"acid",cause:"a glass spitter attack",gnaw:3},
+  maw:{name:"Burrow maw",health:130,roam:0.8,hunt:1.15,reachSq:3.6,cooldown:3.4,damage:[10,16],size:46,rotate:true,hostile:true,cause:"a burrow maw attack",gnaw:14},
+  raider:{name:"Ashwalker raider",health:70,roam:1.5,hunt:1.9,reachSq:2.7,cooldown:2.4,damage:[7,13],size:40,rotate:false,hostile:true,raider:true,cause:"a raider's blade",gnaw:6},
+  lanternwing:{name:"Lanternwing",health:6,roam:1.6,hunt:1.6,reachSq:0,cooldown:99,damage:[0,0],size:26,rotate:false,hostile:false,passive:true,flying:true,sideOnly:true},
+  pilgrim:{name:"The Pilgrim",health:200,roam:0.55,hunt:0.55,reachSq:0,cooldown:99,damage:[0,0],size:64,rotate:false,hostile:false,passive:true,sideOnly:true}
+};
+function animalStats(kind){return ANIMAL_STATS[kind]||ANIMAL_STATS.crawler;}
+function animalMaxHealth(kind){return animalStats(kind).health;}
+function animalRotates(kind){return !!animalStats(kind).rotate;}
+function animalSize(kind){return animalStats(kind).size;}
+function spawnAnimal(kind,x,y,hostile) {
+  let s=animalStats(kind);
+  let a={id:entityId("a"),kind:kind,name:s.name,x:x+0.5,y:y+0.5,health:s.health,hostile:hostile,dead:false,isAnimal:true,path:[],pathCursor:0,pathEpoch:-1,pathFailed:false,destination:null,waitUntil:0,lastShot:0,facing:1,homeX:x,homeY:y};
+  a.headingX=s.rotate?0:1;a.headingY=s.rotate?1:0;a.movingUntil=0;
+  osGame.animals.push(a);return a;
+}
+// Store the direction of actual travel, not the next waypoint or a UI frame.
+function faceAnimal(a,dx,dy) {
+  let length=Math.sqrt(dx*dx+dy*dy);if(length<0.0001)return;
+  a.headingX=dx/length;a.headingY=dy/length;
+  if(Math.abs(dx)>0.01)a.facing=dx<0?-1:1;
+}
+function nearestHostile(x,y,range) {
+  let best=null,dist=range*range;
+  for(let i=0;i<osGame.animals.length;i++){let a=osGame.animals[i];if(a.dead||!a.hostile)continue;let d=sqDistance(x,y,a.x,a.y);if(d<dist&&hasLineOfSight(x,y,a.x,a.y)){dist=d;best=a;}}
+  return best;
+}
+function nearestHostileAny(x,y,range) {
+  let best=null,dist=range*range;
+  for(let i=0;i<osGame.animals.length;i++){let a=osGame.animals[i];if(a.dead||!a.hostile)continue;let d=sqDistance(x,y,a.x,a.y);if(d<dist){dist=d;best=a;}}
+  return best;
+}
+// Predators go for whoever is still standing; the downed are only attacked when nobody else is near.
+function nearestStandingTarget(a,living) {
+  let target=null,dist=1e9,fallback=null,fallbackDist=1e9;
+  for(let j=0;j<living.length;j++){let p=living[j],d=sqDistance(a.x,a.y,p.x,p.y);if(p.health>=22&&!p.child){if(d<dist){dist=d;target=p;}}else if(d<fallbackDist){fallbackDist=d;fallback=p;}}
+  if(target&&(dist<=64||!fallback))return {target:target,dist:dist};
+  return fallback?{target:fallback,dist:fallbackDist}:{target:target,dist:dist};
+}
+function getAnimal(id) { for(let i=0;i<osGame.animals.length;i++)if(osGame.animals[i].id===id)return osGame.animals[i];return null; }
+function addShot(ax,ay,bx,by,kind) {
+  if(kind==="bullet"||kind==="turret")emitVisualFx("muzzle",ax,ay,0);
+  osGame.effects.push({id:entityId("fx"),ax:ax,ay:ay,bx:bx,by:by,kind:kind,until:osGame.elapsed+0.22});
+  if(osGame.effects.length>30)osGame.effects.shift();
+}
+function hurtAnimal(a,damage) {
+  if(!a||a.dead)return;emitVisualFx("hit",a.x,a.y,damage);a.health-=damage;
+  if(a.health<=0){a.dead=true;a.health=0;a.path=[];a.diedAt=osGame.minutes;
+    let meat=animalStats(a.kind).meat||0;if(meat)dropCarriedGoods({x:a.x,y:a.y,carry:{raw:meat}});
+    if(a.marked){a.marked=false;osGame.stats.hunts=(osGame.stats.hunts||0)+1;chronicle("Meat for the table",a.name+" was brought down. "+meat+" raw food lies where it fell; haulers will bring it in.","colony");}
+    if(a.hostile){osGame.stats.attacks++;say(a.name+" has fallen.");if(a.kind==="raider"&&a.loot)noteFact("raidsRepelled",1);if(a.campId)campRaiderFell(a);if(a.loot){dropCarriedGoods({x:a.x,y:a.y,carry:a.loot});a.loot=null;chronicle("The goods come back","The raider fell before reaching the edge. What they carried is on the ground beside them; haul it home.","colony");}}
+  }else if(!a.hostile&&a.kind==="mossback"&&!a.tamed){a.hostile=true;}
+}
+// One settler under attack brings every armed, healthy adult within reach; nobody fights alone.
+function rallyDefenders(c) {
+  for(let i=0;i<osGame.people.length;i++){
+    let p=osGame.people[i];if(p===c||p.dead||p.drafted||p.child||p.health<40||!heldWeapon(p)||sqDistance(p.x,p.y,c.x,c.y)>576)continue;
+    if(p.task&&p.task.type==="bury")continue;
+    // A starving or exhausted settler eats or sleeps first; the rally takes them once they have.
+    if((p.food<20&&(osGame.stock.meals>=1||osGame.stock.raw>=2)||p.rest<8)&&!nearestHostile(p.x,p.y,3))continue;
+    releaseTask(p,true);cancelWeaponPickup(p);p.drafted=true;p.autoDefend=true;p.rallied=true;p.action="Rallying";
+  }
+}
+function tickDrafted(c,dt) {
+  let weapon=weaponStats(c);
+  if(c.autoDefend&&(weapon===UNARMED||c.health<40)&&!c.order&&osGame.elapsed>=(c.defenceRouteAt||0)){
+    c.defenceRouteAt=osGame.elapsed+2;
+    let danger=nearestHostile(c.x,c.y,6);
+    if(danger){
+      let dx=c.x-danger.x,dy=c.y-danger.y,length=Math.sqrt(dx*dx+dy*dy)||1;
+      let x=clamp(Math.floor(c.x+dx/length*5),WX+1,WX+MAP_SIZE-2),y=clamp(Math.floor(c.y+dy/length*5),WY+1,WY+MAP_SIZE-2);
+      if(routeTo(c,{x:x,y:y},true))c.order={x:x,y:y};
+    }
+  }
+  // Armed automatic defenders close the distance to a hostile they cannot reach; manual orders still hold.
+  if(c.autoDefend&&weapon!==UNARMED&&c.health>=40&&!c.order&&osGame.elapsed>=(c.defenceRouteAt||0)){
+    c.defenceRouteAt=osGame.elapsed+2;
+    let foe=nearestHostileAny(c.x,c.y,c.rallied?26:10);
+    if(foe&&(sqDistance(c.x,c.y,foe.x,foe.y)>weapon.range*weapon.range||!hasLineOfSight(c.x,c.y,foe.x,foe.y))){let spot=firingPointFor(c,foe,weapon.range);if(spot&&routeTo(c,spot,true))c.order={x:spot.x,y:spot.y,closing:true};else if(routeTo(c,foe,false))c.order={x:foe.x,y:foe.y,closing:true};}
+  }
+  let enemy=c.combatTarget?getAnimal(c.combatTarget):null;
+  if(!enemy||enemy.dead)enemy=nearestHostile(c.x,c.y,weapon.range);
+  if(c.order){if(walkPath(c,dt,2.4)||c.pathFailed){c.order=null;c.path=[];}c.action=c.order&&c.order.closing?"Closing in":c.autoDefend?"Retreating to safety":"Moving to position";}else c.action="Holding position";
+  if(enemy&&sqDistance(c.x,c.y,enemy.x,enemy.y)<=weapon.range*weapon.range&&hasLineOfSight(c.x,c.y,enemy.x,enemy.y)){
+    c.action="Defending · "+weapon.name;fireAt(c,enemy,weapon);
+  }else if(c.combatTarget&&enemy){c.action="Target out of reach · move within "+weapon.range+" tiles";
+  }
+  let spent=(c.food<20||c.rest<8)&&!nearestHostile(c.x,c.y,3);
+  if(c.autoDefend&&(spent||!nearestHostile(c.x,c.y,12)&&!(c.rallied&&nearestHostileAny(c.x,c.y,26)))){c.drafted=false;c.autoDefend=false;c.rallied=false;c.action=spent?"Standing down to eat and rest":"Returning to work";}
+}
+// A cell within range of the foe that can actually see it. The nearest cell beside a foe that is gnawing
+// a wall is usually on the wrong side of that wall; a defender who stood there would hold forever.
+function firingPointFor(c,foe,range) {
+  let best=null,bestD=1e9,r=Math.max(1,Math.floor(range));
+  for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
+    let x=Math.floor(foe.x)+dx,y=Math.floor(foe.y)+dy;if(!onMap(x,y)||!passable(x,y))continue;
+    // Strictly inside the range, so a settler standing on the cell is in reach and not on its edge.
+    let reach=Math.max(1,range-0.5);if(sqDistance(x+.5,y+.5,foe.x,foe.y)>reach*reach||!hasLineOfSight(x+.5,y+.5,foe.x,foe.y))continue;
+    let d=sqDistance(x+.5,y+.5,c.x,c.y);if(d<bestD){bestD=d;best={x:x,y:y};}
+  }
+  return best;
+}
+// One firing routine for defenders and hunters: face the target, respect the cooldown, roll accuracy.
+function fireAt(c,enemy,weapon) {
+  let dx=enemy.x-c.x,dy=enemy.y-c.y,length=Math.sqrt(dx*dx+dy*dy);if(length>.001){c.headingX=dx/length;c.headingY=dy/length;c.facing=dx<0?-1:1;}
+  if(osGame.elapsed-c.lastShot>=weapon.cooldown){c.lastShot=osGame.elapsed;c.attackUntil=osGame.elapsed+.35;addShot(c.x,c.y,enemy.x,enemy.y,weapon.melee?"melee":"bullet");if(randomUnit()<Math.min(.98,weapon.accuracy+(c.role==="Survey ranger"?.08:0)))hurtAnimal(enemy,weapon.damage);}
+}
+// Hunting: a marked herbivore becomes an explore job for an armed settler.
+// Taming: a farmer walks to a mossback with six raw food; the animal joins a pen and grazes for the colony.
+function penFor(id){let b=getBuilding(id);return b&&b.kind==="pen"&&b.built?b:null;}
+function penHeadcount(pen){let n=0;for(let i=0;i<osGame.animals.length;i++){let a=osGame.animals[i];if(a.tamed&&!a.dead&&a.penId===pen.id)n++;}return n;}
+function freePen(){let pens=buildingsOfKind("pen");for(let i=0;i<pens.length;i++){let b=pens[i];if(b.built&&b.on&&penHeadcount(b)<3)return b;}return null;}
+function tameSelected() {
+  let a=getAnimal(selectedId);if(!a||a.dead||a.hostile||a.kind!=="mossback"||a.tamed)return;
+  if(!hasTech("husbandry")){say("Research Mossback husbandry first.");return;}
+  if(!freePen()){say("Build a grazing pen with room first.");return;}
+  a.taming=!a.taming;if(!a.taming)cancelTargetJobs(a.id);generateJobs();viewDirty=true;refreshAll();
+  say(a.taming?"A farmer will approach the mossback with six raw food.":"Taming cancelled.");
+}
+function tickTame(c,dt,prey) {
+  if(!prey||prey.dead||!prey.taming||prey.hostile){finishTask(c);return;}
+  let d=sqDistance(c.x,c.y,prey.x,prey.y);
+  if(d<=4){c.action="Taming · "+prey.name;c.task.progress+=dt;if(c.task.progress>=12){let pen=freePen();if(!pen){blockTask(c,"No pen with room");return;}c.carry=null;prey.tamed=true;prey.taming=false;prey.marked=false;prey.penId=pen.id;prey.homeX=pen.x+1;prey.homeY=pen.y+1;prey.grazeAt=osGame.minutes+720;osGame.stats.tamed=(osGame.stats.tamed||0)+1;remember(c,"A mossback ate from my hand",hasQuirk(c,"mossbackFriend")?12:6,1440*3);chronicle("A mossback comes to the pen",c.name+" tamed a mossback. It will graze in the pen and give raw food each Sol.","colony");say("Mossback tamed. It is heading for the pen.");routeTo(prey,{x:pen.x+1,y:pen.y+1},true);finishTask(c);}return;}
+  if(osGame.elapsed>c.waitUntil){c.waitUntil=osGame.elapsed+1.5;if(!routeTo(c,prey,false)){c.task.misses=(c.task.misses||0)+1;if(c.task.misses>=4){blockTask(c,"Mossback out of reach");return;}}}
+  c.action="Approaching · "+prey.name;walkPath(c,dt,2.2);
+}
+function tickTamed(a,dt,s) {
+  let pen=penFor(a.penId);
+  if(!pen){a.tamed=false;a.penId="";chronicle("A mossback wanders off","Its pen is gone, and so is it.","colony");return;}
+  if(a.grazeAt!==undefined&&osGame.minutes>=a.grazeAt){a.grazeAt=osGame.minutes+720;let yieldRaw=coldPenYield()+(mossbackFriends().length?1:0);stockGive({raw:yieldRaw});osGame.stats.grazed=(osGame.stats.grazed||0)+yieldRaw;}
+  if(a.path&&a.pathCursor<a.path.length)walkPath(a,dt,s.roam);
+  else if(osGame.elapsed>a.waitUntil){let x=clamp(pen.x+randomInt(0,2),WX+1,WX+MAP_SIZE-2),y=clamp(pen.y+randomInt(0,2),WY+1,WY+MAP_SIZE-2);if(passable(x,y))routeTo(a,{x:x,y:y},true);a.waitUntil=osGame.elapsed+randomInt(8,20);}
+}
+function cullSelectedPen() {
+  let pen=getBuilding(selectedId);if(!pen||pen.kind!=="pen")return;
+  for(let i=0;i<osGame.animals.length;i++){let a=osGame.animals[i];if(a.tamed&&!a.dead&&a.penId===pen.id){a.tamed=false;for(let f of mossbackFriends())remember(f,"They culled one of mine",-10,1440*3);hurtAnimal(a,999);say("A mossback was culled. Haulers will bring in the meat.");refreshAll();return;}}
+  say("No mossbacks in this pen.");
+}
+function toggleHuntSelected() {
+  let a=getAnimal(selectedId);if(!a||a.dead||a.hostile||!(animalStats(a.kind).meat))return;
+  a.marked=!a.marked;if(!a.marked)cancelTargetJobs(a.id);generateJobs();viewDirty=true;refreshAll();
+  say(a.marked?a.name+" marked for hunting. An armed settler with Explore enabled will track it.":"Hunt cancelled.");
+}
+function tickHunt(c,dt,prey) {
+  let weapon=weaponStats(c);if(weapon===UNARMED){blockTask(c,"Needs a weapon");return;}
+  if(!prey||prey.dead||!prey.marked){finishTask(c);return;}
+  let d=sqDistance(c.x,c.y,prey.x,prey.y);
+  if(d<=weapon.range*weapon.range&&hasLineOfSight(c.x,c.y,prey.x,prey.y)){c.action="Hunting · "+prey.name;fireAt(c,prey,weapon);return;}
+  if(osGame.elapsed>c.waitUntil){c.waitUntil=osGame.elapsed+1.5;if(!routeTo(c,prey,false)){c.task.misses=(c.task.misses||0)+1;if(c.task.misses>=4){blockTask(c,"Prey out of reach");return;}}}
+  c.action="Tracking · "+prey.name;walkPath(c,dt,2.4);
+}
+// Auto steward: when food runs low, mark the nearest peaceful animal near camp.
+function autoHunt() {
+  if(!osGame.autoMode)return;
+  let living=alivePeople();if(!living.length||osGame.stock.meals+osGame.stock.raw>=living.length*3)return;
+  for(let i=0;i<osGame.animals.length;i++)if(osGame.animals[i].marked&&!osGame.animals[i].dead)return;
+  let armed=false;for(let i=0;i<living.length;i++)if(weaponStats(living[i])!==UNARMED&&living[i].priorities.explore)armed=true;
+  if(!armed)return;
+  let best=null,bestD=900;
+  for(let i=0;i<osGame.animals.length;i++){let a=osGame.animals[i];if(a.dead||a.hostile||!animalStats(a.kind).meat||!onMap(a.x,a.y)||!osGame.explored[tileId(a.x,a.y)])continue;let d=sqDistance(a.x,a.y,CENTRE,centreY());if(d<bestD){bestD=d;best=a;}}
+  if(best){best.marked=true;chronicle("A hunt is called","Food is short. The steward marked a "+best.name.toLowerCase()+" near camp for an armed explorer.","colony");}
+}
+function tickAnimals(dt) {
+  let living=alivePeople();
+  for(let i=0;i<osGame.animals.length;i++){
+    let a=osGame.animals[i];if(a.dead)continue;
+    let s=animalStats(a.kind);
+    if(s.flying){tickLanternwing(a,dt,s,living);continue;}
+    if(s.passive){tickPilgrim(a,dt,s,living);continue;}
+    if(a.tamed){tickTamed(a,dt,s);continue;}
+    if(a.hostile&&s.raider){tickRaider(a,dt,s,living);continue;}
+    if(a.hostile&&living.length){
+      let pick=nearestStandingTarget(a,living),target=pick.target,dist=pick.dist;
+      if(target&&dist>100&&s.gnaw){let machine=structureTargetFor(a);if(machine){pursueStructure(a,dt,s,machine);continue;}}
+      if(target){
+        if(dist<=s.reachSq&&hasLineOfSight(a.x,a.y,target.x,target.y)){
+          faceAnimal(a,target.x-a.x,target.y-a.y);
+          a.path=[];a.pathCursor=0;
+          if(osGame.elapsed-a.lastShot>s.cooldown){a.lastShot=osGame.elapsed;a.attackUntil=osGame.elapsed+.4;injureColonist(target,randomInt(s.damage[0],s.damage[1]),s.cause||"a creature attack");addShot(a.x,a.y,target.x,target.y,s.shot||"claw");}
+        }else{
+          if(osGame.elapsed>a.waitUntil){if(!routeTo(a,target,false))gnawNearby(a,s);a.waitUntil=osGame.elapsed+1.8;}
+          walkPath(a,dt,s.hunt);
+        }
+      }
+    }else{
+      if(a.path&&a.pathCursor<a.path.length)walkPath(a,dt,animalStats(a.kind).roam);
+      else if(osGame.elapsed>a.waitUntil){let x=clamp(Math.floor(a.x)+randomInt(-4,4),WX+1,WX+MAP_SIZE-2),y=clamp(Math.floor(a.y)+randomInt(-4,4),WY+1,WY+MAP_SIZE-2);if(passable(x,y))routeTo(a,{x:x,y:y},true);a.waitUntil=osGame.elapsed+randomInt(7,18);}
+    }
+  }
+  for(let i=0;i<osGame.buildings.length;i++){
+    let b=osGame.buildings[i];if(b.kind!=="turret"||!b.built||!b.powered||!b.on)continue;
+    let enemy=nearestHostile(b.x+0.5,b.y+0.5,8);if(enemy&&osGame.elapsed-b.lastShot>1.3){b.lastShot=osGame.elapsed;addShot(b.x+0.5,b.y+0.5,enemy.x,enemy.y,"turret");hurtAnimal(enemy,16);}
+  }
+  for(let i=osGame.effects.length-1;i>=0;i--)if(osGame.effects[i].until<osGame.elapsed)osGame.effects.splice(i,1);
+  for(let i=osGame.animals.length-1;i>=0;i--)if(osGame.animals[i].gone)osGame.animals.splice(i,1);
+}
+// A predator that cannot reach anyone starts on the nearest wall, door or barricade.
+function gnawNearby(a,s) {
+  if(!s.gnaw||osGame.elapsed-a.lastShot<s.cooldown)return;
+  let best=null;
+  for(let dy=-1;dy<=1&&!best;dy++)for(let dx=-1;dx<=1&&!best;dx++){if(!dx&&!dy)continue;let b=getBuilding(cellBuilding[tileId(a.x+dx,a.y+dy)]);if(b&&b.built&&(BUILDINGS[b.kind].solid||BUILDINGS[b.kind].roomWall)&&b.kind!=="lander")best=b;}
+  if(best)gnawBuilding(a,s,best);
+}
+// Predators with nobody in reach go for the machinery that hurts or feeds the colony.
+const PREY_STRUCTURES=["turret","generator","solar","wind","battery","radio","beacon","archive"];
+function structureTargetFor(a) {
+  if(a.structureAt!==undefined&&osGame.elapsed-a.structureAt<10){let cached=a.structureTarget?getBuilding(a.structureTarget):null;if(cached&&cached.built)return cached;}
+  a.structureAt=osGame.elapsed;let best=null,bestScore=1e9;
+  for(let i=0;i<osGame.buildings.length;i++){let b=osGame.buildings[i];if(!b.built||PREY_STRUCTURES.indexOf(b.kind)<0)continue;let d=sqDistance(a.x,a.y,b.x+b.w/2,b.y+b.h/2);if(d>144)continue;let score=d-(b.kind==="turret"?60:0);if(score<bestScore){bestScore=score;best=b;}}
+  a.structureTarget=best?best.id:"";return best;
+}
+function pursueStructure(a,dt,s,b) {
+  let adjacent=a.x>=b.x-1.4&&a.x<=b.x+b.w+1.4&&a.y>=b.y-1.4&&a.y<=b.y+b.h+1.4;
+  let ranged=!!s.shot&&sqDistance(a.x,a.y,b.x+b.w/2,b.y+b.h/2)<=s.reachSq&&hasLineOfSight(a.x,a.y,b.x+b.w/2,b.y+b.h/2);
+  if(adjacent||ranged){faceAnimal(a,b.x+b.w/2-a.x,b.y+b.h/2-a.y);a.path=[];a.pathCursor=0;if(osGame.elapsed-a.lastShot>=s.cooldown)gnawBuilding(a,s,b);return;}
+  if(osGame.elapsed>a.waitUntil){if(!routeTo(a,b,false))gnawNearby(a,s);a.waitUntil=osGame.elapsed+1.8;}
+  walkPath(a,dt,s.hunt);
+}
+function gnawBuilding(a,s,best) {
+  if(!best||!best.built)return;
+  let name=BUILDINGS[best.kind].name;
+  a.lastShot=osGame.elapsed;a.attackUntil=osGame.elapsed+.4;faceAnimal(a,best.x+best.w/2-a.x,best.y+best.h/2-a.y);
+  addShot(a.x,a.y,best.x+best.w/2,best.y+best.h/2,s.shot||"claw");best.hp-=s.gnaw*(eventConfig().severity==="severe"?1.5:1);emitVisualFx("hit",best.x+best.w/2,best.y+best.h/2,0);viewDirty=true;
+  if(!a.gnawReported){a.gnawReported=true;chronicle("Something is tearing at the "+name.toLowerCase(),a.name+" cannot reach the settlers and has started on the structure instead. Builders can repair it; defenders can stop it.","danger");say(a.name+" is breaking through a "+name.toLowerCase()+".");playCue("warning");}
+  if(best.hp<=0){demolishBuilding(best.id,true);serviceTopology();chronicle(name+" gives way","The "+name.toLowerCase()+" has been destroyed. The gap is open.","danger");say(name+" destroyed. The gap is open.");}
+}
+// Raiders want the warehouse, not a fight, but will fight anyone in reach.
+function tickRaider(a,dt,s,living) {
+  let pick=nearestStandingTarget(a,living),target=pick.target,dist=pick.dist;
+  if(target&&dist<=s.reachSq&&hasLineOfSight(a.x,a.y,target.x,target.y)){
+    faceAnimal(a,target.x-a.x,target.y-a.y);
+    if(osGame.elapsed-a.lastShot>s.cooldown){a.lastShot=osGame.elapsed;a.attackUntil=osGame.elapsed+.4;injureColonist(target,randomInt(s.damage[0],s.damage[1]),s.cause);addShot(a.x,a.y,target.x,target.y,"melee");}
+    return;
+  }
+  if(a.defending){if(target){if(osGame.elapsed>a.waitUntil){if(!routeTo(a,target,false))gnawNearby(a,s);a.waitUntil=osGame.elapsed+1.8;}walkPath(a,dt,s.hunt);}return;}
+  if(a.fleeing){
+    if(osGame.elapsed>a.waitUntil&&(!a.path||a.pathCursor>=a.path.length||a.pathFailed)){a.waitUntil=osGame.elapsed+2;if(!routeTo(a,{x:a.homeX,y:a.homeY},true)){leaveMap(a);return;}}
+    if(walkPath(a,dt,s.hunt)&&sqDistance(a.x,a.y,a.homeX+.5,a.homeY+.5)<4)leaveMap(a);
+    return;
+  }
+  let store=a.lootTarget?getBuilding(a.lootTarget):null;
+  if(!store||!store.built){store=null;let best=1e9;for(let i=0;i<osGame.buildings.length;i++){let b=osGame.buildings[i];if(!b.built||(b.kind!=="stockpile"&&b.kind!=="lander"))continue;let d=sqDistance(a.x,a.y,b.x,b.y);if(d<best){best=d;store=b;}}a.lootTarget=store?store.id:"";}
+  if(!store){if(target){if(osGame.elapsed>a.waitUntil){if(!routeTo(a,target,false))gnawNearby(a,s);a.waitUntil=osGame.elapsed+1.8;}walkPath(a,dt,s.hunt);}return;}
+  if(a.x>=store.x-1.2&&a.x<=store.x+store.w+1.2&&a.y>=store.y-1.2&&a.y<=store.y+store.h+1.2){raiderLoot(a,store);return;}
+  if(osGame.elapsed>a.waitUntil){if(!routeTo(a,store,false))gnawNearby(a,s);a.waitUntil=osGame.elapsed+1.8;}
+  walkPath(a,dt,s.hunt);
+}
+function raiderLoot(a,store) {
+  let recent=osGame.minutes-(osGame.lastRaidAt||-1e9)<30,plan=recent?{meals:4,metal:3}:{metal:9,meals:8,parts:2,medicine:2},take={},keys=Object.keys(plan),got=false;
+  osGame.lastRaidAt=osGame.minutes;
+  for(let i=0;i<keys.length;i++){let k=keys[i],q=Math.min(plan[k],Math.floor(osGame.stock[k]||0));if(q>0){take[k]=q;got=true;}}
+  if(got){stockTake(take);a.loot=take;osGame.stats.raided=(osGame.stats.raided||0)+1;}
+  a.fleeing=true;a.path=[];a.pathCursor=0;a.waitUntil=0;
+  chronicle(got?"Raiders at the stores":"Raiders find the shelves bare",got?a.name+" took "+costText(take)+" from the "+BUILDINGS[store.kind].name.toLowerCase()+" and is making for the edge of the map. Bring them down before they reach it to recover the goods.":a.name+" found nothing worth carrying and is leaving.","danger");
+  say(got?"Raiders took "+costText(take)+". Stop them before they escape.":"The raiders are leaving empty-handed.");playCue("warning");viewDirty=true;
+}
+function leaveMap(a) {
+  if(a.loot){chronicle("The raiders are gone",a.name+" escaped with "+costText(a.loot)+".","danger");makeCamp(a.homeX,a.homeY,a.loot);}
+  a.dead=true;a.health=0;a.gone=true;a.loot=null;a.diedAt=osGame.minutes-800;viewDirty=true;
+}
+// The Pilgrim crosses the map, never attacks, and is remembered by everyone who sees it.
+function tickPilgrim(a,dt,s,living) {
+  if(!a.seen)a.seen={};
+  for(let j=0;j<living.length;j++){let p=living[j];if(!a.seen[p.id]&&sqDistance(a.x,a.y,p.x,p.y)<49){a.seen[p.id]=true;let curious=traitOf(p,"curiosity")>=65;remember(p,curious?"I watched the tall walker":"Something tall walked past and I could not look",curious?3:-4,1440*2);}}
+  if(a.path&&a.pathCursor<a.path.length&&!a.pathFailed){walkPath(a,dt,s.roam);return;}
+  if(typeof a.goalX==="number"&&sqDistance(a.x,a.y,a.goalX+.5,a.goalY+.5)<4){pilgrimLeaves(a,living);return;}
+  if(osGame.elapsed>a.waitUntil){a.waitUntil=osGame.elapsed+3;if(typeof a.goalX!=="number"||!routeTo(a,{x:a.goalX,y:a.goalY},true))pilgrimLeaves(a,living);}
+}
+function pilgrimLeaves(a,living) {
+  for(let j=0;j<living.length;j++){let p=living[j];if(a.seen&&a.seen[p.id]&&randomUnit()<0.5)remember(p,"Dreamed of the tall walker",-2,1440*3);}
+  chronicle("The Pilgrim passes","It walked off the edge of the map without once turning its head. Nobody knows where it lives. Some of the settlers will dream about it.","hollow");
+  a.dead=true;a.health=0;a.gone=true;a.diedAt=osGame.minutes-800;viewDirty=true;
+}
+// Lanternwings fly, ignore paths, comfort anyone nearby and fade at dawn.
+function tickLanternwing(a,dt,s,living) {
+  let h=hourNow();if((h>=5&&h<21&&osGame.weather!=="Echo Rain")||osGame.weather==="Glass Wind"){a.dead=true;a.health=0;a.gone=true;a.diedAt=osGame.minutes-800;viewDirty=true;return;}
+  if(!a.seen)a.seen={};
+  for(let j=0;j<living.length;j++){let p=living[j];if(!a.seen[p.id]&&sqDistance(a.x,a.y,p.x,p.y)<25){a.seen[p.id]=true;p.recreation=Math.min(100,p.recreation+6);remember(p,"Lanternwings over the water",4,1440);}}
+  if(typeof a.flyX!=="number"||sqDistance(a.x,a.y,a.flyX,a.flyY)<0.3){a.flyX=clamp(a.homeX+randomInt(-6,6)+0.5,WX+0.5,WX+MAP_SIZE-0.5);a.flyY=clamp(a.homeY+randomInt(-6,6)+0.5,WY+0.5,WY+MAP_SIZE-0.5);}
+  let dx=a.flyX-a.x,dy=a.flyY-a.y,d=Math.sqrt(dx*dx+dy*dy)||1,stepLength=Math.min(d,dt*s.roam);
+  a.x+=dx/d*stepLength;a.y+=dy/d*stepLength;faceAnimal(a,dx,dy);a.movingUntil=osGame.elapsed+0.15;
+}
+function spawnLanternwings() {
+  let water=[],pool=[];
+  for(let i=0;i<MAP_SIZE*MAP_SIZE;i++)if(osGame.terrain[i]===3&&osGame.explored[i])pool.push(i);
+  if(pool.length){let id=pool[randomInt(0,pool.length-1)],x=id%MAP_SIZE+WX,y=Math.floor(id/MAP_SIZE)+WY;if(x>=WX+2&&y>=WY+2&&x<WX+MAP_SIZE-2&&y<WY+MAP_SIZE-2)water.push({x:x,y:y});}
+  if(!water.length)return 0;
+  let w=water[0],count=randomInt(3,5),spawned=0;
+  for(let i=0;i<count&&osGame.animals.length<150;i++){let a=spawnAnimal("lanternwing",clamp(w.x+randomInt(-2,2),WX,WX+MAP_SIZE-1),clamp(w.y+randomInt(-2,2),WY,WY+MAP_SIZE-1),false);a.homeX=w.x;a.homeY=w.y;spawned++;}
+  if(spawned&&!osGame.storySeen.lanternwings){osGame.storySeen.lanternwings=1;chronicle("Lights over the water","Lanternwings have come out over the lake: small, glowing and harmless. Settlers who see them sleep a little easier.","hollow");}
+  return spawned;
+}
+function spawnPilgrim() {
+  if(osGame.animals.length>=150||creaturePresent("pilgrim"))return null;
+  let s=threatSpawnPoint(),a=spawnAnimal("pilgrim",s.x,s.y,false),g=null;
+  for(let i=0;i<4&&!g;i++){let c=threatSpawnPoint();if(sqDistance(c.x,c.y,s.x,s.y)>=900)g=c;}
+  if(!g)g={x:clamp(2*CENTRE-s.x,WX+1,WX+MAP_SIZE-2),y:clamp(2*centreY()-s.y,WY+1,WY+MAP_SIZE-2)};
+  a.goalX=g.x;a.goalY=g.y;revealArea(s.x,s.y,4);chronicle("Something tall on the ridge","The Pilgrim is crossing the map. It has never been seen to hurt anyone. Settlers who watch it will remember.","hollow");viewDirty=true;return a;
+}
+// kinds is optional: the ambient director plans a mix, story and mod threats use the classic pack.
+function launchThreat(count,kinds) {
+  if(osGame.difficulty==="peaceful")return;
+  count=clamp(Math.floor(count)||1,1,8);
+  let list=[];for(let i=0;i<count;i++){let k=kinds&&kinds[i];list.push(k&&ANIMAL_STATS[k]&&ANIMAL_STATS[k].hostile?k:(dayNow()>=6&&i===count-1?"spitter":"crawler"));}
+  let s=threatSpawnPoint(),spawned=0,arrived={};
+  for(let i=0;i<count;i++){
+    let kind=list[i],x=s.x+i,y=s.y+i,m=kind==="maw"?mawSpawnPoint():null;
+    if(m){x=m.x;y=m.y;}
+    if(!passable(x,y)||findPath(x,y,CENTRE-2,centreY()+6)===null){x=CENTRE+16+i;y=centreY()+8;}
+    if(passable(x,y)&&osGame.animals.length<150){spawnAnimal(kind,x,y,true);revealArea(x,y,3);if(kind==="maw")emitVisualFx("debris",x+.5,y+.5,0);arrived[kind]=true;spawned++;}
+  }
+  if(spawned){osGame.lastCrisis=osGame.minutes;chronicle("Movement at the perimeter",spawned+" predators are approaching."+(arrived.spitter?" A glass spitter attacks from five tiles away; break its line of sight with walls or use a carbine.":"")+(arrived.maw?" A burrow maw has surfaced near the ore: slow, armoured and hard-biting. Fight it at range or from behind barricades.":"")+(arrived.raider?" Ashwalker raiders are making for the stores. They fight anyone in their way, take what they can carry and run for the map edge.":"")+" Collect weapons, draft settlers, and protect your medical supplies.","danger");say("Hostile creatures approaching. Draft settlers to defend the colony.");playCue("warning");}
+}
+function toggleDraft(id) {
+  let c=findColonist(id||selectedId);if(!c||c.dead||c.health<22)return;
+  if(c.child){say(c.short+" is a child and stays out of the fighting.");return;}
+  if(c.rover||c.away){say(c.short+" is out on the plane and cannot be drafted from here.");return;}
+  cancelWeaponPickup(c);
+  releaseTask(c,true);c.drafted=!c.drafted;c.autoDefend=false;c.order=null;c.combatTarget="";c.action=c.drafted?"Holding position":"Returning to work";refreshAll();
+}
+function draftEveryone() { for(let i=0;i<osGame.people.length;i++){let c=osGame.people[i];if(!c.dead&&!c.away&&!c.rover&&!c.child&&c.health>=22){releaseTask(c,true);cancelWeaponPickup(c);c.drafted=true;c.autoDefend=false;c.order=null;}}refreshAll(); }
+function standDownEveryone() { for(let i=0;i<osGame.people.length;i++){let c=osGame.people[i];if(c.rover)continue;c.drafted=false;c.autoDefend=false;c.order=null;c.combatTarget="";c.path=[];}refreshAll(); }
+function commandColonist(c,x,y,enemyId) {
+  if(!c||!c.drafted||c.dead)return;
+  if(enemyId){c.combatTarget=enemyId;say(c.short+" is targeting the creature. Move within "+weaponStats(c).range+" tiles to attack.");return;}
+  if(routeTo(c,{x:x,y:y},true)){c.order={x:x,y:y};c.combatTarget="";c.action="Moving to position";}
+  else say("No safe path to that position.");
+}

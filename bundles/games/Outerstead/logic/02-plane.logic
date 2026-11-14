@@ -1,0 +1,122 @@
+// The plane. The world is infinite: every coordinate is a world coordinate on an unbounded grid of 96-tile chunks,
+// each generated from the seed the first time it is needed. The simulation runs on a window of MAP_SIZE tiles
+// (96, 288 or 480) whose origin (WX, WY) sits on a chunk boundary; tileId() maps world coordinates into that
+// window's flat arrays, so the whole engine below keeps its arrays and its speed. When the people approach the
+// window's edge the window slides one chunk after them: the chunks it leaves are written to the plane store
+// (run-length strings plus their resource nodes) and the chunks it enters are read back or left unmade until
+// exploration reaches them. Structures outside the window sleep in place; animals outside it are gone.
+function rleEncode(list){
+  let out=[],i=0,n=list.length;
+  while(i<n){let v=list[i]===true?1:list[i]===false?0:(list[i]|0),j=i+1;while(j<n&&(list[j]===true?1:list[j]===false?0:(list[j]|0))===v)j++;out.push(String.fromCharCode(48+v)+(j-i));i=j;}
+  return out.join(",");
+}
+function rleDecode(text,length,boolean){
+  let out=[],parts=String(text||"").split(",");
+  for(let i=0;i<parts.length;i++){let p=parts[i];if(!p)continue;let v=p.charCodeAt(0)-48,count=parseInt(p.slice(1),10)||0;if(v<0||v>63||count<0)return null;for(let k=0;k<count&&out.length<length;k++)out.push(boolean?v!==0:v);}
+  return out.length===length?out:null;
+}
+function worldPx(x){return (x-WX)*TILE;}
+function worldPy(y){return (y-WY)*TILE;}
+function planeStore(){if(!osGame.plane)osGame.plane={};return osGame.plane;}
+function windowChunkX0(){return chunkOf(WX);}
+function windowChunkY0(){return chunkOf(WY);}
+function chunksAcross(){return MAP_SIZE/HOME_SIZE;}
+// Outer chunks are pure functions of the seed, so the store keeps only what changed on them: the shroud lifted,
+// floors and conduits laid, ground cleared, nodes worked. The home chunk was drawn from the simulation RNG and is
+// stored whole.
+// Seed-made chunks are remembered as they are generated (terrain, ground, nodes, chunk-local), so storing a diff or
+// bringing a chunk back into a window is a copy, never a second generation. The cache is transient: it is dropped
+// with the world and rebuilt as country is walked.
+let refCache={},refCacheKeys=[];
+const REF_CACHE_MAX=48;
+function cacheReference(cx,cy){
+  let ox=cx*HOME_SIZE,oy=cy*HOME_SIZE,t=[],g=[],nodes=[],key=chunkKey(cx,cy);
+  for(let y=oy;y<oy+HOME_SIZE;y++){let base=tileId(ox,y);for(let k=0;k<HOME_SIZE;k++){t.push(osGame.terrain[base+k]);g.push(osGame.groundTiles[base+k]);}}
+  for(let i=0;i<osGame.nodes.length;i++){let n=osGame.nodes[i];if(n.amount>0&&chunkOf(n.x)===cx&&chunkOf(n.y)===cy)nodes.push({x:n.x,y:n.y,kind:n.kind,amount:n.amount,resource:n.resource||"",debris:!!n.debris});}
+  if(!refCache[key])refCacheKeys.push(key);refCache[key]={terrain:t,groundTiles:g,nodes:nodes};
+  while(refCacheKeys.length>REF_CACHE_MAX){delete refCache[refCacheKeys.shift()];}
+}
+function referenceChunk(cx,cy){
+  let key=chunkKey(cx,cy);if(refCache[key])return refCache[key];
+  let ox=cx*HOME_SIZE,oy=cy*HOME_SIZE,tmp=blankContext(HOME_SIZE,ox,oy);
+  withContext(tmp,function(){generateChunk(cx,cy,true);});
+  return refCache[key]||{terrain:tmp.terrain,groundTiles:tmp.groundTiles,nodes:tmp.nodes};
+}
+// Lay a seed-made chunk into the current window from the cache (or a generation if it is not cached).
+function applyReference(cx,cy){
+  let ref=referenceChunk(cx,cy),ox=cx*HOME_SIZE,oy=cy*HOME_SIZE,k=0;
+  for(let y=oy;y<oy+HOME_SIZE;y++){let base=tileId(ox,y);for(let x=0;x<HOME_SIZE;x++,k++){let i=base+x,tt=ref.terrain[k];osGame.terrain[i]=tt;osGame.groundTiles[i]=ref.groundTiles[k];osGame.explored[i]=false;osGame.floorTiles[i]=0;osGame.wireTiles[i]=0;if(navBlocked&&navBlocked.length===MAP_SIZE*MAP_SIZE)navBlocked[i]=(tt===3||tt===4||tt===6)?1:0;}}
+  for(let i=0;i<ref.nodes.length;i++){let r=ref.nodes[i];if(nodeAtCell[tileId(r.x,r.y)])continue;let m=addResourceNode(r.x,r.y,r.kind,r.amount);if(m){if(r.resource)m.resource=r.resource;if(r.debris)m.debris=true;}}
+}
+function storeChunk(cx,cy){
+  if(!chunkGenerated(cx,cy))return;atlasRecord(cx,cy);
+  let ox=cx*HOME_SIZE,oy=cy*HOME_SIZE,home=ox===homeOrigin()&&oy===homeOrigin(),t=[],g=[],e=[],f=[],w=[];
+  for(let y=oy;y<oy+HOME_SIZE;y++){let base=tileId(ox,y);for(let k=0;k<HOME_SIZE;k++){let i=base+k;t.push(osGame.terrain[i]);g.push(osGame.groundTiles[i]);e.push(osGame.explored[i]?1:0);f.push(osGame.floorTiles[i]||0);w.push(osGame.wireTiles[i]||0);}}
+  let here={};for(let i=0;i<osGame.nodes.length;i++){let n=osGame.nodes[i];if(chunkOf(n.x)===cx&&chunkOf(n.y)===cy)here[n.x+","+n.y]=n;}
+  if(home){let nodes=[];let keys=Object.keys(here);for(let i=0;i<keys.length;i++){let n=here[keys[i]];if(n.amount>0)nodes.push([n.x,n.y,n.kind,n.amount,n.marked?1:0,n.resource||"",n.debris?1:0]);}
+    planeStore()[chunkKey(cx,cy)]={full:1,t:rleEncode(t),g:rleEncode(g),e:rleEncode(e),f:rleEncode(f),w:rleEncode(w),nodes:nodes};return;}
+  let ref=referenceChunk(cx,cy),td=[],gd=[],nd={};
+  for(let i=0;i<HOME_SIZE*HOME_SIZE;i++){if(t[i]!==ref.terrain[i])td.push([i,t[i]]);if(g[i]!==ref.groundTiles[i])gd.push([i,g[i]]);}
+  let seen={};
+  for(let i=0;i<ref.nodes.length;i++){let r=ref.nodes[i],key=r.x+","+r.y,n=here[key];seen[key]=true;if(!n||n.amount<=0)nd[key]=[0,0];else if(n.amount!==r.amount||!!n.marked)nd[key]=[n.amount,n.marked?1:0];}
+  let keys=Object.keys(here);for(let i=0;i<keys.length;i++){if(seen[keys[i]])continue;let n=here[keys[i]];if(n.amount>0)nd[keys[i]]=[n.amount,n.marked?1:0,n.kind];}
+  planeStore()[chunkKey(cx,cy)]={e:rleEncode(e),f:rleEncode(f),w:rleEncode(w),td:td,gd:gd,nd:nd};
+}
+// Read one chunk from the plane store into the window: whole for the home chunk, regenerated from the seed plus its
+// differences for any other; unmade if it was never generated.
+function loadChunk(cx,cy,peek){
+  let ox=cx*HOME_SIZE,oy=cy*HOME_SIZE,rec=planeStore()[chunkKey(cx,cy)],home=ox===homeOrigin()&&oy===homeOrigin(),n=HOME_SIZE*HOME_SIZE;
+  let blank=function(){for(let y=oy;y<oy+HOME_SIZE;y++){let base=tileId(ox,y);for(let x=0;x<HOME_SIZE;x++){let i=base+x;osGame.terrain[i]=6;osGame.groundTiles[i]=0;osGame.explored[i]=false;osGame.floorTiles[i]=0;osGame.wireTiles[i]=0;}}};
+  if(rec&&rec.full){
+    let t=rleDecode(rec.t,n),g=rleDecode(rec.g,n),e=rleDecode(rec.e,n,true),f=rleDecode(rec.f,n),w=rleDecode(rec.w,n);
+    if(!(t&&g&&e&&f&&w)){blank();delete planeStore()[chunkKey(cx,cy)];delete osGame.chunks[chunkKey(cx,cy)];return;}
+    let k=0;for(let y=oy;y<oy+HOME_SIZE;y++){let base=tileId(ox,y);for(let x=0;x<HOME_SIZE;x++,k++){let i=base+x;osGame.terrain[i]=t[k];osGame.groundTiles[i]=g[k];osGame.explored[i]=e[k];osGame.floorTiles[i]=f[k];osGame.wireTiles[i]=w[k];}}
+    for(let i=0;i<rec.nodes.length;i++){let r=rec.nodes[i];let m=addResourceNode(r[0],r[1],r[2],r[3]);if(m){m.marked=!!r[4];if(r[5])m.resource=r[5];if(r[6])m.debris=true;}}
+    if(!peek)delete planeStore()[chunkKey(cx,cy)];return;
+  }
+  if(!chunkGenerated(cx,cy)||home){blank();return;}
+  applyReference(cx,cy);pathEpoch++;pathCache={};pathCacheKeys=[];terrainDirty=true;minimapEpoch++;nodesEpoch++;
+  if(!rec)return;
+  let e=rleDecode(rec.e,n,true),f=rleDecode(rec.f,n),w=rleDecode(rec.w,n);
+  let k=0;for(let y=oy;y<oy+HOME_SIZE;y++){let base=tileId(ox,y);for(let x=0;x<HOME_SIZE;x++,k++){let i=base+x;if(e)osGame.explored[i]=e[k];if(f)osGame.floorTiles[i]=f[k];if(w)osGame.wireTiles[i]=w[k];}}
+  for(let i=0;i<(rec.td||[]).length;i++){let d=rec.td[i],li=d[0];let x=ox+li%HOME_SIZE,y=oy+Math.floor(li/HOME_SIZE);let j=tileId(x,y);osGame.terrain[j]=d[1];if(navBlocked.length===MAP_SIZE*MAP_SIZE)navBlocked[j]=(d[1]===3||d[1]===4||d[1]===6)?1:0;}
+  for(let i=0;i<(rec.gd||[]).length;i++){let d=rec.gd[i],li=d[0];osGame.groundTiles[tileId(ox+li%HOME_SIZE,oy+Math.floor(li/HOME_SIZE))]=d[1];}
+  let keys=Object.keys(rec.nd||{});
+  for(let i=0;i<keys.length;i++){let parts=keys[i].split(","),x=parseInt(parts[0],10),y=parseInt(parts[1],10),v=rec.nd[keys[i]];if(!onMap(x,y))continue;let m=getNode(nodeAtCell[tileId(x,y)]);
+    if(!m&&v[0]>0&&v[2]){m=addResourceNode(x,y,v[2],v[0]);if(m)m.marked=!!v[1];continue;}
+    if(!m)continue;if(v[0]<=0){m.amount=0;m.marked=false;nodeAtCell[tileId(x,y)]="";}else{m.amount=v[0];m.marked=!!v[1];}}
+  nodesEpoch++;if(!peek)delete planeStore()[chunkKey(cx,cy)];
+}
+// Slide the window to a new chunk-aligned origin, carrying the people with it and putting the rest to sleep.
+function moveWindow(nwx,nwy){
+  if(!osGame||nwx===WX&&nwy===WY)return false;
+  flushRovers();
+  let across=chunksAcross(),ox0=windowChunkX0(),oy0=windowChunkY0();
+  for(let cy=oy0;cy<oy0+across;cy++)for(let cx=ox0;cx<ox0+across;cx++)storeChunk(cx,cy);
+  let dx=nwx-WX,dy=nwy-WY;
+  osGame.nodes=[];nodeIndex={};nodeAtCell=[];for(let i=0;i<MAP_SIZE*MAP_SIZE;i++)nodeAtCell.push("");
+  WX=nwx;WY=nwy;osGame.window={x:WX,y:WY};
+  let nx0=windowChunkX0(),ny0=windowChunkY0();
+  for(let cy=ny0;cy<ny0+across;cy++)for(let cx=nx0;cx<nx0+across;cx++)loadChunk(cx,cy);
+  for(let i=0;i<osGame.animals.length;i++){let a=osGame.animals[i];if(!onMap(a.x,a.y)){a.dead=true;a.gone=true;}}
+  for(let i=0;i<osGame.people.length;i++){let c=osGame.people[i];c.path=[];c.pathCursor=0;c.pathEpoch=-1;if(c.task&&!c.task.personal&&c.task.targetId){let b=getBuilding(c.task.targetId);if(b&&!onMap(b.x,b.y))releaseTask(c,true);}}
+  panX+=dx*TILE*zoomLevel;panY+=dy*TILE*zoomLevel;
+  topologyDirty=true;serviceTopology();terrainDirty=true;minimapSrc="";minimapRows=[];minimapEpoch++;structuresDirty=true;viewDirty=true;storyDirty=true;nodesEpoch++;wallSpritesDirty=true;
+  generateJobs();
+  chronicle("The country moves with you","The settlement's active ground has shifted "+(dx>0?"east":dx<0?"west":dy>0?"south":"north")+". Structures left beyond the horizon wait where they stand.","colony");
+  return true;
+}
+// Each second: if someone present is near an edge and a one-chunk slide keeps everyone inside, slide.
+function serviceWindow(){
+  if(!osGame||MAP_SIZE<=HOME_SIZE)return false;
+  let people=alivePeople();if(!people.length)return false;
+  let minX=1e9,maxX=-1e9,minY=1e9,maxY=-1e9;for(let i=0;i<people.length;i++){let c=people[i];minX=Math.min(minX,c.x);maxX=Math.max(maxX,c.x);minY=Math.min(minY,c.y);maxY=Math.max(maxY,c.y);}
+  let margin=40,dx=0,dy=0;
+  if(minX<WX+margin)dx=-HOME_SIZE;else if(maxX>WX+MAP_SIZE-margin)dx=HOME_SIZE;
+  if(minY<WY+margin)dy=-HOME_SIZE;else if(maxY>WY+MAP_SIZE-margin)dy=HOME_SIZE;
+  if(!dx&&!dy)return false;
+  let nwx=WX+dx,nwy=WY+dy,fit=minX>=nwx+6&&maxX<nwx+MAP_SIZE-6&&minY>=nwy+6&&maxY<nwy+MAP_SIZE-6;
+  if(!fit){if(dx&&minX>=WX+dx+6&&maxX<WX+dx+MAP_SIZE-6){nwy=WY;fit=minY>=WY+6&&maxY<WY+MAP_SIZE-6;}else if(dy&&minY>=WY+dy+6&&maxY<WY+dy+MAP_SIZE-6){nwx=WX;fit=minX>=WX+6&&maxX<WX+MAP_SIZE-6;}}
+  if(!fit)return false;
+  return moveWindow(nwx,nwy);
+}

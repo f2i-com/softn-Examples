@@ -1,0 +1,68 @@
+// The order list. Every request the player makes joins a queue; the runner starts the next order
+// that can be done right now and leaves the rest waiting with a visible reason. Routine and Auto day
+// keep running in the gaps, so a whole escape can be planned as a list and left to run.
+const ORDER_LIMIT=12;
+// Reasons that will never clear on their own; everything else is worth waiting for.
+const PERMANENT_FAILURES=["Unknown","That favour has already","That favour is already complete","Already part of your crew","You have already copied","Project already","Wrong work station","No supplies at this fixture","Off the map","A small plan"];
+function isPermanentFailure(reason){for(let i=0;i<PERMANENT_FAILURES.length;i++)if(reason.indexOf(PERMANENT_FAILURES[i])===0)return true;return false;}
+function orderList(){if(!omGame.orders)omGame.orders=[];return omGame.orders;}
+// Pressing a button twice must not queue the same thing twice. One-shot orders allow a single copy in the
+// list or under way; collecting, buying and inmate trades yield one item each, so a few copies are allowed.
+const ORDER_KEYS=["type","site","actor","recipe","project","route","line","stash","item","job","x","y"],REPEAT_LIMIT=5;
+function sameOrder(a,b){for(let i=0;i<ORDER_KEYS.length;i++){let k=ORDER_KEYS[i];if((a[k]===undefined?null:a[k])!==(b[k]===undefined?null:b[k]))return false;}return true;}
+function repeatLimit(t){if(t.type==="buy"){let l=shopLine(t.line);return l?l.limit:1;}return t.type==="take"||t.type==="trade"?REPEAT_LIMIT:1;}
+function queuedCount(t){let n=0,list=orderList(),a=player().task;if(a&&sameOrder(a,t))n++;for(let i=0;i<list.length;i++)if(sameOrder(list[i],t))n++;return n;}
+function duplicateOrder(t){let n=queuedCount(t);if(n<repeatLimit(t))return "";let list=orderList(),a=player().task;for(let i=0;i<list.length;i++)if(sameOrder(list[i],t)&&list[i].blocked)return "Already in your list ("+(n===1?"":n+" times, ")+"waiting: "+list[i].blocked+").";return n===1?(a&&sameOrder(a,t)?"Already under way.":"Already in your list."):"Already in your list "+n+" times.";}
+// Routine keeps the fixed points of the day: counts and lock-in come before orders.
+function routineHold(t){
+  if(!omGame.autoDay||player().mode!=="routine"||t.type==="escape")return "";
+  let m=minuteNow();
+  if((m>=330&&m<390)||(m>=1230&&m<1320))return "Waiting until after count.";
+  if(!timeIn(345,1320)){let s=t.site?siteById(t.site):null;if(t.type==="walk"||t.actor||!s||s.zone!==player().homeZone)return "Waiting for the cells to unlock at 05:45.";}
+  return "";
+}
+function orderBlocker(t){
+  let f=taskFailure(t,false);if(f)return f;
+  let hold=routineHold(t);if(hold)return hold;
+  let p=player(),planned={id:p.id,role:p.role,job:p.job,homeZone:p.homeZone,mode:"manual",x:p.x,y:p.y,retryAt:0};
+  let ok=t.type==="walk"?findPath(planned,p.x,p.y,t.x,t.y)!==null:t.actor?routeToPerson(planned,actorById(t.actor)):routeTo(planned,siteById(t.site).ax,siteById(t.site).ay);
+  if(!ok)return "No authorised path yet. Doors depend on your assignment, the shift and security.";
+  if(omGame.autoDay&&t.illegal&&officerWatching(p))return "Waiting for the officer to look away.";
+  return "";
+}
+function activateOrder(t){
+  let p=player();t.phase="travel";t.progress=0;t.paid=false;t.escrow={};t.repathAt=0;t.blocked="";
+  if(t.type==="walk")routeTo(p,t.x,t.y);else if(t.actor)routeToPerson(p,actorById(t.actor));else{let s=siteById(t.site);routeTo(p,s.ax,s.ay);}
+  // Outside Auto day an order takes manual control, as a direct instruction always did.
+  if(!omGame.autoDay)p.mode="manual";
+  p.task=t;p.action="Going: "+taskDescription(t);followPlayer=true;dirty();
+}
+function startNextOrder(){
+  let p=player();if(!omGame||!p||p.task||!canInteractNow()||omGame.escape||dialog||omGame.challenge)return false;
+  let orders=orderList();
+  for(let i=0;i<orders.length;i++){let t=orders[i],why=orderBlocker(t);t.blocked=why;if(why)continue;orders.splice(i,1);activateOrder(t);return true;}
+  return false;
+}
+// Put the active order back at the front so an interruption costs time, not the plan.
+function interruptActiveOrder(reason){
+  let p=player(),t=p.task;if(!t)return;
+  if(t.type==="craft"&&t.paid){refundGoods(t.escrow||{});t.paid=false;t.escrow={};}
+  p.task=null;clearPath(p);p.action="Standing by";
+  if(t.type==="escape"||t.type==="inspect")return;
+  t.phase="travel";t.progress=0;t.blocked=reason||"";orderList().unshift(t);if(orderList().length>ORDER_LIMIT)orderList().length=ORDER_LIMIT;dirty();
+}
+function cancelOrder(index){let orders=orderList();if(index<0||index>=orders.length)return false;let t=orders.splice(index,1)[0];say("Cancelled: "+taskDescription(t)+".");dirty();return true;}
+function clearOrders(){let n=orderList().length;omGame.orders=[];if(n)say(n+" order"+(n===1?"":"s")+" cleared.");dirty();}
+function cancelFrontOrder(){return cancelOrder(0);}
+function officerWatching(p){for(let i=0;i<GUARDS.length;i++){let g=actorById(GUARDS[i].id);if(!g||isDown(g))continue;if(omGame.riot&&g.riotPost&&sqDistance(g.x,g.y,p.x,p.y)>36)continue;if(guardCanSee(g,p))return true;}return false;}
+// Once a second: interrupt for counts, lock-in and watching officers in Auto, then start what is now possible.
+function tickOrders(){
+  let p=player();if(!p||omGame.over)return;
+  if(p.task&&omGame.autoDay&&p.task.phase==="work"&&p.task.illegal&&officerWatching(p)){interruptActiveOrder("Waiting for the officer to look away.");say("An officer is looking this way. Your order waits.");}
+  if(p.task&&omGame.autoDay&&p.mode==="routine"&&p.task.type!=="escape"){
+    let r=routineNow(),present=p.x>=22&&p.x<=61&&p.y>=31&&p.y<=34.8;
+    if(r.kind==="count"&&!present&&!omGame.countKeys[dayNow()+":"+r.id]){interruptActiveOrder("Waiting until after count.");say("Count first. Your order resumes afterwards.");}
+    else if(!timeIn(345,1320)&&(p.task.type==="walk"||p.task.actor||!siteById(p.task.site)||siteById(p.task.site).zone!==p.homeZone)){interruptActiveOrder("Waiting for the cells to unlock at 05:45.");say("Lock-in. Your order resumes in the morning.");}
+  }
+  if(!p.task&&orderList().length)startNextOrder();
+}

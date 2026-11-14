@@ -1,0 +1,41 @@
+{
+  "name": "MazeEscape3D",
+  "version": "1.1.0",
+  "description": "First-person procedural stone cavern maze with Blender PBR sconces, obelisks, unsealing rune crystals, a glowing portal gate, dynamic shadows, and a live fog-of-war minimap across 3 sizes.",
+  "main": "ui/main.ui",
+  "icon": "assets/icon.svg",
+  "files": {
+    "ui": [
+      "ui/main.ui"
+    ],
+    "logic": [
+      "logic/main.logic"
+    ],
+    "assets": [
+      "assets/icon.svg",
+      "assets/env/cavern-torch.hdr",
+      "assets/models/exit-portal.glb",
+      "assets/models/rune-crystal.glb",
+      "assets/models/stone-obelisk.glb",
+      "assets/models/wall-sconce.glb",
+      "assets/sfx/found.wav",
+      "assets/sfx/portal.wav",
+      "assets/sfx/rune.wav",
+      "assets/sfx/start.wav",
+      "assets/sfx/step.wav",
+      "assets/sfx/win.wav"
+    ]
+  },
+  "config": {
+    "window": {
+      "title": "Maze Escape 3D",
+      "width": 1160,
+      "height": 740
+    },
+    "theme": {
+      "primary": "#4ade80",
+      "mode": "dark"
+    }
+  },
+  "author": "SoftN"
+}

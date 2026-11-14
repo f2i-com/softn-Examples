@@ -1,0 +1,341 @@
+// Side stories: one-off encounters that branch off the chapters and the frontier.
+// Each is ordinary STORY_EVENTS data with a live eligibility check. Hollow-tagged
+// beats (the tag's date, the shared dream) open even when random incidents are Off;
+// the rest wait their turn on the normal incident timer.
+const SIDE_STORIES={
+  pod:{title:"A small fire on the northern slope",tag:"FRONTIER / ESCAPE POD",narrated:true,body:"An escape pod came down in the night. It is not one of the Wayfarer's. Its beacon is transmitting a registry code nobody recognises and a medical flag that means somebody is still inside.\n\n{ranger} can be there in an hour. The pod's hull is worth something. Its occupant, if there is one, is worth more, and might cost more too.",choices:[{id:"rescue",label:"Bring them home",detail:"A survivor joins if they are alive. Some carry injuries; some carry knowledge."},{id:"strip",label:"Strip the pod",detail:"Receive 18 metal, 3 components and 1 Hollowglass. Nobody checks the seat."},{id:"ignore",label:"Leave the slope alone",detail:"No cost. The most empathetic settlers will remember the fire."}],
+    when:function(){return everyoneAlive().length<15&&dayNow()>=3;}},
+  seeds:{title:"{keeper}'s last packet",tag:"AGRICULTURE / A GIFT",narrated:true,body:"At the bottom of the seed case, under the sunroot, there is one packet {keeper} did not tell anyone about. The label is handwritten. The species is not in the colony database, and the note on the back just says 'for when it feels like home'.\n\n{keeper} turns it over for a long time before bringing it to the table.",choices:[{id:"plant",label:"Plant it now",detail:"One sown plot leaps to near harvest. {keeper} remembers the evening."},{id:"keep",label:"Save it for a harder season",detail:"Everyone remembers that there is still something in reserve."}],
+    when:function(){if(dayNow()<3)return false;for(let i=0;i<osGame.buildings.length;i++){let b=osGame.buildings[i];if(BUILDINGS[b.kind].crop&&b.built&&b.sown)return true;}return false;}},
+  pilgrim:{title:"Something tall on the ridge",tag:"HOLLOW / THE PILGRIM",narrated:true,body:"{ranger} reports it first and then refuses to describe it. Something is walking along the ridge: tall, slow, pale as the stone, with a stride that does not match the distance it covers. It is not coming toward the camp. It does not appear to be coming toward anything.\n\n'It isn't hunting,' {ranger} says. 'I don't think it knows we're here. I'd like to keep it that way.'",choices:[{id:"watch",label:"Let people watch",detail:"The Pilgrim crosses the map. Curious settlers gain a strange memory; others feel uneasy."},{id:"inside",label:"Keep everyone inside",detail:"Nobody sees it pass. Everyone rests a little and remembers choosing not to look."}],
+    when:function(){return dayNow()>=4&&campaignState().chapter>=2&&!creaturePresent("pilgrim");}},
+  ashwalkers:{title:"Dust on the western road",tag:"ASHWALKERS / NOMADS",narrated:true,body:"Six figures wrapped against the wind stop at the edge of the lamplight and wait to be noticed. Ashwalkers: people who live in the places the maps leave grey. Their leader carries a water skin, a bundle of dried medicine and no weapon in sight, which is not the same as no weapon.\n\nThey have seen your metal. They would like some of it. How the evening ends depends on what they are offered.",choices:[{id:"trade",label:"Trade metal for medicine",detail:"Spend 20 metal. Receive 12 medicine and 6 fuel. They leave as friends."},{id:"share",label:"Share a meal, keep the metal",detail:"Spend 8 meals. They leave in peace and raids grow rarer."},{id:"refuse",label:"Turn them away",detail:"No cost tonight. Expect them to come back for the metal without asking."}],
+    when:function(){return dayNow()>=facetAshwalkerDay()&&!peacefulEvents();}},
+  choir:{title:"A hymn on the maintenance band",tag:"THE CHOIR / CONTACT",narrated:true,body:"The signal mast picks up singing. Not a recording: a dozen voices, live, on the same band Structure 17 used. When the hymn ends, a calm voice explains that they are the Choir, that Hollow-7 has been speaking for a very long time, and that lately it has been saying your colony's name.\n\nThey do not ask for anything. They ask whether you are listening.",choices:[{id:"answer",label:"Answer them",detail:"The Choir gains standing. Expect a visitor who knows more than they should."},{id:"silent",label:"Keep the band clear",detail:"No contact. Meridian appreciates a quiet frequency."}],
+    when:function(){return anyPowered("radio")&&campaignState().chapter>=facetChoirChapter();}},
+  choirVisit:{title:"A child of the Hollow",tag:"THE CHOIR / ARRIVAL",narrated:true,body:"A young person walks in from the south with a Choir sash and a rucksack of copied records. They grew up on a settlement two ridges over that nobody in your database has heard of. They know the layout of your bunkhouse before they see it. They know which of your plots will fail first.\n\nThey would like to stay. They say it is what the stone wants, and then apologise for saying it.",choices:[{id:"welcome",label:"Offer a home",detail:"A gifted researcher joins with unusual knowledge. Current research gains 40."},{id:"records",label:"Take only the records",detail:"Gain 2 Hollowglass. They walk on to the next settlement."}],
+    when:function(){return !!osGame.storySeen.choir&&osGame.standing.Choir>=20&&osGame.minutes-(osGame.choirAt||0)>=1440&&everyoneAlive().length<24;}},
+  tomorrow:{title:"The date on the tag",tag:"HOLLOW / STRUCTURE 17",narrated:true,priority:true,mystery:"rehearsal",body:"The inspection tag in the locker was dated tomorrow. Today is tomorrow.\n\n{engineer} goes back down before breakfast. The tag now reads yesterday's date and carries a signature: {engineer}'s, in {engineer}'s handwriting, with the little loop on the J that nobody else has ever bothered to copy.\n\nThe torque wrench is warm.",choices:[{id:"sign",label:"Sign it again, properly",detail:"{engineer} carries an unsettling memory. Hollow research gains 20 progress."},{id:"bag",label:"Take the tag to {scientist}",detail:"Gain 1 Hollowglass. The scientists start a third notebook."}],
+    when:function(){return !!osGame.tagAt&&osGame.minutes>=osGame.tagAt;}},
+  dream:{title:"The same dream",tag:"HOLLOW / SLEEP",narrated:true,priority:true,mystery:"rehearsal",body:"Everyone who slept last night dreamed of a corridor under the listening engine, lit by a lamp that has not been built yet. In the dream, the corridor ends at a door with the colony's name on it, and somebody on the other side is counting.\n\nNobody mentions it at breakfast until {keeper} does, and then nobody can stop.",choices:[{id:"compare",label:"Compare notes",detail:"Current research gains 30 progress. Everyone gains an uneasy memory."},{id:"dream",label:"Let it be a dream",detail:"Everyone gains a small comfort from saying so out loud."}],
+    when:function(){return campaignState().chapter>=5;}},
+  helixOffer:{title:"An invoice for the impossible",tag:"HELIX / ECHO CORES",narrated:true,body:"Helix Recovery's representative arrives with a contract already drawn up. They know how many Echo cores are in your lifeboat. They know what the cores weigh. They have a figure for them that would build a second settlement.\n\n'We are not asking what they do,' the representative says. 'We are asking what they cost. Everyone else will ask the first question.'",choices:[{id:"sellTwo",label:"Sell two cores",detail:"Spend 2 Echo cores. Receive 40 metal and 12 components. The Echo interface needs two cores; count yours first."},{id:"sellOne",label:"Sell one core",detail:"Spend 1 Echo core. Receive 25 metal and 6 components."},{id:"refuse",label:"Not for sale",detail:"Helix leaves politely. The Choir hears about it. {scientist} remembers."}],
+    when:function(){return osGame.stock.cores>=2&&campaignState().chapter>=facetHelixChapter();}},
+  choirPlea:{title:"Do not silence it",tag:"THE CHOIR / A PLEA",narrated:true,body:"The Choir's voice comes on the band at dawn, alone this time. They know what you are building. They have watched other settlements reach the same door.\n\n'It has been singing for longer than we have had words,' the voice says. 'If you teach it, we will learn the new song with you. If you leave, we will keep the light on. If you silence it, we will not know what to be.'\n\nThey do not threaten anything. That is somehow worse.",choices:[{id:"promise",label:"Promise not to silence it",detail:"Choir standing rises. Breaking the promise later will cost you their friendship."},{id:"witness",label:"Invite them to witness the choice",detail:"Choir standing rises a little. Everyone remembers the Choir coming to see."},{id:"decline",label:"Make no promises",detail:"Choir standing falls. The frontier stays yours to decide."}],
+    when:function(){return (osGame.standing.Choir||0)>=20&&(hasTech("integration")||hasTech("orbital"))&&!osGame.ending;}},
+  meridianCharter:{title:"A seat at the Compact",tag:"MERIDIAN / CHARTER",narrated:true,body:"A Meridian envoy brings a charter with the colony's name already written on it, spelled correctly. The Compact would like Lantern Reach to be a Compact settlement: a fixed caravan route, shared weather, a lantern at every gate, and a promise to take in anyone who walks out of the grey.\n\nIn return the Compact asks for the thing every settlement has and nobody wants to give: a say in what you do next.",choices:[{id:"join",label:"Sign the charter",detail:"Meridian standing rises, caravans answer twice as often and carry more. Helix cools."},{id:"independent",label:"Stay independent",detail:"Helix warms to a free operator. Everyone remembers their own name on the map."}],
+    when:function(){return osGame.standing.Meridian>=40&&dayNow()>=8&&!osGame.charter;}},
+  jinWayfarer:{title:"The Wayfarer's name",tag:"PEOPLE / {ENGINEER}",narrated:true,body:"{engineer} has finished the third rebuild of the lifeboat's transmitter. It works perfectly. There is still nobody on the other end.\n\nThe memory stone has room for another name. {keeper} suggests, carefully, that the Wayfarer might belong on it: not the crew, who might yet be somewhere, but the ship, which is not.\n\n{engineer} says nothing for a long time, and then asks who would speak.",choices:[{id:"service",label:"Hold a service at the stone",detail:"Everyone remembers saying goodbye. {engineer} can finally rest."},{id:"notReady",label:"{engineer} isn't ready",detail:"No cost. The transmitter stays on."}],
+    when:function(){return castHolder("engineer")&&countBuilt("memorial")>0&&campaignState().chapter>=2;}},
+  maraHorizon:{title:"{ranger} stops checking the horizon",tag:"PEOPLE / {RANGER}",narrated:true,body:"Somebody notices at dinner that {ranger} has not looked at the ridge in three days. They have been looking at the table instead, at the people around it.\n\n'I know what's out there now,' {ranger} says, when asked. 'I'd rather know what's in here.' Then, because that was more than she meant to say, she asks whether anyone has named the ridge yet, and whether anyone would mind if they did.",choices:[{id:"name",label:"Let {ranger} name the ridge",detail:"The ridge gets a name in the chronicle. Everyone remembers it."},{id:"scout",label:"One more long walk, together",detail:"A distant stretch of the map is revealed. {ranger} remembers the company."}],
+    when:function(){let m=castHolder("ranger");if(!m||dayNow()<7)return false;if(m.partner)return true;let keys=Object.keys(m.relations);for(let i=0;i<keys.length;i++)if(m.relations[keys[i]]>=60)return true;return false;}},
+  minaNotebook:{title:"Three notebooks",tag:"PEOPLE / {SCIENTIST}",narrated:true,body:"{scientist} has filled three notebooks and started a fourth. The first is soil and weather. The second is the stone. The third is the one she does not leave on the table.\n\nThe signal mast could carry all of it to the Compact, to Helix, to the Choir, to anyone listening on the maintenance band. 'Evidence is only evidence if someone else can check it,' she says, and then, quieter: 'And then it stops being ours.'",choices:[{id:"broadcast",label:"Broadcast the findings",detail:"Every faction's standing rises. Current research gains 20."},{id:"keep",label:"Keep them for now",detail:"{scientist} remembers. Gain 1 Hollowglass from the third notebook's samples."}],
+    when:function(){return castHolder("scientist")&&Object.keys(osGame.tech).length>=4&&anyPowered("radio");}},
+  solTable:{title:"The table {keeper} set",tag:"PEOPLE / {KEEPER}",narrated:true,body:"{keeper} has been counting meals since the first night: sixty cooked, by the dented pan's reckoning, which is the only reckoning {keeper} trusts. Sixty is enough, apparently, for a rule.\n\n'Nobody eats standing up any more,' {keeper} announces at the table, to nobody in particular, and then, less certainly: 'And once a season we eat like people who are staying.'",choices:[{id:"feast",label:"A feast, then",detail:"Spend 8 meals. Everyone's spirits lift and remember {keeper}'s table."},{id:"quiet",label:"A quiet dinner for four",detail:"No cost. {keeper} remembers the evening; so does everyone else, a little."}],
+    when:function(){return castHolder("keeper")&&countBuilt("table")>0&&osGame.stats.mealsCooked>=60;}},
+  glassWind:{title:"The wind that cuts",tag:"WEATHER / GLASS WIND",narrated:true,priority:true,body:"The first Glass Wind arrives sideways. It is not sand and it is not rain; it is the Hollow's own dust, fused into flakes that ring when they hit the walls. Crops bow under it. A lantern post sings.\n\n{ranger} says the flakes are worth collecting, if anyone is prepared to bleed for them.",choices:[{id:"shelter",label:"Bring everyone inside",detail:"Everyone rests and remembers waiting out the glass together."},{id:"gather",label:"Collect the shards",detail:"Gain 3 Hollowglass. One settler is cut."}],
+    when:function(){return osGame.weather==="Glass Wind"&&dayNow()>=2;}},
+  glassSignal:{title:"The mast sings",tag:"HOLLOW / GLASS WIND",narrated:true,priority:true,body:"The glass hits the signal mast and the mast answers. Every flake that strikes the lattice rings at the same pitch, and under the ringing, clear for the first time, is the pattern from below the floor: the Hollow's signal, carried on the wind instead of buried under it.\n\n{scientist} says the mast is a receiver now whether anyone likes it or not. {engineer} says a receiver can be switched off.",choices:[{id:"listen",label:"Listen and record",detail:"Current research gains 30. Choir standing rises. Settlers drawn to the Echo are elated; the others sleep badly."},{id:"cut",label:"Cut power to the mast",detail:"The mast is switched off. Everyone remembers choosing the quiet."}],
+    when:function(){return osGame.weather==="Glass Wind"&&!!osGame.storySeen.glassWind&&anyPowered("radio");}},
+  echoRain:{title:"The rain remembers",tag:"HOLLOW / ECHO RAIN",narrated:true,priority:true,body:"The rain on the roof is saying something. Not words at first: the rhythm of the colony's own footsteps, the generator's cough, the scrape of the dented pan. Then, faintly, names.\n\n{scientist} holds a cup out of the door and listens to it fill.",choices:[{id:"record",label:"Record it",detail:"Current research gains 15. Everyone remembers the rain saying their names."},{id:"ignore",label:"It is only rain",detail:"Everyone takes a small comfort in saying so."}],
+    when:function(){return osGame.weather==="Echo Rain";}},
+  firstLoss:{title:"The stone we did not want",tag:"PEOPLE / GRIEF",narrated:true,priority:true,body:"There is a bedroll nobody has rolled up, and a cup nobody has moved. The colony has been very careful all morning not to look at either.\n\n{keeper} suggests a stone. {engineer} says stone is for walls. {ranger} says the ridge has plenty. {scientist} says, quietly, that a name needs somewhere to be.",choices:[{id:"stone",label:"Plan a memory stone",detail:"Places a memory stone blueprint near camp if 20 stone and clear ground allow."},{id:"words",label:"Say their name at the table",detail:"Everyone remembers saying it. No stone yet."}],
+    when:function(){return osGame.stats.deaths>0&&everyoneAlive().length>0;}},
+  seasonTurn:{title:"Longlight",tag:"SEASONS / THE TURN",narrated:true,priority:true,body:"The season turns without asking. The mornings come earlier and the evenings refuse to end; the sunroot leans a little further; the ridge holds the light like a cup.\n\nTwelve Sols. The chronicle says so. Somebody suggests that surviving a season is the sort of thing people mark.",choices:[{id:"festival",label:"Mark it with a meal",detail:"Spend 6 meals. Everyone's spirits lift and remember the first Longlight."},{id:"work",label:"Work through it",detail:"No cost. Everyone notices the light lasting longer, and likes it."}],
+    when:function(){return dayNow()>=13;}},
+  partners:{title:"Something worth staying for",tag:"PEOPLE / PARTNERS",narrated:true,priority:true,body:"Two settlers have started leaving their boots by the same door. Nobody announced anything; the colony worked it out from where the second cup went.\n\nThere is a spare corner in the bunkhouse, and there are eleven other things the timber could be used for. {keeper} says the corner. {engineer} says the timber. Everybody looks at you.",choices:[{id:"room",label:"A corner of their own",detail:"Both partners gain a lasting memory. Sociable settlers are glad of it. Twelve wood is set aside for a second bed."},{id:"quiet",label:"Let them keep it to themselves",detail:"Both partners gain a smaller memory. Nothing is spent."}],
+    when:function(){let pp=osGame.partnerPending;if(!pp)return false;let a=findColonist(pp.a),b=findColonist(pp.b);if(!a||!b||a.dead||b.dead){osGame.partnerPending=null;return false;}return true;}},
+  emptyChair:{title:"The empty chair",tag:"PEOPLE / GRIEF",narrated:true,priority:true,body:"There is a chair at the table that nobody sits in, and a jacket on a peg that nobody moves. The settler who shared a door with the one who died has stopped eating at the table at all.\n\nThe jacket is warm and the tools in its pockets are good. Somebody new will need them eventually. The question is who decides when.",choices:[{id:"keep",label:"Leave their things where they are",detail:"The grieving partner takes a slow comfort from it."},{id:"pass",label:"Pass them on",detail:"The newest settler takes up the tools and one of the lost settler's skills. The partner is glad they are used."}],
+    when:function(){let q=osGame.widowQueue||[];while(q.length){let w=findColonist(q[0].survivor);if(w&&!w.dead)return true;q.shift();}return false;}},
+  helixClaim:{title:"A claim on the cores",tag:"HELIX / THE CLAIM",narrated:true,priority:true,body:"Helix Recovery's representative is back, and this time there is no contract. There is a survey map with your lifeboat on it and a line of text underneath: salvage rights, Hollow-7, eastern continent, registered before your ship launched.\n\n'The cores were never yours,' the representative says, quite gently. 'We would prefer to be paid for them than to collect.'",choices:[{id:"hand",label:"Hand over one core",detail:"Spend 1 Echo core. Receive 8 components and 6 medicine. Helix standing rises."},{id:"glass",label:"Pay in Hollowglass instead",detail:"Spend 4 Hollowglass. Keep the cores. Helix standing rises a little."},{id:"refuse",label:"Refuse the claim",detail:"Helix standing falls hard. Within two Sols, Ashwalkers with Helix kit come for the stores."}],
+    when:function(){return dayNow()>=10&&osGame.stock.cores>=1&&!!osGame.storySeen.helixOffer&&(osGame.standing.Helix||0)<30&&!osGame.charter;}},
+  meridianAsks:{title:"By name",tag:"MERIDIAN / A QUESTION",narrated:false,priority:true,body:"The caravan leader waits until the trading is done, then asks, carefully, whether one of your settlers survived the landing. By name. The Compact has no record of that name on any manifest, and yet somebody at the coast wanted to know.\n\nThe settler in question is standing right there, and says nothing.",choices:[{id:"tell",label:"Tell them the truth",detail:"Meridian standing rises. The settler remembers being talked about."},{id:"deny",label:"Say you have never heard the name",detail:"The settler is grateful. Meridian standing falls a little."}],
+    when:function(){if(dayNow()<18||osGame.traderUntil<=osGame.minutes)return false;for(let i=0;i<osGame.people.length;i++){let p=osGame.people[i];if(p.connected&&!p.dead)return true;}return false;}},
+  funeral:{title:"Who speaks?",tag:"PEOPLE / FUNERAL",narrated:true,body:"The colony has gathered at the grave. Somebody should say something, and everybody is waiting to see who.\n\nIt does not have to be long. It only has to be true.",choices:[{id:"silence",label:"Let the silence speak",detail:"Nobody speaks. The gathering still counts."}],
+    when:function(){return false;}},
+  newName:{title:"A new name",tag:"PEOPLE / BORN ON HOLLOW-7",narrated:true,priority:true,body:"There is a child in the colony. Nobody planned for it, and everybody has an opinion about the name.\n\nThe lifeboat's manifest has a blank line at the bottom that was never meant to be used. Somebody has already drawn a small flower next to it.",choices:[{id:"name:0",label:"Name them",detail:"The first name."},{id:"name:1",label:"Name them",detail:"The second name."}],
+    when:function(){if(!osGame.birthPending)return false;let a=findColonist(osGame.birthPending.a),b=findColonist(osGame.birthPending.b);if(!a||!b||a.dead||b.dead){osGame.birthPending=null;return false;}buildBirthChoices();return true;}},
+  ofAge:{title:"Old enough",tag:"PEOPLE / SECOND GENERATION",narrated:true,priority:true,body:"They have been carrying water since they could walk and asking questions since before that. This morning they asked, in front of everyone, what their work is going to be.\n\nThe founders look at each other. Nobody has an answer ready, which is how they know it is time.",choices:[{id:"own",label:"Find their own way",detail:"A little of everything."}],
+    when:function(){if(!osGame.ofAgeId)return false;let c=findColonist(osGame.ofAgeId);if(!c||c.dead||!c.child){osGame.ofAgeId="";return false;}buildOfAgeChoices();return true;}},
+  afterDeparture:{title:"Two mornings later",tag:"EPILOGUE / DEPARTURE",narrated:true,priority:true,body:"The rescue craft is a bright point that stopped moving two mornings ago. Nobody has had to leave yet. Nobody has had to stay, either; the beacon will call the craft down whenever the colony says so, and so far the colony has said nothing.\n\n{keeper} has planted something in the meantime. It is not in the database.",choices:[{id:"close",label:"Close the chronicle for now",detail:"Everyone remembers the two mornings."}],
+    when:function(){return osGame.ending==="departure"&&!!osGame.endingAt&&osGame.minutes-osGame.endingAt>=1440*2;}},
+  afterIntegration:{title:"Two mornings later",tag:"EPILOGUE / INTEGRATION",narrated:true,priority:true,body:"The engine dreams now, instead of rehearsing. The settlers can tell because the dreams leak: a lamp comes on before anyone touches it; the fungus grows toward whichever chair {scientist} is sitting in.\n\nIt has stopped saying the colony's name. It has started saying good morning.",choices:[{id:"close",label:"Close the chronicle for now",detail:"Everyone remembers the two mornings."}],
+    when:function(){return osGame.ending==="integration"&&!!osGame.endingAt&&osGame.minutes-osGame.endingAt>=1440*2;}},
+  afterSilence:{title:"Two mornings later",tag:"EPILOGUE / SILENCE",narrated:true,priority:true,body:"The second unrecorded morning is quieter than the first, because everybody has stopped listening for something under the floor. The generator hums. The ridge is only a ridge.\n\n{engineer} finds the transmitter is broadcasting after all: nothing but the colony's own footsteps, sent nowhere in particular, for anyone who might one day walk out of the grey.",choices:[{id:"close",label:"Close the chronicle for now",detail:"Everyone remembers the two mornings."}],
+    when:function(){return osGame.ending==="silence"&&!!osGame.endingAt&&osGame.minutes-osGame.endingAt>=1440*2;}}
+};
+Object.assign(SIDE_STORIES,MYSTERY_CLUES,FACET_STORIES);
+let sideKeys=Object.keys(SIDE_STORIES);
+for(let i=0;i<sideKeys.length;i++)STORY_EVENTS[sideKeys[i]]=SIDE_STORIES[sideKeys[i]];
+function creaturePresent(kind){for(let i=0;i<osGame.animals.length;i++){let a=osGame.animals[i];if(a.kind===kind&&!a.dead)return true;}return false;}
+function sideStoryEligible(id){let s=SIDE_STORIES[id];return !!s&&!osGame.storySeen[id]&&(!s.mystery||(s.mystery===mysteryId()&&(!MYSTERY_CLUES[id]||dayNow()>=facetClueDay())))&&storyCastReady(id)&&s.when();}
+function prioritySideStory(){for(let i=0;i<sideKeys.length;i++){let id=sideKeys[i];if(SIDE_STORIES[id].priority&&sideStoryEligible(id))return id;}return "";}
+function sideStoryOptions(){let out=[];for(let i=0;i<sideKeys.length;i++){let id=sideKeys[i];if(!SIDE_STORIES[id].priority&&sideStoryEligible(id))out.push(id);}return out;}
+function roleAlive(role){let people=alivePeople();for(let i=0;i<people.length;i++)if(people[i].role===role)return people[i];return null;}
+function tradeLimit(t){return t.limit+(osGame.charter?1:0);}
+// Standing colours the ending text and settles the Choir's promise.
+function endingCoda(kind){
+  let st=osGame.standing,out="";
+  if(kind==="departure"){if((st.Choir||0)>=20)out+=" The Choir's hymn follows the craft into orbit.";if(st.Meridian>=40)out+=" Meridian lanterns line the road to the beacon.";if(osGame.charter)out+=" The Compact keeps your name on its maps.";}
+  if(kind==="integration"){if(osGame.choirPromise){out+=" The Choir sings the new pattern back to the engine, and it answers in your colony's name.";osGame.standing.Choir=(st.Choir||0)+20;}else if((st.Choir||0)>=20)out+=" On the maintenance band, the hymn changes key.";if((st.Helix||0)>=30)out+=" Helix Recovery's invoices go unanswered.";}
+  if(kind==="silence"){if(osGame.choirPromise){out+=" The Choir falls silent. They will not forgive the broken promise.";osGame.standing.Choir=(st.Choir||0)-40;chronicle("A promise broken","The Choir heard the engine stop. They do not answer the band again.","people");}else if((st.Choir||0)>=20)out+=" The Choir stops singing. Nobody knows whether that is grief or relief.";if(st.Meridian>=40)out+=" The Compact sends a caravan anyway.";}
+  return out;
+}
+// Children: partners in a stable colony may have a child; twenty Sols later they come of age.
+const CHILD_NAMES=["Ash","Bri","Cael","Dova","Eli","Fen","Gil","Hollis","Ines","Juno","Kes","Lior","Mae","Nico","Orla","Pim","Rue","Sasha","Tove","Wynn"];
+function considerBirth(){
+  if(osGame.birthPending||osGame.over||dayNow()<15)return;
+  let living=alivePeople();if(living.length>=24||osGame.minutes-(osGame.lastBirthAt||-1e9)<1440*10)return;
+  let foodDays=(osGame.stock.meals+osGame.stock.raw*0.65)/Math.max(1,living.length*1.5);if(foodDays<3||countBuilt("bed")<living.length)return;
+  let pairs=[];for(let i=0;i<living.length;i++){let a=living[i];if(!a.partner||a.child)continue;let b=findColonist(a.partner);if(!b||b.dead||b.child||a.id>b.id)continue;if(a.mood>=55&&b.mood>=55&&a.health>=60&&b.health>=60)pairs.push([a,b]);}
+  if(!pairs.length||randomUnit()>=0.35)return;
+  let pair=pick(pairs),first=CHILD_NAMES[randomInt(0,CHILD_NAMES.length-1)],second=first;while(second===first)second=CHILD_NAMES[randomInt(0,CHILD_NAMES.length-1)];
+  osGame.birthPending={a:pair[0].id,b:pair[1].id,names:[first,second]};
+}
+function buildBirthChoices(){
+  let bp=osGame.birthPending,e=STORY_EVENTS.newName;if(!bp)return;
+  let a=findColonist(bp.a),b=findColonist(bp.b);
+  e.choices=[{id:"name:0",label:bp.names[0],detail:(a?a.short:"")+" chose it."},{id:"name:1",label:bp.names[1],detail:(b?b.short:"")+" chose it."}];
+}
+// A cell for a second cot: beside a cot one partner already owns, in its room if it has one, on clear ground.
+function partnerBedSpot(a,b){
+  let beds=[],others=[];for(let i=0;i<osGame.buildings.length;i++){let x=osGame.buildings[i];if(!x.built||x.kind!=="bed")continue;if(x.owner===a.id||x.owner===b.id)beds.push(x);else if(x.room>=0&&!(x.owner&&findColonist(x.owner)&&!findColonist(x.owner).dead))others.push(x);}
+  // Before either has claimed a cot, any cot under a roof will do as the neighbour.
+  if(!beds.length)beds=others;
+  for(let k=0;k<beds.length;k++){let bed=beds[k],room=roomAt(bed.x,bed.y);
+    for(let r=1;r<=4;r++)for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){let x=bed.x+dx,y=bed.y+dy;if(!onMap(x,y)||!onMap(x,y+1))continue;
+      if(room&&(roomAt(x,y)!==room||roomAt(x,y+1)!==room))continue;if(!placementCheck("bed",x,y,false).ok)continue;return {x:x,y:y,owner:bed.owner,bedId:bed.id};}
+  }
+  return null;
+}
+// Two cots side by side on clear ground: in a room with floor if one has space, else near the lander.
+function pairBedSpot(){
+  let anchors=[];for(let i=0;i<osGame.buildings.length;i++){let x=osGame.buildings[i];if(x.built&&x.kind==="bed"&&x.room>=0)anchors.push(x);}
+  let lander=osGame.buildings.find(function(x){return x.kind==="lander";});if(lander)anchors.push(lander);
+  for(let k=0;k<anchors.length;k++){let an=anchors[k];
+    for(let r=1;r<=6;r++)for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){let x=an.x+dx,y=an.y+dy;if(placementCheck("bed",x,y,false).ok&&placementCheck("bed",x+1,y,false).ok&&(an.kind!=="bed"||(roomAt(x,y)===roomAt(an.x,an.y)&&roomAt(x+1,y)===roomAt(an.x,an.y))))return {x:x,y:y};}
+  }
+  return null;
+}
+function createChild(name,a,b){
+  let profile=JSON.parse(JSON.stringify(FOUNDERS[osGame.people.length%FOUNDERS.length]));
+  profile.name=name;profile.short=name;profile.age=0;profile.role="Child of the colony";profile.trait="Curious";profile.bio="Born on Hollow-7 to "+a.name+" and "+b.name+". Has never seen another sky.";
+  for(let i=0;i<WORK_KEYS.length;i++){let k=WORK_KEYS[i];profile.skills[k]=Math.max(1,Math.floor(((a.skills[k]||1)+(b.skills[k]||1))/6));}
+  let c=createColonist(profile,Math.floor(a.x),Math.floor(a.y));
+  c.child=true;c.born=osGame.minutes;c.parents=[a.id,b.id];c.quirks=[];c.schedule="day";
+  for(let i=0;i<WORK_KEYS.length;i++){let k=WORK_KEYS[i];c.priorities[k]=(k==="haul"||k==="farm"||k==="cook")?3:0;}
+  let keys=["empathy","nerve","discipline","curiosity","sociability"];for(let i=0;i<keys.length;i++)c.personality[keys[i]]=Math.round((traitOf(a,keys[i])+traitOf(b,keys[i]))/2);
+  assignValues(c);for(let i=0;i<WORK_KEYS.length;i++)c.priorities[WORK_KEYS[i]]=0;
+  let people=alivePeople();for(let i=0;i<people.length;i++){let p=people[i];if(p.id===c.id)continue;let close=p.id===a.id||p.id===b.id;c.relations[p.id]=close?60:20;p.relations[c.id]=close?60:20;remember(p,close?"A child, on Hollow-7":"A child in the colony",close?12:5,1440*20);}
+  noteFact("births",name);osGame.lastBirthAt=osGame.minutes;osGame.stats.births=(osGame.stats.births||0)+1;osGame.birthPending=null;
+  chronicle("Born on Hollow-7: "+name,name+" was born to "+a.name+" and "+b.name+". The manifest has a new line.","arrival");say(name+" was born. A young child cannot work; from eight Sols they help with hauling, farming and cooking, and they come of age at twenty.");
+  return c;
+}
+// The day a young child becomes old enough to help: hauling, farming and cooking open up.
+function tickChildhood(){
+  for(let i=0;i<osGame.people.length;i++){let c=osGame.people[i];if(!c.child||c.dead||c.helps)continue;if(childStage(c)!=="older")continue;
+    c.helps=true;c.priorities.haul=3;c.priorities.farm=3;c.priorities.cook=3;chronicle(c.short+" is old enough to help",c.name+" can carry, weed and stir now, and learns fastest beside a parent.","people");}
+}
+function considerComingOfAge(){
+  if(osGame.ofAgeId)return;
+  for(let i=0;i<osGame.people.length;i++){let c=osGame.people[i];if(c.child&&!c.dead&&osGame.minutes-(c.born||0)>=1440*20){osGame.ofAgeId=c.id;return;}}
+}
+function buildOfAgeChoices(){
+  let c=findColonist(osGame.ofAgeId),e=STORY_EVENTS.ofAge;if(!c)return;let choices=[];
+  for(let i=0;i<(c.parents||[]).length;i++){let p=findColonist(c.parents[i]);if(p&&!p.dead)choices.push({id:"trade:"+p.id,label:"Follow "+p.short+"'s trade",detail:p.role+". Their best skill improves by three."});}
+  choices.push({id:"own",label:"Find their own way",detail:"A little of everything: every skill improves by one."});
+  e.choices=choices;
+}
+function comeOfAge(c,choice){
+  c.child=false;c.helps=false;c.role="Second generation";c.age=16;assignQuirks(c);assignValues(c);
+  if(choice.indexOf("trade:")===0){let p=findColonist(choice.slice(6));if(p){let best="haul",bestV=-1;for(let i=0;i<WORK_KEYS.length;i++){let k=WORK_KEYS[i];if((p.skills[k]||0)>bestV){bestV=p.skills[k]||0;best=k;}}c.skills[best]=Math.min(20,(c.skills[best]||0)+3);}}
+  else for(let i=0;i<WORK_KEYS.length;i++){let k=WORK_KEYS[i];c.skills[k]=Math.min(20,(c.skills[k]||0)+1);}
+  for(let i=0;i<WORK_KEYS.length;i++){let k=WORK_KEYS[i];c.priorities[k]=c.skills[k]>=8?1:(c.skills[k]>=5?2:3);}
+  remember(c,"Old enough",8,1440*10);osGame.ofAgeId="";
+  chronicle(c.name+" comes of age",c.name+" is a settler now, with work of their own and a place at the table.","people");
+}
+// Funeral choices are the living settlers themselves; rebuilt on load so ids stay valid.
+function buildFuneralChoices(){
+  let e=STORY_EVENTS.funeral,choices=[],people=alivePeople();
+  for(let i=0;i<people.length;i++){let p=people[i];if(p.drafted||p.health<22)continue;choices.push({id:"speak:"+p.id,label:p.short+" speaks",detail:p.role+" · "+(p.trait||"")});}
+  choices.push({id:"silence",label:"Let the silence speak",detail:"Nobody speaks. The gathering still counts."});
+  e.choices=choices;return choices;
+}
+function peopleByRole(role){let out=[],people=alivePeople();for(let i=0;i<people.length;i++)if(people[i].role===role)out.push(people[i]);return out.length?out:people;}
+function arriveColonist(name,role,trait,bio,skills,x,y){
+  let template=FOUNDERS[osGame.people.length%FOUNDERS.length],profile=JSON.parse(JSON.stringify(template));
+  profile.name=name;profile.short=name.split(" ")[0];profile.age=randomInt(19,52);profile.role=role;profile.trait=trait;profile.bio=bio;
+  if(skills){let keys=Object.keys(skills);for(let i=0;i<keys.length;i++)profile.skills[keys[i]]=skills[keys[i]];}
+  let people=alivePeople(),c=createColonist(profile,x,y);
+  for(let i=0;i<people.length;i++){c.relations[people[i].id]=15;people[i].relations[c.id]=15;}
+  noteFact("refugees",1);chronicle("A place for "+c.short,c.name+" joined the settlement.","arrival");return c;
+}
+function grantResearch(amount,branch){
+  let id=osGame.researchId,t=id?techById(id):null;
+  if(branch&&(!t||t.branch!==branch))return false;
+  if(!t)return false;osGame.researchProgress[t.id]=Math.min(t.cost-1,(osGame.researchProgress[t.id]||0)+amount);return true;
+}
+// Returns false when a choice cannot be paid for, leaving the dialog open.
+function resolveSideStory(id,choice){
+  let people=alivePeople();
+  if(MYSTERY_CLUES[id])return resolveMysteryClue(id,choice);
+  if(FACET_STORIES[id])return resolveFacetStory(id,choice);
+  if(id==="pod"){
+    if(choice==="rescue"){
+      if(everyoneAlive().length>=24){say("This expedition supports at most 24 living colonists. Strip the pod or leave it.");return false;}
+      let roll=randomUnit();
+      if(roll<0.15){stockGive({metal:10});chronicle("An empty seat","The pod's harness was buckled over nobody. The medical flag was a fault. {ranger} brought back the hull plating.","colony");for(let p of people)remember(p,"The seat was empty",-2,1440);}
+      else{let c=arriveColonist(pick(["Wren Adair","Tobias Hale","Ione Marsh","Cass Fielder"]),"Pod survivor","Grateful","Pulled from a pod with a registry code from nowhere. Sleeps badly. Works hard.",{explore:6,haul:6},CENTRE+1,centreY()+8);
+        if(roll<0.45){c.health=48;c.injuries.unshift({part:"Torso",cause:"the crash",severity:30,tended:false});remember(c,"Hurt in the crash",-6,1440*2);say(c.short+" joined the colony injured. Enable Treat for a healthy settler.");}
+        else{remember(c,"Someone came for me",10,1440*4);}
+        for(let p of people)remember(p,"We answered a distress flag",5,1440*2);
+      }
+    }else if(choice==="strip")stockGive({metal:18,parts:3,glass:1});
+    else for(let p of people)if(p.personality.empathy>=65)remember(p,"We left a fire on the slope",-4,1440*2);
+  }
+  if(id==="seeds"){
+    if(choice==="plant"){for(let i=0;i<osGame.buildings.length;i++){let b=osGame.buildings[i];if(BUILDINGS[b.kind].crop&&b.built&&b.sown){b.growth=Math.max(b.growth,0.9);break;}}let growers=castPeople("keeper");for(let p of growers)remember(p,"It felt like home",8,1440*3);}
+    else for(let p of people)remember(p,"There is still a packet left",3,1440*5);
+  }
+  if(id==="pilgrim"){
+    if(choice==="watch"){let a=spawnPilgrim();if(a)say("The Pilgrim is crossing the map. Select it to watch, if you can bear to.");}
+    else for(let p of people){p.rest=Math.min(100,p.rest+8);remember(p,"We did not look",2,1440);}
+  }
+  if(id==="ashwalkers"){
+    if(choice==="trade"){if(!stockTake({metal:20})){say("Twenty metal is needed for the exchange.");return false;}stockGive({medicine:12,fuel:6});osGame.ashwalkerPeace=true;for(let p of people)remember(p,"Traded with the Ashwalkers",4,1440*2);}
+    else if(choice==="share"){if(!stockTake({meals:8})){say("Eight meals are needed to share a meal.");return false;}osGame.ashwalkerPeace=true;for(let p of people)remember(p,"Strangers at our table",5,1440*2);}
+    else{osGame.ashwalkerPeace=false;if(!peacefulEvents()&&eventDamageFactor()>0){let count=eventConfig().severity==="severe"?4:3,kinds=[];for(let i=0;i<count;i++)kinds.push("raider");osGame.eventQueue.push({kind:"attack",due:osGame.minutes+randomInt(360,600),count:count,kinds:kinds});}chronicle("The Ashwalkers leave without a word","They looked at the metal on the way out. Expect them back after dark.","danger");}
+  }
+  if(id==="choir"){
+    if(choice==="answer"){osGame.standing.Choir+=20;osGame.choirAt=osGame.minutes;for(let p of people)if(p.personality.curiosity>=60)remember(p,"Somebody out there is singing",4,1440*2);}
+    else osGame.standing.Meridian+=3;
+  }
+  if(id==="choirVisit"){
+    if(choice==="welcome"){
+      if(everyoneAlive().length>=24){say("This expedition supports at most 24 living colonists. Take the records instead.");return false;}
+      let c=arriveColonist(pick(["Ansel Pryor","Nell Karoo","Ode Vasquez"]),"Child of the Hollow","Uncanny","Raised on a settlement that appears in no database. Knows which plots fail first, and is sorry about it.",{research:8,farm:6,explore:5},CENTRE+1,centreY()+8);
+      remember(c,"The stone said this was home",6,1440*6);grantResearch(40);osGame.standing.Choir+=10;
+    }else{stockGive({glass:2});osGame.standing.Choir+=5;}
+  }
+  if(id==="tomorrow"){
+    if(choice==="sign"){let jins=castPeople("engineer");for(let p of jins)remember(p,"I signed a tag I never signed",-5,1440*3);if(!grantResearch(20,"Hollow Studies"))grantResearch(10);}
+    else{stockGive({glass:1});let minas=castPeople("scientist");for(let p of minas)remember(p,"A third notebook",3,1440*3);}
+  }
+  if(id==="helixOffer"){
+    if(choice==="sellTwo"){if(!stockTake({cores:2})){say("Two Echo cores are needed.");return false;}stockGive({metal:40,parts:12});osGame.standing.Helix=(osGame.standing.Helix||0)+15;}
+    else if(choice==="sellOne"){if(!stockTake({cores:1})){say("One Echo core is needed.");return false;}stockGive({metal:25,parts:6});osGame.standing.Helix=(osGame.standing.Helix||0)+8;}
+    else{osGame.standing.Choir=(osGame.standing.Choir||0)+5;for(let p of castPeople("scientist"))remember(p,"Some things are not for sale",3,1440*4);}
+  }
+  if(id==="choirPlea"){
+    if(choice==="promise"){osGame.choirPromise=true;osGame.standing.Choir+=15;}
+    else if(choice==="witness"){osGame.standing.Choir+=5;for(let p of people)remember(p,"The Choir came to see",2,1440*4);}
+    else osGame.standing.Choir-=10;
+  }
+  if(id==="meridianCharter"){
+    if(choice==="join"){osGame.charter=true;osGame.standing.Meridian+=20;osGame.standing.Helix=(osGame.standing.Helix||0)-5;chronicle("A Compact settlement","The charter is signed. Caravans answer twice as often and carry an extra exchange of every offer.","trade");}
+    else{osGame.standing.Helix=(osGame.standing.Helix||0)+8;for(let p of people)remember(p,"Our own name on the map",3,1440*4);}
+  }
+  if(id==="jinWayfarer"){if(choice==="service")osGame.wayfarerService=true;
+    let jin=castHolder("engineer");
+    if(choice==="service"){for(let p of people)remember(p,"We said goodbye to the Wayfarer",4,1440*4);if(jin){remember(jin,"I let the Wayfarer go",8,1440*10);jin.recreation=Math.min(100,jin.recreation+20);}chronicle("A name on the stone","The colony held a service for the Wayfarer at the memory stone. {engineer} spoke last, and briefly.","people");}
+    else if(jin)remember(jin,"Not yet",-2,1440*2);
+  }
+  if(id==="maraHorizon"){
+    let mara=castHolder("ranger");
+    if(choice==="name"){let name=pick(["Lantern","Kettle","First Light","Quiet","Holt","Vale"])+" Ridge";osGame.ridgeName=name;chronicle("The ridge has a name","{ranger} named the eastern ridge "+name+". It is on the map now, in their handwriting.","people");for(let p of people)remember(p,"The ridge has a name now",3,1440*4);}
+    else{let x=homeOrigin()+randomInt(10,85),y=homeOrigin()+randomInt(10,85);revealArea(x,y,12);if(mara)remember(mara,"A long walk with company",2,1440*3);chronicle("One more long walk","{ranger} led a survey to the far side of the map. The chronicle has the route.","colony");}
+  }
+  if(id==="minaNotebook"){
+    if(choice==="broadcast"){osGame.standing.Meridian+=10;osGame.standing.Helix=(osGame.standing.Helix||0)+10;osGame.standing.Choir=(osGame.standing.Choir||0)+10;grantResearch(20);chronicle("The notebooks go out","{scientist}'s findings went out on the maintenance band. Three factions are reading them tonight.","research");}
+    else{stockGive({glass:1});for(let p of castPeople("scientist"))remember(p,"Still ours, for now",3,1440*3);}
+  }
+  if(id==="solTable"){
+    let sol=castHolder("keeper");
+    if(choice==="feast"){if(!stockTake({meals:8})){say("Eight meals are needed for a feast.");return false;}for(let p of people){p.recreation=Math.min(100,p.recreation+20);remember(p,"{keeper}'s feast",6,1440*4);}if(sol)remember(sol,"They ate like people who are staying",4,1440*6);chronicle("{keeper}'s table","The colony ate together, seated, for as long as the pan lasted. Nobody ate standing up.","people");}
+    else{for(let p of people)remember(p,"A quiet dinner",2,1440*2);if(sol)remember(sol,"A quiet dinner for four",4,1440*4);}
+  }
+  if(id==="glassWind"){
+    if(choice==="shelter")for(let p of people){p.rest=Math.min(100,p.rest+5);remember(p,"We waited out the glass together",2,1440*2);}
+    else{stockGive({glass:3});let hurt=pick(people);if(hurt)injureColonist(hurt,6,"the glass wind");}
+  }
+  if(id==="glassSignal"){
+    if(choice==="listen"){grantResearch(30);osGame.standing.Choir=(osGame.standing.Choir||0)+8;for(let p of people)remember(p,hasQuirk(p,"echoDrawn")?"It sang to me":"The mast would not stop",hasQuirk(p,"echoDrawn")?8:-3,1440*2);chronicle("The mast sang","The Hollow's pattern came in on the glass, clear, and was recorded. The Choir heard it too.","hollow");}
+    else{for(let b of osGame.buildings)if(b.kind==="radio"&&b.built)b.on=false;tickPower(0);for(let p of people)remember(p,"We chose the quiet",2,1440*2);chronicle("The mast is dark","The signal mast was switched off in the glass wind. Switch it back on from the inspector when you want the caravans again.","colony");}
+  }
+  if(id==="partners"){
+    let pp=osGame.partnerPending||{},a=findColonist(pp.a),b=findColonist(pp.b);osGame.partnerPending=null;
+    if(a&&b){
+      if(choice==="room"){let spot=partnerBedSpot(a,b),pair=spot?null:pairBedSpot();
+        let need=BUILDINGS.bed.cost.wood*(spot?1:2);if((!spot&&!pair)||osGame.stock.wood<need){say(!spot&&!pair?"No clear ground for their cots.":need+" wood is needed for the cots.");osGame.partnerPending=pp;return false;}
+        if(spot){if(!queueBuilding("bed",spot.x,spot.y,true)){say("The cot could not be planned there.");osGame.partnerPending=pp;return false;}
+          let cot=osGame.buildings[osGame.buildings.length-1],ref=getBuilding(spot.bedId);
+          if(ref&&ref.owner!==a.id&&ref.owner!==b.id)ref.owner=a.id;
+          cot.owner=ref&&ref.owner===b.id?a.id:b.id;}
+        else{if(!queueBuilding("bed",pair.x,pair.y,true)){say("The cots could not be planned there.");osGame.partnerPending=pp;return false;}
+          let first=osGame.buildings[osGame.buildings.length-1];first.owner=a.id;
+          if(!queueBuilding("bed",pair.x+1,pair.y,true)){say("The second cot could not be planned there.");osGame.partnerPending=pp;return false;}
+          osGame.buildings[osGame.buildings.length-1].owner=b.id;}
+        remember(a,"A corner of our own",8,1440*20);remember(b,"A corner of our own",8,1440*20);for(let p of people)if(p!==a&&p!==b&&traitOf(p,"sociability")>=65)remember(p,"Good news at the table",3,1440*3);chronicle("A corner of their own",(spot?"A second cot is planned beside "+(spot.owner===a.id?a.short:b.short)+"'s. ":"Two cots are planned side by side. ")+a.short+" and "+b.short+" have a corner of their own now.","people");}
+      else{remember(a,"Ours, and nobody's business",4,1440*10);remember(b,"Ours, and nobody's business",4,1440*10);}
+    }
+  }
+  if(id==="emptyChair"){
+    let entry=(osGame.widowQueue||[]).shift()||null,w=entry?findColonist(entry.survivor):null;if((osGame.widowQueue||[]).length)osGame.storySeen.emptyChair=0;
+    if(w){let lost=findColonist(entry.lost)||findColonist(w.partner);
+      if(choice==="keep")remember(w,"Their things are where they left them",6,1440*10);
+      else{let newest=null;for(let i=osGame.people.length-1;i>=0;i--){let p=osGame.people[i];if(!p.dead&&!p.child&&p.id!==w.id){newest=p;break;}}
+        if(newest&&lost){let best="haul",bestV=-1;for(let i=0;i<WORK_KEYS.length;i++){let k=WORK_KEYS[i];if((lost.skills[k]||0)>bestV){bestV=lost.skills[k]||0;best=k;}}newest.skills[best]=Math.min(20,(newest.skills[best]||0)+2);remember(newest,"Carrying "+lost.short+"'s tools",5,1440*10);chronicle(lost.short+"'s tools go on",newest.name+" took up "+lost.name+"'s tools, and something of the "+WORK_LABELS[WORK_KEYS.indexOf(best)].toLowerCase()+" that went with them.","people");}
+        remember(w,"Someone will use them",2,1440*10);}
+      w.partner="";
+    }
+  }
+  if(id==="helixClaim"){
+    if(choice==="hand"){if(!stockTake({cores:1})){say("One Echo core is needed.");return false;}stockGive({parts:8,medicine:6});osGame.standing.Helix=(osGame.standing.Helix||0)+12;chronicle("Paid in kind","One Echo core went to Helix Recovery against their claim. Components and medicine came back.","trade");}
+    else if(choice==="glass"){if(!stockTake({glass:4})){say("Four Hollowglass are needed.");return false;}osGame.standing.Helix=(osGame.standing.Helix||0)+5;chronicle("Paid in glass","Helix took four Hollowglass and left the cores where they were. For now.","trade");}
+    else{osGame.standing.Helix=(osGame.standing.Helix||0)-20;for(let p of people)remember(p,"We told Helix no",2,1440*3);
+      if(!peacefulEvents()&&eventDamageFactor()>0){let count=eventConfig().severity==="severe"?4:3,kinds=[];for(let i=0;i<count;i++)kinds.push("raider");osGame.eventQueue.push({kind:"attack",due:osGame.minutes+1440*2,count:count,kinds:kinds});chronicle("Helix contracts the Ashwalkers","The representative left without a word. Two Sols later the band carried a voice that was not theirs, agreeing a price. Expect raiders.","danger");}
+      else chronicle("Helix withdraws","The claim was refused. The frontier is too quiet for Helix to press it.","colony");}
+  }
+  if(id==="meridianAsks"){let who=null;for(let i=0;i<people.length;i++)if(people[i].connected)who=people[i];
+    if(choice==="tell"){osGame.standing.Meridian+=8;if(who)remember(who,"They know my name here",-4,1440*4);chronicle("A name on the coast","Somebody at the coast asked after "+(who?who.name:"a settler")+" by name. The Compact has been told the truth. Nobody has explained why they asked.","people");}
+    else{osGame.standing.Meridian-=5;if(who)remember(who,"They lied for me",6,1440*6);chronicle("Never heard the name","The caravan leader was told nobody by that name landed here. "+(who?who.short:"The settler")+" did not look up from the work.","people");}
+  }
+  if(id==="echoRain"){
+    if(choice==="record"){grantResearch(15);for(let p of people)remember(p,"The rain said our names",-2,1440*2);}
+    else for(let p of people)remember(p,"Only rain, we said",2,1440);
+  }
+  if(id==="firstLoss"){
+    if(choice==="stone"){let placed=false;if(osGame.stock.stone>=20){let spots=[[CENTRE+4,centreY()+10],[CENTRE-4,centreY()+10],[CENTRE+6,centreY()+4],[CENTRE-6,centreY()+4],[CENTRE,centreY()+12],[CENTRE+8,centreY()+8]];for(let i=0;i<spots.length&&!placed;i++)if(queueBuilding("memorial",spots[i][0],spots[i][1],true))placed=true;}say(placed?"A memory stone blueprint has been placed near camp.":"A memory stone needs 20 stone and clear ground near camp. Plan one from Build → Shelter when you can.");}
+    else for(let p of people)remember(p,"We said their name",3,1440*3);
+  }
+  if(id==="seasonTurn"){
+    if(choice==="festival"){if(!stockTake({meals:6})){say("Six meals are needed to mark the season.");return false;}for(let p of people){p.recreation=Math.min(100,p.recreation+15);remember(p,"The first Longlight",5,1440*4);}}
+    else for(let p of people)remember(p,"The light lasts longer now",1,1440*3);
+  }
+  if(id==="afterDeparture"||id==="afterIntegration"||id==="afterSilence")for(let p of people)remember(p,"Two mornings later",6,1440*10);
+  if(id==="newName"){let bp=osGame.birthPending;if(bp){let a=findColonist(bp.a),b=findColonist(bp.b);if(a&&b&&!a.dead&&!b.dead)createChild(choice==="name:1"?bp.names[1]:bp.names[0],a,b);else osGame.birthPending=null;}}
+  if(id==="ofAge"){let c=findColonist(osGame.ofAgeId);if(c&&c.child)comeOfAge(c,choice);else osGame.ofAgeId="";}
+  if(id==="funeral"){
+    let f=osGame.funeral,name=f?f.name:"them";
+    if(choice.indexOf("speak:")===0){let sp=findColonist(choice.slice(6));if(sp&&!sp.dead){let lines={scientist:"spoke about evidence, and about the things it cannot weigh.",engineer:"spoke about the transmitter, and about who was on the other end.",ranger:"spoke about the ridge, and about looking back.",keeper:"spoke about the table, and about who set it."};let castKey="";for(let k=0;k<CAST_KEYS.length;k++)if(castOf(CAST_KEYS[k])===sp)castKey=CAST_KEYS[k];remember(sp,"I spoke for "+name,6,1440*6);if(f)f.speaker=sp.short;for(let p of people)if(p.id!==sp.id)remember(p,sp.short+" spoke for "+name,3,1440*4);chronicle(sp.short+" speaks",sp.name+" "+((lines[castKey]||"spoke briefly, and truly.")||"spoke briefly, and well."),"people");}}
+    else for(let p of people)remember(p,"We stood together for "+name,2,1440*3);
+  }
+  if(id==="dream"){
+    if(choice==="compare"){grantResearch(30);for(let p of people)remember(p,"We dreamed the same corridor",-3,1440*2);}
+    else for(let p of people)remember(p,"Only a dream, we said",3,1440*2);
+  }
+  return true;
+}
+// Faction standing and the frontier's mood, projected for the Frontier panel.
+let standingCards=[];
+let perimeterText="";
+function standingWord(value){return value>=60?"Bound":value>=30?"Trusted":value>=10?"Cordial":"Distant";}
+function colonyWealth(){let s=osGame.stock;return s.metal+s.parts*4+s.meals+s.medicine*2+s.glass*10;}
+function projectFrontierMood(){
+  let st=osGame.standing;
+  standingCards=[{id:"meridian",name:"Meridian Compact",value:Math.round(st.Meridian),word:standingWord(st.Meridian),note:"Traders and neighbours. Aid, hospitality and honest exchange raise it."},{id:"helix",name:"Helix Recovery",value:Math.round(st.Helix||0),word:standingWord(st.Helix||0),note:"A corporate expedition that pays well for Hollowglass and asks few questions."},{id:"choir",name:"The Choir",value:Math.round(st.Choir||0),word:(st.Choir||0)>=20?"Listening":"Silent",note:"They believe the planet is speaking. A powered signal mast lets them find you."}];
+  if(osGame.difficulty==="peaceful"||peacefulEvents()||eventConfig().frequency==="off")perimeterText="The perimeter is quiet. Sanctuary, Gentle or Off keeps packs and raiders away.";
+  else if(dayNow()<threatStartDay())perimeterText="Too early for the frontier to have noticed you. Use the quiet to build a wall and collect the weapons.";
+  else if(colonyWealth()>=400)perimeterText="A wealthy settlement attracts attention. Packs roam at night and Ashwalker raiders may come for the stores"+(osGame.ashwalkerPeace?", though your hospitality makes that rarer.":".");
+  else perimeterText="Packs roam at night. Keep weapons close, barricades near the approaches, and a doctor rested.";
+}

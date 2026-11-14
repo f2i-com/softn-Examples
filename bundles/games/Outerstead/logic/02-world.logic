@@ -1,0 +1,168 @@
+// Seeded world generation. Rendering randomness never consumes the simulation RNG.
+let nodeAtCell = [];
+function createWorld(seed,scenario) {
+  resetSight();roverRouteSearches={};pendingMapJump=null;
+  setMapSize(scenario==="established"?96:(MAP_SIZES.indexOf(mapSizeChoice)>=0?mapSizeChoice:288));WX=0;WY=0;refCache={};refCacheKeys=[];
+  finishOpening();resetMapGesture();invalidateMods();incidentFx=null;clearVisualFx();
+  osGame={schema:SAVE_SCHEMA,version:OS_VERSION,mapSize:MAP_SIZE,chunks:{},window:{x:0,y:0},plane:{},homeOrigin:CENTRE-HOME_SIZE/2,centre:{x:CENTRE,y:CENTRE},farCamps:[],atlas:{},seed:seed,seedLabel:seedText,rng:seed,nextId:1,name:(colonyNameText||"Lantern Reach").slice(0,36),difficulty:difficultyChoice,biome:BIOMES[biomeChoice]?biomeChoice:"hills",
+    eventSettings:{severity:eventSeverityChoice,frequency:eventFrequencyChoice},weatherFront:null,mods:[],autoMode:false,autoBuild:false,autoConfigured:false,autoPlanAt:0,coldChain:null,minutes:360,elapsed:0,step:0,scenario:scenario,terrain:[],groundTiles:[],explored:[],floorTiles:[],wireTiles:[],nodes:[],buildings:[],people:[],animals:[],sites:[],jobs:[],effects:[],chronicle:[],
+    stock:{wood:170,stone:90,ore:10,metal:115,parts:28,fuel:45,raw:18,meals:64,medicine:18,glass:0,cores:0},
+    tech:{},researchId:"",researchProgress:{},weather:"Clear",weatherUntil:720,temperature:16,lastDay:1,
+    mystery:scenario==="established"?"rehearsal":pickMystery(seed),regions:generateRegions(seed),expeditions:[],facets:pickFacets(seed),storyStage:0,storySeen:{},pendingEvent:null,eventQueue:[],nextEvent:1440*2+420,lastCrisis:-99999,traderUntil:0,trades:{},standing:{Meridian:20,Helix:0,Choir:0},campaign:{chapter:0,done:{},beat:""},threats:{nextAt:0,wildAt:0,waves:0},
+    objectives:{},achievements:{},stats:{built:0,harvests:0,mealsCooked:0,treatments:0,attacks:0,deaths:0,studied:0,foodSpoiled:0,oreMined:0},
+    policy:{meals:40,parts:35,metal:150,fuel:55,medicine:25},ending:"",over:false,jobClock:0,needsClock:0,environmentClock:0,socialClock:0,directorClock:0};
+  jobLookup={};colonistLookup={};wallSpritesDirty=true;minimapSrc="";minimapRows=[];roverContexts={};viewRoverId="";viewMode="main";viewWindow=null;atlasSrc="";atlasBuiltKeys="";atlasSvgCache={};
+  autoMode=false;edgeX=0;edgeY=0;perfStats={};
+  objectIndex={};nodeIndex={};nodeAtCell=[];cellBuilding=[];roomCells=[];powerGroups=[];
+  // Every tile starts unmade; the home chunk is generated now and the rest of the country when exploration reaches it.
+  let cells=MAP_SIZE*MAP_SIZE;osGame.terrain=Array(cells).fill(6);osGame.groundTiles=Array(cells).fill(0);osGame.explored=Array(cells).fill(false);osGame.floorTiles=Array(cells).fill(0);osGame.wireTiles=Array(cells).fill(0);
+  generateChunk(chunkOf(CENTRE),chunkOf(CENTRE));
+  // Useful, reachable deposits near camp, outside the building clearing.
+  for(let i=0;i<20;i++)addResourceNode(CENTRE-19+(i%5),CENTRE-10+Math.floor(i/5)*2,"tree",16);
+  for(let i=0;i<10;i++)addResourceNode(CENTRE+16+(i%4),CENTRE-1+Math.floor(i/4)*2,i%2===0?"ore":"stone",16);
+  for(let i=0;i<5;i++)addResourceNode(CENTRE-11+i*2,CENTRE+17,"berries",8);
+  // Each ruin has a region the story names (the eastern ridge, the south-west, the south-east) and a seeded place within it.
+  let regions=[{x0:CENTRE+10,x1:CENTRE+30,y0:CENTRE-26,y1:CENTRE-6},{x0:CENTRE-34,x1:CENTRE-16,y0:CENTRE+12,y1:CENTRE+28},{x0:CENTRE+12,x1:CENTRE+30,y0:CENTRE+16,y1:CENTRE+30}];
+  let sites=mysterySites(),siteBase=[{x:CENTRE+19,y:CENTRE-13},{x:CENTRE-22,y:CENTRE+21},{x:CENTRE+25,y:CENTRE+27}];for(let i=0;i<sites.length;i++){sites[i].x=siteBase[i].x;sites[i].y=siteBase[i].y;}
+  for(let i=0;i<sites.length;i++){
+    let s=sites[i],region=regions[i];s.id=entityId("ruin");s.w=3;s.h=3;s.known=false;s.studied=false;s.progress=0;
+    let placed=sitePlace(region,sites.slice(0,i));if(placed){s.x=placed.x;s.y=placed.y;}
+    osGame.sites.push(s);
+    for(let y=s.y-2;y<s.y+5;y++)for(let x=s.x-2;x<s.x+5;x++)clearGround(x,y);
+  }
+  // Every story location must be reachable from camp. A corridor is carved only when the seed did not provide one.
+  rebuildSpatial();
+  for(let i=0;i<osGame.sites.length;i++){let s=osGame.sites[i];
+    if(findPath(CENTRE,CENTRE+8,s.x-1,s.y+1)!==null)continue;
+    for(let x=Math.min(CENTRE,s.x);x<=Math.max(CENTRE,s.x)+3;x++)clearGround(x,CENTRE+8);
+    for(let y=Math.min(CENTRE+8,s.y);y<=Math.max(CENTRE+8,s.y)+3;y++)clearGround(s.x,y);
+    rebuildSpatial();s.carved=true;
+  }
+  if(scenario==="established")makeEstablishedCamp();else makeLandingCamp();
+  applyFacetsAtLanding();
+  {let extra=biomeOf().stock,keys=Object.keys(extra);for(let i=0;i<keys.length;i++)osGame.stock[keys[i]]=Math.max(0,osGame.stock[keys[i]]+extra[keys[i]]);}
+  let crew=scenario==="established"?FOUNDERS:activeCrew();
+  for(let i=0;i<crew.length;i++)createColonist(crew[i],CENTRE-2+i,CENTRE+6);
+  for(let i=0;i<osGame.people.length;i++)for(let j=0;j<osGame.people.length;j++)if(i!==j)osGame.people[i].relations[osGame.people[j].id]=15+(i+j)*3;
+  if(crew!==FOUNDERS)applyCrewTies(crew,osGame.people);
+  osGame.crewMode=crew===FOUNDERS?"first":"generated";
+  for(let i=0;i<5;i++)spawnAnimal(i<2?"mossback":"needlehare",CENTRE+13+i,CENTRE-11+i*2,false);
+  revealArea(CENTRE,CENTRE,21);
+  topologyDirty=true;terrainDirty=true;rebuildSpatial();rebuildRooms();rebuildPower();
+  initialiseWeapons();
+  osGame.threats={nextAt:osGame.minutes+2000,wildAt:osGame.minutes+1200,waves:0};tickPower(0);updateCampaign(true);
+  chronicle("Emergency landing complete","Four survivors. A damaged lifeboat. Atmospheric conditions survivable. Wayfarer communication unavailable. "+biomeOf().name+": "+biomeOf().blurb,"arrival");
+  if(scenario==="established")chronicle("A foothold on Hollow-7","This showcase scenario begins with a functioning settlement. The people and every production system are live, not a decorative mock-up.","colony");
+  paused=true;gameSpeed=1;screen="game";mobilePanelOpen=false;panMode=false;followColonistId="";activePanel="overview";selectedId="";selectedType="";toolKind="select";
+  panX=0;panY=30;zoomLevel=scenario==="established"?0.9:1.1;
+  if(eventFrequencyChoice!=="normal"){osGame.nextEvent=osGame.minutes+incidentDelay();osGame.weatherUntil=osGame.minutes+climateDelay();}
+  loopAccumulator=0;viewClock=0;realSaveClock=0;pointerState=null;
+  refreshAll();
+  dialog="arrival";
+}
+// Feature blobs for the landing site, seeded. All sit outside the camp clearing so the first shelter always has room.
+// Feature edges wobble with a smooth, seedless function of position, so lakes and ridges are not circles.
+function featureWobble(x,y){return 1+(Math.sin(x*0.9+y*0.35)+Math.sin(y*0.8-x*0.25)+Math.sin((x+y)*0.21))*0.16;}
+function withinFeatures(list,x,y,scale){if(!list)return false;let k=(scale||1)*featureWobble(x,y);for(let i=0;i<list.length;i++)if(sqDistance(x,y,list[i].x,list[i].y)<list[i].r2*k)return true;return false;}
+// A 3×3 ruin site within its region: on ground, away from other ruins, with a clear margin.
+function sitePlace(region,others) {
+  for(let attempt=0;attempt<30;attempt++){
+    let x=randomInt(region.x0,region.x1),y=randomInt(region.y0,region.y1),ok=true;
+    if(Math.abs(x+1-CENTRE)<21&&Math.abs(y+1-CENTRE)<20)ok=false;
+    for(let i=0;i<others.length&&ok;i++)if(sqDistance(x,y,others[i].x,others[i].y)<400)ok=false;
+    for(let yy=y-2;yy<y+5&&ok;yy++)for(let xx=x-2;xx<x+5;xx++){if(!onMap(xx,yy)||osGame.terrain[tileId(xx,yy)]===3){ok=false;break;}}
+    if(ok)return {x:x,y:y};
+  }
+  return null;
+}
+function addResourceNode(x,y,kind,amount) {
+  if(!onMap(x,y))return null;
+  let existing=nodeAtCell[tileId(x,y)]; if(existing)return getNode(existing);
+  let n={id:entityId("n"),x:x,y:y,kind:kind,amount:amount,marked:false,blockedUntil:0};
+  osGame.nodes.push(n);nodeIndex[n.id]=n;nodeAtCell[tileId(x,y)]=n.id;nodesEpoch++;return n;
+}
+function clearGround(x,y) {
+  if(!onMap(x,y))return;
+  let id=tileId(x,y);osGame.terrain[id]=1;osGame.groundTiles[id]=4+(x+y)%2;
+  let n=getNode(nodeAtCell[id]);if(n){n.amount=0;n.marked=false;nodeAtCell[id]="";nodesEpoch++;}
+}
+function makeLandingCamp() {
+  readyBuilding("lander",CENTRE,CENTRE-1);readyBuilding("stockpile",CENTRE-4,CENTRE+1);readyBuilding("cookfire",CENTRE-4,CENTRE-3);
+  for(let i=0;i<4;i++)readyBuilding("bedroll",CENTRE-1+i,CENTRE+5);
+}
+function addReadyRoom(x,y,w,h) {
+  for(let yy=y;yy<y+h;yy++)for(let xx=x;xx<x+w;xx++){
+    readyBuilding("floor",xx,yy);
+    if(xx===x||yy===y||xx===x+w-1||yy===y+h-1)readyBuilding(yy===y+h-1&&xx===x+Math.floor(w/2)?"door":"wall",xx,yy);
+  }
+}
+function readyWireLine(ax,ay,bx,by) {
+  for(let x=Math.min(ax,bx);x<=Math.max(ax,bx);x++)readyBuilding("conduit",x,ay);
+  for(let y=Math.min(ay,by);y<=Math.max(ay,by);y++)readyBuilding("conduit",bx,y);
+}
+function makeEstablishedCamp() {
+  osGame.minutes=2*1440+8*60;osGame.lastDay=3;osGame.weatherUntil=osGame.minutes+300;osGame.nextEvent=osGame.minutes+600;
+  osGame.stock={wood:260,stone:180,ore:80,metal:180,parts:40,fuel:65,raw:45,meals:80,medicine:28,glass:0,cores:0};
+  osGame.tech={agronomy:true,preservation:true,smelting:true,fabrication:true,medicine:true,wind:true};
+  // Two Sols of history: the founding milestones and first chapters are already behind this colony.
+  osGame.stats.mealsCooked=36;osGame.stats.harvests=2;osGame.stats.built=40;osGame.objectives={beds:true,shelter:true,food:true,power:true,research:true};
+  addReadyRoom(36,36,8,8);addReadyRoom(45,37,7,7);addReadyRoom(54,37,8,7);addReadyRoom(36,47,8,7);
+  readyBuilding("bed",37,37);readyBuilding("bed",39,37);readyBuilding("bed",41,37);readyBuilding("bed",37,40);
+  readyBuilding("table",47,39);readyBuilding("recreation",49,39);
+  readyBuilding("lab",55,38);readyBuilding("clinic",59,38);
+  readyBuilding("workshop",37,48);readyBuilding("kitchen",40,48);readyBuilding("smelter",37,51);
+  readyBuilding("stockpile",46,49);readyBuilding("lander",51,48);readyBuilding("freezer",47,45);
+  readyBuilding("generator",31,44);readyBuilding("battery",34,44);readyBuilding("solar",30,48);readyBuilding("solar",30,51);readyBuilding("fuelpress",56,48);
+  readyBuilding("farm",39,56);readyBuilding("farm",43,56);readyBuilding("grain",47,56);
+  readyBuilding("lamp",39,41);readyBuilding("lamp",46,41);readyBuilding("lamp",58,41);readyBuilding("lamp",41,51);readyBuilding("lamp",45,53);readyBuilding("lamp",54,54);
+  readyBuilding("heater",42,41);
+  for(let x=35;x<60;x++){readyBuilding("floor",x,45);readyBuilding("floor",x,54);}
+  for(let y=43;y<58;y++)readyBuilding("floor",44,y);
+  let wires=osGame.buildings.slice();
+  for(let i=0;i<wires.length;i++){let d=BUILDINGS[wires[i].kind];if(d.power||d.produce||d.capacity)readyWireLine(44,46,wires[i].x,wires[i].y);}
+  for(let i=0;i<osGame.buildings.length;i++){
+    let b=osGame.buildings[i];if(BUILDINGS[b.kind].crop){b.sown=true;b.growth=0.35+randomUnit()*0.35;}
+  }
+}
+function revealArea(x,y,radius) {
+  let changed=false;ensureChunksAround(x,y,radius+8);
+  for(let yy=Math.max(WY,Math.floor(y-radius));yy<=Math.min(WY+MAP_SIZE-1,Math.floor(y+radius));yy++)for(let xx=Math.max(WX,Math.floor(x-radius));xx<=Math.min(WX+MAP_SIZE-1,Math.floor(x+radius));xx++){
+    let id=tileId(xx,yy);if(!osGame.explored[id]&&sqDistance(xx,yy,x,y)<=radius*radius){osGame.explored[id]=true;changed=true;dirtyTerrainRow(yy);}
+  }
+  if(changed)structuresDirty=true;
+  for(let i=0;i<osGame.sites.length;i++){
+    let s=osGame.sites[i];if(!s.known && sqDistance(x,y,s.x+1,s.y+1)<64){s.known=true;chronicle("Ruins discovered: "+s.name,"A sealed structure lies beneath the stone. Select it to assign an excavation.","hollow");say(s.name+" discovered. The stone is warm.");}
+  }
+}
+function rebuildTerrainView() {
+  if(!osGame)return;
+  // Floor and unexplored tiles are fully opaque in the shipped atlas. Fold them
+  // into the base layer; retain separate transparent resource/conduit overlays.
+  let ground=[],objects=[],wires=[],seen=osGame.explored,tiles=osGame.groundTiles,floors=osGame.floorTiles,conduits=osGame.wireTiles;
+  for(let y=0;y<MAP_SIZE;y++){
+    let a=Array(MAP_SIZE).fill(31),b=Array(MAP_SIZE).fill(-1),d=Array(MAP_SIZE).fill(-1),base=y*MAP_SIZE;
+    for(let x=0;x<MAP_SIZE;x++){let i=base+x;if(!seen[i])continue;a[x]=floors&&floors[i]?12+(x+y)%2:tiles[i];if(conduits&&conduits[i])d[x]=powerVisible?22:24;}
+    ground.push(a);objects.push(b);wires.push(d);
+  }
+  for(let i=0;i<osGame.nodes.length;i++){let n=osGame.nodes[i];if(n.amount<=0||!onMap(n.x,n.y)||!osGame.explored[tileId(n.x,n.y)])continue;objects[n.y-WY][n.x-WX]=n.kind==="tree"?16+(n.x+n.y)%3:(n.kind==="ore"?19:(n.kind==="stone"?20:(n.kind==="berries"?21:23)));}
+  let mist=[];for(let y=0;y<MAP_SIZE;y++)mist.push(mistRow(y,ground[y]));
+  terrainLayers=[ground,objects,wires,mist];terrainDirty=false;terrainRows={};terrainRowsPending=false;minimapRows=[];minimapRowsDirty={};minimapEpoch++;
+}
+// One row of each layer from the cell indexes, so a revealed patch or a spent node costs a row, not the map.
+function terrainRow(y) {
+  let a=[],b=[],d=[];
+  for(let x=0;x<MAP_SIZE;x++){
+    let i=y*MAP_SIZE+x,seen=!!osGame.explored[i];a.push(seen?osGame.groundTiles[i]:31);b.push(-1);d.push(-1);
+    if(!seen)continue;
+    let n=nodeAtCell[i]?getNode(nodeAtCell[i]):null;if(n&&n.amount>0)b[x]=n.kind==="tree"?16+(n.x+n.y)%3:(n.kind==="ore"?19:(n.kind==="stone"?20:(n.kind==="berries"?21:23)));
+    if(osGame.floorTiles&&osGame.floorTiles[i])a[x]=12+(x+y)%2;
+    if(osGame.wireTiles&&osGame.wireTiles[i])d[x]=powerVisible?22:24;
+  }
+  return [a,b,d,mistRow(y,a)];
+}
+function rebuildTerrainRows() {
+  if(!osGame||!terrainLayers||terrainLayers.length!==4){rebuildTerrainView();return;}
+  let ground=terrainLayers[0].slice(),objects=terrainLayers[1].slice(),wires=terrainLayers[2].slice(),mist=terrainLayers[3].slice(),keys=Object.keys(terrainRows);
+  for(let i=0;i<keys.length;i++){let y=Number(keys[i]);if(!(y>=0&&y<MAP_SIZE))continue;let row=terrainRow(y);ground[y]=row[0];objects[y]=row[1];wires[y]=row[2];mist[y]=row[3];}
+  terrainLayers=[ground,objects,wires,mist];terrainRows={};terrainRowsPending=false;
+}

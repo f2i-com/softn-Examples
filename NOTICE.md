@@ -7,7 +7,7 @@ These applications and the scripts under `scripts/` were developed in
 workspace and moved here on 6 September 2026. Their earlier history is in that
 repository.
 
-The games' sound effects are synthesized by `scripts/sfx-lib.cjs` from the
+The games' sound effects are synthesized by `scripts/assets/sfx-lib.cjs` from the
 recipes in each bundle's `assets-src/`; none are recordings. AI Chat and
 TheOffice download a language model from Hugging Face when they are first run,
 under that model's own licence; no model is bundled. Pocket and SoftDOS ship no

@@ -1,0 +1,84 @@
+// OUTERMATE: a standalone conversion of Outerstead First Light 0.36.0.
+// Persistent simulation and navigation scratch stay inside the VM. UI receives projections only.
+const OM_VERSION = "0.12.0";
+// Save versions this build reads. Older versions are migrated in place on load; see 11-saves.logic.
+const OM_COMPATIBLE_VERSIONS = ["0.1.0","0.2.0","0.3.0","0.4.0","0.5.0","0.5.1","0.5.2","0.6.0","0.7.0","0.7.1","0.8.0","0.9.0","0.9.1","0.9.2","0.10.0","0.10.1","0.10.2","0.10.3","0.10.4","0.11.0","0.12.0"];
+const SAVE_SCHEMA = 1;
+const MAP_SIZE = 96;
+const TILE = 32;
+const STEP_SECONDS = 0.1;
+const GAME_MINUTES_PER_SECOND = 2;
+const SAVE_PREFIX = "outermate.firstcount.v1.";
+let omGame = null;
+let navBlocked = [], doorAt = [], zoneAt = [], actorIndex = {}, siteIndex = {};
+let pathEpoch = 0, securityEpoch = 0, navSerial = 0;
+let navSeen = [], navClosed = [], navCost = [], navFrom = [];
+let pathCache = {}, pathCacheKeys = [], pathRequests = 0, pathHits = 0;
+let loopAccumulator = 0, viewClock = 0, actorClock = 0, realSaveClock = 0;
+let viewDirty = true, terrainDirty = true, booted = false;
+let viewRevision = 0;
+let panX = 0, panY = 0, zoomLevel = 0.85, followPlayer = true;
+let pointerState = null, touchPoints = {}, pinchState = null;
+let viewportWidth = 960, viewportHeight = 680;
+let visibleTileRange = null;
+let lastError = "", lastWarning = "", audioSerial = 0, soundClock = 0;
+let toastRemaining = 0, audioHandle = "";
+let autoIndex = 0;
+// Presentation state. Do not bind omGame in a template.
+let screen = "title", dialog = "", activePanel = "day", paused = true, gameSpeed = 1;
+let playerName = "Alex Vale", seedText = "GREYWALL-7", backgroundChoice = "mechanic", difficultyChoice = "standard";
+let characterPalette = 0, setupOpen = false, mobilePanelOpen = false;
+let reducedMotion = false, soundEnabled = true, showSecurity = true, fullSecurity = false, highContrast = false, pauseOnNotice = true;
+let selectedId = "", selectedType = "", toastText = "", statusText = "Routine creates opportunity.";
+// The on-map action menu. A tap opens it; nothing moves until a choice is made.
+let contextMenu = null;
+let moreOpen = false;
+let guideSheetOpen = false;
+// Day panel: the long story card can be folded away.
+let storyOpen = true;
+let hud = {day:1,time:"05:50",routine:"Wake / unlock",next:"Morning count at 06:00",scrip:0,favors:0,suspicion:0,heat:0,alert:"Normal",weather:"Clear",power:"Main online",mode:"Routine",zone:"Cell Block A",energy:100,food:100,stress:0};
+let playerCard = {}, selectedCard = null, actionCards = [], roomCards = [], crewCards = [], inmateCards = [];
+let inventoryCards = [], stashCards = [], recipeCards = [], projectCards = [], routeCards = [], intelCards = [], logCards = [], evidenceCards = [];
+let routineCards = [], goalCards = [], eventCards = [], backgroundCards = [], workCards = [], slotCards = [];
+let mapActors = [], mapProps = [], mapDoors = [], mapCones = [], mapRooms = [], mapMarkers = [], mapPath = [];
+let terrainLayers = [], worldStyle = {}, minimapPlayerStyle = {}, escapeCard = null, chapterCard = {}, eventCard = null;
+let worldNight = 0, weatherClass = "clear", progressCard = null, searchCard = null, cellCard = null;
+let saveAvailable = false, saveText = "", saveMessage = "", notebookText = "", endingCard = null;
+let footerText = "Tap a person, fixture or tile for its actions. Drag the map to pan.", debugText = "", viewportClass = "";
+let briefingCards = [], cameraSettingText = "Known security only";
+const DIFFICULTIES = {
+  routine:{name:"Routine",detection:0.65,search:0.7,grace:24},
+  standard:{name:"Standard",detection:1,search:1,grace:20},
+  lockdown:{name:"Lockdown",detection:1.3,search:1.25,grace:14}
+};
+function clamp(n,a,b){return Math.max(a,Math.min(b,n));}
+function round1(n){return Math.round(n*10)/10;}
+function sqDistance(ax,ay,bx,by){let dx=ax-bx,dy=ay-by;return dx*dx+dy*dy;}
+function tileId(x,y){return Math.floor(y)*MAP_SIZE+Math.floor(x);}
+function onMap(x,y){return x>=0&&y>=0&&x<MAP_SIZE&&y<MAP_SIZE;}
+function hashSeed(value){let h=2166136261,s=String(value);for(let i=0;i<s.length;i++){h=(h^s.charCodeAt(i))>>>0;h=Math.imul(h,16777619)>>>0;}return h||731927;}
+function randomUnit(){omGame.rng=(Math.imul(omGame.rng,1664525)+1013904223)>>>0;return omGame.rng/4294967296;}
+function randomInt(a,b){return a+Math.floor(randomUnit()*(b-a+1));}
+function pick(a){return a[Math.floor(randomUnit()*a.length)];}
+function entityId(prefix){let id=prefix+omGame.nextId;omGame.nextId++;return id;}
+function dayNow(){return Math.floor(omGame.minutes/1440)+1;}
+function minuteNow(){return omGame.minutes%1440;}
+function clockText(m){let h=Math.floor(m/60)%24,n=Math.floor(m%60);return (h<10?"0":"")+h+":"+(n<10?"0":"")+n;}
+function timeIn(a,b){let m=minuteNow();return a<=b?m>=a&&m<b:m>=a||m<b;}
+function diffSettings(){return DIFFICULTIES[omGame?omGame.difficulty:difficultyChoice]||DIFFICULTIES.standard;}
+function player(){return omGame?omGame.people[0]:null;}
+function actorById(id){return actorIndex[id]||null;}
+function siteById(id){return siteIndex[id]||null;}
+function zoneById(id){for(let i=0;i<ZONES.length;i++)if(ZONES[i].id===id)return ZONES[i];return null;}
+function zoneOf(c){return zoneAt[tileId(c.x,c.y)]||"grounds";}
+function logEvent(title,body,kind){eventAudio(title);if(!omGame)return;omGame.chronicle.unshift({id:entityId("log"),day:dayNow(),time:clockText(minuteNow()),title:title,body:body||"",kind:kind||"life"});if(omGame.chronicle.length>160)omGame.chronicle.length=160;viewDirty=true;}
+function say(text){toastText=String(text);toastRemaining=5;viewDirty=true;}
+function remember(c,text){c.memories.unshift({text:text,day:dayNow()});if(c.memories.length>8)c.memories.length=8;}
+function dirty(){viewDirty=true;}
+function hasOwn(o,k){return Object.prototype.hasOwnProperty.call(o,k);}
+function isRecord(o){return !!o&&typeof o==="object"&&!Array.isArray(o);}
+function isFiniteNumber(v){return typeof v==="number"&&Number.isFinite(v);}
+function currentAlert(){if(!omGame)return 0;return omGame.escape&&omGame.escape.alarm?4:omGame.lockdownUntil>omGame.minutes?3:omGame.heat>=60?2:omGame.heat>=25?1:0;}
+function alertName(n){return ["Normal","Watchful","Restricted","Lockdown","Escape response"][clamp(n,0,4)];}
+function isPausedByDialog(){return !!dialog;}
+function uiNumber(n){return Math.round(n||0);}

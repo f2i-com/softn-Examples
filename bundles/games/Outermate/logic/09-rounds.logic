@@ -1,0 +1,46 @@
+// Night rounds. Twice a night an officer leaves the patrol circuit, walks both cell-block corridors
+// and looks through the bars. Sleeping inmates are what the officer expects to see. An empty bunk is
+// recorded; during an escape it raises the alarm. A prepared decoy covers exactly one check.
+function roundsKeyNow(){
+  let m=minuteNow();
+  for(let i=0;i<ROUNDS_TIMES.length;i++){let start=ROUNDS_TIMES[i];if(m>=start&&m<start+90)return dayNow()+":"+i;}
+  return "";
+}
+function cellDoorFor(c){
+  let best=null,d=1e9;for(let door of omGame.doors){if(door.kind!=="cell")continue;let n=sqDistance(door.x,door.y,c.homeX,c.homeY);if(n<d){d=n;best=door;}}
+  return best;
+}
+function inOwnCell(c){if(c.id==="player"&&omGame.escape&&omGame.escape.phase==="transit")return false;if(zoneOf(c)!==c.homeZone)return false;if(sqDistance(c.x,c.y,c.homeX+.5,c.homeY+.5)<=16)return true;let d=siteById("cellDrain");return !!d&&d.zone===c.homeZone&&nearSite(c,"cellDrain");}
+function checkPlayerCell(g){
+  let p=player();if(p.escaped||p.detainedUntil>omGame.minutes||omGame.over)return;
+  if(inOwnCell(p)){learnIntel("rounds","observed",true);if(p.mode==="manual"&&p.action!=="Asleep")say("The night officer looked in and moved on.");voiceNightCheck();return;}
+  if(projectReady("decoy")){delete omGame.projects.decoy;learnIntel("rounds","observed",false);logEvent("Present, approximately","The bunk decoy passed the night check. It must be rebuilt before it can cover another.","scheme");say("Night check: the decoy held.");return;}
+  omGame.personalSuspicion=clamp(omGame.personalSuspicion+15,0,100);omGame.heat=clamp(omGame.heat+10,0,100);
+  addEvidence("Empty bunk at night check",p.homeZone,"player",14);learnIntel("rounds","observed",false);
+  if(omGame.escape&&!omGame.escape.alarm){
+    let e=omGame.escape;e.alarm=true;omGame.heat=100;dispatchNearestGuard(p.x,p.y,"player");securityEpoch++;updateSecurityPolicy();
+    // The officer shouts first; the sirens follow a moment later. Underground, the last stretch takes
+    // longer with the response above, and the run lingers at the exit while the alarm plays out.
+    e.alarmCueAt=omGame.elapsed+2.5;if(e.phase==="transit"){e.alarmAt=omGame.elapsed;e.alarmProgress=e.transitProgress;}
+    logEvent("Escape response","The night officer found your bunk empty. The alarm is raised; reach extraction before the response closes in.","security");say(e.phase==="transit"?"Your empty bunk has been found. Sirens above; keep moving.":"Your empty bunk has been found. Escape response!");return;
+  }
+  logEvent("Empty bunk","The night officer found your bunk empty and wrote it down. Suspicion +15, facility heat +10.","security");say("Night check: your bunk was found empty. +15 suspicion.");playCue("warning");
+}
+// Returns true while the officer is on rounds, so ordinary patrol logic is skipped.
+function tickRounds(g,dt){
+  let r=omGame.rounds;
+  if(!r){
+    let key=roundsKeyNow();if(!key||omGame.roundsKey===key||g.targetId||(omGame.search&&omGame.search.guard===g.id&&omGame.search.stage==="walking"))return false;
+    omGame.roundsKey=key;omGame.rounds={index:0,checked:false};clearPath(g);g.pauseUntil=0;voiceRoundsStart();
+    if(!omGame.knowledge.rounds&&inOwnCell(player()))logEvent("Boots in the corridor","An officer is walking the cell fronts. Whatever they expect to see through the bars, it is worth knowing.","security");
+    r=omGame.rounds;
+  }
+  if(r.index>=ROUNDS_ROUTE.length){omGame.rounds=null;clearPath(g);g.pauseUntil=omGame.elapsed+1;return false;}
+  let pt=ROUNDS_ROUTE[r.index];
+  if(sqDistance(g.x,g.y,pt[0]+.5,pt[1]+.5)<.6){r.index++;clearPath(g);return true;}
+  if(g.pathCursor>=g.path.length&&omGame.elapsed>=g.retryAt){if(!routeTo(g,pt[0],pt[1])){if(!routeNear(g,pt[0],pt[1],1)){r.index++;}}}
+  walkPath(g,dt,2.2);g.action="Night rounds";
+  let door=cellDoorFor(player());
+  if(!r.checked&&door&&sqDistance(g.x,g.y,door.x+.5,door.y+1.5)<2.6){r.checked=true;g.headingAngle=-Math.PI/2;g.headingX=0;g.headingY=-1;checkPlayerCell(g);}
+  return true;
+}

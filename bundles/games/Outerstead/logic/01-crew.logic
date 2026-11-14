@@ -1,0 +1,167 @@
+// The cast. A world seed generates a place; the crew seed generates the four people who land there, so that
+// two colonies on the same ground can be different stories. Everything here is deterministic from the seed and
+// a per-slot reroll count, and none of it touches the simulation RNG. Jin, Mara, Mina and Sol remain as the
+// First Light preset.
+const CREW_FIRST_NAMES=["Nia","Eli","Rowan","Tess","Kade","Imani","Soren","Petra","Ayo","Lucan","Wren","Idris","Hana","Bram","Zofia","Teo","Ines","Callum","Ravi","Maren","Oskar","Leila","Dario","Sigrun","Kofi","Elin","Mateo","Yuki","Aurel","Bea","Nikolai","Farah","Joss","Ilse","Amara","Ronan","Sable","Tomas","Ada","Kiran","Edda","Luis","Hollis","Veda","Cato","Mira","Anselm","Ruth"];
+const CREW_SURNAMES=["Calder","Sato","Beck","Vale","Okafor","Lindqvist","Marsh","Ferrante","Haddad","Ng","Brennan","Ostrowski","Tanaka","Delacroix","Mbeki","Halvorsen","Reyes","Quill","Ashby","Nakamura","Ibarra","Petrova","Whitlock","Sunder","Adeyemi","Keane","Morrow","Solano","Varga","Yusuf","Lorne","Castellan","Draper","Ekwueme","Fenn","Garrow"];
+// Competency profiles: what a role is good at, as ranges. Everything else rolls low.
+const CREW_PROFILES=[
+ {id:"engineer",role:"Field engineer",strong:{build:[8,12],craft:[6,10]},mid:{mine:[3,7],explore:[2,6],research:[2,5]}},
+ {id:"surveyor",role:"Survey ranger",strong:{explore:[8,12],mine:[5,9]},mid:{research:[4,8],build:[3,7],haul:[4,7]}},
+ {id:"biologist",role:"Xenobiologist",strong:{research:[7,11],farm:[6,10]},mid:{doctor:[4,8],explore:[3,7],cook:[2,5]}},
+ {id:"medic",role:"Expedition medic",strong:{doctor:[8,12],research:[5,9]},mid:{cook:[3,7],craft:[2,5],farm:[2,5]}},
+ {id:"grower",role:"Habitat grower",strong:{farm:[8,12],cook:[6,10]},mid:{haul:[4,8],build:[3,6],doctor:[2,5]}},
+ {id:"mechanic",role:"Systems mechanic",strong:{craft:[8,12],mine:[6,10]},mid:{build:[5,8],research:[3,6],haul:[3,6]}},
+ {id:"signals",role:"Signals analyst",strong:{research:[8,12],craft:[4,8]},mid:{explore:[3,7],build:[2,5],doctor:[2,5]}},
+ {id:"quartermaster",role:"Quartermaster",strong:{haul:[8,12],cook:[6,10]},mid:{farm:[4,7],build:[3,6],craft:[3,6]}}
+];
+// Where they grew up, and what it did to them.
+const CREW_ORIGINS=[
+ {id:"orbital",text:"grew up aboard an orbital habitat where the sky was a maintenance schedule",mods:{research:2,craft:1,farm:-2}},
+ {id:"farm",text:"grew up on a farming collective and can tell soil by the smell",mods:{farm:2,cook:1,research:-1}},
+ {id:"mining",text:"grew up on a mining platform where every wall hummed",mods:{mine:2,build:1,cook:-1}},
+ {id:"meridian",text:"grew up on a Meridian relay station, one family among the antennas",mods:{research:1,explore:1,farm:-1}},
+ {id:"coast",text:"grew up in a coastal settlement that rebuilt itself every storm season",mods:{build:1,explore:1,craft:-1}},
+ {id:"wayfarer",text:"grew up on a long-haul crew, born between two ports",mods:{craft:1,explore:2,farm:-1}}
+];
+// Something each of them carries. A few of these the simulation can answer later.
+const CREW_HOOKS=[
+ {id:"recipes",text:"Keeps a notebook of recipes to cook once the colony has a real kitchen."},
+ {id:"photo",text:"Carries one photograph and has not said who is in it."},
+ {id:"never",text:"Claims never to have visited the planet before."},
+ {id:"letters",text:"Writes letters to someone with no address."},
+ {id:"map",text:"Drew a map of Hollow-7 from memory during the descent. It was mostly right."},
+ {id:"promise",text:"Promised somebody they would come back. Does not say when."},
+ {id:"stars",text:"Learned the constellations here from a book before landing and finds them wrong."},
+ {id:"quiet",text:"Talks less every week the colony survives, and seems happier for it."},
+ {id:"song",text:"Hums the same four bars when working and denies knowing the song."},
+ {id:"tools",text:"Brought a toolkit older than the ship. Every tool is named."}
+];
+const CREW_TRAITS=["Methodical","Tinkerer","Watchful","Optimist","Curious","Practical","Steady"];
+const CREW_MOTTOS=["We didn't come this far to turn around.","Everything is fixable except the past.","Name it and it stops being frightening.","Somebody has to stay up and watch the door.","Feed people first, argue after.","The ground remembers what you bury in it.","One more Sol. Then we'll see.","Nothing out here is owed to us."];
+// Twelve looks: the four silhouettes in the founders' palettes and two more each (see tools/build-crew-looks.py).
+const CREW_LOOKS=[{colour:"#83c4c8",skin:"#c68c67",hair:"#292632"},{colour:"#b98fd0",skin:"#8d5a3c",hair:"#e0c58a"},{colour:"#d9d3c2",skin:"#f0cfae",hair:"#b5462f"},{colour:"#e5b653",skin:"#bd8c69",hair:"#353238"},{colour:"#6f9fd8",skin:"#6b4630",hair:"#111318"},{colour:"#cf7f7f",skin:"#e8c3a0",hair:"#8f8f96"},{colour:"#d58c6a",skin:"#b88262",hair:"#1e252b"},{colour:"#7fbf8a",skin:"#f2d3b3",hair:"#d8a24d"},{colour:"#a9a9c9",skin:"#7a4e33",hair:"#3a2418"},{colour:"#9cb66c",skin:"#e0b795",hair:"#79503a"},{colour:"#d5a15a",skin:"#9d6a48",hair:"#23262b"},{colour:"#8fb9c9",skin:"#c9a07f",hair:"#c46a3c"}];
+let crewMode="generated";
+let crewNonce=[0,0,0,0];
+let crewAllowHard=false;
+let crewCards=[];
+let crewSummary={strengths:[],weaknesses:[]};
+let crewRelationText=[];
+function crewRng(seedValue){let a=seedValue>>>0;return {next:function(){a=(a+0x6D2B79F5)|0;let t=Math.imul(a^(a>>>15),1|a);t=(t+Math.imul(t^(t>>>7),61|t))^t;return ((t^(t>>>14))>>>0)/4294967296;},int:function(lo,hi){return lo+Math.floor(this.next()*(hi-lo+1));},pick:function(list){return list[Math.floor(this.next()*list.length)];}};}
+function crewArticle(word){return (/^[aeiou]/i.test(word)?"an ":"a ")+word;}
+function crewOrigin(id){for(let i=0;i<CREW_ORIGINS.length;i++)if(CREW_ORIGINS[i].id===id)return CREW_ORIGINS[i];return CREW_ORIGINS[0];}
+function crewHook(id){for(let i=0;i<CREW_HOOKS.length;i++)if(CREW_HOOKS[i].id===id)return CREW_HOOKS[i];return CREW_HOOKS[0];}
+function crewBio(c){return c.short+" "+crewOrigin(c.origin).text+" and spent "+c.years+" years as "+crewArticle(c.role.toLowerCase())+" before volunteering for Hollow-7. "+crewHook(c.hook).text;}
+function crewSeedText(){return (seedText||"HOLLOW-7").trim()||"HOLLOW-7";}
+// One settler from the seed, the slot and the reroll count; a preferred profile keeps the crew viable.
+function generateSettler(slot,nonce,preferredProfile){
+  let r=crewRng(hashSeed(crewSeedText()+"|crew|"+slot+"|"+nonce));
+  let profile=preferredProfile||r.pick(CREW_PROFILES),origin=r.pick(CREW_ORIGINS),first=r.pick(CREW_FIRST_NAMES),last=r.pick(CREW_SURNAMES);
+  let skills={};for(let i=0;i<WORK_KEYS.length;i++)skills[WORK_KEYS[i]]=r.int(0,3);
+  let keys=Object.keys(profile.strong);for(let i=0;i<keys.length;i++){let k=keys[i];skills[k]=r.int(profile.strong[k][0],profile.strong[k][1]);}
+  keys=Object.keys(profile.mid);for(let i=0;i<keys.length;i++){let k=keys[i];skills[k]=r.int(profile.mid[k][0],profile.mid[k][1]);}
+  keys=Object.keys(origin.mods);for(let i=0;i<keys.length;i++){let k=keys[i];skills[k]=clamp(skills[k]+origin.mods[k],0,14);}
+  // Knacks: what they might become. One or two skills learn faster; a calling is also a comfort.
+  let knacks={},count=r.int(1,2),order=WORK_KEYS.slice();for(let i=order.length-1;i>0;i--){let j=r.int(0,i);let t=order[i];order[i]=order[j];order[j]=t;}
+  for(let i=0;i<count;i++){knacks[order[i]]=i===0&&r.next()<0.35?2:1;if(knacks[order[i]]===2)skills[order[i]]=Math.max(skills[order[i]],3);}
+  let personality={empathy:r.int(35,90),nerve:r.int(40,85),discipline:r.int(45,90),curiosity:r.int(40,90),sociability:r.int(30,90)};
+  let trait=r.pick(CREW_TRAITS),hook=r.pick(CREW_HOOKS),motto=r.pick(CREW_MOTTOS),age=r.int(24,52),years=r.int(3,Math.min(14,age-20));
+  let base=r.int(0,3),variant=r.int(0,2),pal=CREW_LOOKS[base*3+variant];
+  let c={name:first+" "+last,short:first,role:profile.role,profileId:profile.id,age:age,years:years,colour:pal.colour,skin:pal.skin,hair:pal.hair,spriteIndex:base,look:"colonist"+base+(variant?"v"+variant:""),trait:trait,bio:"",skills:skills,knacks:knacks,personality:personality,origin:origin.id,hook:hook.id,motto:motto};
+  c.bio=crewBio(c);return c;
+}
+// The crew is a pure function of the seed and four reroll counts: each settler from their own slot and count,
+// each tie from the pair's two counts, so rerolling one slot cannot touch the other three.
+const CREW_NEEDS=[["build",6],["farm",5],["cook",5],["research",5],["doctor",4],["explore",5]];
+function crewPairTie(a,b,crew){
+  let r=crewRng(hashSeed(crewSeedText()+"|tie|"+a+"|"+crewNonce[a]+"|"+b+"|"+crewNonce[b]));
+  if(r.next()>=0.28)return "";
+  return r.pick(["friends","colleagues","siblings","strained","partners"]);
+}
+function buildCrew(){
+  let crew=[];for(let i=0;i<4;i++)crew.push(generateSettler(i,crewNonce[i],null));
+  for(let i=0;i<4;i++)crew[i].ties=[];
+  // Ties never rewrite a settler: no shared surnames, no demotions, so nothing about slot b depends on slot a.
+  for(let a=0;a<4;a++)for(let b=a+1;b<4;b++){let kind=crewPairTie(a,b,crew);if(!kind)continue;crew[a].ties.push({to:b,kind:kind});crew[b].ties.push({to:a,kind:kind});}
+  // Any of them may be connected to this place in a way nobody has said. The story finds out later.
+  for(let i=0;i<4;i++){let r=crewRng(hashSeed(crewSeedText()+"|conn|"+i+"|"+crewNonce[i]));crew[i].connected=r.next()<1/16;}
+  return crew;
+}
+// A crew is acceptable when nobody shares a first name or a secret and, unless difficult crews are allowed,
+// the four together can build, grow, cook, study, treat and scout.
+function crewProblems(crew){
+  let out=[];
+  for(let i=0;i<4;i++)for(let j=i+1;j<4;j++){if(crew[i].short===crew[j].short)out.push("name");if(crew[i].hook===crew[j].hook)out.push("hook");}
+  if(!crewAllowHard)for(let n=0;n<CREW_NEEDS.length;n++){let best=0;for(let i=0;i<4;i++)best=Math.max(best,crew[i].skills[CREW_NEEDS[n][0]]||0);if(best<CREW_NEEDS[n][1])out.push(CREW_NEEDS[n][0]);}
+  return out;
+}
+// Roll the named slots forward until the crew is acceptable; the counts that worked are what the crew code carries.
+function ensureViable(slots){
+  let tries=0;
+  let cap=slots.length===1?240:120;
+  while(crewProblems(buildCrew()).length&&tries<cap){let slot=slots[Math.min(slots.length-1,Math.floor(tries/30))];crewNonce[slot]=(crewNonce[slot]||0)+1;tries++;}
+  return crewProblems(buildCrew()).length===0;
+}
+function generateCrew(){return buildCrew();}
+function tieLabel(kind){return kind==="friends"?"old friend of":kind==="colleagues"?"worked with":kind==="siblings"?"grew up with":kind==="strained"?"does not get on with":"partner of";}
+function tieValue(kind){return kind==="friends"?45:kind==="colleagues"?25:kind==="siblings"?40:kind==="strained"?-25:72;}
+function activeCrew(){return crewMode==="first"?FOUNDERS:generateCrew();}
+// Applied once the four exist as settlers: the ties become relationships, and partners are partners.
+function applyCrewTies(crew,people){
+  for(let i=0;i<crew.length&&i<people.length;i++){let ties=crew[i].ties||[];
+    for(let t=0;t<ties.length;t++){let other=people[ties[t].to];if(!other)continue;people[i].relations[other.id]=tieValue(ties[t].kind);
+      if(ties[t].kind==="partners"&&!people[i].partner&&!other.partner){people[i].partner=other.id;other.partner=people[i].id;}
+      if(ties[t].kind==="siblings")people[i].sibling=other.id;}
+    if(crew[i].connected)people[i].connected=true;
+  }
+}
+function rerollSettler(slot){crewNonce[slot]=(crewNonce[slot]||0)+1;if(!ensureViable([slot]))say("No roll of "+["the first","the second","the third","the fourth"][slot]+" settler alone keeps this crew viable. Reroll another, or allow difficult crews.");refreshCrew();}
+function rerollCrew(){for(let i=0;i<4;i++)crewNonce[i]=(crewNonce[i]||0)+1+i;ensureViable([3,2,1,0]);refreshCrew();}
+function setCrewMode(mode){crewMode=mode==="first"?"first":"generated";refreshCrew();}
+function toggleCrewHard(){crewAllowHard=!crewAllowHard;if(!crewAllowHard)ensureViable([3,2,1,0]);refreshCrew();}
+function knackText(c){if(!c||!c.knacks)return "";let out=[],keys=Object.keys(c.knacks);for(let i=0;i<keys.length;i++){let idx=WORK_KEYS.indexOf(keys[i]);if(idx>=0)out.push(WORK_LABELS[idx]+" "+knackLabel(c.knacks[keys[i]]));}return out.join(" · ");}
+function knackLabel(level){return level>=2?"calling":"knack";}
+function knackFactor(c,category){let k=c&&c.knacks?c.knacks[category]:0;return k>=2?2:k>=1?1.4:1;}
+// The cards the crew screen shows, and a plain summary of what this crew is good and bad at.
+function refreshCrew(){
+  let crew=activeCrew(),cards=[];
+  for(let i=0;i<crew.length;i++){let c=crew[i],skills=[];
+    for(let k=0;k<WORK_KEYS.length;k++){let key=WORK_KEYS[k],v=c.skills[key]||0,kn=c.knacks?c.knacks[key]||0:0;skills.push({id:key,label:WORK_LABELS[k],value:v,barStyle:{width:Math.min(100,v/14*100)+"%"},knack:kn>=2?"▲▲":kn>=1?"▲":"",strong:v>=8});}
+    let ties=[];for(let t=0;t<(c.ties||[]).length;t++){let o=crew[c.ties[t].to];if(o)ties.push(tieLabel(c.ties[t].kind)+" "+o.short);}
+    cards.push({slot:i,name:c.name,age:c.age,role:c.role,trait:c.trait,bio:c.bio,motto:c.motto||"",sprite:spritePath(c.look||("colonist"+(c.spriteIndex!==undefined?c.spriteIndex:i%4))),skills:skills,ties:ties.join(" · "),knackNote:(function(){let out=[];let keys=Object.keys(c.knacks||{});for(let k=0;k<keys.length;k++)out.push(WORK_LABELS[WORK_KEYS.indexOf(keys[k])]+" "+knackLabel(c.knacks[keys[k]]));return out.join(" · ");})(),knackList:(function(){let out=[];let keys=Object.keys(c.knacks||{});for(let k=0;k<keys.length;k++)out.push({id:keys[k],kind:knackLabel(c.knacks[keys[k]]),label:WORK_LABELS[WORK_KEYS.indexOf(keys[k])]+" "+knackLabel(c.knacks[keys[k]])});return out;})()});
+  }
+  crewCards=cards;
+  let strengths=[],weaknesses=[],best=function(skill){let b=0;for(let i=0;i<crew.length;i++)b=Math.max(b,crew[i].skills[skill]||0);return b;};
+  let checks=[["build",8,"Excellent construction",6,"Weak builders"],["farm",8,"Strong grower",5,"Nobody really farms"],["cook",7,"A real cook",4,"Poor cooking"],["research",8,"Strong researcher",5,"No researcher to speak of"],["doctor",7,"An experienced doctor",4,"No experienced doctor"],["explore",8,"An experienced explorer",5,"Nobody knows the ground"],["craft",8,"Skilled crafter",4,"No crafter"]];
+  for(let i=0;i<checks.length;i++){let b=best(checks[i][0]);if(b>=checks[i][1])strengths.push(checks[i][2]);else if(b<checks[i][3])weaknesses.push(checks[i][4]);}
+  let strained=0,close=0;for(let i=0;i<crew.length;i++)for(let t=0;t<(crew[i].ties||[]).length;t++){if(crew[i].ties[t].kind==="strained")strained++;else close++;}
+  if(strained)weaknesses.push("Two settlers dislike each other");if(close)strengths.push("Some of them already trust each other");
+  crewSummary={strengths:strengths,weaknesses:weaknesses};crewCodeText=crewCode();
+}
+let crewCodeText="";
+function openCrew(){crewNonce=crewNonce||[0,0,0,0];let coded=applyCrewCode(seedText);if(!coded&&crewMode==="generated")ensureViable([3,2,1,0]);refreshCrew();dialog="crew";}
+
+// The facts ledger: what actually happened to this colony, by name, so the ending can describe it.
+function factsOf(){if(!osGame.facts)osGame.facts={firstHarvestBy:"",firstBuildBy:"",excavations:{},deaths:[],births:[],rescues:0,refugees:0,partners:[],fronts:0,raidsRepelled:0,funerals:0,expeditions:0,camps:0,moves:0};return osGame.facts;}
+function noteFact(key,value){let f=factsOf();if(Array.isArray(f[key])){if(f[key].length<24)f[key].push(value);}else if(typeof f[key]==="number")f[key]+=(value||1);else if(!f[key])f[key]=value;}
+// The legend: a paragraph assembled from the ledger, different for every colony that earns one.
+function colonyLegend(){
+  let f=factsOf(),lines=[],people=osGame.people,living=alivePeople();
+  let born=people.filter(function(p){return p.born!==undefined;}),hollowBorn=born.map(function(p){return p.short;});
+  lines.push(osGame.name+" became home to "+people.length+" settler"+(people.length===1?"":"s")+(hollowBorn.length?", "+hollowBorn.length+" of them born beneath its sky ("+hollowBorn.join(", ")+")":"")+".");
+  if(f.firstHarvestBy)lines.push(f.firstHarvestBy+" brought in the first harvest.");
+  let exc=Object.keys(f.excavations);if(exc.length)lines.push(exc.map(function(k){return f.excavations[k]+" opened "+k;}).join("; ")+".");
+  for(let i=0;i<f.deaths.length&&i<4;i++){let d=f.deaths[i];lines.push(d.name+" died on Sol "+d.sol+" from "+d.cause+(d.buried?" and rests in the colony's ground.":"."));}
+  if(f.partners.length)lines.push(f.partners.slice(0,3).map(function(p){return p[0]+" and "+p[1];}).join(", ")+(f.partners.length===1?" made a home together.":" made homes together."));
+  if(f.rescues)lines.push((f.rescues===1?"Once":f.rescues+" times")+" a settler was carried to the clinic by another and lived.");
+  if(f.refugees)lines.push(f.refugees+" stranger"+(f.refugees===1?" walked out of the grey and was":"s walked out of the grey and were")+" given a place at the table.");
+  if(f.fronts)lines.push("The colony weathered "+f.fronts+" hard front"+(f.fronts===1?"":"s")+".");
+  if(f.raidsRepelled)lines.push("Ashwalkers came for the stores "+(f.raidsRepelled===1?"once":f.raidsRepelled+" times")+" and were turned back.");
+  let connected=people.filter(function(p){return p.connected;});if(connected.length)lines.push(connected[0].short+" never did say why Hollow-7 felt familiar.");
+  if(f.moves)lines.push("It moved its home "+(f.moves===1?"once":f.moves+" times")+", carrying the fire with it.");
+  if(f.expeditions)lines.push("Its people walked out into the wider country "+(f.expeditions===1?"once":f.expeditions+" times")+(f.camps?" and kept a camp out there":"")+".");
+  if(osGame.storyStage>=3){lines.push("Under the ridge was "+mysteryOf().legend+".");let fl=facetLegend();if(fl)lines.push(fl);}
+  if(osGame.charter)lines.push("Its name is on the Compact's maps.");
+  if(living.length)lines.push(living.map(function(p){return p.short;}).join(", ")+(living.length===1?" is":" are")+" still there.");
+  return lines.join(" ");
+}

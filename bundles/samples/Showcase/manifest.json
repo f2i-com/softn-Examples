@@ -1,0 +1,36 @@
+{
+  "name": "SoftN Showcase",
+  "version": "1.1.0",
+  "description": "Charts, animations, interactive widgets, and articulated PBR 3D scenes the runtime ships, on four pages, in light and dark",
+  "main": "ui/main.ui",
+  "icon": "assets/icon.svg",
+  "files": {
+    "ui": [
+      "ui/main.ui",
+      "ui/components/Nav.ui",
+      "ui/pages/ChartsPage.ui",
+      "ui/pages/AnimationsPage.ui",
+      "ui/pages/InteractivePage.ui",
+      "ui/pages/Scene3DPage.ui"
+    ],
+    "logic": [
+      "logic/main.logic"
+    ],
+    "assets": [
+      "assets/icon.svg",
+      "assets/env/studio-dusk.hdr",
+      "assets/models/chrono-orrery.glb"
+    ]
+  },
+  "config": {
+    "window": {
+      "title": "SoftN Showcase",
+      "width": 1200,
+      "height": 800
+    },
+    "theme": {
+      "primary": "#6366f1",
+      "mode": "dark"
+    }
+  }
+}

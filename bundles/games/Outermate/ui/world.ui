@@ -1,0 +1,65 @@
+<import Guide from="./guide.ui" />
+<section className={"om-map-shell " + (hud && hud.alarm ? "is-alarm" : "")}>
+ #if (guideSheetOpen && guideCard)<div className="om-guide-sheet" role="dialog" aria-label="Escape guide"><div className="om-guide-sheet-head"><i className="om-context-grip" /><strong>Escape guide</strong><button className="om-link" aria-label="Close guide" @click={closeGuideSheet}>×</button></div><div className="om-guide-sheet-body"><Guide /></div></div>#end
+ <div className="om-mapviewport"
+ @contextmenu={(e) => e.preventDefault()}
+ @pointerdown={(e) => [e.preventDefault(),e.currentTarget.setPointerCapture(e.pointerId),mapPointer("down",e.pointerId,e.pointerType,e.clientX,e.clientY,e.button,e.currentTarget.getBoundingClientRect().left,e.currentTarget.getBoundingClientRect().top,e.currentTarget.getBoundingClientRect().width,e.currentTarget.getBoundingClientRect().height)]}
+ @pointermove={(e) => mapPointer("move",e.pointerId,e.pointerType,e.clientX,e.clientY,e.button,e.currentTarget.getBoundingClientRect().left,e.currentTarget.getBoundingClientRect().top,e.currentTarget.getBoundingClientRect().width,e.currentTarget.getBoundingClientRect().height)}
+ @pointerup={(e) => mapPointer("up",e.pointerId,e.pointerType,e.clientX,e.clientY,e.button,e.currentTarget.getBoundingClientRect().left,e.currentTarget.getBoundingClientRect().top,e.currentTarget.getBoundingClientRect().width,e.currentTarget.getBoundingClientRect().height)}
+ @pointercancel={(e) => mapPointer("cancel",e.pointerId,e.pointerType,e.clientX,e.clientY,e.button,0,0,viewportWidth,viewportHeight)}
+ @wheel={(e) => mapWheel(e.deltaY,e.clientX,e.clientY,e.currentTarget.getBoundingClientRect().left,e.currentTarget.getBoundingClientRect().top,e.currentTarget.getBoundingClientRect().width,e.currentTarget.getBoundingClientRect().height)}>
+  <div className="om-world" style={worldStyle}>
+   <TileMap className="om-tilemap" viewport={true} smooth={false} @visibleRangeChange={setVisibleTileRange} src={asset("assets/sprites/terrain.png")} tileSize={32} tilesetColumns={8} layers={terrainLayers} mapWidth={96} mapHeight={96} scale={1} />
+   <div className="om-night" style={{opacity:worldNight}} />
+   #each (l in mapLights) key={l.id}<div className="om-light" style={l.style} />#end
+   #each (c in mapCones) key={c.id}<div className={"om-cone om-cone-"+c.kind} style={c.style} />#end
+   #each (b in mapProps) key={b.id}<div className={"om-prop om-prop-"+b.kind} style={b.style}><img src={asset(b.sprite)} alt="" /></div>#end
+   #each (d in mapDoors) key={d.id}<div className={"om-map-door "+(d.allowed?"permitted":"locked")} style={d.style}><img src={asset(d.sprite)} alt="" /><i /></div>#end
+   #each (n in mapPath) key={n.id}<i className="om-path-dot" style={n.style} />#end
+   #each (c in mapActors) key={c.id}
+     <div className={"om-actor om-actor-"+c.role+(c.selected?" selected":"")+(c.crew?" crew":"")+" pose-"+c.pose+" facing-"+c.direction+(c.eating?" is-eating":"")} style={c.style}>
+       <i className="om-feet-ring" /><img className="om-person-sprite" src={asset(c.sprite)} alt="" />
+       #if (c.blanket)<i className="om-blanket" />#end
+       #if (c.sleeping)<span className="om-sleep" aria-label="Asleep">z<i>z</i></span>#end
+       #if (c.pose === "work")<i className="om-work-spark" /><i className="om-work-hands" />#end
+       #if (c.pose === "eat" || c.pose === "sit")<i className="om-meal-seat" />#end
+       #if (c.resting)<span className="om-rest-breath">~</span>#end
+       #if (c.pose === "eat" || c.carryingTray)<i className="om-meal-tray" />#end
+       #if (c.eating)<i className="om-meal-spoon" />#end
+       #if (c.chatting)<span className="om-chat-bubble" aria-label="Inmates chatting">···</span>#end
+       #if (c.speech)<span className="om-speech">{c.speech}</span>#end
+       #if (c.pose === "play")<i className="om-ball" />#end
+       #if (c.label)<div className="om-actor-label">{c.name}</div>#end
+       #if (c.notice > 8)<div className="om-notice-track"><i style={c.noticeStyle} /></div>#end
+     </div>
+   #end
+   #each (r in mapRooms) key={r.id}<div className="om-room-label" style={r.style}>{r.name}</div>#end
+   #each (m in mapMarkers) key={m.id}<div className={"om-map-marker "+m.kind} style={m.style}>#if (m.sprite)<img src={asset(m.sprite)} alt="" />#else<i />#end<span>{m.text}</span></div>#end
+   #if (mapSelected)<div className="om-map-selection" style={mapSelected} />#end
+  </div>
+  <div className={"om-weather "+weatherClass}><i /><b /></div>
+ </div>
+ <div className="om-map-caption"><span>{prisonName() + " / K-12"}</span><strong>{hud.zone}</strong><small>{hud.lightsOut ? "Lights out · cells locked until 05:45" : followPlayer ? "Following you · drag to look around" : "Free camera · F to follow"}</small></div>
+ #if (contextMenu && !dialog)<div className={"om-context "+(contextMenu.sheet?"is-sheet":"")} style={contextMenu.style} role="menu" aria-label={contextMenu.title}><div className="om-context-head">#if (contextMenu.sheet)<i className="om-context-grip" />#end<strong>{contextMenu.title}</strong><button className="om-link" aria-label="Close" @click={closeContextMenu}>×</button><small>{contextMenu.subtitle}</small></div><div className="om-context-list">#each (i in contextMenu.items) key={i.id}<button className="om-context-item" role="menuitem" disabled={i.disabled} @click={() => contextAction(i.id)}><b aria-hidden="true">{i.icon}</b><div><span>{i.label}</span>#if (i.hint)<small>{i.hint}</small>#end</div></button>#end</div></div>#end
+ <div className="om-map-tools"><button className="om-btn" title="Zoom out" @click={() => zoomBy(-.12)}>−</button><button className="om-btn" title="Zoom in" @click={() => zoomBy(.12)}>+</button><button className="om-btn" title="Follow your inmate (F)" @click={focusPlayer}>◎</button><button className="om-btn" title="Whole prison (M)" @click={overviewMap}>▦</button><button className={"om-btn "+(showSecurity?"is-active":"")} title="Known security cones" @click={() => toggleSetting("security")}>◉</button></div>
+ #if (paused && !dialog)<div className="om-paused">PAUSED <span>Space to resume</span></div>#end
+ #if (attendanceCard && !dialog)<div className="om-attendance" role="status"><div><span className="om-label">{attendanceCard.name + " / " + attendanceCard.remaining + " game min left"}</span><strong>{attendanceCard.present ? "Stay for the count" : "Attendance due at " + attendanceCard.time}</strong><small>{attendanceCard.decoy ? "A prepared decoy can cover one absence." : attendanceCard.body}</small></div>#if (!attendanceCard.present)<button className="om-btn" @click={attendCount}>Attend count</button>#end#if (progressCard && progressCard.manual)<button className="om-btn om-attendance-cancel" @click={cancelPlayerTask}>{progressCard.stopLabel}</button>#end</div>#end
+ <div className="om-crew-strip">
+  #each (c in crewCards) key={c.id}<button className={"om-crew-face "+(c.selected?"is-active":"")} title={c.name+" · "+c.action} @click={() => selectPerson(c.id,true)}><img src={asset(c.portrait)} alt={c.name} /><span>{c.role === "player" ? "YOU" : c.short}</span></button>#end
+ </div>
+ <div className="om-player-dock">
+  <div className="om-player-heading">#if (playerCard.portrait)<img src={asset(playerCard.portrait)} alt="" />#end<div><strong>{playerCard.name}</strong><span>{playerCard.action}</span></div><button className="om-link" title="Inspect your inmate" @click={() => selectPerson("player",false)}>↗</button></div>
+  <div className="om-need"><span>Energy</span><div className="om-meter"><i style={playerCard.energyBar} /></div><b>{playerCard.energy}</b></div>
+  <div className="om-need"><span>Fed</span><div className="om-meter om-meter-food"><i style={playerCard.foodBar} /></div><b>{playerCard.food}</b></div>
+  <div className="om-need om-desktop-only"><span>Stress</span><div className="om-meter om-meter-stress"><i style={playerCard.stressBar} /></div><b>{playerCard.stress}</b></div>
+  #if (hud.notice > 1)<div className="om-need"><span>EXPOSURE</span><div className="om-meter om-meter-stress"><i style={playerCard.noticeBar} /></div><b>{hud.notice}</b></div>#end
+ </div>
+ <div className="om-mini-wrap"><button className="om-minimap" title="Click to move the camera" @click={(e) => minimapTap(e.clientX,e.clientY,e.currentTarget.getBoundingClientRect().left,e.currentTarget.getBoundingClientRect().top,e.currentTarget.getBoundingClientRect().width,e.currentTarget.getBoundingClientRect().height)}><img src={minimapSource} alt="Current prison layout" /><i style={minimapPlayerStyle} /></button><button className="om-link om-small" @click={() => setPanel("map")}>Open directory ↗</button></div>
+ #if (progressCard)
+  <div className={"om-task-toast "+(progressCard.waiting?"is-waiting":"")}><div><span className="om-label">{progressCard.label + (progressCard.queued ? " · +" + progressCard.queued + " queued" : "")}</span><strong>{progressCard.name}</strong><small>{progressCard.detail}</small>#if (!progressCard.waiting)<div className="om-meter" role="progressbar" aria-label={progressCard.name} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressCard.progress}><i style={progressCard.bar} /></div>#end</div>#if (progressCard.manual)<button className="om-btn" @click={() => progressCard.waiting ? cancelFrontOrder() : cancelPlayerTask()}>{progressCard.stopLabel}</button>#end</div>
+ #end
+ #if (escapeCard)
+  <div className="om-escape-banner"><div><span className="om-label">{escapeCard.alarm ? "ESCAPE RESPONSE" : "THE PLAN IS IN MOTION"}</span><strong>{escapeCard.name}</strong></div><button className="om-btn om-primary" @click={() => escapeCard.ready ? finishEscape() : setPanel("escape")}>{escapeCard.ready ? "Leave prison →" : "Escape status →"}</button></div>
+ #end
+ <div className="om-map-footer"><span>Tap a person, fixture or tile for actions · right-click walks · drag to pan</span><span>{hud.power}</span></div>
+</section>

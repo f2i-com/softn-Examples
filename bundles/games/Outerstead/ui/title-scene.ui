@@ -1,0 +1,16 @@
+<div className="os-title-scene">
+        <TileMap key={terrainAsset} src={asset(terrainAsset || "assets/sprites/terrain.png")} tileSize={terrainTileSize} tilesetColumns={8} layers={titleLayers} mapWidth={24} mapHeight={18} scale={terrainScale} />
+        #each (b in titleStructures) key={b.id}
+          <img className="os-scene-building" src={asset(b.sprite)} style={b.style} alt="" />
+        #end
+        <div className="os-scene-person os-scene-mina"><div className="os-title-facing os-title-outbound"><img className="os-title-step os-title-step-1" src={asset("assets/sprites/colonist0-walk1.svg")} alt="" /><img className="os-title-step os-title-step-2" src={asset("assets/sprites/colonist0-walk2.svg")} alt="" /></div><div className="os-title-facing os-title-inbound"><img className="os-title-step os-title-step-1" src={asset("assets/sprites/colonist0-north-walk1.svg")} alt="" /><img className="os-title-step os-title-step-2" src={asset("assets/sprites/colonist0-north-walk2.svg")} alt="" /></div></div>
+        <div className="os-scene-person os-scene-jin"><div className="os-title-facing os-title-outbound"><img className="os-title-step os-title-step-1" src={asset("assets/sprites/colonist1-walk1.svg")} alt="" /><img className="os-title-step os-title-step-2" src={asset("assets/sprites/colonist1-walk2.svg")} alt="" /></div><div className="os-title-facing os-title-inbound"><img className="os-title-step os-title-step-1" src={asset("assets/sprites/colonist1-north-walk1.svg")} alt="" /><img className="os-title-step os-title-step-2" src={asset("assets/sprites/colonist1-north-walk2.svg")} alt="" /></div></div>
+        <div className="os-scene-person os-scene-mara"><div className="os-title-facing os-title-outbound"><img className="os-title-step os-title-step-1" src={asset("assets/sprites/colonist2-walk1.svg")} alt="" /><img className="os-title-step os-title-step-2" src={asset("assets/sprites/colonist2-walk2.svg")} alt="" /></div><div className="os-title-facing os-title-inbound"><img className="os-title-step os-title-step-1" src={asset("assets/sprites/colonist2-north-walk1.svg")} alt="" /><img className="os-title-step os-title-step-2" src={asset("assets/sprites/colonist2-north-walk2.svg")} alt="" /></div></div>
+        <div className="os-scene-person os-scene-sol"><div className="os-title-facing os-title-outbound"><img className="os-title-step os-title-step-1" src={asset("assets/sprites/colonist3-east-walk1.svg")} alt="" /><img className="os-title-step os-title-step-2" src={asset("assets/sprites/colonist3-east-walk2.svg")} alt="" /></div><div className="os-title-facing os-title-inbound"><img className="os-title-step os-title-step-1" src={asset("assets/sprites/colonist3-west-walk1.svg")} alt="" /><img className="os-title-step os-title-step-2" src={asset("assets/sprites/colonist3-west-walk2.svg")} alt="" /></div></div>
+        <div className="os-title-smoke"><i /><i /><i /></div>
+        <div className="os-scene-glow" />
+        <div className="os-title-clouds" />
+        <div className="os-title-signal"><i /><i /></div>
+        <div className="os-title-aurora" />
+        <div className="os-title-embers"><i /><i /><i /></div>
+      </div>

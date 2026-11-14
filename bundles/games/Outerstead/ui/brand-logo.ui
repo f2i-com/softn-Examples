@@ -1,0 +1,5 @@
+<div className="os-vector-logo">
+  <img className="os-logo-orbit" src={asset(reducedMotion ? "assets/art/logo-orbit.svg" : "assets/art/logo-orbit-animated.svg")} alt="" />
+  <img className="os-logo-base" src={asset("assets/art/logo-base.svg")} alt="Outerstead" />
+  <img className="os-logo-signal" src={asset("assets/art/logo-signal.svg")} alt="" />
+</div>

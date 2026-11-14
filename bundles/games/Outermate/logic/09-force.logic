@@ -1,0 +1,186 @@
+// Force (0.12.0): what happens when someone stops being polite. Attacks with fists or a shank, officers
+// knocked out and dragged out of sight, their uniforms worn as cover, inmates who carry a grudge and a
+// blade, fights that erupt between rivals, and riots that empty the yard of officers for a while.
+// Everything here uses the game's own random stream, logs to the chronicle and respects saves.
+const FORCE_TYPES=["attack","drag","strip","incite"];
+const RIOT_LINES=["Not today!","Enough!","Hold the line!","Get the gate!","Everybody out!","Nobody moves us!"];
+const FIGHT_LINES=["Come on then!","Say it to my face!","Back off!","You started it!"];
+function uniformAlertActive(){return !!omGame&&(omGame.uniformAlert||0)>omGame.minutes;}
+function isDown(c){return !!c&&(c.downUntil||0)>omGame.minutes;}
+function isInjured(c){return !!c&&(c.injuredUntil||0)>omGame.minutes;}
+function fightsToday(){let f=omGame.fightsToday;return f&&f.day===dayNow()?f.count:0;}
+function noteFight(){let d=dayNow();if(!omGame.fightsToday||omGame.fightsToday.day!==d)omGame.fightsToday={day:d,count:0};omGame.fightsToday.count++;omGame.stats.fights=(omGame.stats.fights||0)+1;}
+function wearingGuardUniform(){return !!omGame&&!!omGame.wearingGuard&&itemCount("guardUniform")>0;}
+// How hard someone hits and how hard they are to put down. Deterministic apart from the roll.
+function fightStrength(c,defending){
+ let s=40,p=player();
+ if(c.role==="guard"){s+=30;if(c.targetId)s+=10;for(let i=0;i<GUARDS.length;i++){let g=actorById(GUARDS[i].id);if(g&&g.id!==c.id&&!isDown(g)&&sqDistance(g.x,g.y,c.x,c.y)<=36)s+=15;}}
+ else if(c.id==="player"){if(itemCount("shank")>0)s+=35;for(let m of crewMembers())if(m.id!==c.id&&!isDown(m)&&!isInjured(m)&&sqDistance(m.x,m.y,c.x,c.y)<=9)s+=12;}
+ else{if(c.armed)s+=30;if(hasTrait(c,"bold"))s+=15;if(profileOf(c).weakness==="hotheaded")s+=10;}
+ if(isInjured(c))s-=15;if(c.health<50)s-=10;if(isDown(c))s-=40;
+ return s;
+}
+function knockOut(c,minutes){c.downUntil=omGame.minutes+minutes;c.downFrom=omGame.minutes;c.wasDown=true;clearPath(c);c.notice=0;c.targetId="";c.lastSeen=null;c.pauseUntil=0;if(c.task)c.task=null;c.action="Down";}
+function injure(c,minutes,damage){c.health=Math.max(5,c.health-damage);c.injuredUntil=Math.max(c.injuredUntil||0,omGame.minutes+minutes);c.stress=Math.min(100,c.stress+10);}
+// Who saw it. An officer with a clear view raises the response; a camera cone logs it; otherwise it is quiet.
+function witnessed(x,y,actor){
+ for(let i=0;i<GUARDS.length;i++){let g=actorById(GUARDS[i].id);if(!g||isDown(g)||g.id===actor)continue;let d=guardDef(g.id);if(sqDistance(g.x,g.y,x,y)<=d.range*d.range&&hasLineOfSight(g.x,g.y,x,y))return {kind:"officer",who:g};}
+ for(let c of CAMERAS)if(cameraOn(c)&&inCone(c.x,c.y,cameraAngle(c),c.range,0.46,{x:x,y:y}))return {kind:"camera",who:c};
+ for(let c of omGame.people)if(c.role==="inmate"&&!c.escaped&&!isDown(c)&&sqDistance(c.x,c.y,x,y)<=49&&hasLineOfSight(c.x,c.y,x,y))return {kind:"inmate",who:c};
+ return null;
+}
+function forceTaskFailure(t,c){
+ let p=player();
+ if(t.type==="attack"){if(isDown(c))return c.short+" is already down.";if(c.role==="staff")return "Staff keep clear of trouble; there is nothing to gain.";if(p.health<30)return "You are in no state to fight.";if(c.detainedUntil>omGame.minutes||c.crewState==="caught")return c.short+" is being held.";if(c.crew)return c.short+" is in your crew.";}
+ if(t.type==="drag"){if(c.role!=="guard")return "Only a downed officer can be moved.";if(!isDown(c))return c.short+" is on their feet.";if(p.dragging)return "You are already dragging someone.";if(p.carrying)return "Not while hidden in the cart.";}
+ if(t.type==="strip"){if(c.role!=="guard")return "Only an officer's uniform is worth taking.";if(!isDown(c))return c.short+" is on their feet.";if(c.stripped)return "That uniform is already gone.";if(!inventoryRoom("guardUniform",1))return "Your pockets are full.";}
+ if(t.type==="incite"){if(!c.crew)return "Only your crew will start something for you.";if(omGame.riot)return "The yard is already in uproar.";if(crewMembers().length<2)return "It takes at least two allies to start a riot.";if(omGame.favors<1)return "This costs a favour.";let r=routineNow();if(r.kind!=="social")return "Only during yard or association time.";if(omGame.heat<40)return "The place is too calm; facility heat needs to be 40 or more.";}
+ return "";
+}
+function requestForce(id,type){if(FORCE_TYPES.indexOf(type)<0)return false;let c=actorById(id);if(!c)return false;let f=forceTaskFailure({type:type},c);if(f){say(f);return false;}return queueTask({type:type,actor:id,duration:type==="attack"?1.5:type==="strip"?3:type==="drag"?1:3,illegal:type==="incite"?1:2});}
+function forceCardsFor(c){
+ let cards=[],p=player();if(!c||c.id==="player"||c.escaped)return cards;
+ function card(id,label,hint,icon){let fail=forceTaskFailure({type:id},c);cards.push({id:id,label:label,hint:fail||hint,disabled:!!fail,target:c.id,force:true,icon:icon});}
+ if(c.role==="guard"){
+  if(isDown(c)){card("drag",p.dragging===c.id?"Dragging "+c.short:"Drag "+c.short+" out of sight","Out of camera cones and patrol routes before they wake.","🫳");if(!c.stripped)card("strip","Take the uniform","An officer's uniform with its pass. Cover until they are found.","🧥");}
+  else card("attack",itemCount("shank")?"Attack with the shank":"Attack bare-handed","Officers are tough; a shank, allies nearby, and no other officer in view help. Failure means isolation.","✊");
+ }else if(c.role==="inmate"){
+  card("attack",itemCount("shank")?"Shank "+c.short:"Attack "+c.short,"They and their friends will remember. Officers who see it respond.","✊");
+  if(c.crew)card("incite","Start a riot here · 1 favour","Your crew starts trouble; officers converge on it and leave the rest of the prison thin.","🔥");
+ }
+ return cards;
+}
+function completeForceTask(t,c){
+ let p=player();
+ if(t.type==="attack")resolvePlayerAttack(p,c);
+ else if(t.type==="drag"){p.dragging=c.id;c.action="Being dragged";say("You take "+c.short+" under the arms. Slow going; drop them somewhere quiet.");}
+ else if(t.type==="strip"){if(giveItem("guardUniform",1)){c.stripped=true;logEvent("A borrowed uniform",c.name+"'s uniform and pass are in your pockets. Wear it from Pockets; it reads as staff until "+c.short+" is found.","scheme");say("Officer uniform taken. Wear it from your pockets.");playCue("complete");}}
+ else if(t.type==="incite"){omGame.favors--;for(let m of crewMembers())m.trust=clamp(m.trust+5,0,100);startRiot(zoneOf(p),"incited");}
+ dirty();
+}
+function resolvePlayerAttack(p,c){
+ let roll=randomInt(-25,25),win=fightStrength(p)+roll>fightStrength(c,true),w=witnessed(p.x,p.y,"player");
+ noteFight();playCueNear("fight",p);
+ if(c.role==="guard"){
+  if(win){knockOut(c,50);p.health=Math.max(5,p.health-randomInt(4,12));p.stress=Math.min(100,p.stress+12);
+   logEvent("Officer down",c.name+" goes down. They will come round in about fifty minutes; what they find then decides how loud it gets.","security");say(c.short+" is down. Drag them out of sight, or take the uniform.");castLine("officer","down",true);
+   if(w&&w.kind==="officer"){omGame.heat=100;addEvidence("Assault on an officer",zoneOf(p),"player",20);dispatchNearestGuard(p.x,p.y,"player");say("Another officer saw it. Escape response!");playCue("alarm");}
+   else if(w&&w.kind==="camera"){omGame.heat=clamp(omGame.heat+35,0,100);addEvidence("Camera log: "+w.who.name,w.who.id,"player",14);}
+  }else{p.health=Math.max(5,p.health-randomInt(18,30));capturePlayer("Overpowered by "+c.name);}
+ }else{
+  if(win){knockOut(c,30);injure(c,300,randomInt(10,25));c.trust=Math.max(0,c.trust-40);c.grudge=100;rememberKind(c,"Attacked by "+p.short+".","slight",0);
+   for(let r of relationsOf(c.id)){let o=actorById(r.id);if(!o)continue;if(r.kind==="friend"||r.kind==="kin"){o.grudge=clamp((o.grudge||0)+40,0,100);o.trust=Math.max(0,o.trust-15);rememberKind(o,p.short+" put "+c.short+" on the floor.","slight",0);}}
+   p.health=Math.max(5,p.health-randomInt(2,8));logEvent("A fight",c.name+" goes down hard. Their friends will hear of it.","social");say(c.short+" is down. Word will travel.");
+  }else{injure(p,240,randomInt(12,25));c.grudge=clamp((c.grudge||0)+30,0,100);rememberKind(c,"Fought off "+p.short+".","slight",0);logEvent("A fight lost",c.name+" gets the better of it. You are hurt.","social");say(c.short+" fights you off. You are hurt.");}
+  if(w&&w.kind==="officer"){omGame.heat=clamp(omGame.heat+35,0,100);addEvidence("Assault on an inmate",zoneOf(p),"player",14);dispatchNearestGuard(p.x,p.y,"player");say("An officer saw the fight.");playCue("warning");}
+  else if(w&&w.kind==="camera"){omGame.heat=clamp(omGame.heat+20,0,100);addEvidence("Camera log: "+w.who.name,w.who.id,"player",10);}
+ }
+ checkCollapse();
+}
+function checkCollapse(){let p=player();if(p.health<=20&&p.detainedUntil<=omGame.minutes){hospitalise("Carried to the infirmary after a fight");}}
+function hospitalise(reason){
+ let p=player();interruptActiveOrder("Waiting until you are discharged.");if(omGame.escape){omGame.routeHistory.push({route:omGame.escape.route,result:"caught",day:dayNow()});omGame.escape=null;}
+ p.dragging="";omGame.wearing=false;omGame.wearingGuard=false;omGame.sprinting=false;omGame.challenge=null;
+ let bed=siteById("infirmaryBed");p.x=bed.ax+.5;p.y=bed.ay+.5;p.mode="routine";p.detainedUntil=omGame.minutes+150;p.detainedWhere="infirmary";p.health=Math.max(p.health,45);p.notice=0;p.routineKey="";
+ logEvent("The infirmary",reason+". Two and a half hours on a rest bay; your pockets are your own.","life");dialog="detained";securityEpoch++;focusPlayer();playCue("door");dirty();
+}
+// Dragging: the officer trails one tile behind; the walk is slow and plainly a violation.
+function tickDragging(p){
+ let g=actorById(p.dragging);if(!g||!isDown(g)){if(g&&!isDown(g))say(g.short+" comes round in your hands.");p.dragging="";return;}
+ g.x=p.x-p.headingX*0.8;g.y=p.y-p.headingY*0.8;g.action="Being dragged";
+}
+function dropBody(){let p=player();if(!p||!p.dragging)return false;let g=actorById(p.dragging);p.dragging="";if(g){let tx=Math.floor(g.x),ty=Math.floor(g.y);if(!onMap(tx,ty)||navBlocked[tileId(tx,ty)]){tx=Math.floor(p.x);ty=Math.floor(p.y);}g.x=tx+.5;g.y=ty+.5;g.action="Down";let hidden=bodyHidden(g);logEvent(hidden?"Out of sight":"In the open",hidden?c_name(g)+" is left where patrols and cameras do not look.":c_name(g)+" is left where someone will trip over them.","security");say(hidden?"Dropped out of sight.":"Dropped in the open.");}dirty();return true;}
+function c_name(c){return c.name;}
+function bodyHidden(g){
+ let z=zoneById(zoneOf(g));if(!z||z.access==="public")return false;
+ for(let c of CAMERAS)if(cameraOn(c)&&inCone(c.x,c.y,cameraAngle(c),c.range,0.46,g))return false;
+ for(let i=0;i<GUARDS.length;i++){let o=actorById(GUARDS[i].id);if(!o||o.id===g.id||isDown(o))continue;for(let pt of guardDef(o.id).route)if(sqDistance(pt[0]+.5,pt[1]+.5,g.x,g.y)<=25)return false;}
+ return true;
+}
+// When a downed officer comes round: a missing uniform sets the whole prison looking for it.
+function guardWakes(g){
+ g.wasDown=false;g.action="Patrolling";let hidden=bodyHidden(g);
+ if(g.stripped){omGame.uniformAlert=omGame.minutes+360;omGame.heat=100;securityEpoch++;updateSecurityPolicy();dispatchNearestGuard(player().x,player().y,"player");
+  logEvent("A missing uniform",g.name+" reports for duty in shirtsleeves. Every officer is looking for the uniform for the next six hours; wearing it now is a challenge on sight.","security");say("Officer "+g.short+" is awake and the uniform is missing. Alert.");castLine("pa","lockdown",true);playCue("alarm");}
+ else if(hidden){omGame.heat=clamp(omGame.heat+20,0,100);addEvidence("Officer assaulted",zoneOf(g),"",10);logEvent("Back on their feet",g.name+" comes round somewhere quiet and cannot say who did it. Heat +20.","security");}
+ else{omGame.heat=clamp(omGame.heat+45,0,100);addEvidence("Officer assaulted",zoneOf(g),"player",14);logEvent("Found in the open",g.name+" was found dazed in plain view. Heat +45 and a report with your name pencilled in.","security");}
+}
+function toggleGuardUniform(){
+ if(!canInteractNow())return false;if(!itemCount("guardUniform")){say("You have no officer uniform.");return false;}
+ omGame.wearingGuard=!omGame.wearingGuard;if(omGame.wearingGuard)omGame.wearing=false;
+ say(omGame.wearingGuard?(uniformAlertActive()?"Officer uniform on. Every officer is looking for it; keep your distance.":"Officer uniform on. From a distance you are staff; up close you are not."):"Officer uniform off.");dirty();return true;
+}
+// Grudges: seeded starting values, then what you do. Armed inmates with a grudge wait for a quiet moment.
+function seedGrudges(){
+ for(let c of omGame.people){if(c.role!=="inmate")continue;let h=hashSeed(omGame.seedLabel+":grudge:v1:"+c.id);
+  c.grudge=(profileOf(c).weakness==="hotheaded"&&profileOf(c).bias==="wary")?30+(h%20):0;
+  c.armed=(hasTrait(c,"bold")||profileOf(c).weakness==="hotheaded")&&(h%2===0);}
+}
+function tickHostility(){
+ let p=player();if(!p||omGame.escape||p.detainedUntil>omGame.minutes||omGame.riot)return;let r=routineNow();if(r.kind!=="social"&&r.kind!=="eat")return;
+ for(let c of omGame.people){
+  if(c.role!=="inmate"||c.escaped||!c.armed||(c.grudge||0)<60||isDown(c)||isInjured(c)||c.detainedUntil>omGame.minutes||c.attackedDay===dayNow())continue;
+  if(sqDistance(c.x,c.y,p.x,p.y)>6.25||!hasLineOfSight(c.x,c.y,p.x,p.y)||officerWatching(p)||officerWatching(c))continue;
+  c.attackedDay=dayNow();resolveAmbush(c,p);return;
+ }
+}
+function resolveAmbush(c,p){
+ let roll=randomInt(-25,25),win=fightStrength(c)+roll>fightStrength(p,true);noteFight();playCueNear("fight",c);speak(c,pickLine(FIGHT_LINES,dayNow()+activityIndex(c)),4);
+ if(win){injure(p,240,randomInt(15,30));interruptActiveOrder("Hurt in a fight.");logEvent("Shanked",c.name+" catches you with a blade in a quiet moment. You are hurt; rest in the infirmary or your bunk.","social");say(c.short+" shanks you. You are hurt.");}
+ else{knockOut(c,20);injure(c,180,randomInt(5,15));c.grudge=clamp(c.grudge-20,0,100);logEvent("Fended off",c.name+" comes at you with a blade and ends up on the floor.","social");say("You fend "+c.short+" off. They are down.");}
+ let w=witnessed(p.x,p.y,p.id);if(w&&w.kind==="officer"){c.detainedUntil=omGame.minutes+120;c.crewState="caught";omGame.heat=clamp(omGame.heat+20,0,100);logEvent("Taken for questioning",c.name+" is walked away by an officer.","security");}
+ checkCollapse();
+}
+function fightBreaksOut(a,b){
+ noteFight();injure(a,180,randomInt(5,15));injure(b,180,randomInt(5,15));speak(a,pickLine(FIGHT_LINES,dayNow()+activityIndex(a)),4);speak(b,pickLine(FIGHT_LINES,dayNow()+activityIndex(b)+1),4);playCueNear("fight",a);
+ omGame.distractions.push({id:entityId("div"),x:(a.x+b.x)/2,y:(a.y+b.y)/2,until:omGame.elapsed+25,source:a.id});omGame.heat=clamp(omGame.heat+8,0,100);
+ let hot=profileOf(a).weakness==="hotheaded"?a:b,w=witnessed(a.x,a.y,"");
+ if(w&&w.kind==="officer"){hot.detainedUntil=omGame.minutes+120;hot.crewState="caught";}
+ logEvent("A fight",a.short+" and "+b.short+" go at each other. Officers converge; "+(w&&w.kind==="officer"?hot.short+" is taken away.":"nobody is taken away this time."),"social");
+}
+// Riots: heat, fights and a social block, or a crew with a grudge and a favour to spend.
+function tickRiot(){
+ if(!omGame||omGame.over)return;let r=routineNow();
+ if(omGame.riot){if(omGame.minutes>=omGame.riot.until||r.kind!=="social")endRiot();return;}
+ if(omGame.escape)return;
+ if(r.kind!=="social"||omGame.heat<70||fightsToday()<2||omGame.lockdownUntil>omGame.minutes)return;
+ if(omGame.riotCheck===omGame.minutes|0)return;omGame.riotCheck=omGame.minutes|0;
+ if(randomInt(0,99)<8)startRiot(r.zone==="yard"?"yard":r.zone==="association"?"association":"yard","heat");
+}
+function startRiot(zone,source){
+ if(omGame.riot)return false;let z=zoneById(zone);if(!z||["yard","association","canteen"].indexOf(zone)<0)zone="yard",z=zoneById("yard");
+ omGame.riot={zone:zone,started:omGame.minutes,until:omGame.minutes+75,source:source};omGame.stats.riots=(omGame.stats.riots||0)+1;omGame.heat=100;
+ for(let i=0;i<GUARDS.length;i++){let g=actorById(GUARDS[i].id);if(!g||isDown(g))continue;g.targetId="";g.notice=0;g.lastSeen=null;g.riotPost=true;clearPath(g);}
+ for(let c of omGame.people)if(c.role==="inmate"&&!c.escaped&&zoneOf(c)===zone&&!isDown(c)){c.rioting=true;c.retryAt=0;clearPath(c);}
+ logEvent("Riot",(source==="incited"?"Your crew starts it. ":"")+"The "+z.label.toLowerCase()+" erupts. Every officer is heading there; the rest of the prison is thin for an hour or so, and tunnel and fence work can go ahead in daylight. Lockdown will follow.","security");
+ say("Riot in the "+z.label.toLowerCase()+". Officers are converging on it.");castLine("pa","riot",true);playCue("alarm");securityEpoch++;updateSecurityPolicy();dirty();return true;
+}
+function endRiot(){
+ if(!omGame.riot)return;let z=zoneById(omGame.riot.zone);omGame.riot=null;omGame.lockdownUntil=Math.max(omGame.lockdownUntil,omGame.minutes+240);omGame.heat=100;
+ for(let i=0;i<GUARDS.length;i++){let g=actorById(GUARDS[i].id);if(g){g.riotPost=false;clearPath(g);}}
+ for(let c of omGame.people)if(c.rioting){c.rioting=false;c.routineKey="";clearPath(c);c.stress=Math.min(100,c.stress+15);}
+ logEvent("Order restored","The "+(z?z.label.toLowerCase():"yard")+" is cleared. Lockdown for four hours; everyone to their blocks.","security");say("The riot is over. Lockdown.");castLine("pa","lockdown",true);securityEpoch++;updateSecurityPolicy();dirty();
+}
+function riotAnchor(){let z=zoneById(omGame.riot.zone);return z?z.anchor:{x:27,y:43};}
+function tickRioter(c,dt){
+ if(!omGame.riot||zoneOf(c)!==omGame.riot.zone){c.rioting=false;return false;}
+ let z=zoneById(omGame.riot.zone);
+ if(c.pathCursor>=c.path.length&&omGame.elapsed>=c.retryAt){c.retryAt=omGame.elapsed+2+randomInt(0,20)/10;let x=z.x+1+randomInt(0,z.w-3),y=z.y+1+randomInt(0,z.h-3);if(!navBlocked[tileId(x,y)])routeTo(c,x,y);}
+ walkPath(c,dt,2.6);c.action="Rioting";c.stress=Math.min(100,c.stress+dt*.2);
+ let slot=Math.floor(omGame.elapsed/5);if(slot!==Math.floor((omGame.elapsed-dt)/5)&&(slot+activityIndex(c))%4===0)speak(c,pickLine(RIOT_LINES,slot+activityIndex(c)),3);
+ return true;
+}
+function tickRiotGuard(g,dt){
+ if(!omGame.riot||!g.riotPost)return false;let a=riotAnchor();
+ if(sqDistance(g.x,g.y,a.x+.5,a.y+.5)>16){if(g.pathCursor>=g.path.length&&omGame.elapsed>=g.retryAt){g.retryAt=omGame.elapsed+1.5;if(!routeTo(g,a.x,a.y))routeNear(g,a.x,a.y,2);}walkPath(g,dt,2.2);g.action="Responding to the disturbance";}
+ else{clearPath(g);g.action="Containing the disturbance";}
+ return true;
+}
+// Once a second from the routine tick.
+function tickForce(){
+ let p=player();if(!p)return;
+ if(p.dragging)tickDragging(p);
+ for(let c of omGame.people){if(c.wasDown&&!isDown(c)){if(c.role==="guard")guardWakes(c);else{c.wasDown=false;c.action="Up on their feet";}}}
+ tickHostility();tickRiot();
+ if(p.detainedUntil<=omGame.minutes&&p.detainedWhere==="infirmary"&&p.health<45)p.health=45;
+}

@@ -1,0 +1,40 @@
+// Guidance, not a quest lock. A real escape is allowed even before every chapter goal is done.
+const CHAPTERS = [
+ {title:"01 / The Count",line:"Learn what an ordinary day looks like.",goals:["Answer one count","Meet two inmates"]},
+ {title:"02 / Earned Access",line:"A work detail is also a key.",goals:["Complete two work batches","Observe a route in person"]},
+ {title:"03 / The Network",line:"People are part of the plan.",goals:["Complete a favour","Use a stash"]},
+ {title:"04 / Something Missing",line:"Make something the institution didn't request.",goals:["Craft a useful item","Study two locations"]},
+ {title:"05 / Pressure",line:"Turn materials and time into an opportunity.",goals:["Finish an escape project","Learn the route's timing"]},
+ {title:"06 / Choose the Route",line:"A plan needs a place, a time and a fallback.",goals:["Select a route","Begin an actual escape"]},
+ {title:"07 / Beyond the Walls",line:"The gate is not the finish line.",goals:["Cross the outer perimeter","Reach extraction and leave"]}
+];
+function chapterTests(index){
+  let s=omGame.stats;
+  if(index===0)return [s.counts>=1,s.met>=2];
+  if(index===1)return [s.work>=2,s.observations>=1];
+  if(index===2)return [s.favors>=1,s.stashes>=1];
+  if(index===3)return [s.crafted>=1,s.observations>=2];
+  if(index===4){let ready=false,known=false;for(let i=0;i<ROUTES.length;i++){let r=ROUTES[i];if(projectReady(r.project)){ready=true;if(knownIntel(r.intel))known=true;}}return [ready,known];}
+  if(index===5)return [!!omGame.selectedRoute,!!omGame.escape||!!omGame.ending];
+  return [isOutside(player())||!!omGame.ending,!!omGame.ending];
+}
+function nearestInmate(filter){let p=player(),best=null,d=1e9;for(let c of omGame.people){if(c.role!=="inmate"||c.escaped||(filter&&!filter(c)))continue;let n=sqDistance(c.x,c.y,p.x,p.y);if(n<d){d=n;best=c;}}return best;}
+function nextStepAction(action){
+ if(!omGame)return false;let p=player();
+ if(action==="routine"){returnToRoutine();paused=false;dirty();return true;}
+ if(action==="inmate"){let c=nearestInmate(function(a){return !a.met;})||nearestInmate();if(c)selectPerson(c.id,true);return !!c;}
+ if(action==="favor"){let c=nearestInmate(function(a){return a.met&&a.favorStage<2;})||nearestInmate(function(a){return a.favorStage<2;})||nearestInmate();if(c)selectPerson(c.id,true);return !!c;}
+ if(action==="work"){inspectSite(jobFor(p.job).site);focusSite(jobFor(p.job).site);return true;}
+ if(action==="observe"){let site=omGame.story?findIntelSite(routeById(omGame.story.route).intel):"laundryCart";inspectSite(site);focusSite(site);return true;}
+ if(action==="stash"){inspectSite("bunk");return true;}
+ if(action==="craft"){setPanel("inventory");return true;}
+ if(action==="directory"){setPanel("map");return true;}
+ if(action==="projects"){setPanel("schemes");return true;}
+ if(action==="escape"){setPanel("escape");return true;}
+ return false;
+}
+function updateCampaign(){
+  if(omGame.ending){omGame.chapter=6;omGame.chapterDone[6]=true;return;}
+  for(let i=0;i<6;i++){let checks=chapterTests(i);if(checks[0]&&checks[1]&&!omGame.chapterDone[i]){omGame.chapterDone[i]=true;logEvent("Chapter complete",CHAPTERS[i].title+". "+CHAPTERS[i].line,"chapter");}}
+  let n=0;while(n<6&&omGame.chapterDone[n])n++;if(omGame.chapter!==n){omGame.chapter=n;playCue("intel");dirty();}
+}

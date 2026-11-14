@@ -1,0 +1,60 @@
+<import OverviewPanel from="./overview.ui" />
+<import BuildPanel from="./build.ui" />
+<import ResearchPanel from="./research.ui" />
+<import StockPanel from="./storage.ui" />
+<import FrontierPanel from="./frontier.ui" />
+<import ChroniclePanel from="./chronicle.ui" />
+<import SelectionPanel from="./selection.ui" />
+<div className="os-inspector" ospanel={String(activePanel)}>
+  <div className="os-inspector-head"><span className="os-label">{activePanel === "overview" ? "SETTLEMENT" : activePanel === "inspect" ? "FIELD NOTES" : activePanel}</span><button className="os-btn os-link" @click={cancelTool}>Deselect</button><button className="os-btn os-mobile-close" @click={closeMobilePanel}>Close panel ↓</button></div>
+  <div className="os-inspector-content">
+    #if (activePanel === "overview")
+      <OverviewPanel />
+    #end
+    #if (activePanel === "build")
+      <BuildPanel />
+    #end
+    #if (activePanel === "research")
+      <ResearchPanel />
+    #end
+    #if (activePanel === "storage")
+      <StockPanel />
+    #end
+    #if (activePanel === "frontier")
+      <FrontierPanel />
+    #end
+    #if (activePanel === "chronicle")
+      <ChroniclePanel />
+    #end
+    #if (activePanel === "inspect")
+      <SelectionPanel />
+    #end
+    #if (activePanel === "work")
+      <div className="os-stack">
+        <div className="os-section-title">Everyone has a part.</div>
+        <button className="os-btn" @click={toggleAutoMode}>{autoMode ? "Auto steward enabled" : "Enable auto steward"}</button>
+        <span className="os-prose">{autoStatusText}</span>
+        <span className="os-prose">Population-based reserves keep gatherers, cooks, crafters and researchers supplied. Production targets remain editable in Stock.</span>
+        <button className="os-btn" oson={String(autoBuildEnabled)} @click={toggleAutoBuild}>{autoBuildEnabled ? "Build essentials: ON" : "Build essentials: OFF"}</button>
+        <span className="os-tiny">{autoPlanText}</span>
+        <button className="os-btn" @click={resetAutoProduction}>Reset production for population</button>
+        <button className="os-btn" @click={toggleProfiler}>{perfEnabled ? "Stop profiler" : "Profile simulation"}</button>
+        <span className="os-tiny">{performanceText}</span>
+        <span className="os-prose">Set priorities, then let the colony work. Lower numbers mean higher priority. Critical hunger, exhaustion, and emergencies can interrupt ordinary tasks.</span>
+        <button className="os-btn os-primary os-wide" @click={openWork}>Open work and schedules</button>
+        <div className="os-card"><span className="os-label">WORK BOARD</span><span className="os-small">{workBoardText}</span><span className="os-tiny os-dim">Fix access, power or supplies before retrying. Disabled work categories can be enabled in priorities.</span>
+          #if (workRetryAvailable)
+            <button className="os-btn" @click={retryBlockedWork}>Retry blocked tasks</button>
+          #end
+        </div>
+        #each (job in blockedWorkCards) key={job.id}
+          <div className="os-card"><div>{job.name}</div><span className="os-small">{job.reason}</span><button className="os-btn os-link" @click={() => inspectWorkJob(job.id)}>Locate task · {job.location}</button></div>
+        #end
+        #each (c in colonistCards) key={c.id}
+          <div className="os-card"><div className="os-row"><img className="os-avatar" src={asset(c.sprite)} alt="" /><div><div>{c.name}</div><span className="os-small os-dim">{c.action}</span></div></div><button className="os-btn os-link" @click={() => selectColonist(c.id)}>Inspect needs and skills</button></div>
+        #end
+        <div className="os-row"><button className="os-btn os-tab" @click={draftEveryone}>Draft everyone</button><button className="os-btn os-tab" @click={standDownEveryone}>Return to work</button></div>
+      </div>
+    #end
+  </div>
+</div>

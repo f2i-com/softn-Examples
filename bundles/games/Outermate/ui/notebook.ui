@@ -1,0 +1,5 @@
+<div className="om-note">{knownSummary}<br />Rumours become observations when you visit. A second observation after the cooldown confirms the pattern.</div>
+#each (k in intelCards) key={k.id}<div className="om-card"><div className="om-row om-between"><h3>{k.title}</h3><span className={"om-chip "+k.status}>{k.status}</span></div><p>{k.body}</p><button className="om-link" @click={() => inspectSite(k.site)}>Find an observation point ↗</button></div>#end
+<div className="om-section-title">YOUR OWN NOTES</div><textarea :bind={notebookText} maxlength={8000} rows={5} placeholder="A time, a name, a fallback plan..." /><button className="om-btn om-wide" @click={saveNotebook}>Keep these notes</button>
+<div className="om-section-title">THE RECORD</div>
+#each (l in logCards) key={l.id}<div className={"om-log om-log-"+l.kind}><time>DAY {l.day} / {l.time}</time><strong>{l.title}</strong><p>{l.body}</p></div>#end

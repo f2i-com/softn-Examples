@@ -1,0 +1,78 @@
+<div className="os-stack">
+  <div><div className="os-section-title">An older world.</div><span className="os-small os-dim">Trade at the gate. Explore beyond the lights.</span></div>
+  <div className="os-row"><button className="os-btn os-primary os-tab" @click={() => chooseTool("survey")}>Survey terrain</button><button className="os-btn os-tab" @click={callCaravan}>Call caravan</button></div>
+  <span className="os-label">WEAPONS AND EQUIPMENT</span>
+  <span className="os-prose">Weapons must be collected. Drafted settlers use their equipped weapon; unarmed settlers can only fight at arm's length. Purchases arrive south of camp.</span>
+  #each (w in weaponCards) key={w.id}
+    <div className="os-card"><div className="os-item-name">{w.name}</div><div className="os-item-desc">{w.status}</div><button className="os-btn os-wide" @click={() => selectWeapon(w.id)}>Locate equipment</button></div>
+  #end
+  <span className="os-label">RECOVERED SIGNALS</span>
+  #if (ruinCards.length === 0)
+    <div className="os-card"><span className="os-prose">Nothing yet. The lifeboat is still listening.</span></div>
+  #end
+  #each (r in ruinCards) key={r.id}
+    <div className="os-card"><div className="os-between"><span className="os-cyan">{r.name}</span><span className="os-tiny os-dim">{r.progress}%</span></div><span className="os-item-desc">{r.status}</span><div className="os-row" style={{ marginTop: "8px" }}><button className="os-btn os-tab" @click={() => selectSite(r.id)}>Locate</button><button className="os-btn os-tab" @click={() => r.studied ? readArchive(r.id) : scheduleExcavation(r.id)}>{r.studied ? "Read archive" : "Excavate"}</button></div></div>
+  #end
+  <div className="os-rule" />
+  <span className="os-label">TRADE and CONTACT</span>
+  <span className="os-prose">{supplyMessage}</span>
+  #each (t in tradeCards) key={t.id}
+    <div className="os-card"><div className="os-item-name">{t.name}</div><div className="os-item-cost">Give {t.cost}</div><div className="os-item-desc">Receive {t.receive}</div><div className="os-between" style={{ marginTop: "8px" }}><span className="os-tiny os-dim">{t.remaining} exchanges left</span><button className="os-btn" disabled={!t.available} @click={() => buyTrade(t.id)}>Exchange</button></div></div>
+  #end
+  <div className="os-rule" />
+  <span className="os-label">STANDING</span>
+  #each (s in standingCards) key={s.id}
+    <div className="os-card"><div className="os-between"><span className="os-item-name">{s.name}</span><span className="os-cyan">{s.word} · {s.value}</span></div><div className="os-item-desc">{s.note}</div></div>
+  #end
+  #if (campCards.length > 0)
+    <span className="os-label">RAIDER CAMPS</span>
+    #each (camp in campCards) key={camp.id}
+      <div className="os-card"><div className="os-between"><span className="os-item-name">Raider camp</span><span className="os-tiny os-dim">{camp.status}</span></div><div className="os-item-cost">{camp.goods}</div><div className="os-row" style={{ marginTop: "8px" }}><button className="os-btn os-tab" @click={() => selectCamp(camp.id)}>Locate</button><button className="os-btn os-tab" disabled={camp.roused} @click={() => scheduleStrike(camp.id)}>Strike</button></div></div>
+    #end
+  #end
+  <div className="os-frontier-head"><div><span className="os-label">THE WIDER COUNTRY</span><div className="os-frontier-title">{frontierSummary}</div></div>#if (viewMode === "far")<button className="os-btn os-tab os-frontier-home" @click={focusCamp}>⌂ Back to colony</button>#end</div>
+  <span className="os-prose">Real places on the plane. A party walks there together, works the ground, and walks home with what it found. Press a mark on the chart to plan a trip or to watch a party on the road.</span>
+  <div className="os-chart">
+    <img className="os-chart-ground" src={regionMapSrc} alt="The wider country" draggable="false" />
+    #each (m in chartMarks) key={m.id}
+      <button className={"os-chart-mark os-chart-" + m.kind} style={m.style} title={m.title} oson={String(m.on)} @click={() => chartMarkClick(m.id)}><i /></button>
+    #end
+  </div>
+  <div className="os-chart-legend"><span><i className="os-chart-key os-key-ring" />{chartRingText}</span><span><i className="os-chart-key os-key-party" />party</span><span><i className="os-chart-key os-key-rover" />alone</span><span><i className="os-chart-key os-key-camp" />camp</span></div>
+  #if (expeditionCards.length > 0)
+    <span className="os-label">ON THE ROAD</span>
+    #each (p in expeditionCards) key={p.id}
+      <div className="os-card os-party-card" oson={String(p.watching)}>
+        <div className="os-between"><span className="os-item-name">{p.names}</span><span className="os-tiny os-dim">{p.eta}</span></div>
+        <div className="os-item-desc">{p.purpose} · {p.region}</div>
+        <div className="os-item-cost">{p.phase}</div>
+        <div className="os-party-track"><i style={p.progressStyle} /></div>
+        <div className="os-row" style={{ marginTop: "8px", flexWrap: "wrap" }}>
+          #if (p.walk)<button className="os-btn os-tab" oson={String(p.watching)} @click={() => watchRover(p.leaderId)}>{p.watching ? "Watching · back to colony" : "Watch them"}</button>#end
+          #if (p.canRecall && p.purpose !== "Roving alone")<button className="os-btn os-tab" @click={() => recallParty(p.id)}>Bring them home</button>#end
+          #if (p.canRecall && p.purpose === "Roving alone")<button className="os-btn os-tab" @click={() => roverReturn(p.id)}>Bring them home</button>#end
+        </div>
+      </div>
+    #end
+  #end
+  <span className="os-label">KNOWN COUNTRY</span>
+  #each (r in regionCards) key={r.id}
+    <div className="os-card os-region-card" style={r.style} osout={String(r.out)}>
+      <div className="os-between"><span className="os-item-name"><i className="os-region-swatch" style={r.swatch} />{r.name}</span><span className="os-tiny os-dim">{r.walk}</span></div>
+      <div className="os-region-badges"><span className="os-badge">{r.label}</span><span className={"os-badge os-badge-danger-" + r.dangerLevel}>{r.danger}</span>#if (r.surveyed)<span className="os-badge os-badge-ok">Surveyed</span>#end#if (r.camp)<span className="os-badge os-badge-camp">Camp</span>#end#if (r.out)<span className="os-badge os-badge-out">Party out</span>#end</div>
+      <div className="os-item-desc">{r.text}</div>
+      <div className="os-item-cost">{r.status}</div>
+      <div className="os-row" style={{ marginTop: "8px", flexWrap: "wrap" }}>
+        #if (r.camp)<button className="os-btn os-tab" disabled={r.out} @click={() => planExpedition(r.id, "resupply")}>Resupply</button><button className="os-btn os-tab" @click={() => recallCamp(r.id)}>Recall</button>#end
+        #if (!r.camp)<button className="os-btn os-tab" disabled={r.out} @click={() => planExpedition(r.id, "survey")}>Survey</button><button className="os-btn os-tab" disabled={r.out} @click={() => planExpedition(r.id, "gather")}>Gather</button>#end
+        #if (r.canCamp)<button className="os-btn os-tab" disabled={r.out} @click={() => planExpedition(r.id, "camp")}>Found a camp</button>#end
+      </div></div>
+  #end
+  <span className="os-label">THE PERIMETER</span>
+  <span className="os-prose">{perimeterText}</span>
+  <div className="os-rule" />
+  <span className="os-label">CHOOSE WHAT COMES NEXT</span>
+  #each (e in endingCards) key={e.id}
+    <div className="os-card"><div className="os-item-name">{e.name}</div><div className="os-item-desc">{e.description}</div><div className="os-item-cost">{e.status}</div><button className="os-btn os-wide" disabled={!e.ready} @click={() => chooseEnding(e.id)} style={{ marginTop: "9px" }}>Choose {e.name}</button></div>
+  #end
+</div>

@@ -1,0 +1,13 @@
+<header className="om-hud">
+ <button className="om-brand" title="Pause and open the menu" @click={() => openDialog("menu")}><img className="om-brand-wordmark" src={asset("assets/art/logo-hud.svg")} alt="Outermate" /><img className="om-brand-symbol" src={asset("assets/art/logo-mark.svg")} alt="Outermate" /></button>
+ <div className="om-hud-values">
+  <div className="om-stat"><span>SCRIP</span><strong>{hud.scrip}<small> cr</small></strong></div>
+  <div className="om-stat om-wide-only"><span>FAVOURS</span><strong>{hud.favors}</strong></div>
+  <div className={"om-stat " + (hud.suspicion >= 60 ? "om-danger-text" : "")}><span>SUSPICION</span><strong>{hud.suspicion}<small>%</small></strong></div>
+  <button className="om-alert-status" @click={() => setPanel("security")}><i className={hud.alertLevel >= 2 ? "om-led om-led-red" : "om-led"} /><span>{hud.alert}</span></button>
+ </div>
+ <div className="om-clock"><span>DAY {hud.day} <small>{hud.weather}</small></span><strong>{hud.time}</strong></div>
+ <div className="om-speed"><button className={"om-btn " + (paused ? "is-active" : "")} title="Pause / resume (Space)" @click={togglePause}>{paused ? "▶" : "Ⅱ"}</button><button className={"om-btn " + (!paused && gameSpeed === 1 ? "is-active" : "")} @click={() => setSpeed(1)}>1×</button><button className={"om-btn " + (!paused && gameSpeed === 2 ? "is-active" : "")} @click={() => setSpeed(2)}>2×</button><button className={"om-btn om-wide-only " + (!paused && gameSpeed === 4 ? "is-active" : "")} @click={() => setSpeed(4)}>4×</button><button className="om-btn om-speed-cycle" title="Cycle game speed: 1, 2 or 4 times" @click={() => setSpeed(gameSpeed === 1 ? 2 : gameSpeed === 2 ? 4 : 1)}>{gameSpeed + "×"}</button></div>
+ <button className="om-btn om-menu-button" title="Save and menu" @click={() => openDialog("menu")}>☰</button>
+</header>
+<div className="om-routine-bar"><div><i className="om-led" /><strong>{hud.routine}</strong><span className="om-wide-only">NEXT: {hud.next}</span></div><div>#if (hud.dragging)<button className="om-btn om-mode is-active" title="Leave the officer here" @click={dropBody}>{"Drop " + hud.dragging + " here"}</button>#end<button className={"om-btn om-guide-btn " + (guideSheetOpen ? "is-active" : "")} aria-pressed={guideSheetOpen} title="Open the escape guide" @click={toggleGuideSheet}>Guide</button><button className={"om-btn om-mode " + (hud.autoDay ? "is-active" : "")} aria-pressed={hud.autoDay} title="Automatically follow the prison day, or take control" @click={toggleAutoDay}>{hud.autoDay ? "Auto ON · Take control" : "Auto day"}</button><button className={"om-btn om-wide-only " + (hud.sprint ? "is-active" : "")} @click={toggleSprint}>{hud.sprint ? "Run ON" : "Walk"}</button></div></div>

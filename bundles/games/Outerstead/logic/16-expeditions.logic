@@ -1,0 +1,360 @@
+// The wider country. Beyond the 96-tile map is an overworld of regions, seeded on their own, reached by
+// expeditions that leave the map for Sols at a time. A party surveys, gathers, founds a remote camp or carries
+// supplies out to one. Settlers who are away are frozen: not fed, not drafted, not drawn, not counted as present.
+const REGION_KINDS={
+  ridge:{label:"High ground",names:["Salt Ridge","the Ashback","the Kettle Hills","Long Ridge"],yield:{ore:14,stone:12},danger:1,travel:1,text:"Bare stone stepped like a stair, ore in the seams and wind in everything."},
+  marsh:{label:"Wetland",names:["the Drowned Meadow","Reed Bottom","the Slow Water","Heron Fen"],yield:{raw:18,wood:6},danger:1,travel:1,text:"Shallow water and tall reeds, thick with edible roots and things that move under them."},
+  forest:{label:"Woodland",names:["the Lantern Wood","Pale Grove","the Standing Timber","Owl Wood"],yield:{wood:26,raw:6},danger:1,travel:1,text:"Tall timber that has never been cut, and a floor that is soft for the wrong reasons."},
+  flats:{label:"Glass flats",names:["the Ringing Flats","the Pane","Mirror Reach","the Shard Fields"],yield:{glass:3,metal:8},danger:2,travel:2,text:"Fused ground that sings in the wind; Hollowglass lies loose where the glass wind dropped it."},
+  coast:{label:"Coast",names:["the Grey Shore","Kettle Bay","the Wreck Coast","Ember Strand"],yield:{metal:14,parts:2,medicine:3},danger:1,travel:2,text:"A shingle coast littered with what the tide brings in from wrecks nobody logged."},
+  deep:{label:"The far Hollow",names:["the Deep Hollow","the Under Ridge","the Silent Country","the Long Dark"],yield:{glass:4,ore:10,cores:0},danger:3,travel:3,text:"Where the ground goes down instead of on. Nothing grows and the beacon's pattern is louder."}
+};
+const REGION_KIND_KEYS=["ridge","marsh","forest","flats","coast","deep"];
+// One feature per region: what the first survey finds there.
+const REGION_FEATURES={
+  waystation:{title:"A Meridian waystation",text:"An unmanned Meridian waystation, stocked and swept, with a map of the country on the wall and a note asking travellers to keep it that way."},
+  wreck:{title:"A hauler on its side",text:"A cargo hauler that came down long before you did. The hold is half full and the cab is empty, and the log ends mid-sentence."},
+  spring:{title:"A warm spring",text:"Water coming out of the ground warm enough to sit in, ringed with a green nobody has seen anywhere else on Hollow-7."},
+  beacon:{title:"A second beacon",text:"A beacon like the one under the ridge, older, half buried, transmitting the same pattern a beat behind."},
+  ashcamp:{title:"An Ashwalker season camp",text:"A ring of stone hearths and a cache pit, empty this season. The Ashwalkers will be back, and they will know somebody has been."},
+  grove:{title:"A grove that was planted",text:"Trees in rows. Somebody planted them, generations ago, and nobody harvested what they grew."}
+};
+const REGION_FEATURE_KEYS=["waystation","wreck","spring","beacon","ashcamp","grove"];
+const EXPEDITION_PURPOSES={survey:"Survey",gather:"Gather",camp:"Found a camp",resupply:"Resupply the camp"};
+// How far out each ring of country lies, in tiles from the landing, and how long the work at a site takes in minutes.
+const REGION_DIST=[0,260,520,780];
+const EXPEDITION_WORK={survey:360,gather:600,camp:0,resupply:60};
+const WALK_TILES_PER_HOUR=2.1*30;
+// Where a region is on the plane: a real place a party walks to, whose site is drawn in its chunk.
+function regionSite(reg){
+  if(reg.x===undefined||reg.y===undefined){let k=regionKind(reg),h=homeOrigin()+HOME_SIZE/2,a=regionAngle(reg)*Math.PI/180,d=REGION_DIST[Math.min(3,k.travel)]+hashSeed(reg.id+"|site")%50;reg.x=Math.round(h+Math.cos(a)*d);reg.y=Math.round(h+Math.sin(a)*d);}
+  return {x:reg.x,y:reg.y};
+}
+function regionDistance(reg){let s=regionSite(reg),h=homeOrigin()+HOME_SIZE/2;return Math.sqrt(sqDistance(s.x,s.y,h,h));}
+function regionWalkHours(reg){return Math.max(1,Math.round(regionDistance(reg)/WALK_TILES_PER_HOUR));}
+function hoursText(h){return h<1?"under an hour":h===1?"1 hour":h+" hours";}
+function expeditionEta(reg,purpose){return regionWalkHours(reg)*2*60+(EXPEDITION_WORK[purpose]||0);}
+function expeditionById(id){let list=expeditionsOf();for(let i=0;i<list.length;i++)if(list[i].id===id)return list[i];return null;}
+function partyMembers(e){let out=[];for(let i=0;i<e.members.length;i++){let c=findColonist(e.members[i]);if(c&&!c.dead&&c.rover&&c.rover.party===e.id)out.push(c);}return out;}
+function partyLeader(e){let m=partyMembers(e);if(!m.length)return null;if(e.leader){for(let i=0;i<m.length;i++)if(m[i].id===e.leader)return m[i];}let best=null;for(let i=0;i<m.length;i++)if(!best||(m[i].skills.explore||0)>(best.skills.explore||0))best=m[i];e.leader=best.id;return best;}
+function partyNames(e){let names=[];for(let i=0;i<e.members.length;i++){let c=findColonist(e.members[i]);if(c&&!c.dead)names.push(c.short);}return names.join(", ");}
+function regionRng(seed){let h=hashSeed(String(seed>>>0)+"|regions");return crewRng(h);}
+function generateRegions(seed){
+  let r=regionRng(seed),kinds=REGION_KIND_KEYS.slice(),features=REGION_FEATURE_KEYS.slice(),out=[];
+  for(let i=kinds.length-1;i>0;i--){let j=r.int(0,i);let t=kinds[i];kinds[i]=kinds[j];kinds[j]=t;}
+  for(let i=features.length-1;i>0;i--){let j=r.int(0,i);let t=features[i];features[i]=features[j];features[j]=t;}
+  for(let i=0;i<kinds.length;i++){let k=REGION_KINDS[kinds[i]];out.push({id:"r"+i,kind:kinds[i],name:r.pick(k.names),feature:features[i],known:false,surveyed:false,visits:0,camp:null,angle:Math.round(i*60+r.int(-22,22))});}
+  // The nearest easy ground is known at landing: the ranger saw it on the way down.
+  let first=-1;for(let i=0;i<out.length;i++)if(REGION_KINDS[out[i].kind].travel===1&&first<0)first=i;
+  if(first<0)first=0;out[first].known=true;
+  return out;
+}
+function regionsOf(){if(!osGame.regions)osGame.regions=generateRegions(osGame.seed||0);return osGame.regions;}
+function regionById(id){let list=regionsOf();for(let i=0;i<list.length;i++)if(list[i].id===id)return list[i];return null;}
+function regionKind(reg){return REGION_KINDS[reg.kind]||REGION_KINDS.ridge;}
+function expeditionsOf(){if(!osGame.expeditions)osGame.expeditions=[];return osGame.expeditions;}
+function revealRegion(reason){
+  let list=regionsOf();for(let i=0;i<list.length;i++){let reg=list[i];if(reg.known)continue;reg.known=true;
+    chronicle("Word of "+reg.name,reason+" "+regionKind(reg).label+", "+regionKind(reg).travel+" Sol"+(regionKind(reg).travel===1?"":"s")+" out.","colony");storyDirty=true;return reg;}
+  return null;
+}
+// Everyone alive, including those away; alivePeople() is only those present on the map.
+function everyoneAlive(){let list=[];for(let i=0;i<osGame.people.length;i++)if(!osGame.people[i].dead)list.push(osGame.people[i]);return list;}
+function awayPeople(){let list=[];for(let i=0;i<osGame.people.length;i++){let p=osGame.people[i];if(!p.dead&&p.away)list.push(p);}return list;}
+function canTravel(c){return !c.dead&&!c.away&&!c.rover&&!c.child&&!c.drafted&&!c.carried&&c.health>=60&&c.bleed<=0;}
+function expeditionCost(reg,purpose,count){
+  let k=regionKind(reg),meals=(k.travel*2+3)*count,goods={meals:meals};
+  if(purpose==="camp"){goods.wood=20;goods.metal=10;goods.meals=meals+12;}
+  if(purpose==="resupply")goods.meals=meals+12;
+  return goods;
+}
+function expeditionDuration(reg,purpose){let k=regionKind(reg);return purpose==="camp"?k.travel*1440:(k.travel*2+1)*1440;}
+function expeditionCheck(reg,purpose,members){
+  if(!reg||!reg.known)return "That country is not known yet.";
+  if(!EXPEDITION_PURPOSES[purpose])return "Choose what the party is for.";
+  if(purpose==="camp"&&reg.camp)return "There is already a camp there.";
+  if(purpose==="resupply"&&!reg.camp)return "There is no camp to supply.";
+  if(purpose==="camp"&&regionKind(reg).danger>=3)return "Nobody could hold a camp in the far Hollow.";
+  if(!members.length)return "Choose at least one settler.";
+  if(purpose==="camp"&&members.length<2)return "A camp needs at least two people to hold it.";
+  for(let i=0;i<members.length;i++){let c=findColonist(members[i]);if(!c||!canTravel(c))return (c?c.short:"Somebody")+" cannot travel: healthy, present adults only.";}
+  if(alivePeople().length-members.length<1)return "Somebody has to stay and keep the lights on.";
+  for(let i=0;i<expeditionsOf().length;i++)if(expeditionsOf()[i].regionId===reg.id&&expeditionsOf()[i].phase==="out")return "A party is already on the road there.";
+  let cost=expeditionCost(reg,purpose,members.length),keys=Object.keys(cost);
+  for(let i=0;i<keys.length;i++)if((osGame.stock[keys[i]]||0)<cost[keys[i]])return "The party needs "+costText(cost)+".";
+  return "Ready";
+}
+function launchExpedition(regionId,purpose,members){
+  let reg=regionById(regionId),check=expeditionCheck(reg,purpose,members);if(check!=="Ready"){say(check);return false;}
+  let cost=expeditionCost(reg,purpose,members.length);stockTake(cost);
+  let site=regionSite(reg),k=regionKind(reg),each=k.travel*2+3;
+  let e={id:entityId("x"),regionId:reg.id,purpose:purpose,members:members.slice(),leaveAt:osGame.minutes,returnAt:osGame.minutes+expeditionEta(reg,purpose),phase:"out",walk:true,site:{x:site.x,y:site.y},workLeft:EXPEDITION_WORK[purpose]||0,goods:{},lines:[],carry:{}};
+  if(purpose==="resupply")e.carry={meals:12};
+  for(let i=0;i<members.length;i++){let c=findColonist(members[i]);releaseTask(c,true);cancelWeaponPickup(c);c.drafted=false;c.autoDefend=false;c.order=null;c.path=[];c.pathCursor=0;c.combatTarget="";c.away=null;
+    c.rover={goal:{x:site.x,y:site.y},rations:each,resting:false,returning:false,homeX:CENTRE,homeY:centreY(),walked:0,pack:{},forage:"",forageProgress:0,chunk:"",party:e.id,atSite:false};c.action="Setting out · "+reg.name;cancelTargetJobs(c.id);}
+  expeditionsOf().push(e);partyLeader(e);roverContext(findColonist(members[0]));
+  let names=partyNames(e),hours=regionWalkHours(reg);
+  chronicle("A party sets out for "+reg.name,names+" left at "+clockText(osGame.minutes%1440)+" to "+EXPEDITION_PURPOSES[purpose].toLowerCase()+". It is about "+hoursText(hours)+" on foot each way; watch them from the Frontier chart.","colony");
+  say(names+" set out for "+reg.name+". Watch them from the chart.");dialog="";viewDirty=true;storyDirty=true;refreshAll();return true;
+}
+// A party on the road, one tick at a time. Returns true when the member should stand where they are.
+function tickParty(c,dt){
+  let r=c.rover,e=expeditionById(r.party);if(!e){r.party="";return false;}
+  let reg=regionById(e.regionId),mins=dt*GAME_MINUTES_PER_SECOND,lead=partyLeader(e),isLead=!lead||lead.id===c.id,members=partyMembers(e);
+  if(!reg){e.phase="home";}
+  // Hungry with no rations left: eat from what the party carries.
+  if(c.food<25&&r.rations<=0&&e.goods&&(e.goods.raw||0)>=2){e.goods.raw-=2;if(!e.goods.raw)delete e.goods.raw;c.food=Math.min(100,c.food+25);}
+  // Nobody moving for a while with somewhere to go is stuck: drop the path, and a follower catches up to the leader.
+  let moved=r.lastX===undefined||Math.abs(c.x-r.lastX)>0.01||Math.abs(c.y-r.lastY)>0.01;r.lastX=c.x;r.lastY=c.y;
+  let idle=r.atSite||r.holding||e.phase==="work"||e.phase==="camp";r.stuck=(moved||r.resting||idle)?0:(r.stuck||0)+dt;
+  if(r.stuck>20){c.path=[];c.pathCursor=0;c.pathEpoch=-1;if(!isLead&&lead&&r.stuck>45){c.x=lead.x;c.y=lead.y;r.stuck=0;}}
+  // The party keeps together: nobody walks on while another rests or falls far behind, stragglers walk back to the leader, and nobody is left outside the window.
+  if(!onMap(c.x,c.y)&&lead&&!isLead){c.x=lead.x;c.y=lead.y;c.path=[];c.pathCursor=0;}
+  if(isLead){roverRecentre(c);
+    // The rations are gone before the work is done: turn for home with what there is.
+    if((e.phase==="out"||e.phase==="work")&&members.some(function(m){return m.rover.rations<=0&&m.food<40;})){e.lines.push("The rations ran out before the work was done, and the party turned for home.");partyFinishes(e,reg,e.phase==="out");return true;}
+    for(let i=0;i<members.length;i++){let m=members[i];if(m.id!==c.id&&(m.rover.resting||sqDistance(m.x,m.y,c.x,c.y)>30*30)){c.action="Waiting for "+m.short;return true;}}}
+  else if(lead){
+    if(lead.rover.resting){c.action="Waiting for "+lead.short;return true;}
+    let far=sqDistance(c.x,c.y,lead.x,lead.y)>30*30;
+    if(far){if(!r.regroup){r.regroup=true;c.path=[];c.pathCursor=0;}r.goal={x:Math.floor(lead.x),y:Math.floor(lead.y)};r.atSite=false;c.action="Catching up with "+lead.short;return false;}
+    else if(r.regroup){r.regroup=false;r.goal=null;c.path=[];c.pathCursor=0;}
+  }
+  if(e.phase==="out"){
+    // Near enough is at the site: the middle of it may be stone or water, and a party that keeps arriving beside it has arrived.
+    let d2=sqDistance(c.x,c.y,e.site.x+.5,e.site.y+.5);
+    if(!r.atSite&&!r.goal&&d2>12*12)r.nearTries=(r.nearTries||0)+1;
+    if(!r.atSite&&(d2<=12*12||(r.nearTries>3&&d2<=40*40))){r.atSite=true;r.goal=null;r.nearTries=0;c.path=[];c.action="At "+reg.name;}
+    if(!r.atSite&&!r.goal)r.goal={x:e.site.x,y:e.site.y};
+    if(isLead&&r.atSite){let all=true;for(let i=0;i<members.length;i++)if(!members[i].rover.atSite)all=false;if(all)partyArrives(e,reg,members);}
+    return r.atSite;
+  }
+  if(e.phase==="work"){c.action=(e.purpose==="gather"?"Gathering":e.purpose==="resupply"?"Unloading":"Surveying")+" · "+reg.name+" · "+Math.max(1,Math.ceil(e.workLeft/60))+" h left";if(isLead){e.workLeft-=mins;if(e.workLeft<=0)partyFinishes(e,reg);}return true;}
+  if(e.phase==="camp"){c.action="Holding the camp · "+reg.name;if(!r.resting&&c.rest<30)r.resting=true;return true;}
+  if(e.phase==="home"){if(!r.goal){r.goal={x:r.homeX+2,y:r.homeY+8};r.returning=true;r.atSite=false;}return false;}
+  return false;
+}
+function partyArrives(e,reg,members){
+  let names=partyNames(e);reg.known=true;
+  if(e.purpose==="camp"){
+    reg.camp={staff:members.map(function(m){return m.id;}),stock:{},meals:12,founded:dayNow(),hungry:0,walk:true,expeditionId:e.id};reg.visits++;noteFact("camps",1);e.phase="camp";
+    for(let i=0;i<members.length;i++){members[i].rover.holding=true;members[i].action="Holding the camp · "+reg.name;}
+    chronicle("A camp on "+reg.name,names+" have made camp. It will gather "+costText(regionKind(reg).yield)+" a Sol between them, and eat a meal each. Send supplies before the crates run out; watch them from the chart.","colony");say("The camp on "+reg.name+" is up.");storyDirty=true;return;
+  }
+  if(e.purpose==="resupply"&&reg.camp){reg.camp.meals+=e.carry.meals||0;e.goods=Object.assign({},reg.camp.stock);reg.camp.stock={};e.carry={};e.lines.push("The camp is fed for a while and its crates are coming home with the party.");}
+  e.phase="work";e.workLeft=EXPEDITION_WORK[e.purpose]||0;
+  chronicle("The party reaches "+reg.name,names+" have reached "+reg.name+(e.workLeft>0?". They will be "+(e.purpose==="gather"?"gathering":e.purpose==="resupply"?"unloading":"surveying")+" for about "+hoursText(Math.round(e.workLeft/60))+".":"."),"colony");
+  if(e.workLeft<=0)partyFinishes(e,reg);
+}
+function partyFinishes(e,reg,early){
+  let lines=e.lines||[],goods=e.goods||{};
+  if(!early)partyHazards(e,reg,lines);
+  let party=partyMembers(e),leader=partyLeader(e);
+  if(!early&&party.length&&(e.purpose==="survey"||!reg.surveyed))surveyFeature(reg,lines,goods,party);
+  if(!early&&party.length&&(e.purpose==="gather"||e.purpose==="survey")){let y=regionYield(reg,party.length,leader);let keys=Object.keys(y);for(let i=0;i<keys.length;i++)goods[keys[i]]=(goods[keys[i]]||0)+(e.purpose==="survey"?Math.round(y[keys[i]]/2):y[keys[i]]);reg.visits++;}
+  if(!early&&e.purpose!=="resupply"&&party.length){let more=revealRegion("The party saw, from "+reg.name+",");if(more)lines.push("From there they could see "+more.name+".");}
+  e.goods=goods;e.lines=lines;e.phase="home";
+  for(let i=0;i<party.length;i++){let c=party[i],r=c.rover;r.goal={x:r.homeX+2,y:r.homeY+8};r.returning=true;r.resting=false;r.atSite=false;r.holding=false;c.path=[];c.pathCursor=0;c.action="Coming home · "+reg.name;}
+  if(party.length)chronicle("Turning for home from "+reg.name,partyNames(e)+" are walking home"+(hasGoods(goods)?" with "+costText(goods):"")+".","colony");
+  storyDirty=true;viewDirty=true;
+}
+// The last member through the gate closes the expedition: the goods go to the stores and the story is told.
+function partyMemberHome(e,c){
+  if(partyMembers(e).length){if(c)say(c.short+" is home; the rest of the party is still on the road.");return;}
+  let reg=regionById(e.regionId)||{name:"the country"},goods=e.goods||{},lines=e.lines||[],people=[];
+  for(let i=0;i<e.members.length;i++){let p=findColonist(e.members[i]);if(p&&!p.dead)people.push(p);}
+  if(!people.length)goods={};
+  if(hasGoods(goods))stockGive(goods);
+  for(let i=0;i<people.length;i++){let p=people[i];p.skills.explore=Math.min(20,(p.skills.explore||0)+1);remember(p,"The wider country",5,1440*4);for(let j=0;j<people.length;j++)if(i!==j)adjustRelation(p,people[j],8);}
+  let names=people.map(function(p){return p.short;}).join(", ");
+  let body=(names?names+" came back from "+reg.name+(hasGoods(goods)?" with "+costText(goods)+".":"."):"Nobody came back from "+reg.name+". What they carried is out there with them.")+(lines.length?"\n\n"+lines.join("\n\n"):"");
+  noteFact("expeditions",1);chronicle("Back from "+reg.name,body,"colony");if(osGame.pendingEvent){if(!osGame.returnStories)osGame.returnStories=[];osGame.returnStories.push(body);while(osGame.returnStories.length>12)osGame.returnStories.shift();}else openStory("expedition",body);
+  e.phase="done";let list=expeditionsOf(),at=list.indexOf(e);if(at>=0)list.splice(at,1);
+  if(reg.camp&&reg.camp.expeditionId===e.id)reg.camp=null;
+  storyDirty=true;viewDirty=true;refreshAll();
+}
+function partyLost(e){let reg=regionById(e.regionId);if(reg&&reg.camp&&reg.camp.expeditionId===e.id)reg.camp=null;partyMemberHome(e,null);}
+// Bring a walking party home early, with whatever they have.
+function recallParty(id){
+  let e=expeditionById(id);if(!e||!e.walk)return;let reg=regionById(e.regionId);
+  if(e.phase==="camp"){recallCamp(e.regionId);return;}
+  if(e.phase==="home")return;
+  e.phase="home";let party=partyMembers(e);for(let i=0;i<party.length;i++){let c=party[i],r=c.rover;r.goal={x:r.homeX+2,y:r.homeY+8};r.returning=true;r.resting=false;r.atSite=false;c.path=[];c.pathCursor=0;c.action="Coming home";}
+  chronicle("The party turns back","Word went out to "+partyNames(e)+": come home. They are walking back from "+(reg?reg.name:"the country")+".","colony");say(partyNames(e)+" are coming home.");refreshAll();
+}
+function expeditionLeader(e){let best=null;for(let i=0;i<e.members.length;i++){let c=findColonist(e.members[i]);if(c&&!c.dead&&(!best||(c.skills.explore||0)>(best.skills.explore||0)))best=c;}return best;}
+function partyReturns(e,reg,goods,lines){
+  let people=[],spot=0;if(!e.members.some(function(id){let c=findColonist(id);return c&&!c.dead;}))goods={};
+  for(let i=0;i<e.members.length;i++){let c=findColonist(e.members[i]);if(!c||c.dead)continue;c.away=null;c.x=CENTRE-1.5+spot;c.y=centreY()+9.5;spot++;c.path=[];c.action="Back from "+reg.name;people.push(c);}
+  if(hasGoods(goods))stockGive(goods);
+  for(let i=0;i<people.length;i++){let c=people[i];c.skills.explore=Math.min(20,(c.skills.explore||0)+1);remember(c,"The wider country",5,1440*4);for(let j=0;j<people.length;j++)if(i!==j)adjustRelation(c,people[j],8);}
+  let names=people.map(function(p){return p.short;}).join(", ");
+  let body=(names?names+" came back from "+reg.name+(hasGoods(goods)?" with "+costText(goods)+".":"."):"Nobody came back from "+reg.name+". What they carried is out there with them.")+(lines.length?"\n\n"+lines.join("\n\n"):"");
+  noteFact("expeditions",1);
+  openStory("expedition",body);
+  chronicle("Back from "+reg.name,body,"colony");
+}
+function regionYield(reg,count,leader){
+  let k=regionKind(reg),skill=leader?(leader.skills.explore||0):4,mult=(0.6+0.4*Math.min(3,count))*(0.8+skill/25)*Math.max(0.4,1-0.15*reg.visits),out={};
+  let keys=Object.keys(k.yield);for(let i=0;i<keys.length;i++){let v=Math.round(k.yield[keys[i]]*mult);if(v>0)out[keys[i]]=v;}
+  return out;
+}
+function partySurvivors(e){let out=[];for(let i=0;i<e.members.length;i++){let c=findColonist(e.members[i]);if(c&&!c.dead)out.push(c);}return out;}
+function surveyFeature(reg,lines,goods,party){
+  let f=REGION_FEATURES[reg.feature];if(!f)return;
+  lines.push(f.title+". "+f.text);reg.surveyed=true;
+  if(reg.feature==="waystation"){osGame.standing.Meridian+=10;let more=revealRegion("The waystation's map showed");if(more)lines.push("The map on the wall showed "+more.name+".");}
+  if(reg.feature==="wreck"){goods.metal=(goods.metal||0)+20;goods.parts=(goods.parts||0)+6;}
+  if(reg.feature==="spring"){goods.medicine=(goods.medicine||0)+4;for(let p of (party||[]))remember(p,"We sat in the warm spring",5,1440*8);}
+  if(reg.feature==="beacon"){grantResearch(25,"Hollow Studies");lines.push(castText(mysteryOf().far||""));}
+  if(reg.feature==="ashcamp"){if(osGame.ashwalkerPeace)goods.medicine=(goods.medicine||0)+6;else lines.push("The party left the cache pit alone. Whether that was noticed is another matter.");}
+  if(reg.feature==="grove"){goods.raw=(goods.raw||0)+20;goods.wood=(goods.wood||0)+10;}
+}
+function partyHazards(e,reg,lines){
+  let k=regionKind(reg),factor=peacefulEvents()?0.3:1;
+  for(let i=0;i<e.members.length;i++){let c=findColonist(e.members[i]);if(!c||c.dead)continue;
+    if(randomUnit()<k.danger*0.12*factor){injureColonist(c,8+k.danger*6,reg.name,true);lines.push(c.short+" was hurt on "+reg.name+".");}
+    if(k.danger>=3&&!peacefulEvents()&&randomUnit()<0.05){c.away=null;c.buried=true;killColonist(c,/^the /.test(reg.name)?reg.name:"the "+reg.name);lines.push(c.name+" did not come back. The party could not bring them home.");}
+  }
+}
+function resolveExpedition(e){
+  let reg=regionById(e.regionId);if(!reg){e.phase="done";return;}
+  let lines=[],goods={};
+  if(e.purpose==="camp"){
+    partyHazards(e,reg,lines);
+    let staff=[];for(let i=0;i<e.members.length;i++){let c=findColonist(e.members[i]);if(c&&!c.dead){staff.push(c.id);c.away={expeditionId:"",regionName:reg.name,camp:reg.id};c.action="At the camp · "+reg.name;}}
+    if(staff.length){reg.camp={staff:staff,stock:{},meals:12,founded:dayNow(),hungry:0};reg.visits++;noteFact("camps",1);
+      chronicle("A camp on "+reg.name,staff.map(function(id){return findColonist(id).short;}).join(", ")+" have made camp. It will gather "+costText(regionKind(reg).yield)+" a Sol between them, and eat a meal each. Send supplies before the crates run out.","colony");say("The camp on "+reg.name+" is up.");}
+    else chronicle("No camp on "+reg.name,"Nobody arrived to hold it.","loss");
+    e.phase="done";return;
+  }
+  partyHazards(e,reg,lines);
+  let party=partySurvivors(e),leader=expeditionLeader(e);
+  if(party.length&&(e.purpose==="survey"||!reg.surveyed))surveyFeature(reg,lines,goods,party);
+  if(party.length&&(e.purpose==="gather"||e.purpose==="survey")){let y=regionYield(reg,party.length,leader);let keys=Object.keys(y);for(let i=0;i<keys.length;i++)goods[keys[i]]=(goods[keys[i]]||0)+(e.purpose==="survey"?Math.round(y[keys[i]]/2):y[keys[i]]);reg.visits++;}
+  if(e.purpose==="resupply"&&reg.camp&&party.length){reg.camp.meals+=e.carry.meals||0;let keys=Object.keys(reg.camp.stock);for(let i=0;i<keys.length;i++)goods[keys[i]]=(goods[keys[i]]||0)+reg.camp.stock[keys[i]];reg.camp.stock={};lines.push("The camp is fed for a while and its crates came home with the party.");}
+  if(e.purpose!=="resupply"&&party.length){let more=revealRegion("The party saw, from "+reg.name+",");if(more)lines.push("From there they could see "+more.name+".");}
+  e.phase="done";partyReturns(e,reg,goods,lines);
+}
+function recallCamp(regionId){
+  let reg=regionById(regionId);if(!reg||!reg.camp)return;
+  if(reg.camp.walk){let e=expeditionById(reg.camp.expeditionId);if(e){e.goods=Object.assign({},reg.camp.stock);e.phase="home";let party=partyMembers(e),share=party.length?Math.floor((reg.camp.meals||0)/party.length):0;for(let i=0;i<party.length;i++){let c=party[i],r=c.rover;r.rations=(r.rations||0)+share;r.goal={x:r.homeX+2,y:r.homeY+8};r.returning=true;r.resting=false;r.holding=false;c.path=[];c.pathCursor=0;c.action="Walking home from "+reg.name;}reg.camp=null;chronicle("Striking the camp on "+reg.name,"The camp is packed. Its people are walking home with the crates.","colony");say("The camp on "+reg.name+" is coming home.");storyDirty=true;viewDirty=true;refreshAll();return;}reg.camp=null;return;}
+  let k=regionKind(reg),e={id:entityId("x"),regionId:reg.id,purpose:"recall",members:reg.camp.staff.slice(),leaveAt:osGame.minutes,returnAt:osGame.minutes+k.travel*1440,phase:"out",carry:Object.assign({},reg.camp.stock)};
+  for(let i=0;i<e.members.length;i++){let c=findColonist(e.members[i]);if(c&&!c.dead){c.away={expeditionId:e.id,regionName:reg.name};c.action="Walking home from "+reg.name;}}
+  reg.camp=null;expeditionsOf().push(e);chronicle("Striking the camp on "+reg.name,"The camp is packed. Its people are walking home with the crates.","colony");say("The camp on "+reg.name+" is coming home.");storyDirty=true;viewDirty=true;refreshAll();
+}
+function resolveRecall(e){let reg=regionById(e.regionId);e.phase="done";partyReturns(e,reg||{name:"the country"},e.carry||{},[]);}
+// Each Sol the camps eat, gather, and sometimes suffer; a hungry camp walks home on its own.
+function tickOutposts(){
+  let list=regionsOf();
+  for(let i=0;i<list.length;i++){let reg=list[i],camp=reg.camp;if(!camp)continue;let k=regionKind(reg);
+    let staff=[];for(let j=0;j<camp.staff.length;j++){let c=findColonist(camp.staff[j]);if(c&&!c.dead)staff.push(c);}
+    if(!staff.length){reg.camp=null;chronicle("The camp on "+reg.name+" is empty","Nobody is left to hold it.","loss");continue;}
+    if(camp.meals>=staff.length){camp.meals-=staff.length;camp.hungry=0;if(camp.walk)for(let j=0;j<staff.length;j++)if(staff[j].rover){staff[j].food=Math.min(100,staff[j].food+90);staff[j].rover.rations=Math.max(staff[j].rover.rations||0,1);}}else{camp.meals=0;camp.hungry++;}
+    if(camp.hungry>=2||(camp.walk&&camp.meals<staff.length)){chronicle("The camp on "+reg.name+" is out of food","They are walking home with what they have.","danger");recallCamp(reg.id);continue;}
+    let keys=Object.keys(k.yield);for(let j=0;j<keys.length;j++){let v=Math.round(k.yield[keys[j]]/6*staff.length);if(v>0)camp.stock[keys[j]]=(camp.stock[keys[j]]||0)+v;}
+    for(let j=0;j<staff.length;j++)staff[j].skills.explore=Math.min(20,(staff[j].skills.explore||0)+0.2);
+    if(k.danger>=2&&!peacefulEvents()&&randomUnit()<0.06){camp.stock={};for(let j=0;j<staff.length;j++)injureColonist(staff[j],10,"a raid on the camp",true);chronicle("The camp on "+reg.name+" was raided","The crates are gone and the people are hurt. They are holding on.","danger");}
+  }
+}
+function tickExpeditions(){
+  if(osGame.returnStories&&osGame.returnStories.length&&!osGame.pendingEvent&&!dialog)openStory("expedition",osGame.returnStories.shift());
+  let list=expeditionsOf();
+  for(let i=list.length-1;i>=0;i--){let e=list[i];if(e.walk||e.phase!=="out"||osGame.minutes<e.returnAt)continue;
+    if(e.purpose==="recall")resolveRecall(e);else resolveExpedition(e);
+    if(e.phase==="done")list.splice(i,1);}
+}
+// The Frontier panel: known regions, parties on the road, and the planning dialog.
+let regionCards=[];
+let regionMapSrc="";
+const REGION_COLOURS={ridge:"#c9b48a",marsh:"#7fb39a",forest:"#6f9a5a",flats:"#8fe7df",coast:"#8fb9d9",deep:"#b28ad6"};
+function regionAngle(reg){if(reg.angle===undefined)reg.angle=hashSeed(reg.id+reg.name)%360;return reg.angle;}
+// Chart geometry: the landing at the centre, the third ring at the far country's distance, anything beyond clamped to the rim.
+function chartPoint(x,y){let h=homeOrigin()+HOME_SIZE/2,dx=x-h,dy=y-h,d=Math.sqrt(dx*dx+dy*dy);if(d<0.5)return {x:100,y:100};let rad=Math.min(94,d/REGION_DIST[3]*84);return {x:100+dx/d*rad,y:100+dy/d*rad};}
+function regionPoint(reg){let s=regionSite(reg);return chartPoint(s.x,s.y);}
+let chartMarks=[];
+let frontierSummary="";
+let chartRingText="";
+// A small seeded chart of the country: the colony at the centre, rings at one, two and three Sols, known regions as marks.
+function svgText(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"").replace(/"/g,"");}
+function buildRegionMap(){
+  let parts=['<defs><radialGradient id="g" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#132a32"/><stop offset="1" stop-color="#0a151a"/></radialGradient></defs><circle cx="100" cy="100" r="98" fill="url(#g)" stroke="#2f4b52"/>'];
+  for(let i=1;i<=3;i++){let rr=[0,34,58,84][i];parts.push('<circle cx="100" cy="100" r="'+rr+'" fill="none" stroke="#2f4b52" stroke-dasharray="3 4"/><text x="'+(100+rr*0.7071+3).toFixed(1)+'" y="'+(100-rr*0.7071-3).toFixed(1)+'" font-size="6" fill="#5f7c83" font-family="sans-serif">'+Math.round(REGION_DIST[i]/WALK_TILES_PER_HOUR)+' h</text>');}
+  parts.push('<line x1="100" y1="6" x2="100" y2="14" stroke="#5f7c83"/><text x="100" y="24" font-size="7" text-anchor="middle" fill="#5f7c83" font-family="sans-serif">N</text>');
+  let list=regionsOf(),marks=[];
+  for(let i=0;i<list.length;i++){let reg=list[i];if(!reg.known)continue;let p=regionPoint(reg),col=REGION_COLOURS[reg.kind]||"#ccc",out=false;for(let j=0;j<expeditionsOf().length;j++)if(expeditionsOf()[j].regionId===reg.id)out=true;
+    parts.push('<line x1="100" y1="100" x2="'+p.x.toFixed(1)+'" y2="'+p.y.toFixed(1)+'" stroke="'+col+'" stroke-opacity="'+(reg.surveyed||reg.camp?".5":".25")+'"'+(reg.surveyed||reg.camp?'':' stroke-dasharray="2 3"')+'/>');
+    parts.push(reg.camp?'<rect x="'+(p.x-5).toFixed(1)+'" y="'+(p.y-5).toFixed(1)+'" width="10" height="10" fill="'+col+'" stroke="#0b171c"/>':'<circle cx="'+p.x.toFixed(1)+'" cy="'+p.y.toFixed(1)+'" r="'+(reg.surveyed?5:4)+'" fill="'+(reg.surveyed?col:"#0b171c")+'" stroke="'+col+'" stroke-width="1.5"/>');
+    parts.push('<text x="'+p.x.toFixed(1)+'" y="'+(p.y+(p.y>100?14:-9)).toFixed(1)+'" font-size="8" text-anchor="middle" fill="#dfe9e4" font-family="sans-serif">'+svgText(reg.name.replace(/^the /,""))+'</text>');
+    marks.push({id:reg.id,kind:"region",title:reg.name+" · "+(reg.camp?"resupply the camp":reg.surveyed?"gather":"survey"),on:out,style:{left:(p.x/2)+"%",top:(p.y/2)+"%"}});}
+  let home=chartPoint(CENTRE,centreY());
+  if(home.x!==100||home.y!==100)parts.push('<circle cx="100" cy="100" r="3" fill="none" stroke="#f4d27a" stroke-opacity=".6"/>');
+  parts.push('<circle cx="'+home.x.toFixed(1)+'" cy="'+home.y.toFixed(1)+'" r="5" fill="#f4d27a" stroke="#0b171c"/><text x="'+home.x.toFixed(1)+'" y="'+(home.y+14).toFixed(1)+'" font-size="8" text-anchor="middle" fill="#f4d27a" font-family="sans-serif">'+svgText(osGame.name)+'</text>');
+  let ex=expeditionsOf();
+  for(let i=0;i<ex.length;i++){let e=ex[i],reg=regionById(e.regionId);if(!reg)continue;
+    if(e.walk){let lead=partyLeader(e);if(!lead)continue;let p=chartPoint(lead.x,lead.y);marks.push({id:lead.id,kind:"party",title:partyNames(e)+" · "+(EXPEDITION_PURPOSES[e.purpose]||"")+" · "+reg.name+" · press to watch",on:viewRoverId===lead.id,style:{left:(p.x/2)+"%",top:(p.y/2)+"%"}});continue;}
+    let p=regionPoint(reg),span=Math.max(1,e.returnAt-e.leaveAt),f=clamp((osGame.minutes-e.leaveAt)/span,0,1);let t=e.purpose==="camp"?f:e.purpose==="recall"?1-f:(f<0.5?f*2:(1-f)*2);
+    parts.push('<circle cx="'+(100+(p.x-100)*t).toFixed(1)+'" cy="'+(100+(p.y-100)*t).toFixed(1)+'" r="3" fill="#f4d27a" stroke="#0b171c"/>');}
+  for(let i=0;i<osGame.people.length;i++){let c=osGame.people[i];if(c.dead||!c.rover||c.rover.party)continue;let p=chartPoint(c.x,c.y);marks.push({id:c.id,kind:"rover",title:c.short+" · roving alone · press to watch",on:viewRoverId===c.id,style:{left:(p.x/2)+"%",top:(p.y/2)+"%"}});}
+  chartMarks=marks;chartRingText=[1,2,3].map(function(i){return Math.round(REGION_DIST[i]/WALK_TILES_PER_HOUR)+" h";}).join(" · ")+" on foot";
+  regionMapSrc="data:image/svg+xml;utf8,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">'+parts.join("")+'</svg>');
+}
+function chartMarkClick(id){if(regionById(id)){let reg=regionById(id);planExpedition(id,reg.camp?"resupply":reg.surveyed?"gather":"survey");return;}watchRover(id);}
+let expeditionCards=[];
+let expeditionPlan=null;
+let expeditionCandidates=[];
+let expeditionCheckText="";
+function projectRegions(){
+  let cards=[],list=regionsOf();
+  for(let i=0;i<list.length;i++){let reg=list[i];if(!reg.known)continue;let k=regionKind(reg);let out=false;for(let j=0;j<expeditionsOf().length;j++)if(expeditionsOf()[j].regionId===reg.id)out=true;
+    let status=reg.camp?"Camp · "+reg.camp.staff.length+" people · "+reg.camp.meals+" meals · holding "+(hasGoods(reg.camp.stock)?costText(reg.camp.stock):"nothing yet"):(reg.surveyed?(REGION_FEATURES[reg.feature]?REGION_FEATURES[reg.feature].title:"")+" · yields "+costText(k.yield):"Unsurveyed · what is there is not known yet");
+    let hours=regionWalkHours(reg),col=REGION_COLOURS[reg.kind]||"#8fb9d9";
+    cards.push({id:reg.id,name:reg.name,label:k.label,walk:hoursText(hours)+" on foot",danger:"danger "+["none","low","real","severe"][k.danger],dangerLevel:k.danger,surveyed:!!reg.surveyed,text:k.text,status:status,out:out,camp:!!reg.camp,canCamp:!reg.camp&&k.danger<3,visits:reg.visits,style:{"--os-region":col},swatch:{background:col}});}
+  regionCards=cards;buildRegionMap();
+  let parties=[],ex=expeditionsOf(),outCount=0;
+  for(let i=0;i<ex.length;i++){let e=ex[i],reg=regionById(e.regionId),names=partyNames(e)||"?",card={id:e.id,names:names,purpose:EXPEDITION_PURPOSES[e.purpose]||"Walking home",region:reg?reg.name:"",walk:!!e.walk,leaderId:"",watching:false,canRecall:false,phase:"",eta:"",progressStyle:{width:"0%"}};outCount++;
+    if(e.walk&&reg){let lead=partyLeader(e),site=e.site||regionSite(reg),total=Math.max(1,Math.sqrt(sqDistance(site.x,site.y,lead?lead.rover.homeX:CENTRE,lead?lead.rover.homeY:centreY()))),d=lead?Math.sqrt(sqDistance(lead.x,lead.y,site.x,site.y)):0;
+      let f=e.phase==="out"?clamp(1-d/total,0,1):e.phase==="home"?clamp(1-d/total,0,1):1;
+      card.leaderId=lead?lead.id:"";card.watching=!!lead&&viewRoverId===lead.id;card.canRecall=e.phase!=="home";
+      card.phase=e.phase==="out"?"Walking out · "+Math.round(d)+" tiles to go":e.phase==="work"?(e.purpose==="gather"?"Gathering":e.purpose==="resupply"?"Unloading":"Surveying")+" · "+Math.max(1,Math.ceil(e.workLeft/60))+" h left":e.phase==="camp"?"Holding the camp":"Walking home · "+Math.round(Math.sqrt(sqDistance(lead?lead.x:0,lead?lead.y:0,lead?lead.rover.homeX:0,lead?lead.rover.homeY:0)))+" tiles to go";
+      card.eta=e.phase==="camp"?"since Sol "+(reg.camp?reg.camp.founded:"?"):"about "+hoursText(Math.max(1,Math.round(e.phase==="home"?d/WALK_TILES_PER_HOUR:e.phase==="work"?e.workLeft/60+regionWalkHours(reg):d/WALK_TILES_PER_HOUR+(EXPEDITION_WORK[e.purpose]||0)/60+regionWalkHours(reg))))+" until they are back";
+      card.progressStyle={width:Math.round(f*100)+"%"};}
+    else{let span=Math.max(1,e.returnAt-e.leaveAt),f=clamp((osGame.minutes-e.leaveAt)/span,0,1);card.phase="On the road";card.eta="back in "+Math.max(0,Math.ceil((e.returnAt-osGame.minutes)/1440))+" Sol(s)";card.progressStyle={width:Math.round(f*100)+"%"};}
+    parties.push(card);}
+  for(let i=0;i<osGame.people.length;i++){let c=osGame.people[i];if(c.dead||!c.rover||c.rover.party)continue;outCount++;let d=Math.round(Math.sqrt(sqDistance(c.x,c.y,c.rover.homeX,c.rover.homeY)));
+    parties.push({id:c.id,names:c.short,purpose:"Roving alone",region:d+" tiles from the colony",walk:true,leaderId:c.id,watching:viewRoverId===c.id,canRecall:!c.rover.returning,phase:c.action,eta:c.rover.rations+" ration"+(c.rover.rations===1?"":"s"),progressStyle:{width:Math.round(clamp(d/REGION_DIST[3],0,1)*100)+"%"}});}
+  expeditionCards=parties;
+  let known=0;for(let i=0;i<list.length;i++)if(list[i].known)known++;
+  frontierSummary=known+" of "+list.length+" regions known · "+(outCount?outCount+(outCount===1?" party":" parties")+" on the road":"nobody on the road");
+}
+function planExpedition(regionId,purpose){
+  let reg=regionById(regionId);if(!reg)return;expeditionPlan={regionId:regionId,purpose:purpose,members:{}};
+  let people=alivePeople(),cands=[];for(let i=0;i<people.length;i++){let c=people[i];let ok=canTravel(c);cands.push({id:c.id,name:c.short,role:c.role,explore:Math.floor(c.skills.explore||0),exploreStyle:{width:Math.round(Math.min(20,c.skills.explore||0)/20*100)+"%"},health:Math.round(c.health),ok:ok,note:ok?"Ready to go":travelNote(c),chosen:false});}
+  expeditionCandidates=cands;expeditionCheckText=expeditionCheck(reg,purpose,[]);resetMapGesture();dialog="expedition";refreshAll();
+}
+function toggleExpeditionMember(id){
+  if(!expeditionPlan)return;let m=expeditionPlan.members;if(m[id])delete m[id];else m[id]=true;
+  for(let i=0;i<expeditionCandidates.length;i++)expeditionCandidates[i].chosen=!!m[expeditionCandidates[i].id];
+  expeditionCheckText=expeditionCheck(regionById(expeditionPlan.regionId),expeditionPlan.purpose,Object.keys(m));refreshAll();
+}
+function sendExpedition(){if(!expeditionPlan)return;let ok=launchExpedition(expeditionPlan.regionId,expeditionPlan.purpose,Object.keys(expeditionPlan.members));if(ok)expeditionPlan=null;}
+function travelNote(c){return c.child?"Too young":c.away?"Away":c.rover?"Out on the plane":c.drafted?"Drafted":c.carried?"Being carried":c.health<60?"Too hurt to walk":c.bleed>0?"Bleeding":"Cannot travel";}
+function expeditionPlanCard(){
+  let reg=expeditionPlan?regionById(expeditionPlan.regionId):null;if(!reg)return {title:"",cost:"",purpose:""};
+  let n=Object.keys(expeditionPlan.members).length,k=regionKind(reg),cost=expeditionCost(reg,expeditionPlan.purpose,Math.max(1,n)),hours=regionWalkHours(reg),work=EXPEDITION_WORK[expeditionPlan.purpose]||0;
+  let short=[],keys=Object.keys(cost);for(let i=0;i<keys.length;i++)if((osGame.stock[keys[i]]||0)<cost[keys[i]])short.push(keys[i]);
+  return {title:EXPEDITION_PURPOSES[expeditionPlan.purpose]+" · "+reg.name,kind:k.label,purpose:k.text+(reg.surveyed&&REGION_FEATURES[reg.feature]?" "+REGION_FEATURES[reg.feature].title+".":""),
+    walk:hoursText(hours),work:work?hoursText(Math.round(work/60)):"none",danger:["none","low","real","severe"][k.danger],dangerLevel:k.danger,dangerNote:k.danger>=3?"people can be lost":k.danger===2?"raids and hurt":k.danger===1?"the odd hurt":"a quiet road",
+    cost:costText(cost),have:short.length?"short of "+short.join(", "):"in the stores",
+    summary:(n||1)+(n===1?" settler":" settlers")+" · "+costText(cost)+" · back in about "+hoursText(hours*2+Math.round(work/60))};
+}
+let expeditionPlanView={title:"",cost:"",purpose:""};
+// A crew code names the world and the four who land in it: seed, rerolls and the preset, in one line.
+function crewCode(){return crewSeedText()+"#"+(crewMode==="first"?"first":crewNonce.join("."))+(crewAllowHard?"#hard":"");}
+function applyCrewCode(text){
+  let raw=String(text||""),hash=raw.indexOf("#");if(hash<0)return false;
+  let parts=raw.split("#");seedText=parts[0].trim()||"HOLLOW-7";
+  if(parts[1]==="first")crewMode="first";else{let n=parts[1].split(".").map(function(v){return Math.max(0,Math.min(999,parseInt(v,10)||0));});while(n.length<4)n.push(0);crewNonce=n.slice(0,4);crewMode="generated";}
+  crewAllowHard=parts.indexOf("hard")>=2;
+  return true;
+}

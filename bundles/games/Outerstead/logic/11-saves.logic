@@ -1,0 +1,239 @@
+// Versioned, bounded JSON snapshots. Local saves are verified after writing.
+// Cross-version portability uses text export: no browser filesystem or network permission.
+const SAVE_PREFIX="outerstead.firstlight.v1.";
+function snapshotText() {
+  if(!osGame)throw new Error("No settlement is active.");if(contextDepth===0)flushRovers();
+  // Creatures that have left the map are removed on the next animal tick; a snapshot taken in between leaves them out.
+  let game=Object.assign({},osGame,{animals:osGame.animals.some(function(a){return a.gone;})?osGame.animals.filter(function(a){return !a.gone;}):osGame.animals,mapSize:MAP_SIZE,window:{x:WX,y:WY},terrain:encodeTiles(osGame.terrain),groundTiles:encodeTiles(osGame.groundTiles),explored:"R:"+rleEncode(osGame.explored),floorTiles:"R:"+rleEncode(osGame.floorTiles),wireTiles:"R:"+rleEncode(osGame.wireTiles),nodes:encodeNodes(osGame.nodes)});
+  return JSON.stringify({format:"outerstead-save",schema:SAVE_SCHEMA,game:game});
+}
+// Resource nodes travel as short arrays (a third of the size of the records); worked-out nodes are left behind.
+function encodeNodes(list){let out=[];for(let i=0;i<list.length;i++){let n=list[i];if(!(n.amount>0))continue;out.push([n.id,n.x,n.y,n.kind,n.amount,n.marked?1:0,n.resource||"",n.debris?1:0]);}return out;}
+function decodeNode(a){if(!Array.isArray(a)||a.length<5)failSave("Invalid resource node.");let n={id:a[0],x:a[1],y:a[2],kind:a[3],amount:a[4],marked:!!a[5],blockedUntil:0};if(a[6])n.resource=a[6];if(a[7])n.debris=true;return n;}
+// Tile layers travel as one character per tile (value + 48), a fifth of the size of a JSON array of numbers.
+function encodeTiles(list){if(typeof list==="string")return list;let out=[];for(let i=0;i<list.length;i+=4096){let part="";for(let k=i;k<Math.min(list.length,i+4096);k++)part+=String.fromCharCode(48+(list[k]===true?1:list[k]===false?0:(list[k]|0)));out.push(part);}return out.join("");}
+function decodeTiles(text,boolean){if(Array.isArray(text))return text;if(text.indexOf("R:")===0)return rleDecode(text.slice(2),MAP_SIZE*MAP_SIZE,boolean)||[];let out=[];for(let i=0;i<text.length;i++){let v=text.charCodeAt(i)-48;out.push(boolean?v!==0:v);}return out;
+}
+function failSave(message) {throw new Error(message);}
+function boundedNumber(v,min,max,label) {if(typeof v!=="number"||!Number.isFinite(v)||v<min||v>max)failSave("Invalid "+label+".");}
+function boundedString(v,max,label) {if(typeof v!=="string"||v.length>max)failSave("Invalid "+label+".");}
+function listBound(v,max,label) {if(!Array.isArray(v)||v.length>max)failSave("Invalid "+label+" list.");}
+function requireRecord(v,label) {if(!v||typeof v!=="object"||Array.isArray(v))failSave("Invalid "+label+" record.");}
+function validateGoods(v,label) {
+  requireRecord(v,label);let keys=Object.keys(v);for(let i=0;i<keys.length;i++){if(RESOURCE_KEYS.indexOf(keys[i])<0)failSave("Unknown resource.");boundedNumber(v[keys[i]],0,1000000,label);}
+}
+function validateSave(text) {
+  if(typeof text!=="string"||text.length>4000000)failSave("Save must be text smaller than 4 MB.");
+  let outer=JSON.parse(text);if(!outer||outer.format!=="outerstead-save"||typeof outer.schema!=="number"||outer.schema<1||outer.schema>SAVE_SCHEMA||outer.schema%1)failSave(outer&&outer.schema>SAVE_SCHEMA?"This save comes from a newer Outerstead; update the game to open it.":"This is not a supported Outerstead save.");
+  let g=outer.game;requireRecord(g,"settlement");
+  // Reject dangerous dictionary keys anywhere, excessive nesting, and non-finite numbers.
+  let visitCount=0;
+  function inspect(v,depth){if(++visitCount>4000000||depth>32)failSave("Save is too complex.");if(typeof v==="number"&&!Number.isFinite(v))failSave("Non-finite save value.");if(typeof v==="string"&&v.length>6000)failSave("Oversized text field.");if(v&&typeof v==="object"){let ks=Object.keys(v);for(let i=0;i<ks.length;i++){if(ks[i]==="__proto__"||ks[i]==="prototype"||ks[i]==="constructor")failSave("Unsafe dictionary key.");inspect(v[ks[i]],depth+1);}}}
+  // Tile layers travel as long strings; they are checked tile by tile below, not as text fields.
+  let tileLayers={},layerNames=["terrain","groundTiles","explored","floorTiles","wireTiles","plane"];for(let i=0;i<layerNames.length;i++)if(g[layerNames[i]]!==undefined&&(typeof g[layerNames[i]]==="string"||layerNames[i]==="plane")){tileLayers[layerNames[i]]=g[layerNames[i]];delete g[layerNames[i]];}
+  inspect(g,0);
+  for(let k in tileLayers)g[k]=tileLayers[k];
+  if(typeof g.schema!=="number"||g.schema<1||g.schema>SAVE_SCHEMA)failSave("Unsupported settlement schema.");
+  if(g.schema<SAVE_SCHEMA)migrateSave(g,g.schema);
+  boundedString(g.name,36,"colony name");boundedString(g.seedLabel,120,"seed label");boundedNumber(g.seed,0,4294967295,"seed");boundedNumber(g.rng,0,4294967295,"random state");
+  boundedNumber(g.minutes,0,100000000,"clock");boundedNumber(g.elapsed,0,100000000,"elapsed time");boundedNumber(g.step,0,1000000000,"tick");boundedNumber(g.nextId,1,1000000000,"entity counter");
+  if(["frontier","peaceful"].indexOf(g.difficulty)<0)failSave("Unknown difficulty.");
+  if(g.biome===undefined)g.biome="hills";if(!BIOMES[g.biome])failSave("Unknown landing site.");
+  if(g.mapSize===undefined)g.mapSize=96;if(MAP_SIZES.indexOf(g.mapSize)<0)failSave("Unknown map size.");setMapSize(g.mapSize);if(g.chunks!==undefined)requireRecord(g.chunks,"chunks");
+  if(g.window===undefined)g.window={x:0,y:0};requireRecord(g.window,"window");boundedNumber(g.window.x,-1000000,1000000,"window");boundedNumber(g.window.y,-1000000,1000000,"window");if(g.window.x%HOME_SIZE||g.window.y%HOME_SIZE)failSave("The window must sit on a chunk boundary.");WX=g.window.x;WY=g.window.y;
+  if(g.plane===undefined)g.plane={};requireRecord(g.plane,"plane");{let pk=Object.keys(g.plane);if(pk.length>1200)failSave("Too much stored country.");for(let i=0;i<pk.length;i++){let rec=g.plane[pk[i]];requireRecord(rec,"stored chunk");if(!/^-?\d+,-?\d+$/.test(pk[i]))failSave("Invalid chunk key.");let layers=rec.full?["t","g","e","f","w"]:["e","f","w"];for(let k of layers){boundedString(rec[k],60000,"stored chunk layer");if(!rleDecode(rec[k],HOME_SIZE*HOME_SIZE))failSave("Corrupt stored chunk.");}if(rec.full){listBound(rec.nodes,9216,"stored nodes");for(let n=0;n<rec.nodes.length;n++){let r=rec.nodes[n];if(!Array.isArray(r)||r.length<4)failSave("Invalid stored node.");boundedNumber(r[0],-1000000,1000000,"stored node");boundedNumber(r[1],-1000000,1000000,"stored node");boundedString(r[2],20,"stored node kind");boundedNumber(r[3],0,100000,"stored node amount");}}else{listBound(rec.td||[],9216,"terrain changes");listBound(rec.gd||[],9216,"ground changes");for(let d of (rec.td||[]).concat(rec.gd||[])){if(!Array.isArray(d)||d.length!==2)failSave("Invalid chunk change.");boundedNumber(d[0],0,HOME_SIZE*HOME_SIZE-1,"chunk change");boundedNumber(d[1],0,31,"chunk change");}if(rec.nd!==undefined){requireRecord(rec.nd,"node changes");let nk=Object.keys(rec.nd);if(nk.length>9216)failSave("Too many node changes.");for(let n=0;n<nk.length;n++){let val=rec.nd[nk[n]];if(!/^-?\d+,-?\d+$/.test(nk[n])||!Array.isArray(val)||val.length<2)failSave("Invalid node change.");boundedNumber(val[0],0,100000,"node change");boundedNumber(val[1],0,1,"node change");if(val[2]!==undefined)boundedString(val[2],20,"node change kind");}}}}}
+  let names=["terrain","groundTiles","explored","floorTiles","wireTiles"];for(let i=0;i<names.length;i++){if(typeof g[names[i]]==="string")g[names[i]]=decodeTiles(g[names[i]],names[i]==="explored");listBound(g[names[i]],MAP_SIZE*MAP_SIZE,names[i]);if(g[names[i]].length!==MAP_SIZE*MAP_SIZE)failSave("The map must be "+MAP_SIZE+" by "+MAP_SIZE+".");}
+  for(let i=0;i<MAP_SIZE*MAP_SIZE;i++){boundedNumber(g.terrain[i],0,6,"terrain");boundedNumber(g.groundTiles[i],0,31,"tile");if(g.terrain[i]%1||g.groundTiles[i]%1||typeof g.explored[i]!=="boolean"||(g.floorTiles[i]!==0&&g.floorTiles[i]!==1)||(g.wireTiles[i]!==0&&g.wireTiles[i]!==1))failSave("Invalid tile data.");}
+  validateGoods(g.stock,"stock");for(let i=0;i<RESOURCE_KEYS.length;i++)boundedNumber(g.stock[RESOURCE_KEYS[i]],0,1000000,"resource stock");
+  listBound(g.buildings,1000,"buildings");listBound(g.people,64,"people");listBound(g.nodes,Math.round(12000*MAP_SIZE*MAP_SIZE/9216),"resource nodes");listBound(g.animals,150,"wildlife");listBound(g.jobs,320,"jobs");listBound(g.sites,3,"ruins");for(let i=0;i<g.sites.length;i++)if(g.sites[i]&&g.sites[i].carved!==undefined&&typeof g.sites[i].carved!=="boolean")failSave("Invalid ruin flag.");listBound(g.chronicle,240,"chronicle");listBound(g.eventQueue,24,"event queue");
+  if(!g.people.length||g.sites.length!==3)failSave("Missing colony inhabitants or story sites.");
+  let ids={},maxId=0;
+  function identity(v){requireRecord(v,"entity");boundedString(v.id,40,"entity ID");if(!/^[A-Za-z][A-Za-z0-9]*$/.test(v.id)||ids[v.id])failSave("Invalid or duplicate entity ID.");ids[v.id]=true;let suffix=parseInt(v.id.replace(/^[A-Za-z]+/,""),10);if(Number.isFinite(suffix))maxId=Math.max(maxId,suffix);}
+  function position(v){boundedNumber(v.x,-1000000,1000000,"x position");boundedNumber(v.y,-1000000,1000000,"y position");}
+  function path(v,size){size=size||MAP_SIZE;listBound(v.path,size*size,"path");for(let k=0;k<v.path.length;k++){boundedNumber(v.path[k],0,(size*size-1),"path cell");if(v.path[k]%1)failSave("Invalid path.");}boundedNumber(v.pathCursor,0,size*size,"path cursor");}
+  function task(v){if(!v)return;requireRecord(v,"task");if(["build","repair","gather","sow","harvest","research","produce","treat","excavate","survey","strike","bury","rescue","supply","collect","hunt","tame","delivery","eat","sleep","recreation"].indexOf(v.type)<0)failSave("Unknown task type.");if(v.inputs)validateGoods(v.inputs,"reserved inputs");if(v.recipe){validateGoods(v.recipe.cost,"recipe inputs");validateGoods(v.recipe.goods,"recipe outputs");boundedNumber(v.recipe.work,0.1,10000,"recipe duration");}}
+  for(let i=0;i<g.buildings.length;i++){let b=g.buildings[i];identity(b);position(b);let d=BUILDINGS[b.kind];if(!d||b.x%1||b.y%1||b.w!==d.w||b.h!==d.h)failSave("Invalid building definition.");boundedNumber(b.hp,0,d.hp,"building health");boundedNumber(b.progress,0,d.work+100,"construction progress");boundedNumber(b.growth,0,1,"crop growth");boundedNumber(b.charge,0,d.capacity||0,"battery charge");validateGoods(b.escrow,"construction escrow");if(b.input!==undefined)validateGoods(b.input,"input buffer");if(b.made!==undefined)validateGoods(b.made,"finished goods");if(typeof b.built!=="boolean"||typeof b.on!=="boolean")failSave("Invalid building state.");if(b.occupant!==undefined)boundedString(b.occupant,80,"grave occupant");if(b.owner!==undefined)boundedString(b.owner,40,"bed owner");if(b.filter!==undefined&&["all","food","building","industrial","medical"].indexOf(b.filter)<0)failSave("Unknown stockpile filter.");if(b.buriedSol!==undefined)boundedNumber(b.buriedSol,1,100000,"burial Sol");}
+  let living=0,claimedSeats={};
+  for(let i=0;i<g.people.length;i++){let c=g.people[i];identity(c);position(c);path(c,c.rover?Math.max(MAP_SIZE,ROVER_SIZE):MAP_SIZE);task(c.task);if(!c.dead)living++;if(c.headingX!==undefined)boundedNumber(c.headingX,-1,1,"colonist heading");if(c.headingY!==undefined)boundedNumber(c.headingY,-1,1,"colonist heading");boundedString(c.name,80,"colonist name");boundedString(c.short,30,"short name");boundedString(c.role,100,"role");boundedString(c.bio,2000,"biography");boundedString(c.trait,60,"trait");if(c.values!==undefined){requireRecord(c.values,"values");for(let k of ["home","hollow"])if([1,-1].indexOf(c.values[k])<0)failSave("Unknown value.");}if(c.quirks!==undefined){listBound(c.quirks,3,"quirks");for(let k=0;k<c.quirks.length;k++)if(!QUIRKS[c.quirks[k]])failSave("Unknown quirk.");}if(c.exposure!==undefined)boundedNumber(c.exposure,0,100000,"exposure");if(c.achingUntil!==undefined)boundedNumber(c.achingUntil,0,100100000,"aching wound");if(c.achedAt!==undefined)boundedNumber(c.achedAt,0,100100000,"ache clock");if(c.glassCutAt!==undefined)boundedNumber(c.glassCutAt,0,100100000,"glass cut clock");if(c.stormResentAt!==undefined)boundedNumber(c.stormResentAt,0,100100000,"storm clock");boundedNumber(c.health,-100,100,"health");boundedNumber(c.food,0,100,"hunger");boundedNumber(c.rest,0,100,"rest");boundedNumber(c.recreation,0,100,"recreation");boundedNumber(c.mood,0,100,"mood");boundedNumber(c.bleed,0,2,"bleeding");
+    requireRecord(c.skills,"skills");requireRecord(c.priorities,"priorities");requireRecord(c.relations,"relationships");requireRecord(c.personality,"personality");for(let k=0;k<WORK_KEYS.length;k++){boundedNumber(c.skills[WORK_KEYS[k]],0,20,"skill");boundedNumber(c.priorities[WORK_KEYS[k]],0,4,"work priority");}
+    if(["day","night","flexible"].indexOf(c.schedule)<0)failSave("Invalid schedule.");listBound(c.memories,16,"memories");listBound(c.injuries,6,"injuries");if(c.carry)validateGoods(c.carry,"carried goods");
+    if(c.autoEquipOptOut!==undefined&&typeof c.autoEquipOptOut!=="boolean")failSave("Invalid automatic equipment preference.");
+    if(c.child!==undefined&&typeof c.child!=="boolean")failSave("Invalid child flag.");if(c.helps!==undefined&&typeof c.helps!=="boolean")failSave("Invalid helper flag.");if(c.knacks!==undefined){requireRecord(c.knacks,"knacks");let kk=Object.keys(c.knacks);for(let k=0;k<kk.length;k++)if(WORK_KEYS.indexOf(kk[k])<0||[1,2].indexOf(c.knacks[kk[k]])<0)failSave("Invalid knack.");}if(c.spriteIndex!==undefined)boundedNumber(c.spriteIndex,0,3,"sprite");if(c.look!==undefined){boundedString(c.look,20,"look");if(!/^colonist[0-3](v[12])?$/.test(c.look))failSave("Unknown look.");}if(c.origin!==undefined)boundedString(c.origin,20,"origin");if(c.hook!==undefined)boundedString(c.hook,20,"hook");if(c.hookDone!==undefined&&typeof c.hookDone!=="boolean")failSave("Invalid hook flag.");if(c.connected!==undefined&&typeof c.connected!=="boolean")failSave("Invalid connection flag.");if(c.connectedKnown!==undefined&&typeof c.connectedKnown!=="boolean")failSave("Invalid connection flag.");if(c.sibling!==undefined)boundedString(c.sibling,40,"sibling");if(c.rover!==undefined&&c.rover!==null){requireRecord(c.rover,"rover");boundedNumber(c.rover.rations,0,100,"rations");boundedNumber(c.rover.homeX,-1000000,1000000,"rover home");boundedNumber(c.rover.homeY,-1000000,1000000,"rover home");if(c.rover.goal!==null&&c.rover.goal!==undefined){requireRecord(c.rover.goal,"rover goal");boundedNumber(c.rover.goal.x,-1000000,1000000,"rover goal");boundedNumber(c.rover.goal.y,-1000000,1000000,"rover goal");}if(c.rover.pack!==undefined)validateGoods(c.rover.pack,"rover pack");if(c.rover.forage!==undefined)boundedString(c.rover.forage,40,"forage target");if(c.rover.party!==undefined)boundedString(c.rover.party,40,"party");}if(c.away!==undefined&&c.away!==null){requireRecord(c.away,"away");boundedString(c.away.expeditionId||"","expedition");boundedString(c.away.regionName||"","region");if(c.away.camp!==undefined)boundedString(c.away.camp,20,"camp");}if(c.born!==undefined)boundedNumber(c.born,0,100100000,"birth time");if(c.parents!==undefined){listBound(c.parents,2,"parents");for(let k=0;k<c.parents.length;k++)boundedString(c.parents[k],40,"parent");}
+    if(c.buried!==undefined&&typeof c.buried!=="boolean")failSave("Invalid burial state.");if(c.carried!==undefined&&typeof c.carried!=="boolean")failSave("Invalid burial state.");if(c.buried&&!c.dead)failSave("Only the dead are buried.");
+    if(c.carryBody!==undefined)boundedString(c.carryBody,40,"carried settler");if(c.funeralAt!==undefined)boundedString(c.funeralAt,40,"funeral");
+    if(c.task&&c.task.mourn!==undefined&&typeof c.task.mourn!=="boolean")failSave("Invalid funeral task.");if(c.task&&c.task.hiding!==undefined&&typeof c.task.hiding!=="boolean")failSave("Invalid hiding task.");if(c.hideAt!==undefined)boundedNumber(c.hideAt,0,100100000,"hide clock");if(c.rallied!==undefined&&typeof c.rallied!=="boolean")failSave("Invalid rally flag.");if(c.task&&c.task.serious!==undefined&&typeof c.task.serious!=="boolean")failSave("Invalid treatment task.");if(c.task&&c.task.qualityMeal!==undefined&&typeof c.task.qualityMeal!=="boolean")failSave("Invalid meal reservation.");if(c.task&&c.task.graveId!==undefined)boundedString(c.task.graveId,40,"grave");if(c.task&&c.task.clinicId!==undefined)boundedString(c.task.clinicId,40,"clinic");if(c.kit!==undefined&&typeof c.kit!=="boolean")failSave("Invalid kit flag.");if(c.carryQuality!==undefined)boundedNumber(c.carryQuality,0,1000000,"carried quality");
+    if(c.leisureAt!==undefined)boundedNumber(c.leisureAt,0,100100000,"leisure clock");
+    if(c.leisureCycle!==undefined)boundedNumber(c.leisureCycle,0,1000000000,"leisure cycle");
+    if(c.task&&c.task.seat!==undefined){let t=c.task;boundedNumber(t.seat,0,3,"table seat");if(t.seat%1||!t.personal||["eat","recreation"].indexOf(t.type)<0)failSave("Invalid table seat task.");let b=g.buildings.find(function(b){return b.id===t.targetId;});let key=t.targetId+":"+t.seat;if(!b||!b.built||["table","recreation"].indexOf(b.kind)<0||claimedSeats[key])failSave("Invalid or duplicate table reservation.");claimedSeats[key]=true;}
+    if(c.task&&c.task.leisure!==undefined){
+      if(typeof c.task.leisure!=="boolean")failSave("Invalid leisure flag.");
+      if(c.task.leisure){let t=c.task;
+        if(t.type!=="recreation"||t.personal!==true||["travel","work"].indexOf(t.phase)<0||["stroll","games","social","reflect"].indexOf(t.activity)<0||t.jobId||t.inputs||c.carry||c.drafted||c.equipTarget)failSave("Invalid leisure activity.");
+        boundedNumber(t.goalX,-1000000,1000000,"leisure destination");boundedNumber(t.goalY,-1000000,1000000,"leisure destination");boundedNumber(t.progress,0,30,"leisure progress");boundedNumber(t.duration,1,30,"leisure duration");boundedNumber(t.checkAt,0,100100000,"leisure work check");boundedString(t.targetId,40,"leisure venue");if(typeof t.socialDone!=="boolean")failSave("Invalid leisure social state.");
+      }
+    }
+    for(let k=0;k<c.memories.length;k++){boundedString(c.memories[k].text,200,"memory");boundedNumber(c.memories[k].value,-100,100,"memory value");boundedNumber(c.memories[k].until,0,100100000,"memory expiry");}
+  }
+  if(living>24)failSave("This build supports 24 living colonists.");
+  if(g.weapons!==undefined){
+    listBound(g.weapons,128,"weapons");let owners={},claims={};
+    for(let i=0;i<g.weapons.length;i++){
+      let w=g.weapons[i];identity(w);position(w);if(["spear","pistol","carbine"].indexOf(w.kind)<0)failSave("Unknown weapon.");
+      boundedString(w.holder,40,"weapon holder");boundedString(w.claimedBy,40,"weapon claim");
+      if(w.holder){let c=g.people.find(function(p){return p.id===w.holder;});if(!c||c.dead||owners[w.holder]||w.claimedBy)failSave("Invalid weapon ownership.");owners[w.holder]=true;}
+      if(w.claimedBy){let c=g.people.find(function(p){return p.id===w.claimedBy;});if(!c||c.dead||claims[w.claimedBy]||c.equipTarget!==w.id)failSave("Invalid weapon pickup claim.");claims[w.claimedBy]=true;}
+    }
+    for(let i=0;i<g.people.length;i++){let c=g.people[i];if(c.equipTarget){boundedString(c.equipTarget,40,"pickup target");if(!claims[c.id])failSave("Missing weapon pickup claim.");}}
+  }
+  if(g.camps!==undefined){listBound(g.camps,6,"camps");for(let i=0;i<g.camps.length;i++){let c=g.camps[i];identity(c);position(c);if(c.x%1||c.y%1||c.w!==2||c.h!==2)failSave("Invalid camp.");validateGoods(c.goods,"camp goods");boundedNumber(c.until,0,100100000,"camp clock");boundedNumber(c.raiders,0,8,"camp defenders");if(typeof c.roused!=="boolean"||typeof c.cleared!=="boolean")failSave("Invalid camp state.");}}
+  if(g.choirPromise!==undefined&&typeof g.choirPromise!=="boolean")failSave("Invalid Choir promise.");if(g.charter!==undefined&&typeof g.charter!=="boolean")failSave("Invalid charter.");if(g.ridgeName!==undefined)boundedString(g.ridgeName,40,"ridge name");if(g.endingAt!==undefined)boundedNumber(g.endingAt,0,100100000,"ending clock");if(g.lastDeathAt!==undefined)boundedNumber(g.lastDeathAt,0,100100000,"death clock");if(g.lastArgumentAt!==undefined)boundedNumber(g.lastArgumentAt,0,100100000,"argument clock");if(g.lastRadio!==undefined)boundedNumber(g.lastRadio,0,100100000,"radio clock");if(g.lastRaidAt!==undefined)boundedNumber(g.lastRaidAt,0,100100000,"raid clock");if(g.lastBirthAt!==undefined)boundedNumber(g.lastBirthAt,0,100100000,"birth clock");if(g.ofAgeId!==undefined)boundedString(g.ofAgeId,40,"coming of age");
+  if(g.partnerPending!==undefined&&g.partnerPending!==null){requireRecord(g.partnerPending,"pending partners");boundedString(g.partnerPending.a,40,"partner");boundedString(g.partnerPending.b,40,"partner");}
+  if(g.widowPending!==undefined)boundedString(g.widowPending,40,"grieving partner");if(g.widowQueue!==undefined){listBound(g.widowQueue,16,"grief queue");for(let k=0;k<g.widowQueue.length;k++){requireRecord(g.widowQueue[k],"grief entry");boundedString(g.widowQueue[k].survivor,40,"survivor");boundedString(g.widowQueue[k].lost,40,"lost");}}if(g.wayfarerService!==undefined&&typeof g.wayfarerService!=="boolean")failSave("Invalid service flag.");if(g.qualityMeals!==undefined)boundedNumber(g.qualityMeals,0,1000000,"quality meals");if(g.regions!==undefined){listBound(g.regions,8,"regions");for(let i=0;i<g.regions.length;i++){let r=g.regions[i];requireRecord(r,"region");boundedString(r.id,10,"region id");boundedString(r.name,60,"region name");if(!REGION_KINDS[r.kind])failSave("Unknown region.");if(!REGION_FEATURES[r.feature])failSave("Unknown region feature.");boundedNumber(r.visits,0,10000,"visits");if(r.x!==undefined)boundedNumber(r.x,-1000000,1000000,"region site");if(r.y!==undefined)boundedNumber(r.y,-1000000,1000000,"region site");if(r.camp){requireRecord(r.camp,"camp");if(r.camp.expeditionId!==undefined)boundedString(r.camp.expeditionId,40,"camp party");listBound(r.camp.staff,24,"camp staff");boundedNumber(r.camp.meals,0,100000,"camp meals");boundedNumber(r.camp.hungry||0,0,100,"camp hunger");validateGoods(r.camp.stock||{},"camp stock");}}}if(g.expeditions!==undefined){listBound(g.expeditions,12,"expeditions");for(let i=0;i<g.expeditions.length;i++){let e=g.expeditions[i];requireRecord(e,"expedition");boundedString(e.id,40,"expedition id");boundedString(e.regionId,10,"expedition region");if(["survey","gather","camp","resupply","recall"].indexOf(e.purpose)<0)failSave("Unknown expedition.");listBound(e.members,24,"party");boundedNumber(e.returnAt,0,100100000,"return clock");validateGoods(e.carry||{},"expedition goods");if(e.phase!==undefined)boundedString(e.phase,10,"expedition phase");if(e.leader!==undefined)boundedString(e.leader,40,"party leader");if(e.site!==undefined){requireRecord(e.site,"expedition site");boundedNumber(e.site.x,-1000000,1000000,"site");boundedNumber(e.site.y,-1000000,1000000,"site");}if(e.workLeft!==undefined)boundedNumber(e.workLeft,-100000,100000,"work left");if(e.goods!==undefined)validateGoods(e.goods,"expedition goods");if(e.lines!==undefined){listBound(e.lines,16,"expedition notes");for(let k=0;k<e.lines.length;k++)boundedString(e.lines[k],800,"expedition note");}}}if(g.facts!==undefined){requireRecord(g.facts,"facts");listBound(g.facts.deaths||[],24,"deaths");listBound(g.facts.births||[],24,"births");listBound(g.facts.partners||[],24,"partners");requireRecord(g.facts.excavations||{},"excavations");}if(g.crewMode!==undefined)boundedString(g.crewMode,12,"crew mode");if(g.mystery!==undefined){boundedString(g.mystery,20,"mystery");if(MYSTERY_IDS.indexOf(g.mystery)<0)failSave("Unknown mystery.");}if(g.roverSeen!==undefined)requireRecord(g.roverSeen,"rover encounters");if(g.atlas!==undefined){requireRecord(g.atlas,"atlas");let ak=Object.keys(g.atlas);if(ak.length>8192)failSave("Atlas too large.");for(let k=0;k<ak.length;k++){if(!/^-?\d+,-?\d+$/.test(ak[k]))failSave("Invalid atlas chunk.");boundedString(g.atlas[ak[k]],600,"atlas strip");}}if(g.returnStories!==undefined){listBound(g.returnStories,40,"return stories");for(let k=0;k<g.returnStories.length;k++)boundedString(g.returnStories[k],4000,"return story");}if(g.centre!==undefined){requireRecord(g.centre,"centre");boundedNumber(g.centre.x,-1000000,1000000,"centre");boundedNumber(g.centre.y,-1000000,1000000,"centre");}if(g.homeOrigin!==undefined){boundedNumber(g.homeOrigin,-1000000,1000000,"home origin");if(g.homeOrigin%HOME_SIZE)failSave("Home chunk off the grid.");}if(g.farCamps!==undefined){listBound(g.farCamps,200,"far camps");for(let i=0;i<g.farCamps.length;i++){let fc=g.farCamps[i];requireRecord(fc,"far camp");boundedString(fc.id,40,"far camp id");boundedNumber(fc.x,-1000000,1000000,"far camp");boundedNumber(fc.y,-1000000,1000000,"far camp");boundedString(fc.by,40,"far camp founder");}}if(g.facets!==undefined){requireRecord(g.facets,"facets");if(FACET_STATES.indexOf(g.facets.state)<0||FACET_KNOWERS.indexOf(g.facets.knows)<0||FACET_CONNECTIONS.indexOf(g.facets.connection)<0||FACET_COMPLICATIONS.indexOf(g.facets.complication)<0)failSave("Unknown facet.");}if(g.cast!==undefined){requireRecord(g.cast,"cast");let ck=Object.keys(g.cast);for(let k=0;k<ck.length;k++){if(CAST_KEYS.indexOf(ck[k])<0)failSave("Invalid cast role.");boundedString(g.cast[ck[k]],40,"cast member");}}if(g.director!==undefined){requireRecord(g.director,"director");boundedNumber(g.director.lastStoryAt||0,0,100100000,"director clock");boundedNumber(g.director.lastClueAt||0,0,100100000,"director clue clock");}
+  if(g.birthPending!==undefined&&g.birthPending!==null){requireRecord(g.birthPending,"pending birth");boundedString(g.birthPending.a,40,"parent");boundedString(g.birthPending.b,40,"parent");listBound(g.birthPending.names,2,"child names");if(g.birthPending.names.length!==2)failSave("Two names are needed.");for(let k=0;k<2;k++)boundedString(g.birthPending.names[k],30,"child name");}
+  if(g.funeral!==undefined&&g.funeral!==null){requireRecord(g.funeral,"funeral");boundedString(g.funeral.graveId,40,"funeral grave");boundedString(g.funeral.deadId,40,"funeral settler");boundedString(g.funeral.name,30,"funeral name");boundedNumber(g.funeral.until,0,100100000,"funeral clock");boundedNumber(g.funeral.attended,0,64,"funeral attendance");if(g.funeral.speaker!==undefined)boundedString(g.funeral.speaker,30,"funeral speaker");}
+  for(let i=0;i<g.nodes.length;i++){if(Array.isArray(g.nodes[i]))g.nodes[i]=decodeNode(g.nodes[i]);let n=g.nodes[i];identity(n);position(n);if(n.x%1||n.y%1||["tree","stone","ore","berries","pile","glass"].indexOf(n.kind)<0)failSave("Invalid resource node.");if(n.debris!==undefined&&typeof n.debris!=="boolean")failSave("Invalid debris flag.");boundedNumber(n.amount,0,1000000,"resource quantity");if(n.kind==="pile"&&RESOURCE_KEYS.indexOf(n.resource)<0)failSave("Invalid resource crate.");}
+  for(let i=0;i<g.animals.length;i++){let a=g.animals[i];identity(a);position(a);path(a);if(!ANIMAL_STATS[a.kind])failSave("Unknown wildlife.");boundedNumber(a.health,-1000,200,"wildlife health");if(a.headingX!==undefined)boundedNumber(a.headingX,-1,1,"wildlife heading");if(a.headingY!==undefined)boundedNumber(a.headingY,-1,1,"wildlife heading");if(a.movingUntil!==undefined)boundedNumber(a.movingUntil,0,100000001,"wildlife movement time");if(a.diedAt!==undefined)boundedNumber(a.diedAt,0,100100000,"wildlife death time");if(a.loot!==undefined&&a.loot!==null)validateGoods(a.loot,"raider loot");if(a.lootTarget!==undefined)boundedString(a.lootTarget,40,"raid target");if(a.fleeing!==undefined&&typeof a.fleeing!=="boolean")failSave("Invalid raider state.");if(a.goalX!==undefined)boundedNumber(a.goalX,-1000000,1000000,"pilgrim goal");if(a.goalY!==undefined)boundedNumber(a.goalY,-1000000,1000000,"pilgrim goal");if(a.flyX!==undefined)boundedNumber(a.flyX,-1000000,1000000,"flight target");if(a.flyY!==undefined)boundedNumber(a.flyY,-1000000,1000000,"flight target");if(a.campId!==undefined)boundedString(a.campId,40,"camp reference");if(a.marked!==undefined&&typeof a.marked!=="boolean")failSave("Invalid hunt mark.");if(a.tamed!==undefined&&typeof a.tamed!=="boolean")failSave("Invalid tamed flag.");if(a.taming!==undefined&&typeof a.taming!=="boolean")failSave("Invalid taming flag.");if(a.penId!==undefined)boundedString(a.penId,40,"pen");if(a.grazeAt!==undefined)boundedNumber(a.grazeAt,0,100100000,"graze clock");if(a.structureTarget!==undefined)boundedString(a.structureTarget,40,"structure target");if(a.structureAt!==undefined)boundedNumber(a.structureAt,0,100100000,"structure clock");if(a.defending!==undefined&&typeof a.defending!=="boolean")failSave("Invalid defender state.");if(a.gone)failSave("Departed creatures cannot be saved.");}
+  for(let i=0;i<g.sites.length;i++){let s=g.sites[i];identity(s);position(s);boundedString(s.text,3000,"archive");boundedString(s.name,100,"ruin name");boundedNumber(s.progress,0,100,"excavation");}
+  for(let i=0;i<g.jobs.length;i++){let j=g.jobs[i];identity(j);if(WORK_KEYS.indexOf(j.category)<0)failSave("Invalid job category.");if(["build","repair","gather","sow","harvest","research","produce","treat","excavate","survey","strike","bury","rescue","supply","collect","hunt","tame"].indexOf(j.type)<0)failSave("Invalid job type.");boundedNumber(j.x,-1000000,1000000,"job position");boundedNumber(j.y,-1000000,1000000,"job position");}
+  let dictionaries=["tech","researchProgress","policy","objectives","achievements","stats","standing","trades","storySeen"];for(let i=0;i<dictionaries.length;i++)requireRecord(g[dictionaries[i]],dictionaries[i]);
+  let tk=Object.keys(g.tech);for(let i=0;i<tk.length;i++)if(!techById(tk[i])||typeof g.tech[tk[i]]!=="boolean")failSave("Unknown technology.");
+  if(g.researchId&&!techById(g.researchId))failSave("Unknown research project.");
+  if(g.researchQueue!==undefined){listBound(g.researchQueue,8,"research queue");for(let i=0;i<g.researchQueue.length;i++)if(!techById(g.researchQueue[i]))failSave("Unknown queued research.");}
+  let rk=Object.keys(g.researchProgress);for(let i=0;i<rk.length;i++){if(!techById(rk[i]))failSave("Unknown research progress.");boundedNumber(g.researchProgress[rk[i]],0,1000000,"research progress");}
+  let clocks=["jobClock","needsClock","environmentClock","socialClock","directorClock"];for(let i=0;i<clocks.length;i++)boundedNumber(g[clocks[i]],0,100000000,clocks[i]);
+  let pk=Object.keys(g.policy);for(let i=0;i<pk.length;i++){if(["meals","parts","metal","fuel","medicine"].indexOf(pk[i])<0)failSave("Unknown production target.");boundedNumber(g.policy[pk[i]],0,300,"production target");}
+  boundedNumber(g.storyStage,0,3,"story stage");boundedNumber(g.nextEvent,0,100100000,"event clock");boundedNumber(g.weatherUntil,0,100100000,"weather clock");boundedString(g.weather,32,"weather");
+  for(let i=0;i<g.eventQueue.length;i++){let e=g.eventQueue[i];if(["attack","storm"].indexOf(e.kind)<0)failSave("Unknown queued event.");boundedNumber(e.due,0,100100000,"event date");if(e.kind==="attack")boundedNumber(e.count,1,8,"attack size");if(e.kinds!==undefined){listBound(e.kinds,8,"attack kinds");for(let k=0;k<e.kinds.length;k++)if(!ANIMAL_STATS[e.kinds[k]]||!ANIMAL_STATS[e.kinds[k]].hostile)failSave("Unknown attacker.");}}
+  validateModStories(g);
+  if(g.pendingEvent&&!STORY_EVENTS[g.pendingEvent.id])failSave("Unknown pending event.");
+  if(g.autoMode!==undefined&&typeof g.autoMode!=="boolean")failSave("Invalid auto mode.");
+  g.autoMode=!!g.autoMode;
+  if(g.autoBuild!==undefined&&typeof g.autoBuild!=="boolean")failSave("Invalid auto-build setting.");
+  if(g.autoConfigured!==undefined&&typeof g.autoConfigured!=="boolean")failSave("Invalid auto production setting.");
+  if(g.autoPlanAt!==undefined)boundedNumber(g.autoPlanAt,0,100100000,"auto plan clock");
+  g.autoBuild=!!g.autoBuild;g.autoConfigured=!!g.autoConfigured;g.autoPlanAt=g.autoPlanAt||0;
+  if(g.coldChain){requireRecord(g.coldChain,"cold chain");boundedNumber(g.coldChain.lost,0,1000000,"cold chain losses");if(typeof g.coldChain.active!=="boolean"||typeof g.coldChain.reported!=="boolean")failSave("Invalid cold chain state.");}
+  if(g.campaign!==undefined){requireRecord(g.campaign,"campaign");boundedNumber(g.campaign.chapter,0,CAMPAIGN_CHAPTERS.length,"campaign chapter");if(g.campaign.chapter%1)failSave("Invalid campaign chapter.");requireRecord(g.campaign.done,"campaign progress");let ck=Object.keys(g.campaign.done);for(let i=0;i<ck.length;i++)if(!campaignKeyValid(ck[i])||g.campaign.done[ck[i]]!==true)failSave("Invalid campaign progress.");boundedString(g.campaign.beat,40,"campaign beat");if(g.campaign.beat&&!campaignById(g.campaign.beat))failSave("Unknown campaign beat.");}
+  if(g.tagAt!==undefined)boundedNumber(g.tagAt,0,100100000,"tag clock");if(g.choirAt!==undefined)boundedNumber(g.choirAt,0,100100000,"choir clock");if(g.ashwalkerPeace!==undefined&&typeof g.ashwalkerPeace!=="boolean")failSave("Invalid Ashwalker state.");
+  if(g.standing.Choir===undefined)g.standing.Choir=0;
+  if(g.threats!==undefined){requireRecord(g.threats,"threats");boundedNumber(g.threats.nextAt,0,100100000,"threat clock");boundedNumber(g.threats.wildAt,0,100100000,"wildlife clock");boundedNumber(g.threats.waves,0,1000000,"threat waves");}
+  validateEventSettings(g);validateSavedMods(g);g.nextId=Math.max(g.nextId,maxId+1);g.effects=[];return g;
+}
+function restoreSettlement(g) {
+  resetSight();roverRouteSearches={};pendingMapJump=null;roverContexts={};viewRoverId="";viewMode="main";viewWindow=null;atlasSrc="";atlasBuiltKeys="";atlasSvgCache={};refCache={};refCacheKeys=[];if(!g.atlas)g.atlas={};
+  for(let i=0;i<g.people.length;i++){let c=g.people[i];if(c.rover){c.path=[];c.pathCursor=0;c.pathEpoch=-1;}}
+  setMapSize(g.mapSize||96);if(!g.chunks)g.chunks={"0,0":true};if(!g.window)g.window={x:0,y:0};WX=g.window.x;WY=g.window.y;if(!g.plane)g.plane={};if(g.homeOrigin===undefined)g.homeOrigin=CENTRE-HOME_SIZE/2;if(g.centre&&typeof g.centre.x==="number")CENTRE=g.centre.x;else g.centre={x:CENTRE,y:CENTRE};if(!g.farCamps)g.farCamps=[];
+  resetMapGesture();invalidateMods();incidentFx=null;clearVisualFx();
+  jobLookup={};colonistLookup={};wallSpritesDirty=true;minimapSrc="";minimapRows=[];
+  osGame=g;autoMode=!!g.autoMode;stopEdgePan();objectIndex={};nodeIndex={};nodeAtCell=[];pathEpoch=0;navSerial=0;navSeen=[];navClosed=[];navCost=[];navFrom=[];
+  for(let i=0;i<g.nodes.length;i++){let n=g.nodes[i];nodeIndex[n.id]=n;if(n.amount>0)nodeAtCell[tileId(n.x,n.y)]=n.id;}
+  topologyDirty=true;terrainDirty=true;serviceTopology();
+  initialiseWeapons();
+  // Saves from before 0.24 begin the campaign at whatever chapter their colony has already earned.
+  let hadCampaign=!!g.campaign;campaignState();threatState();if(!hadCampaign)updateCampaign(true);
+  for(let i=0;i<g.people.length;i++){g.people[i].attackUntil=0;g.people[i].hurtUntil=0;g.people[i].equippedUntil=0;if(g.people[i].health<22){cancelWeaponPickup(g.people[i]);dropWeapon(g.people[i]);}}
+  for(let i=0;i<g.people.length;i++)g.people[i].pathEpoch=pathEpoch;
+  // Saves from before quirks existed: the same hash gives the same habits on every load.
+  if(g.widowPending&&!g.widowQueue){let w=findColonist(g.widowPending);if(w)g.widowQueue=[{survivor:w.id,lost:w.partner||""}];}g.widowPending="";
+  for(let i=0;i<g.people.length;i++){if(!Array.isArray(g.people[i].quirks))assignQuirks(g.people[i]);if(!g.people[i].values)assignValues(g.people[i]);}
+  for(let i=0;i<g.animals.length;i++)g.animals[i].pathEpoch=pathEpoch;
+  paused=true;gameSpeed=1;screen="game";mobilePanelOpen=false;panMode=false;followColonistId="";activePanel="overview";selectedId="";selectedType="";pointerState=null;toolKind="select";loopAccumulator=0;realSaveClock=0;panX=0;panY=30;zoomLevel=0.95;
+  registerModStories();
+  if(g.pendingEvent&&g.pendingEvent.id==="funeral")buildFuneralChoices();
+  if(g.pendingEvent&&g.pendingEvent.id==="newName")buildBirthChoices();
+  if(g.pendingEvent&&g.pendingEvent.id==="ofAge")buildOfAgeChoices();
+  storyCard=g.pendingEvent?mysteryStory(g.pendingEvent.id,STORY_EVENTS[g.pendingEvent.id]):null;dialog=g.pendingEvent&&!storyCaptions?"story":"";if(storyCard){storyTimerTotal=storyTimeout(storyCard);storyTimer=storyTimerTotal;}
+  if(g.over){archiveTitle="The last light";archiveBody="This settlement's chronicle has ended. Start a new expedition from the menu.";dialog="ending";}
+  refreshAll();refreshMods();
+}
+function loadSaveText(text) {
+  let previous=osGame;
+  try{let g=validateSave(text);restoreSettlement(g);saveMessage="Settlement restored. Simulation is paused.";let missing=missingModCount();if(missing){saveMessage+=" "+missing+" active mod(s) unavailable. Open User mods to inspect.";modStatus=saveMessage;}say(saveMessage);return true;}
+  catch(error){if(osGame!==previous&&previous)restoreSettlement(previous);else if(previous){setMapSize(previous.mapSize||96);CENTRE=previous.centre?previous.centre.x:CENTRE;WX=previous.window?previous.window.x:0;WY=previous.window?previous.window.y:0;}saveMessage="Could not load: "+String(error.message||error);say(saveMessage);return false;}
+}
+function slotKey(kind,index) {return SAVE_PREFIX+kind+index;}
+function saveSlot(index,automatic) {
+  if(!osGame)return false;let kind=automatic?"auto":"manual",key=slotKey(kind,index);
+  try{let text=snapshotText();localStorage.setItem(key,text);let check=localStorage.getItem(key);if(check!==text)throw new Error("The host did not retain the save.");
+    localStorage.setItem(SAVE_PREFIX+"latest",key);if(localStorage.getItem(SAVE_PREFIX+"resume")!=="1")localStorage.setItem(SAVE_PREFIX+"resume","1");saveAvailable=true;saveMessage=(automatic?"Autosaved":"Saved")+" "+osGame.name+" · Sol "+dayNow()+".";if(!automatic)say(saveMessage);refreshSlots();return true;
+  }catch(error){saveMessage="Local storage failed: "+String(error.message||error)+". Use Export text to preserve the colony.";say(saveMessage);return false;}
+}
+function loadSlot(index,automatic) {
+  try{let text=localStorage.getItem(slotKey(automatic?"auto":"manual",index));if(!text){say("That slot is empty.");return false;}return loadSaveText(text);}catch(error){saveMessage=String(error.message||error);say(saveMessage);return false;}
+}
+function refreshSlots() {
+  let cards=[];
+  for(let a=0;a<2;a++)for(let i=0;i<3;i++){let label=(a?"Autosave ":"Manual ")+(i+1),description="Empty",filled=false;
+    try{let text=localStorage.getItem(slotKey(a?"auto":"manual",i));if(text){let data=JSON.parse(text);description=data.game.name+" · Sol "+(Math.floor(data.game.minutes/1440)+1);filled=true;}}catch(error){description="Unreadable slot";}
+    cards.push({id:(a?"auto":"manual")+i,index:i,automatic:a===1,label:label,description:description,filled:filled});
+  }slotCards=cards;saveAvailable=false;for(let i=0;i<cards.length;i++)if(cards[i].filled)saveAvailable=true;
+}
+function resumeLatest() {
+  try{let key=localStorage.getItem(SAVE_PREFIX+"latest");let text=key?localStorage.getItem(key):null;if(text&&loadSaveText(text))return;}
+  catch(error){saveMessage="Last save unavailable.";}
+  refreshSlots();dialog="saves";say("Choose a saved settlement or paste an exported save.");
+}
+function exportChronicle() {
+  if(!osGame)return;
+  let lines=[osGame.name+" · Hollow-7 · Sol "+dayNow(),"Outerstead First Light "+OS_VERSION,""];
+  let s=osGame.stats,t=osGame.threats||{waves:0};
+  lines.push("THE RECORD","People who called it home: "+osGame.people.length,"Died here: "+s.deaths,"Born here: "+(s.births||0),"Harvests: "+s.harvests,"Meals cooked: "+Math.floor(s.mealsCooked),"Discoveries: "+Object.keys(osGame.tech).length,"Archives recovered: "+s.studied+" of 3","Predators brought down: "+s.attacks,"Waves survived: "+(t.waves||0),"Raids suffered: "+(s.raided||0)+" · camps broken: "+(s.campsBroken||0),"Ridge: "+(osGame.ridgeName||"Unnamed"),"");
+  lines.push("THE CHRONICLE (most recent first)","");
+  for(let i=0;i<osGame.chronicle.length;i++){let e=osGame.chronicle[i];lines.push("SOL "+e.sol+" · "+clockText(e.minute)+" · "+e.title);if(e.body)lines.push("  "+e.body.replace(/\n+/g," "));lines.push("");}
+  saveText=lines.join("\n");resetMapGesture();paused=true;dialog="saves";refreshSlots();
+  if(!downloadText(saveFileName("-chronicle.txt"),saveText,"text/plain;charset=utf-8","Downloaded {name}. The chronicle text is also below."))saveMessage="The chronicle is in the text box below. Select all, copy, and keep it wherever you like.";
+}
+function openSaves() {resetMapGesture();paused=true;dialog="saves";saveText="";saveMessage="Three manual slots and three rotating autosaves. Refreshing or closing the page autosaves and resumes. Download a save file to keep a copy outside the browser.";refreshSlots();}
+// Files: the host hands the browser a download and opens its file picker. Text stays as the fallback.
+function filesAvailable() {return typeof softn!=="undefined"&&!!softn.files&&typeof softn.files.saveFile==="function";}
+function saveFileName(suffix) {return ("Outerstead-"+(osGame?osGame.name:"colony")+"-Sol"+(osGame?dayNow():0)).replace(/[^A-Za-z0-9._-]+/g,"-")+suffix;}
+function downloadText(name,text,mime,doneMessage) {
+  if(!filesAvailable())return false;
+  saveMessage="Preparing "+name+"…";
+  try{softn.files.saveFile(name,text,{mime:mime},function(result){saveMessage=result&&result.ok?doneMessage.replace("{name}",result.name||name):"The download was not available: "+(result&&result.error?result.error:"unknown host error")+". The text below still works.";});}
+  catch(error){saveMessage="The download failed: "+String(error.message||error)+". Copy the text below instead.";}
+  return true;
+}
+function exportSave() {
+  try{saveText=snapshotText();
+    if(!downloadText(saveFileName(".json"),saveText,"application/json","Downloaded {name} to the browser download folder. The same text is below if you ever need it."))saveMessage="Select and copy the text below into a .json file. Keep it outside the browser before updating the app.";
+  }catch(error){saveMessage=String(error.message||error);}
+}
+function importSaveFile() {
+  if(!filesAvailable()||typeof softn.files.pickFile!=="function"||typeof softn.files.readText!=="function"){saveMessage="Choosing files is not available in this host. Paste the save text instead.";return;}
+  saveMessage="Choose an Outerstead .json save file.";
+  try{softn.files.pickFile({accept:".json,application/json,text/plain",multiple:false},function(files){
+    if(!files||!files.length||!files[0]||!files[0].ref){saveMessage="No file was chosen.";return;}
+    softn.files.readText(files[0].ref,function(result){
+      let text=typeof result==="string"?result:(result&&typeof result.text==="string"?result.text:(result&&typeof result.value==="string"?result.value:""));
+      if(!text){saveMessage="That file could not be read"+(result&&result.error?": "+result.error:".");return;}
+      saveText=text;if(loadSaveText(text))saveMessage="Restored from "+files[0].name+". The colony is paused.";
+    });
+  });}catch(error){saveMessage="The file picker failed: "+String(error.message||error);}
+}
+// Every save marks the session for automatic resume (saveSlot), so a refresh opens the latest save.
+// Leaving or refreshing the page still autosaves, but a host that keeps saves outside the page (FormLogic)
+// may lose a save made as the page closes, so resuming does not depend on it.
+function onGameUnload() {
+  try{if(screen==="game"&&osGame&&!osGame.over){saveSlot(autosaveIndex,true);autosaveIndex=(autosaveIndex+1)%3;}}catch(error){/* Nothing to do at unload. */}
+}
+// The player chose the title screen or a new settlement: a refresh opens the title, not the last save.
+function clearResume() {try{if(localStorage.getItem(SAVE_PREFIX+"resume")!==null)localStorage.removeItem(SAVE_PREFIX+"resume");}catch(error){/* Nothing to clear. */}}
+// Switching tabs, minimising or locking a phone saves over the newest autosave, at most every 15 seconds,
+// without rotating, so frequent switching does not use up the three autosaves. Where the logic cannot see
+// the document (SoftN's ZIPP engine passes the window's events in, not the document), either change saves.
+let lastHiddenSave = 0;
+function onGameHidden() {
+  if(typeof document!=="undefined"&&document&&typeof document.visibilityState==="string"&&document.visibilityState!=="hidden")return;
+  let now=perfNow();if(now-lastHiddenSave<15000)return;lastHiddenSave=now;
+  try{if(screen==="game"&&osGame&&!osGame.over)saveSlot((autosaveIndex+2)%3,true);}catch(error){/* The periodic autosave still runs. */}
+}
+function resumeFromLastSession() {
+  try{
+    if(localStorage.getItem(SAVE_PREFIX+"resume")!=="1")return false;
+    let key=localStorage.getItem(SAVE_PREFIX+"latest"),text=key?localStorage.getItem(key):null;
+    if(text&&loadSaveText(text)){finishOpening();say("Restored from your last session. The colony is paused.");return true;}
+  }catch(error){/* Fall through to the title. */}
+  return false;
+}
+function importSave() {if(!saveText.trim()){saveMessage="Paste an Outerstead save first.";return;}loadSaveText(saveText);}

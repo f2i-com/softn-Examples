@@ -1,0 +1,111 @@
+// Browser event coordinates are reduced to numbers in .ui before entering this VM.
+function resetMapGesture(){pointerState=null;touchPoints={};pinchState=null;}
+function refreshCamera(){
+  let extent=MAP_SIZE*TILE*zoomLevel*0.5;panX=clamp(panX,-extent,extent);panY=clamp(panY,-extent,extent);
+  worldStyle={width:(MAP_SIZE*TILE)+"px",height:(MAP_SIZE*TILE)+"px",transform:"translate(-50%, -50%) translate("+round1(panX)+"px, "+round1(panY)+"px) scale("+zoomLevel+")"};
+}
+function focusAt(x,y){followPlayer=false;panX=(MAP_SIZE/2-x)*TILE*zoomLevel;panY=(MAP_SIZE/2-y)*TILE*zoomLevel;visibleTileRange=null;refreshCamera();dirty();}
+function focusPlayer(){if(!player())return;panX=(MAP_SIZE/2-player().x)*TILE*zoomLevel;panY=(MAP_SIZE/2-player().y)*TILE*zoomLevel;followPlayer=true;visibleTileRange=null;refreshCamera();dirty();}
+function overviewMap(){zoomLevel=clamp(Math.min((viewportWidth-40)/(MAP_SIZE*TILE),(viewportHeight-40)/(MAP_SIZE*TILE)),0.10,0.45);focusAt(48,48);}
+function focusSite(id){let s=siteById(id);if(!s)return;selectedId=id;selectedType="site";zoomLevel=Math.max(zoomLevel,0.65);focusAt(s.ax+0.5,s.ay+0.5);refreshAll();}
+function selectPerson(id,focus){let c=actorById(id);if(!c)return;selectedId=id;selectedType="person";activePanel="inspect";mobilePanelOpen=true;if(focus){zoomLevel=Math.max(zoomLevel,0.75);focusAt(c.x,c.y);}refreshAll();}
+function inspectSite(id){let s=siteById(id);if(!s)return;selectedId=id;selectedType="site";activePanel="inspect";mobilePanelOpen=true;refreshAll();}
+function goToSite(id){let s=siteById(id);if(!s)return false;return movePlayerTo(s.ax,s.ay);}
+function movePlayerTo(x,y){
+  if(!canInteractNow())return false;x=Math.floor(x);y=Math.floor(y);if(!onMap(x,y))return false;
+  let p=player();
+  if(omGame.autoDay&&p.mode==="routine")return queueTask({type:"walk",x:x,y:y,duration:0,illegal:0});
+  p.mode="manual";
+  let planned=findPath(p,p.x,p.y,x,y);if(planned===null){say("No authorised route. Doors depend on your assignment, the shift and security policy.");return false;}
+  if(p.task&&p.task.type!=="walk")interruptActiveOrder("Waiting while you walk.");else if(p.task)p.task=null;
+  routeTo(p,x,y);paused=false;followPlayer=true;mobilePanelOpen=false;dirty();return true;
+}
+function mapPosition(x,y,left,top,w,h){return {x:(x-left-w/2-panX)/(TILE*zoomLevel)+MAP_SIZE/2,y:(y-top-h/2-panY)/(TILE*zoomLevel)+MAP_SIZE/2};}
+// A tap never moves the inmate by itself: it opens the action menu for whatever was tapped.
+function mapTap(x,y,button,sx,sy,pointerType){
+  if(button===2){closeContextMenu();movePlayerTo(x,y);return;}
+  let sheet=pointerType==="touch"||viewportWidth<640;
+  let nearest=null,distance=1.4;for(let i=0;i<omGame.people.length;i++){let c=omGame.people[i];if(c.escaped)continue;let d=sqDistance(x,y,c.x,c.y);if(d<distance){nearest=c;distance=d;}}
+  if(nearest){openContextMenu("person",nearest.id,x,y,sx,sy,sheet);return;}
+  for(let i=0;i<SITES.length;i++){let s=SITES[i];if(x>=s.x&&y>=s.y&&x<=s.x+s.w&&y<=s.y+s.h){openContextMenu("site",s.id,x,y,sx,sy,sheet);return;}}
+  let d=doorAt[tileId(x,y)];if(d){openContextMenu("door",d.id,x,y,sx,sy,sheet);return;}
+  openContextMenu("ground","",x,y,sx,sy,sheet);
+}
+function contextItems(m){
+  let items=[],p=player();
+  if(m.type==="person"){let c=actorById(m.target);if(!c)return items;
+    for(let a of actionCardsFor("person",m.target))items.push({id:(a.force?"force:":"social:")+a.id,label:a.label,hint:a.hint,disabled:a.disabled,icon:{talk:"💬",accept:"🤝",favor:"🎁",trade:"🪙",recruit:"🗝",distract:"📣",hold:"🧤",collect:"👐",dismiss:"🚪",attack:"✊",drag:"🫳",strip:"🧥",incite:"🔥"}[a.id]||"•"});
+    if(c.id==="player")items.push({id:"routine",label:p.mode==="routine"?"Break routine: take control":"Return to routine",hint:p.mode==="routine"?"Stop automatic movement.":"Attend counts, meals, work and sleep automatically.",disabled:!canInteractNow(),icon:"⏯"});
+    else if(c.role==="inmate")items.push({id:"walk",label:"Walk over to "+c.short,hint:omGame.autoDay?"Takes control from Auto day.":"Stand within talking distance.",disabled:!canInteractNow(),icon:"👣"});
+    else items.push({id:"walk",label:"Walk over",hint:"Officers and staff do not stop to talk.",disabled:!canInteractNow(),icon:"👣"});
+    items.push({id:"details",label:"Details",hint:c.id==="player"?"Needs, mode and equipment.":"Trust, memories and what they need.",disabled:false,icon:"ℹ"});
+  }else if(m.type==="site"){let s=siteById(m.target);if(!s)return items;
+    for(let a of actionCardsFor("site",m.target))items.push({id:"site:"+a.id,label:a.label,hint:a.hint,disabled:a.disabled,icon:{work:"🔧",take:"📦",craft:"🛠",rest:"🛏",observe:"👁",stash:"🗄",projects:"📐",escape:"🚪",eat:"🍽",buytea:"🍵",shop:"🏪",assignment:"📋",evidence:"📄",inspect:"🔍"}[a.id]||"•"});
+    items.push({id:"walk",label:"Walk here",hint:omGame.autoDay?"Takes control from Auto day.":"Your inmate walks to the fixture.",disabled:!canInteractNow(),icon:"👣"});
+    items.push({id:"details",label:"Details",hint:"Open the inspector panel.",disabled:false,icon:"ℹ"});
+  }else if(m.type==="door"){let door=null;for(let d of omGame.doors)if(d.id===m.target)door=d;if(!door)return items;
+    items.push({id:"walk",label:"Walk here",hint:doorPasses(accessProfile(p),door)?"This door opens for you.":"Locked to your current access.",disabled:!canInteractNow(),icon:"👣"});
+    items.push({id:"details",label:"Details",hint:"Access policy for this door.",disabled:false,icon:"ℹ"});
+  }else{items.push({id:"walk",label:"Walk here",hint:omGame.autoDay?"Takes control from Auto day.":p.mode==="routine"?"Switches to manual control.":"About "+Math.ceil(Math.sqrt(sqDistance(p.x,p.y,m.tileX+.5,m.tileY+.5))/2.25*2)+" game minutes away.",disabled:!canInteractNow(),icon:"👣"});}
+  return items;
+}
+function openContextMenu(type,id,tx,ty,sx,sy,sheet){
+  if(!omGame)return;let title="",subtitle="";
+  if(type==="person"){let c=actorById(id);if(!c)return;selectedId=id;selectedType="person";title=c.id==="player"?"You · "+c.name:c.name;subtitle=(c.id==="player"?"":c.role+" · ")+c.action;}
+  else if(type==="site"){let s=siteById(id);if(!s)return;selectedId=id;selectedType="site";title=castText(s.name);subtitle=nearSite(player(),id)?"Within reach":"Actions walk you there first";}
+  else if(type==="door"){let door=null;for(let d of omGame.doors)if(d.id===id)door=d;if(!door)return;selectedId=id;selectedType="door";title=door.label;subtitle=doorPasses(accessProfile(player()),door)?"Permitted for you":"Locked to your access";}
+  else{let z=zoneById(zoneAt[tileId(tx,ty)]);title=z?z.label:"Open ground";subtitle="Tile "+Math.floor(tx)+", "+Math.floor(ty);}
+  if(omGame.autoDay)subtitle+=" · choices join your orders";
+  contextMenu={type:type,target:id,tileX:Math.floor(tx),tileY:Math.floor(ty),title:title,subtitle:subtitle,items:[],sheet:!!sheet,anchorX:isFiniteNumber(sx)?sx:viewportWidth/2,anchorY:isFiniteNumber(sy)?sy:viewportHeight/2,style:{}};
+  contextMenu.items=contextItems(contextMenu);placeContextMenu();if(activePanel==="inspect")refreshAll();else dirty();
+}
+// The popover is sized from its items, opens away from the nearest edge and never leaves the map.
+// On touch or narrow screens it becomes a bottom sheet instead.
+function placeContextMenu(){
+  let m=contextMenu;if(!m)return;
+  if(m.sheet){m.style={left:"0px",right:"0px",bottom:"0px",top:"auto",width:"auto"};return;}
+  let width=248,height=Math.min(viewportHeight*0.72,62+m.items.length*44);
+  let left=m.anchorX+12,top=m.anchorY+12;
+  if(left+width>viewportWidth-8)left=m.anchorX-12-width;
+  if(top+height>viewportHeight-8)top=m.anchorY-12-height;
+  left=clamp(left,8,Math.max(8,viewportWidth-width-8));top=clamp(top,8,Math.max(8,viewportHeight-height-8));
+  m.style={left:Math.round(left)+"px",top:Math.round(top)+"px",width:width+"px",maxHeight:Math.round(height)+"px"};
+}
+function refreshContextMenu(){if(!contextMenu||!omGame)return;contextMenu.items=contextItems(contextMenu);placeContextMenu();}
+function closeContextMenu(){if(contextMenu){contextMenu=null;dirty();}}
+function contextAction(id){
+  let m=contextMenu;if(!m||!omGame)return false;closeContextMenu();playCue("click");
+  if(id==="walk")return m.type==="site"?goToSite(m.target):movePlayerTo(m.tileX,m.tileY);
+  if(id==="details"){if(m.type==="person")selectPerson(m.target,false);else if(m.type==="site")inspectSite(m.target);else{selectedId=m.target;selectedType="door";setPanel("inspect");}return true;}
+  if(id==="routine"){toggleRoutine();return true;}
+  if(id.indexOf("force:")===0)return requestForce(m.target,id.slice(6));
+  if(id.indexOf("social:")===0)return requestSocial(m.target,id.slice(7));
+  if(id.indexOf("site:")===0)return requestAction(m.target,id.slice(5));
+  return false;
+}
+function mapPointer(kind,id,type,x,y,button,left,top,w,h){
+  if(screen!=="game"||dialog||!omGame)return;
+  viewportWidth=w;viewportHeight=h;
+  if(kind==="cancel"){delete touchPoints[String(id)];pointerState=null;pinchState=null;return;}
+  if(kind==="down"){
+    closeContextMenu();
+    touchPoints[String(id)]={x:x,y:y};let keys=Object.keys(touchPoints);
+    if(keys.length===2){let a=touchPoints[keys[0]],b=touchPoints[keys[1]];pinchState={d:Math.max(1,Math.sqrt(sqDistance(a.x,a.y,b.x,b.y))),zoom:zoomLevel,px:panX,py:panY,mx:(a.x+b.x)/2,my:(a.y+b.y)/2};pointerState=null;followPlayer=false;return;}
+    pointerState={id:id,x:x,y:y,px:panX,py:panY,button:button,drag:false};return;
+  }
+  if(kind==="move"){
+    if(!touchPoints[String(id)])return;touchPoints[String(id)]={x:x,y:y};let keys=Object.keys(touchPoints);
+    if(pinchState&&keys.length===2){let a=touchPoints[keys[0]],b=touchPoints[keys[1]],p=pinchState;zoomLevel=clamp(p.zoom*Math.sqrt(sqDistance(a.x,a.y,b.x,b.y))/p.d,0.10,1.8);let ratio=zoomLevel/p.zoom;panX=p.px*ratio+((a.x+b.x)/2-p.mx)+(p.mx-left-w/2)*(1-ratio);panY=p.py*ratio+((a.y+b.y)/2-p.my)+(p.my-top-h/2)*(1-ratio);visibleTileRange=null;refreshCamera();dirty();return;}
+    let p=pointerState;if(!p||p.id!==id)return;if(sqDistance(x,y,p.x,p.y)>36)p.drag=true;
+    if(p.drag){followPlayer=false;panX=p.px+x-p.x;panY=p.py+y-p.y;visibleTileRange=null;refreshCamera();dirty();}return;
+  }
+  if(kind==="up"){
+    delete touchPoints[String(id)];if(pinchState){pinchState=null;pointerState=null;return;}
+    let p=pointerState;pointerState=null;if(!p||p.id!==id||p.drag)return;let pt=mapPosition(x,y,left,top,w,h);if(onMap(pt.x,pt.y))mapTap(pt.x,pt.y,p.button,x-left,y-top,type);
+  }
+}
+function zoomBy(amount){let old=zoomLevel;zoomLevel=clamp(zoomLevel+amount,.10,1.8);panX*=zoomLevel/old;panY*=zoomLevel/old;visibleTileRange=null;refreshCamera();dirty();}
+function mapWheel(delta,x,y,left,top,w,h){if(dialog)return;let old=zoomLevel;zoomLevel=clamp(zoomLevel*(delta>0?.90:1.10),.10,1.8);let ratio=zoomLevel/old;panX=panX*ratio+(x-left-w/2)*(1-ratio);panY=panY*ratio+(y-top-h/2)*(1-ratio);followPlayer=false;viewportWidth=w;viewportHeight=h;visibleTileRange=null;refreshCamera();dirty();}
+function minimapTap(x,y,left,top,w,h){focusAt(clamp((x-left)/w*96,0,95),clamp((y-top)/h*96,0,95));}
+function onKey(e){if(!e||e.targetEditable||e.ctrlKey||e.metaKey||e.altKey||["INPUT","TEXTAREA","SELECT"].indexOf(String(e.targetTag||"").toUpperCase())>=0)return;let k=e.key;if(k==="Escape"){if(dialog)closeDialog();else if(contextMenu)closeContextMenu();else if(moreOpen){moreOpen=false;dirty();}else if(guideSheetOpen){guideSheetOpen=false;dirty();}else{mobilePanelOpen=false;dirty();}return;}if(screen!=="game"||dialog)return;if(k===" ")togglePause();if(k==="1")setSpeed(1);if(k==="2")setSpeed(2);if(k==="4")setSpeed(4);if(k==="r"||k==="R")toggleRoutine();if(k==="f"||k==="F")focusPlayer();if(k==="i"||k==="I")setPanel("inventory");if(k==="e"||k==="E")setPanel("escape");if(k==="n"||k==="N")setPanel("notebook");if(k==="m"||k==="M")overviewMap();if(k==="g"||k==="G")toggleGuideSheet();if(k==="?"||k==="h"||k==="H")openDialog("help");if(k==="+"||k==="=")zoomBy(.12);if(k==="-")zoomBy(-.12);}
+function registerInput(){if(typeof window!=="undefined"&&window.addEventListener){window.addEventListener("keydown",onKey);window.addEventListener("pagehide",function(){if(omGame)saveSlot(autoIndex,true);});window.addEventListener("blur",function(){if(omGame&&!runInBackground){paused=true;dirty();}});}try{if(typeof softn!=="undefined"&&softn.input&&softn.input.captureKeys)softn.input.captureKeys([" ","Escape","1","2","4","r","R","f","F","i","I","e","E","n","N","m","M","g","G","?","h","H","+","=","-"],function(){});}catch(e){}}

@@ -1,0 +1,61 @@
+// Independent event pacing and severity; original saves retain the normal director.
+let eventSeverityChoice="standard";
+let eventFrequencyChoice="normal";
+let eventSettingsText="";
+let weatherNotice="";
+let incidentFx=null;
+let incidentFxStyle={display:"none"};
+let incidentFxKind="";
+const EVENT_SEVERITIES=["gentle","standard","severe"];
+const EVENT_FREQUENCIES=["off","relaxed","normal","mayhem"];
+function eventConfig(){return osGame&&osGame.eventSettings?osGame.eventSettings:{severity:"standard",frequency:"normal"};}
+function peacefulEvents(){return osGame.difficulty==="peaceful"||eventConfig().severity==="gentle";}
+function eventDamageFactor(){return peacefulEvents()||eventConfig().frequency==="off"?0:eventConfig().severity==="severe"?2:1;}
+function incidentDelay(){let f=eventConfig().frequency;return f==="off"?10000:f==="relaxed"?randomInt(2400,4200):f==="mayhem"?randomInt(120,260):randomInt(950,1650);}
+function climateDelay(){let f=eventConfig().frequency;return f==="off"?10000:f==="relaxed"?randomInt(900,1800):f==="mayhem"?randomInt(90,180):randomInt(300,700);}
+function validateEventSettings(g){
+  if(g.eventSettings===undefined)g.eventSettings={severity:"standard",frequency:"normal"};
+  requireRecord(g.eventSettings,"event settings");if(EVENT_SEVERITIES.indexOf(g.eventSettings.severity)<0||EVENT_FREQUENCIES.indexOf(g.eventSettings.frequency)<0)failSave("Unknown event settings.");
+  if(g.weatherFront!==undefined&&g.weatherFront!==null){requireRecord(g.weatherFront,"weather front");if(["Storm","Cold snap","Heat wave","Glass Wind"].indexOf(g.weatherFront.weather)<0)failSave("Unknown weather front.");boundedNumber(g.weatherFront.due,0,100100000,"weather arrival");}
+}
+function refreshEventSettingsText(){eventSettingsText=eventFrequencyChoice==="off"?"Random incidents and weather changes are off. Existing weather settles to Clear. Hollow discoveries, basic needs, social life and explicitly enabled mods remain active.":eventFrequencyChoice==="mayhem"?"A random encounter roughly every 2–4 game hours. Frequent weather fronts. Severe + Frontier permits larger predator packs and heavier equipment damage.":eventFrequencyChoice==="relaxed"?"A random encounter roughly every 1.7–2.9 sols. Weather changes slowly; choose Gentle to exclude harmful incidents.":"A random encounter roughly every 16–28 game hours, with ordinary weather changes.";}
+function openEventSettings(){resetMapGesture();paused=true;if(osGame){eventSeverityChoice=eventConfig().severity;eventFrequencyChoice=eventConfig().frequency;}refreshEventSettingsText();dialog="event-settings";}
+function setEventSetting(key,value){
+  if(key==="severity"&&EVENT_SEVERITIES.indexOf(value)>=0)eventSeverityChoice=value;
+  else if(key==="frequency"&&EVENT_FREQUENCIES.indexOf(value)>=0)eventFrequencyChoice=value;else return;
+  refreshEventSettingsText();
+  if(screen!=="game"||!osGame)return;
+  osGame.eventSettings={severity:eventSeverityChoice,frequency:eventFrequencyChoice};
+  osGame.nextEvent=osGame.minutes+incidentDelay();osGame.weatherUntil=osGame.minutes+climateDelay();threatState().nextAt=osGame.minutes+threatDelay();
+  if(peacefulEvents()||eventFrequencyChoice==="off"){
+    osGame.weatherFront=null;osGame.eventQueue=osGame.eventQueue.filter(function(q){return q.kind!=="attack"&&q.kind!=="storm";});
+    if(eventFrequencyChoice==="off"||["Storm","Cold snap","Heat wave","Glass Wind"].indexOf(osGame.weather)>=0)osGame.weather="Clear";
+  }
+  chronicle("A different pace",eventSeverityChoice+" incidents · "+eventFrequencyChoice+" frequency. Future encounters follow the new settings.","colony");refreshAll();
+}
+function weatherTransition(weather){osGame.weather=weather;osGame.weatherUntil=osGame.minutes+climateDelay();osGame.weatherFront=null;viewDirty=true;chronicle("Weather: "+weather,weather==="Clear"?"The front passes. The colony has room to recover.":"The new weather has reached the settlement.","weather");onWeatherArrives(weather);}
+function advanceWeather(){
+  if(eventConfig().frequency==="off")return;
+  if(osGame.weatherFront){if(osGame.minutes>=osGame.weatherFront.due)weatherTransition(osGame.weatherFront.weather);return;}
+  if(osGame.minutes<osGame.weatherUntil)return;
+  let options=dayNow()<3?["Clear","Clear","Rain","Fog"]:["Clear","Clear","Rain","Fog","Storm","Cold snap","Heat wave","Glass Wind","Echo Rain"];
+  if(peacefulEvents())options=["Clear","Clear","Rain","Fog","Echo Rain"];
+  let extra=biomeOf().extraWeather;for(let i=0;i<extra.length;i++)if(options.indexOf(extra[i])>=0||dayNow()>=3&&!peacefulEvents())options.push(extra[i]);
+  let weather=pick(options);
+  if(["Storm","Cold snap","Heat wave","Glass Wind"].indexOf(weather)>=0){osGame.weatherFront={weather:weather,due:osGame.minutes+60};osGame.weatherUntil=osGame.minutes+60;chronicle(weather+" forecast","A front will arrive in one game hour. Check shelter, food storage and power.","weather");say(weather+" forecast · one hour to prepare.");viewDirty=true;}
+  else weatherTransition(weather);
+}
+function showIncidentFx(kind,x,y){emitVisualFx(kind,x,y,0);incidentFx={kind:kind,x:x,y:y,until:osGame.elapsed+8};viewDirty=true;}
+function hasSurgeTarget(){return osGame.buildings.some(function(b){return b.built&&["generator","solar","wind","battery","freezer","heater"].indexOf(b.kind)>=0;});}
+function resolvePowerIncident(protectedCircuit){
+  let targets=[];for(let b of osGame.buildings)if(b.built&&["generator","solar","wind","battery","freezer","heater"].indexOf(b.kind)>=0)targets.push(b);
+  if(!targets.length){chronicle("The surge grounds safely","No vulnerable equipment was connected.","weather");return;}
+  let b=pick(targets);showIncidentFx("surge",b.x,b.y);
+  if(!protectedCircuit){let damage=20*eventDamageFactor();b.hp=Math.max(1,b.hp-damage);if(damage>0){emitVisualFx("explosion",b.x+b.w/2,b.y+b.h/2,0);emitVisualFx("fire",b.x+b.w/2,b.y+b.h/2,0);}tickPower(0);chronicle("A breaker gives way",BUILDINGS[b.kind].name+" needs repairs after the surge.","weather");generateJobs();if(damage>0)addJob("repair",b.id,"build",b.x,b.y,14);}else chronicle("The circuit holds","Replacement components spared the equipment.","colony");
+}
+function refreshAtmosphere(){
+  weatherClass=osGame.weather==="Storm"?"storm":osGame.weather==="Echo Rain"?"echo":osGame.weather==="Rain"?"rain":osGame.weather==="Fog"?"fog":osGame.weather==="Cold snap"?"snow":osGame.weather==="Heat wave"?"heat":osGame.weather==="Glass Wind"?"glass":"clear";
+  let exposed=osGame.weather==="Glass Wind"?exposedPeople().length:0;
+  weatherNotice=osGame.weatherFront?osGame.weatherFront.weather+" in "+Math.max(0,Math.ceil(osGame.weatherFront.due-osGame.minutes))+" min":osGame.weather!=="Clear"?osGame.weather+(exposed?" · "+exposed+" exposed":""):"";
+  if(incidentFx&&incidentFx.until>osGame.elapsed&&onMap(Math.floor(incidentFx.x),Math.floor(incidentFx.y))){incidentFxKind=incidentFx.kind;incidentFxStyle={left:(worldPx(incidentFx.x)-32)+"px",top:(worldPy(incidentFx.y)-32)+"px"};}else{incidentFxStyle={display:"none"};incidentFxKind="";}
+}

@@ -1,0 +1,68 @@
+// Connected-component electrical networks, finite batteries, and priority shedding.
+function rebuildPower() {
+  let conductive=[],net=[];powerGroups=[];
+  for(let i=0;i<MAP_SIZE*MAP_SIZE;i++){conductive.push(0);net.push(-1);}
+  if(osGame.wireTiles)for(let i=0;i<osGame.wireTiles.length;i++)if(osGame.wireTiles[i])conductive[i]=1;
+  for(let i=0;i<osGame.buildings.length;i++){
+    let b=osGame.buildings[i],d=BUILDINGS[b.kind];b.network=-1;
+    if(!b.built||(!d.wire&&!d.power&&!d.produce&&!d.capacity)||!onMap(b.x,b.y)||!onMap(b.x+b.w-1,b.y+b.h-1))continue;
+    for(let y=b.y;y<b.y+b.h;y++)for(let x=b.x;x<b.x+b.w;x++)conductive[tileId(x,y)]=1;
+  }
+  for(let start=0;start<conductive.length;start++){
+    if(!conductive[start]||net[start]>=0)continue;
+    let group={id:powerGroups.length,members:[],consumers:[],sources:[],batteries:[]},q=[start],head=0;net[start]=group.id;
+    while(head<q.length){let id=q[head++],x=id%MAP_SIZE,ns=[id-1,id+1,id-MAP_SIZE,id+MAP_SIZE];for(let k=0;k<4;k++){let n=ns[k];if(n<0||n>=conductive.length||!conductive[n]||net[n]>=0||Math.abs(n%MAP_SIZE-x)>1)continue;net[n]=group.id;q.push(n);}}
+    powerGroups.push(group);
+  }
+  for(let i=0;i<osGame.buildings.length;i++){
+    let b=osGame.buildings[i],d=BUILDINGS[b.kind];if(!b.built||(!d.wire&&!d.power&&!d.produce&&!d.capacity)||!onMap(b.x,b.y))continue;
+    b.network=net[tileId(b.x,b.y)];if(b.network<0)continue;
+    let g=powerGroups[b.network];g.members.push(b.id);if(d.power)g.consumers.push(b.id);if(d.produce)g.sources.push(b.id);if(d.capacity)g.batteries.push(b.id);
+  }
+  for(let i=0;i<powerGroups.length;i++)powerGroups[i].consumers.sort(function(a,b){return (BUILDINGS[getBuilding(a).kind].priority||0)-(BUILDINGS[getBuilding(b).kind].priority||0);});
+}
+function sunAmount() { return clamp(Math.sin((hourNow()-6)/14*Math.PI),0,1); }
+function tickPower(minutes) {
+  let totalGen=0,totalDemand=0,totalStored=0,totalCapacity=0;let hours=Math.max(1/36000,minutes/60);
+  for(let i=0;i<osGame.buildings.length;i++){let b=osGame.buildings[i];if(BUILDINGS[b.kind].power)b.powered=false;}
+  for(let n=0;n<powerGroups.length;n++){
+    let group=powerGroups[n],generation=0,stored=0,capacity=0;
+    for(let i=0;i<group.sources.length;i++){
+      let b=getBuilding(group.sources[i]),d=BUILDINGS[b.kind],out=0;
+      if(b.on&&b.hp>=d.hp*0.3){
+        if(b.kind==="generator"){
+          let fuel=4*minutes/1440;if(osGame.stock.fuel>0){let fraction=Math.min(1,osGame.stock.fuel/Math.max(fuel,0.0000001));out=d.produce*fraction;osGame.stock.fuel=Math.max(0,osGame.stock.fuel-fuel);}
+        }else if(b.kind==="solar"){out=d.produce*sunAmount()*(osGame.weather==="Storm"?0.3:osGame.weather==="Glass Wind"?0.35:(osGame.weather==="Rain"?0.6:(osGame.weather==="Fog"?0.65:1)));}
+        else if(b.kind==="wind"){out=d.produce*(0.4+0.35*(Math.sin(osGame.minutes/181)+1)/2+(osGame.weather==="Storm"?0.7:osGame.weather==="Glass Wind"?0.5:0));}
+      }
+      b.output=out;b.powered=out>0;generation+=out;
+    }
+    for(let i=0;i<group.batteries.length;i++){let b=getBuilding(group.batteries[i]);if(!b.on)continue;capacity+=BUILDINGS[b.kind].capacity;stored+=b.charge;}
+    let available=generation*hours+stored,used=0,demand=0;
+    for(let i=0;i<group.consumers.length;i++){
+      let b=getBuilding(group.consumers[i]),d=BUILDINGS[b.kind];if(!b.on)continue;
+      demand+=d.power;let need=d.power*hours;
+      if(available+0.0000001>=need){b.powered=true;available-=need;used+=need;}
+    }
+    available=clamp(available,0,capacity);let remaining=available;
+    for(let i=0;i<group.batteries.length;i++){let b=getBuilding(group.batteries[i]);if(!b.on)continue;if(minutes>0)b.charge=Math.min(BUILDINGS[b.kind].capacity,remaining);remaining-=b.charge;b.powered=b.charge>0;}
+    if(minutes<=0)available=stored;
+    group.generation=generation;group.demand=demand;group.stored=available;
+    totalGen+=generation;totalDemand+=demand;totalStored+=available;totalCapacity+=capacity;
+  }
+  osGame.power={generation:totalGen,demand:totalDemand,stored:totalStored,capacity:totalCapacity,networks:powerGroups.length};
+}
+function updateClimate(minutes) {
+  let season=Math.floor((dayNow()-1)/12)%4;
+  let seasonal=[16,25,10,-2][season],wave=Math.sin((hourNow()-8)/24*Math.PI*2)*5;
+  let modifier=osGame.weather==="Cold snap"?-14:(osGame.weather==="Heat wave"?15:(osGame.weather==="Rain"?-3:0));
+  osGame.temperature=seasonal+wave+modifier+biomeOf().temperature;
+  // One pass over the buildings marks the heated rooms; the rooms then settle toward their targets.
+  let heated=[];for(let j=0;j<osGame.buildings.length;j++){let b=osGame.buildings[j];if(b.room>=0&&b.built&&b.kind==="heater"&&b.powered&&b.on)heated[b.room]=true;}
+  let insulated=hasTech("insulation");
+  for(let i=0;i<osGame.rooms.length;i++){
+    let r=osGame.rooms[i];r.heated=!!heated[r.id];let target=r.heated?21:osGame.temperature*(insulated?0.6:0.82)+4;
+    r.temp+= (target-r.temp)*Math.min(1,minutes/30);
+  }
+  advanceWeather();
+}

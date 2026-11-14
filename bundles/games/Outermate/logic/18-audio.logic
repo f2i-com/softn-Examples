@@ -1,0 +1,112 @@
+// Music, scene loops, spoken lines and event cues. Presentation only: nothing here touches the
+// simulation or its saves. Every call is guarded, so a host without audio, or a browser before its
+// first gesture, degrades to silence and retries quietly a few seconds later.
+let musicEnabled=true,voiceEnabled=true;
+let musicLoop=loopState(),sceneLoop=loopState();
+let voiceHandle="",voiceBusyUntil=0,voiceToken=0,cueClocks={},announcedGame=null,announcedBlock="",introSpoken=false,endingSpoken=false,alarmSpokenAt=-1e9;
+const PA_LINES={wake:"Good morning, Greywall. Cell doors are open. Morning count in fifteen minutes.",count1:"Morning count. All inmates to the count square.",breakfast:"Count is complete. Breakfast is served in the canteen.",work1:"Work details to your stations. Access is by assignment only.",yard1:"The yard is open. Remain inside the marked area.",lunch:"Lunch is served. Return your trays to the counter.",work2:"Afternoon work details to your stations. Freight departs at fourteen thirty.",yard2:"Free time. The yard and the tables are open until dinner.",dinner:"Dinner is served. Association follows.",association:"Association is open. Keep the corridors clear.",count2:"Evening count. All inmates to the count square.",lock:"Lock-in. All inmates return to your cells. Lights out at twenty-two thirty.",night:"Lights out. Silence in the blocks.",search:"Attention. A cell search is in progress. Remain where you are.",escape:"Attention all units. Escape response. Secure the perimeter.",riot:"Attention. Disturbance in progress. All inmates return to your blocks immediately.",lockdown:"Attention. This block is on lockdown until further notice.",power:"Main circuit fault. Maintenance to the generator room."};
+const OFFICER_LINES={stop:"You. Stop right there.",where:"Where are you supposed to be?",hands:"Hands where I can see them.",cell:"Back to your cell. Now.",move:"Move along. Don't linger.",pass:"Let me see that pass.",search:"Stand against the wall. Cell search.",caught:"Got you. On the ground.",down:"Officer down! Officer down!"};
+const NIGHT_LINES={check:"Lights out. In your bunks.",empty:"Empty bunk! Sound the alarm!",quiet:"Quiet in there."};
+const NARRATOR_LINES={intro:"Greywall Prison. Your number is not your name. Learn the routine, keep your promises, and the walls will tell you where they are thin.",escaped:"Beyond the walls. Whatever comes next, you chose it.",captured:"A setback, not an ending. The routine will be waiting in the morning."};
+// Lines recorded for the inmates, in three voices. Anything else stays a silent speech bubble.
+const INMATE_VOICED=["Morning.","Sleep alright?","Count in ten. Don't be late.","New face. Keep it down.","Alright.","Keep your head down today.","Seen the noticeboard?","Trade you tea for news.","Long day.","Evening count soon.","Tea later?","Association's the place to talk.","Lights out soon.","Sleep well, if you can.","Boots in the corridor later.","Keep it between us.","Ask me again tomorrow.","Don't quote me.","Bring me one. Quietly.","I won't forget this.","Pleasure doing business.","Count me in. Quietly.","Nice shot.","Pass it!","Your deal.","I fold."];
+function loopState(){return {path:"",handle:"",pending:false,failed:false,token:0,retry:0};}
+function audioHost(){return typeof softn!=="undefined"&&softn&&softn.audio&&typeof softn.audio.play==="function"?softn.audio:null;}
+function wallSeconds(){try{return Date.now()/1000;}catch(e){return omGame?omGame.elapsed:0;}}
+function voiceSlug(text){return String(text).toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,40);}
+function stopLoop(l){let a=audioHost(),h=l.handle;l.handle="";l.pending=false;l.path="";l.token++;if(h&&a&&a.stop)a.stop(h,function(){});}
+function syncLoop(l,path,volume){
+  if(!path){if(l.handle||l.pending)stopLoop(l);return;}
+  if(l.path===path&&(l.handle||l.pending))return;
+  if(l.handle||l.pending)stopLoop(l);
+  let a=audioHost();if(!a||l.failed)return;
+  l.pending=true;l.path=path;let token=++l.token;
+  try{a.play(path,{volume:volume,loop:true},function(result){let h=result&&result.handle;if(token!==l.token){if(h&&a.stop)a.stop(h,function(){});return;}l.pending=false;if(h)l.handle=h;else{l.failed=true;l.retry=0;l.path="";}});}
+  catch(e){l.pending=false;l.failed=true;l.path="";}
+}
+function tickLoopRetry(l,dt){if(!l.failed)return;l.retry+=dt;if(l.retry>=8){l.retry=0;l.failed=false;}}
+// Which track fits the moment: the title theme on the menu, the escape underscore once a plan is in
+// motion, the night piece after lights out, and the routine piece for everything else.
+function musicWanted(){
+  if(!musicEnabled)return "";
+  if(screen==="title")return "assets/audio/music-title.mp3";
+  if(!omGame||screen!=="game"||paused||omGame.over)return "";
+  if(omGame.escape||omGame.riot)return "assets/audio/music-escape.mp3";
+  if(isLightsOut())return "assets/audio/music-night.mp3";
+  return "assets/audio/music-day.mp3";
+}
+// A second ambient layer under the ventilation loop: rain, the yard outdoors, or the dripping block at night.
+function sceneWanted(){
+  if(!ambienceEnabled||!omGame||screen!=="game"||paused||omGame.over||dialog)return "";
+  if(omGame.riot)return "assets/audio/loop-riot.mp3";
+  if(omGame.weather==="Rain"||omGame.weather==="Storm")return "assets/audio/loop-rain.mp3";
+  let p=player();if(!p)return "";
+  if(isLightsOut())return "assets/audio/loop-night.mp3";
+  if(zoneOf(p)==="yard")return "assets/audio/loop-yard.mp3";
+  return "";
+}
+function toggleMusic(){musicEnabled=!musicEnabled;musicLoop.failed=false;if(!musicEnabled)stopLoop(musicLoop);saveSettings();syncAudio(0);dirty();}
+function toggleVoice(){voiceEnabled=!voiceEnabled;if(!voiceEnabled)stopVoice();else castLine("pa","count1",true);saveSettings();dirty();}
+function stopVoice(){let a=audioHost(),h=voiceHandle;voiceHandle="";voiceToken++;voiceBusyUntil=0;if(h&&a&&a.stop)a.stop(h,function(){});}
+function voiceSeconds(text){return 0.7+String(text).length*0.065;}
+// One voice at a time. Priority lines (the address system, officers, the narrator) cut a chatting inmate off.
+function speakLine(file,text,volume,priority){
+  if(!voiceEnabled)return false;let a=audioHost();if(!a)return false;
+  let now=wallSeconds();if(!priority&&now<voiceBusyUntil)return false;
+  stopVoice();voiceBusyUntil=now+voiceSeconds(text);let token=voiceToken;
+  try{a.play(file,{volume:volume||.6,loop:false},function(r){let h=r&&r.handle;if(!h)return;if(token!==voiceToken){if(a.stop)a.stop(h,function(){});return;}voiceHandle=h;});}catch(e){return false;}
+  return true;
+}
+function castLine(cast,id,priority){let pool=cast==="pa"?PA_LINES:cast==="officer"?OFFICER_LINES:cast==="night"?NIGHT_LINES:NARRATOR_LINES;let text=pool[id];if(!text)return false;return speakLine("assets/audio/voice/"+cast+"-"+id+".mp3",text,cast==="pa"?.5:.62,!!priority);}
+// Inmate speech bubbles near the player are voiced when the line was recorded; names are trimmed off first.
+function voiceForSpeech(c,text){
+  if(!voiceEnabled||!c||c.id==="player"||c.role!=="inmate"||!omGame||screen!=="game"||paused)return;
+  let p=player();if(!p)return;let d2=sqDistance(c.x,c.y,p.x,p.y);if(d2>100)return;
+  let t=String(text).replace(", "+p.short,"").replace(" "+p.short,"");
+  if(HOOP_LINES.indexOf(t)>=0&&d2<=64)playCueNear("bounce",c);else if(CARD_LINES.indexOf(t)>=0&&d2<=64)playCueNear("cards",c);
+  if(INMATE_VOICED.indexOf(t)<0)return;
+  let cast=["inmate-a","inmate-b","inmate-c"][activityIndex(c)%3];
+  speakLine("assets/audio/voice/"+cast+"-"+voiceSlug(t)+".mp3",t,d2>25?.36:.55,false);
+}
+// Short cues with a small cooldown per name, so a group activity does not machine-gun the same sound.
+function playCueNear(name,c){let now=wallSeconds();if(cueClocks[name]&&now<cueClocks[name])return;cueClocks[name]=now+1.6;playCue(name);}
+// Sounds tied to the work an order does, at the moment it begins.
+function taskAudio(t){
+  if(!t||screen!=="game")return;let name="";
+  if(t.type==="craft")name="craft";else if(t.type==="eat")name="eat";else if(t.type==="buytea"||t.type==="buy"||t.type==="trade")name="coin";
+  else if(t.type==="work"){let s=siteById(t.site);if(s&&(s.zone==="workshop"||s.zone==="maintenance"))name="craft";}
+  else if(t.type==="project")name=t.project==="tunnel"?"dig":t.project==="perimeter"?"fence":"craft";
+  if(name)playCueNear(name,player());
+}
+// Event titles the log already writes are the hook for spoken responses; no second bookkeeping needed.
+function eventAudio(title){
+  if(screen!=="game"||!omGame)return;
+  if(title==="Search scheduled"){playCueNear("whistle",player());castLine("pa","search",true);}
+  else if(title==="A targeted lockdown")castLine("pa","lockdown",true);
+  else if(title==="Empty bunk"||title==="Escape response")castLine("night","empty",true);
+  else if(title==="The truck is moving")playCueNear("truck",player());
+  else if(title==="A setback, not an ending")castLine("officer","caught",true);
+  else if(title==="Main circuit down")castLine("pa","power",true);
+}
+function cueAudio(name){if(screen!=="game"||!omGame)return;if(name==="alarm"){let now=wallSeconds();if(now-alarmSpokenAt>90){alarmSpokenAt=now;castLine("pa","escape",true);}}}
+function voiceChallenge(){let ids=["stop","where","hands"];castLine("officer",ids[Math.floor(minuteNow()/7)%3],true);}
+function voiceNightCheck(){if(dayNow()%2===0)castLine("night","quiet",false);}
+function voiceRoundsStart(){playCueNear("boots",player());if(minuteNow()>=1380)castLine("night","check",false);}
+// Once a second from the routine tick: a public-address line when the timetable moves on.
+function tickAnnouncements(){
+  if(!omGame||screen!=="game"||omGame.over)return;
+  let r=routineNow(),key=dayNow()+":"+r.id;
+  if(announcedGame!==omGame){announcedGame=omGame;announcedBlock=key;introSpoken=false;endingSpoken=false;return;}
+  if(key===announcedBlock)return;announcedBlock=key;
+  if(r.id==="wake")playCue("wake");if(r.id==="night")playCue("lightsout");
+  if(PA_LINES[r.id])castLine("pa",r.id,true);
+}
+// Every frame from the main loop: keep the loops matched to the moment and speak the framing lines.
+function syncAudio(dt){
+  tickLoopRetry(musicLoop,dt);tickLoopRetry(sceneLoop,dt);
+  syncLoop(musicLoop,musicWanted(),.2);syncLoop(sceneLoop,sceneWanted(),.12);
+  if(screen!=="game"){if(voiceHandle)stopVoice();return;}
+  if(!omGame)return;
+  if(dialog==="arrival"&&!introSpoken){introSpoken=true;announcedGame=omGame;announcedBlock=dayNow()+":"+routineNow().id;castLine("narrator","intro",true);}
+  if(dialog==="ending"&&!endingSpoken){endingSpoken=true;castLine("narrator",player()&&player().escaped?"escaped":"captured",true);}
+}

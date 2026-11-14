@@ -1,0 +1,79 @@
+// Raider camps: when Ashwalkers escape with goods they make camp at the map edge for
+// three Sols. A strike party (an explore job) rouses the camp; when its defenders fall,
+// the stolen goods are left on the ground to haul home. Camps expire on their own.
+let mapCamps=[];
+let campCards=[];
+function campList(){if(!osGame.camps)osGame.camps=[];return osGame.camps;}
+function getCamp(id){let list=campList();for(let i=0;i<list.length;i++)if(list[i].id===id)return list[i];return null;}
+function campSpot(x,y){
+  // Raiders who run into rock or water still make camp on the nearest open ground; the loot does not vanish.
+  for(let r=0;r<14;r++)for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){if(Math.max(Math.abs(dx),Math.abs(dy))!==r)continue;
+    let cx=clamp(x+dx,WX+1,WX+MAP_SIZE-3),cy=clamp(y+dy,WY+1,WY+MAP_SIZE-3);
+    if(passable(cx,cy)&&passable(cx+1,cy)&&passable(cx,cy+1)&&passable(cx+1,cy+1)&&!cellBuilding[tileId(cx,cy)])return {x:cx,y:cy};
+  }
+  return null;
+}
+function makeCamp(x,y,goods){
+  let list=campList();
+  for(let i=0;i<list.length;i++){let c=list[i];if(!c.cleared&&sqDistance(c.x,c.y,x,y)<=196){stockAdd(c.goods,goods);c.until=osGame.minutes+1440*3;say("More stolen goods reach the raider camp.");viewDirty=true;return c;}}
+  if(list.length>=6)return null;
+  let spot=campSpot(x,y);if(!spot)return null;
+  let camp={id:entityId("camp"),x:spot.x,y:spot.y,w:2,h:2,goods:{},until:osGame.minutes+1440*3,roused:false,raiders:0,cleared:false};
+  stockAdd(camp.goods,goods);list.push(camp);revealArea(spot.x+1,spot.y+1,4);
+  chronicle("The raiders make camp","Their fires are visible beyond the perimeter. They will move on in three Sols; a strike party from Frontier can recover what they took.","danger");say("Raiders have made camp. Frontier can send a strike party.");viewDirty=true;return camp;
+}
+function stockAdd(into,goods){let keys=Object.keys(goods||{});for(let i=0;i<keys.length;i++)if(RESOURCE_KEYS.indexOf(keys[i])>=0)into[keys[i]]=(into[keys[i]]||0)+goods[keys[i]];}
+function scheduleStrike(id){
+  let camp=getCamp(id);if(!camp||camp.cleared){say("That camp is gone.");return;}
+  if(camp.roused){say("The camp is already roused. Draft settlers and finish the fight.");return;}
+  addJob("strike",camp.id,"explore",camp.x,camp.y,9);say("A strike party will approach the camp. Arm the explorer first: the raiders will fight.");viewDirty=true;refreshAll();
+}
+function rouseCamp(camp,c){
+  if(!camp||camp.roused||camp.cleared)return;
+  camp.roused=true;let count=eventConfig().severity==="severe"?3:2,spawned=0;
+  // Defenders take the open cells around the camp, searching outward so rock or water beside it does not thin them.
+  let cells=[];for(let r=1;r<6&&cells.length<count;r++)for(let dy=-r;dy<=r+1;dy++)for(let dx=-r;dx<=r+1;dx++){if(Math.max(Math.abs(dx),Math.abs(dy-(dy>0?1:0)))!==r)continue;let x=camp.x+dx,y=camp.y+dy;if(passable(x,y)&&!cellBuilding[tileId(x,y)])cells.push({x:x,y:y});}
+  for(let i=0;i<count&&i<cells.length&&osGame.animals.length<150;i++){
+    let a=spawnAnimal("raider",cells[i].x,cells[i].y,true);a.campId=camp.id;a.defending=true;spawned++;
+  }
+  camp.raiders=spawned;
+  if(!spawned){clearCamp(camp);return;}
+  chronicle("The camp is roused",c.short+" reached the raider camp. "+spawned+" Ashwalkers turn to fight. Bring them down to recover the stolen goods.","danger");say("The raiders turn to fight. Draft settlers and hold the line.");playCue("warning");viewDirty=true;
+}
+function clearCamp(camp){
+  if(camp.cleared)return;camp.cleared=true;
+  let keys=Object.keys(camp.goods),any=false;for(let i=0;i<keys.length;i++)if(camp.goods[keys[i]]>0)any=true;
+  if(any)dropCarriedGoods({x:camp.x+1,y:camp.y+1,carry:camp.goods});
+  osGame.stats.campsBroken=(osGame.stats.campsBroken||0)+1;
+  chronicle("The camp is broken",any?"The raiders are dead or fled. "+costText(camp.goods)+" lie among the tents; haulers can bring it home.":"The raiders are gone. The tents held nothing worth carrying.","colony");
+  say(any?"Camp broken. Stolen goods recovered on the ground.":"Camp broken.");playCue("discovery");
+  for(let i=0;i<osGame.people.length;i++){let p=osGame.people[i];if(!p.dead)remember(p,"We took back what was ours",5,1440*3);}
+  removeCamp(camp);
+}
+function removeCamp(camp){
+  let list=campList();for(let i=list.length-1;i>=0;i--)if(list[i].id===camp.id)list.splice(i,1);
+  cancelTargetJobs(camp.id);if(selectedId===camp.id){selectedId="";selectedType="";selectedCard=null;}viewDirty=true;
+}
+function campRaiderFell(a){
+  let camp=a.campId?getCamp(a.campId):null;if(!camp)return;
+  camp.raiders=Math.max(0,camp.raiders-1);
+  if(camp.raiders===0&&camp.roused)clearCamp(camp);
+}
+function tickCamps(){
+  let list=campList();
+  for(let i=list.length-1;i>=0;i--){let c=list[i];if(c.cleared||!onMap(c.x,c.y))continue;
+    if(c.roused&&c.raiders>0){let alive=0;for(let j=0;j<osGame.animals.length;j++){let a=osGame.animals[j];if(a.campId===c.id&&!a.dead)alive++;}if(!alive){c.raiders=0;clearCamp(c);continue;}}
+    if(!c.roused&&osGame.minutes>=c.until){chronicle("The raiders move on","The camp beyond the perimeter is empty this morning. Whatever they took went with them.","colony");removeCamp(c);}
+  }
+}
+function selectCamp(id){let c=getCamp(id);if(!c)return;followColonistId="";mobilePanelOpen=true;panMode=false;selectedId=id;selectedType="camp";activePanel="inspect";toolKind="select";focusAt(c.x+1,c.y+1);refreshAll();}
+function projectCamps(){
+  let list=campList(),out=[],cards=[];
+  let far=farCamps();for(let i=0;i<far.length;i++){let f=far[i];if(!onMap(f.x,f.y)||!osGame.explored[tileId(f.x,f.y)]||!tileInView(f.x,f.y,1,1)||!inSight(f.x,f.y))continue;out.push({id:f.id,sprite:spritePath("cookfire"),far:true,style:{position:"absolute",left:(worldPx(f.x))+"px",top:(worldPy(f.y))+"px",width:"32px",height:"32px",zIndex:5,filter:"drop-shadow(0 0 10px #f0a05a77)",pointerEvents:"none"}});}
+  for(let i=0;i<list.length;i++){let c=list[i];
+    if(activePanel==="frontier")cards.push({id:c.id,goods:costText(c.goods),status:c.roused?"Roused · "+c.raiders+" defenders":"Leaves in "+Math.max(0,Math.ceil((c.until-osGame.minutes)/60))+" h",roused:c.roused});
+    if(!osGame.explored[tileId(c.x,c.y)]||!tileInView(c.x,c.y,2,2))continue;
+    out.push({id:c.id,sprite:spritePath("camp"),style:{position:"absolute",left:(worldPx(c.x))+"px",top:(worldPy(c.y))+"px",width:"64px",height:"64px",zIndex:5,filter:"drop-shadow(0 0 10px #f0a05a55)",outline:selectedId===c.id?"2px solid #f0b46a":"none",pointerEvents:"none"}});
+  }
+  mapCamps=out;campCards=cards;
+}

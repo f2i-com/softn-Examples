@@ -1,0 +1,260 @@
+// One map. The world view is a window that slides with the camera over the plane: over the colony it is the colony's
+// own window (live, cheap); anywhere else it is a composed window filled from the colony window, any rover windows
+// and the plane store, so the player can look at, jump to and follow anything on the plane. The survey display is
+// an atlas of every chunk anyone has ever explored, growing outward as the country is walked.
+let viewMode="main";
+let viewWindow=null;
+const VIEW_SIZE=224,VIEW_MARGIN=32,VIEW_STEP=32;
+let viewComposedAt=-1,viewSignature="";
+let pendingMapJump=null;
+// A restored survey can need several uncached seed chunks. All view changes,
+// including zoom and pan, prepare one per frame before replacing the window.
+function mapJumpColdChunk(x,y){
+  let halfW=viewportPxW/(2*TILE*zoomLevel),halfH=viewportPxH/(2*TILE*zoomLevel);
+  if(x-halfW>=WX+VIEW_EDGE&&y-halfH>=WY+VIEW_EDGE&&x+halfW<=WX+MAP_SIZE-VIEW_EDGE&&y+halfH<=WY+MAP_SIZE-VIEW_EDGE)return null;
+  return viewColdChunk(farOriginFor(x,y));
+}
+function viewColdChunk(o){
+  let keys=Object.keys(roverContexts),main={wx:WX,wy:WY,size:MAP_SIZE};
+  for(let cy=chunkOf(o.wy);cy<=chunkOf(o.wy+VIEW_SIZE-1);cy++)for(let cx=chunkOf(o.wx);cx<=chunkOf(o.wx+VIEW_SIZE-1);cx++){
+    let key=chunkKey(cx,cy);if(!chunkGenerated(cx,cy)||chunkInWindow(main,cx,cy)||refCache[key]||(planeStore()[key]&&planeStore()[key].full))continue;
+    let live=false;for(let i=0;i<keys.length;i++)if(chunkInWindow(roverContexts[keys[i]],cx,cy)){live=true;break;}
+    if(!live)return {cx:cx,cy:cy};
+  }
+  return null;
+}
+function requestMapJump(x,y){if(mapJumpColdChunk(x,y)){pendingMapJump={x:x,y:y};return;}viewAt(x,y);refreshAll();}
+function serviceMapJump(){
+  if(!pendingMapJump)return false;let target=pendingMapJump,cold=mapJumpColdChunk(target.x,target.y);
+  if(cold){referenceChunk(cold.cx,cold.cy);return true;}
+  pendingMapJump=null;viewAt(target.x,target.y);refreshAll();return true;
+}
+// The screen's size in pixels, learned from the pointer, the wheel and the tile map's own reports.
+let viewportPxW=1000,viewportPxH=700,viewportKnown=false;
+function noteViewport(w,h){if(w>0&&h>0&&w<=8192&&h<=8192&&Number.isFinite(w)&&Number.isFinite(h)){viewportPxW=w;viewportPxH=h;viewportKnown=true;}}
+// The tile map's own report is only a hint until a pointer or the wheel has measured the screen, and never while the opening plays.
+function hintViewport(w,h){if(viewportKnown||screen!=="game"||!(w>0&&h>0)||w>4096||h>4096)return;viewportPxW=w;viewportPxH=h;}
+// The world can never be drawn past the window's edge, so the zoom may not show more tiles than the window less a margin.
+const VIEW_EDGE=8;
+// Leave room for one whole slide step: otherwise fixing one edge can push the opposite edge out,
+// and a stationary camera alternates between two origins on every refresh.
+function minZoom(){return Math.max(0.45,Math.max(viewportPxW,viewportPxH)/(TILE*(VIEW_SIZE-2*VIEW_EDGE-VIEW_STEP)));}
+function clampZoom(z){return clamp(z,minZoom(),2);}
+// The visible rectangle in world tiles, from the camera and the screen.
+function visibleWorldRect(){let cam=cameraWorld(),s=TILE*zoomLevel,w=viewportPxW/s,h=viewportPxH/s;return {x:cam.x-w/2,y:cam.y-h/2,w:w,h:h,cx:cam.x,cy:cam.y};}
+// The colony's window, whichever context is current.
+function mainWindowBox(){let m=contextDepth>0&&mainWindowState?mainWindowState:null;return m?{wx:m.wx,wy:m.wy,size:m.size}:{wx:WX,wy:WY,size:MAP_SIZE};}
+function mainWindowHas(x,y){let m=mainWindowBox();return x>=m.wx&&y>=m.wy&&x<m.wx+m.size&&y<m.wy+m.size;}
+// The window the screen is showing: the current context when inside one, else the far view or the colony's window.
+function viewOrigin(){if(contextDepth>0)return {wx:WX,wy:WY,size:MAP_SIZE};if(viewMode==="far"&&viewWindow)return {wx:viewWindow.wx,wy:viewWindow.wy,size:viewWindow.size};return {wx:WX,wy:WY,size:MAP_SIZE};}
+function cameraWorld(){let o=viewOrigin(),s=TILE*zoomLevel;return {x:o.wx+o.size/2-panX/s,y:o.wy+o.size/2-panY/s};}
+function setCameraWorld(x,y){let o=viewOrigin(),s=TILE*zoomLevel;panX=(o.size/2-(x-o.wx))*s;panY=(o.size/2-(y-o.wy))*s;}
+function farOriginFor(x,y){return {wx:Math.round((x-VIEW_SIZE/2)/VIEW_STEP)*VIEW_STEP,wy:Math.round((y-VIEW_SIZE/2)/VIEW_STEP)*VIEW_STEP};}
+// Fill the far view from whatever holds each chunk: the colony's window, a rover's window, the plane store, or nothing yet.
+function composeView(){
+  if(!viewWindow||contextDepth>0)return;
+  if(viewColdChunk(viewWindow)){let cam=cameraWorld();pendingMapJump={x:cam.x,y:cam.y};return;}
+  let mainCtx=captureContext(),rovers=Object.keys(roverContexts).map(function(k){return roverContexts[k];});
+  mainWindowState=mainCtx;
+  withContext(viewWindow,function(){
+    let oldNodes=osGame.nodes,oldNodeIndex=nodeIndex;
+    let sameOrigin=viewWindow.composedWX===WX&&viewWindow.composedWY===WY;
+    if(!sameOrigin)terrainDirty=true;
+    osGame.nodes=[];nodeIndex={};for(let i=0;i<MAP_SIZE*MAP_SIZE;i++){nodeAtCell[i]="";}
+    let cx0=chunkOf(WX),cy0=chunkOf(WY),cx1=chunkOf(WX+MAP_SIZE-1),cy1=chunkOf(WY+MAP_SIZE-1);
+    for(let cy=cy0;cy<=cy1;cy++)for(let cx=cx0;cx<=cx1;cx++){
+      if(chunkInWindow(mainCtx,cx,cy)&&chunkGenerated(cx,cy)){copyChunkClipped(mainCtx,cx,cy);continue;}
+      let src=null;for(let r=0;r<rovers.length;r++)if(chunkInWindow(rovers[r],cx,cy)&&chunkGenerated(cx,cy)){src=rovers[r];break;}
+      if(src){copyChunkClipped(src,cx,cy);continue;}
+      if(chunkGenerated(cx,cy)){let scratch=viewScratch(cx,cy);withContext(scratch,function(){loadChunk(cx,cy,true);});copyChunkClipped(scratch,cx,cy);continue;}
+      fillChunkClipped(cx,cy);
+    }
+    for(let i=0;i<MAP_SIZE*MAP_SIZE;i++)navBlocked[i]=(osGame.terrain[i]===3||osGame.terrain[i]===4||osGame.terrain[i]===6)?1:0;
+    // Only changed rows need new layers while this window stays in place.
+    // Resource IDs are copied from their source, so a refresh does not create
+    // thousands of temporary entities or invalidate simulation node indexes.
+    if(!terrainDirty){
+      for(let i=0;i<oldNodes.length;i++){let n=oldNodes[i],m=nodeIndex[n.id];if(!m||m.kind!==n.kind||m.x!==n.x||m.y!==n.y)dirtyTerrainRow(n.y);}
+      for(let i=0;i<osGame.nodes.length;i++){let n=osGame.nodes[i],m=oldNodeIndex[n.id];if(!m||m.kind!==n.kind||m.x!==n.x||m.y!==n.y)dirtyTerrainRow(n.y);}
+    }
+    viewWindow.composedWX=WX;viewWindow.composedWY=WY;
+    pathEpoch++;pathCache={};pathCacheKeys=[];minimapSrc="";minimapRows=[];minimapEpoch++;wallSpritesDirty=true;
+  });
+  mainWindowState=null;viewComposedAt=osGame.elapsed;viewSignature=liveSignature();
+  structuresDirty=true;viewDirty=true;
+}
+// A chunk-sized scratch window for reading a stored chunk back before copying the part the view holds.
+let viewScratchCtx=null;
+function viewScratch(cx,cy){
+  let ox=cx*HOME_SIZE,oy=cy*HOME_SIZE;
+  if(!viewScratchCtx)viewScratchCtx=blankContext(HOME_SIZE,ox,oy);
+  let c=viewScratchCtx;c.wx=ox;c.wy=oy;c.nodes=[];c.nodeIndex={};for(let i=0;i<HOME_SIZE*HOME_SIZE;i++){c.nodeAtCell[i]="";c.terrain[i]=6;c.explored[i]=false;}
+  return c;
+}
+// Copy the part of a chunk that lies inside the current window from a window that holds the whole chunk.
+function copyChunkClipped(src,cx,cy){
+  let ox=cx*HOME_SIZE,oy=cy*HOME_SIZE,x0=Math.max(ox,WX),y0=Math.max(oy,WY),x1=Math.min(ox+HOME_SIZE,WX+MAP_SIZE),y1=Math.min(oy+HOME_SIZE,WY+MAP_SIZE);
+  let terrain=osGame.terrain,ground=osGame.groundTiles,explored=osGame.explored,floors=osGame.floorTiles,wires=osGame.wireTiles;
+  let st=src.terrain,sg=src.groundTiles,se=src.explored,sf=src.floorTiles,sw=src.wireTiles,width=x1-x0;
+  // These are contiguous row spans. Resolve world coordinates and array owners
+  // once per row, instead of five property lookups and tileId for every cell.
+  for(let y=y0;y<y1;y++){let i=(y-WY)*MAP_SIZE+x0-WX,j=(y-src.wy)*src.size+x0-src.wx,end=i+width,changed=false;for(;i<end;i++,j++){let e=!!se[j],f=sf[j]||0,w=sw[j]||0;if(!terrainDirty&&!changed&&(explored[i]!==e||(e&&(ground[i]!==sg[j]||floors[i]!==f||wires[i]!==w))))changed=true;terrain[i]=st[j];ground[i]=sg[j];explored[i]=e;floors[i]=f;wires[i]=w;}if(changed)dirtyTerrainRow(y);}
+  for(let k=0;k<src.nodes.length;k++){let n=src.nodes[k];if(n.amount>0&&n.x>=x0&&n.x<x1&&n.y>=y0&&n.y<y1){let m={id:n.id,x:n.x,y:n.y,kind:n.kind,amount:n.amount,marked:false,resource:n.resource||"",debris:!!n.debris};osGame.nodes.push(m);nodeIndex[m.id]=m;nodeAtCell[(m.y-WY)*MAP_SIZE+m.x-WX]=m.id;}}
+}
+function fillChunkClipped(cx,cy){
+  let ox=cx*HOME_SIZE,oy=cy*HOME_SIZE,x0=Math.max(ox,WX),y0=Math.max(oy,WY),x1=Math.min(ox+HOME_SIZE,WX+MAP_SIZE),y1=Math.min(oy+HOME_SIZE,WY+MAP_SIZE);
+  let terrain=osGame.terrain,ground=osGame.groundTiles,explored=osGame.explored,floors=osGame.floorTiles,wires=osGame.wireTiles,width=x1-x0;
+  for(let y=y0;y<y1;y++){let i=(y-WY)*MAP_SIZE+x0-WX,end=i+width,changed=false;for(;i<end;i++){if(explored[i])changed=true;terrain[i]=6;ground[i]=0;explored[i]=false;floors[i]=0;wires[i]=0;}if(changed&&!terrainDirty)dirtyTerrainRow(y);}
+}
+// What the live windows have done since the far view was composed: reveals and worked nodes change the picture.
+function liveSignature(){let s=minimapEpoch+":"+nodesEpoch;let keys=Object.keys(roverContexts);for(let i=0;i<keys.length;i++){let c=roverContexts[keys[i]];s+="|"+c.minimapEpoch+":"+c.nodesEpoch;}return s;}
+// When the window under the camera changes, the pan changes basis; a drag or pinch in progress carries the same shift so it does not jump.
+function rebaseCamera(x,y,from){let ox=panX,oy=panY;setCameraWorld(x,y);let dx=panX-ox,dy=panY-oy;followHasTarget=false;
+  let to=viewOrigin();if(from&&visibleTileRange&&visibleTileRange.width>0){let nx=visibleTileRange.x+from.wx-to.wx,ny=visibleTileRange.y+from.wy-to.wy,w=Math.min(visibleTileRange.width,to.size),h=Math.min(visibleTileRange.height,to.size);visibleTileRange={x:clamp(nx,0,to.size-w),y:clamp(ny,0,to.size-h),width:w,height:h};}if(typeof pointerState!=="undefined"&&pointerState&&pointerState.panX!==undefined){pointerState.panX+=dx;pointerState.panY+=dy;}if(typeof pinchState!=="undefined"&&pinchState&&pinchState.panX!==undefined){pinchState.panX+=dx;pinchState.panY+=dy;}}
+function enterFar(x,y){let o=farOriginFor(x,y);if(viewColdChunk(o)){pendingMapJump={x:x,y:y};return;}let from=viewOrigin(),previous=viewWindow||captureContext();viewWindow=blankContext(VIEW_SIZE,o.wx,o.wy);viewMode="far";composeView();seedSight(viewWindow,previous);rebaseCamera(x,y,from);}
+function leaveFar(x,y){let from=viewOrigin();viewMode="main";viewWindow=null;rebaseCamera(x,y,from);}
+// Carry sight by world coordinate across a switch or slide; newly exposed cells start unlit.
+function seedSight(ctx,src){
+  if(contextDepth>0)return;if(!src)src=captureContext();let n=src.size/SIGHT_CELL,m=ctx.size/SIGHT_CELL,stamp=[],vis=[],base=[];
+  for(let gy=0;gy<m;gy++)for(let gx=0;gx<m;gx++){let wx=ctx.wx+gx*SIGHT_CELL,wy=ctx.wy+gy*SIGHT_CELL,inside=wx>=src.wx&&wy>=src.wy&&wx<src.wx+src.size&&wy<src.wy+src.size;let k=inside?Math.floor((wy-src.wy)/SIGHT_CELL)*n+Math.floor((wx-src.wx)/SIGHT_CELL):-1;stamp.push(k>=0&&src.sightStamp[k]!==undefined?src.sightStamp[k]:-1e9);vis.push(k>=0?!!src.sightVisible[k]:false);base.push(false);}
+  ctx.sightStamp=stamp;ctx.sightVisible=vis;ctx.sightBase=base;ctx.sightBaseEpoch=-1;
+}
+// Look at a place on the plane: over the colony the colony's window shows it, anywhere else the far view is set there.
+function viewAt(x,y){
+  if(!osGame)return;stopEdgePan();
+  pendingMapJump=null;
+  if(mainWindowHas(x,y)){if(viewMode==="far")leaveFar(x,y);else setCameraWorld(x,y);}
+  else{let o=farOriginFor(x,y);if(viewMode!=="far"||!viewWindow||viewWindow.wx!==o.wx||viewWindow.wy!==o.wy)enterFar(x,y);else setCameraWorld(x,y);}
+  refreshCamera();
+}
+// Each refresh: switch between the colony's window and the far view as the camera crosses the colony's edge, slide or
+// jump the far view when the camera nears its edge, and recompose it when the live windows have changed under it.
+function serviceViewWindow(){
+  if(!osGame||screen!=="game"||contextDepth>0)return;
+  if(zoomLevel<minZoom()){let cam=cameraWorld();zoomLevel=minZoom();setCameraWorld(cam.x,cam.y);}
+  let r=visibleWorldRect();if(!Number.isFinite(r.x)||!Number.isFinite(r.y))return;
+  let cam={x:r.cx,y:r.cy};
+  // Over the colony: its own window, as long as the whole screen fits inside it with a little to spare.
+  let fitsMain=r.x>=WX+VIEW_EDGE&&r.y>=WY+VIEW_EDGE&&r.x+r.w<=WX+MAP_SIZE-VIEW_EDGE&&r.y+r.h<=WY+MAP_SIZE-VIEW_EDGE;
+  if(viewMode!=="far"){if(!fitsMain)enterFar(cam.x,cam.y);return;}
+  if(!viewWindow){leaveFar(cam.x,cam.y);return;}
+  let fitsMainWell=r.x>=WX+VIEW_EDGE+6&&r.y>=WY+VIEW_EDGE+6&&r.x+r.w<=WX+MAP_SIZE-VIEW_EDGE-6&&r.y+r.h<=WY+MAP_SIZE-VIEW_EDGE-6;
+  if(fitsMainWell){leaveFar(cam.x,cam.y);return;}
+  let v=viewWindow;
+  // The screen has leapt clear of the far view: set it again around the camera.
+  if(r.x+r.w<v.wx||r.y+r.h<v.wy||r.x>v.wx+VIEW_SIZE||r.y>v.wy+VIEW_SIZE){enterFar(cam.x,cam.y);return;}
+  // The screen's edge is nearing the far view's edge: slide a chunk that way.
+  let dx=0,dy=0;
+  if(r.x<v.wx+VIEW_EDGE)dx=-Math.ceil((v.wx+VIEW_EDGE-r.x)/VIEW_STEP)*VIEW_STEP;else if(r.x+r.w>v.wx+VIEW_SIZE-VIEW_EDGE)dx=Math.ceil((r.x+r.w-(v.wx+VIEW_SIZE-VIEW_EDGE))/VIEW_STEP)*VIEW_STEP;
+  if(r.y<v.wy+VIEW_EDGE)dy=-Math.ceil((v.wy+VIEW_EDGE-r.y)/VIEW_STEP)*VIEW_STEP;else if(r.y+r.h>v.wy+VIEW_SIZE-VIEW_EDGE)dy=Math.ceil((r.y+r.h-(v.wy+VIEW_SIZE-VIEW_EDGE))/VIEW_STEP)*VIEW_STEP;
+  if(dx||dy){if(viewColdChunk({wx:v.wx+dx,wy:v.wy+dy})){pendingMapJump={x:cam.x,y:cam.y};return;}let from={wx:v.wx,wy:v.wy,size:VIEW_SIZE,sightStamp:v.sightStamp,sightVisible:v.sightVisible};v.wx+=dx;v.wy+=dy;seedSight(v,from);composeView();rebaseCamera(cam.x,cam.y,from);return;}
+  if(osGame.elapsed-viewComposedAt>=2&&liveSignature()!==viewSignature)composeView();
+}
+function withView(fn){
+  // A projection can call another projection. Re-entering the saved context here would replace
+  // the outer call's fresh layers and sight with the state from before that call began.
+  if(contextDepth>0)return fn();
+  let ctx=viewMode==="far"?viewWindow:null;
+  if(!ctx){let r=fn();syncViewLayers();return r;}
+  let mainCtx=captureContext();mainWindowState=mainCtx;
+  try{return withContext(ctx,function(){let r=fn();syncViewLayers();return r;});}finally{mainWindowState=null;}
+}
+// The screen only ever sees a consistent pair: three layers of exactly the map's rows. A window whose picture is not
+// built yet keeps the last good picture on screen until it is.
+function syncViewLayers(){if(terrainLayers&&terrainLayers.length===4&&terrainLayers[0]&&terrainLayers[0].length===mapTiles&&Number.isFinite(mapTiles)&&mapTiles>0){viewTerrainLayers=terrainLayers;viewMapTiles=mapTiles;}}
+function viewContext(){return viewMode==="far"?viewWindow:null;}
+// A light refresh for pans and zooms: the window, the ground, the sprites and the camera, not the panels or the atlas.
+function refreshView(){if(!osGame){refreshCamera();return;}serviceViewWindow();withView(function(){refreshSight();if(terrainDirty)rebuildTerrainView();else if(terrainRowsPending)rebuildTerrainRows();refreshStructures();projectActors();});refreshCamera();viewDirty=true;}
+function watchRover(id){let c=findColonist(id);if(!c||c.dead)return;if(followColonistId===c.id){focusCamp();return;}followColonistId=c.id;mobilePanelOpen=false;viewAt(c.x,c.y);refreshAll();}
+function roverCount(){let n=0;for(let i=0;i<osGame.people.length;i++)if(osGame.people[i].rover&&!osGame.people[i].dead)n++;return n;}
+function projectWatchBanner(){
+  viewRoverId="";if(!osGame){watchBannerText="";return;}
+  let c=followColonistId?findColonist(followColonistId):null;if(c&&c.rover&&!c.dead)viewRoverId=c.id;
+  let place=cameraWorld();if(viewMode!=="far"||mainWindowHas(place.x,place.y)){watchBannerText="";return;}
+  if(c&&!c.dead){let d=Math.round(Math.sqrt(sqDistance(c.x,c.y,CENTRE,centreY())));watchBannerText=(c.rover&&c.rover.party?"Watching "+c.short+"'s party":"Watching "+c.short)+" · "+d+" tiles from the colony · "+c.action;return;}
+  let cam=cameraWorld(),d=Math.round(Math.sqrt(sqDistance(cam.x,cam.y,CENTRE,centreY())));watchBannerText="The wider country · "+d+" tiles from the colony";
+}
+
+// The atlas: one small picture of every explored chunk, at four tiles a cell, kept per chunk in the save
+// (osGame.atlas) and drawn as one SVG. Live chunks are re-read one at a time so no refresh reads more than a chunk.
+const ATLAS_CELL=4,ATLAS_CELLS=HOME_SIZE/ATLAS_CELL;
+const ATLAS_COLOURS={a:"#2d4839",b:"#35543f",c:"#4a6a3f",w:"#1c4a60",r:"#5a625c",m:"#2f5a55",f:"#7a6a48"};
+let atlasSrc="",atlasMarks=[],atlasView={display:"none"};
+let atlasBox={x:0,y:0,size:24},atlasSvgCache={},atlasBuiltKeys="",atlasCursor=0,atlasBuiltAt=-1;
+function atlasStore(){if(!osGame.atlas)osGame.atlas={};return osGame.atlas;}
+// Read one chunk of the current window into a strip of cells. Returns "" when nothing in it is explored.
+function atlasStrip(cx,cy){
+  let ox=cx*HOME_SIZE,oy=cy*HOME_SIZE,out="",any=false;
+  for(let gy=0;gy<ATLAS_CELLS;gy++)for(let gx=0;gx<ATLAS_CELLS;gx++){
+    let ch="u";
+    for(let yy=0;yy<ATLAS_CELL&&ch==="u";yy++)for(let xx=0;xx<ATLAS_CELL;xx++){let i=tileId(ox+gx*ATLAS_CELL+xx,oy+gy*ATLAS_CELL+yy);if(!osGame.explored[i])continue;let t=osGame.terrain[i];ch=(osGame.floorTiles&&osGame.floorTiles[i])?"f":t===3?"w":t===4?"r":t===5?"m":t===6?"u":t===0?"a":t===1?"b":"c";break;}
+    if(ch!=="u")any=true;out+=ch;
+  }
+  return any?out:"";
+}
+function atlasRecord(cx,cy){let key=chunkKey(cx,cy),strip=atlasStrip(cx,cy),store=atlasStore();if(strip){if(store[key]!==strip){store[key]=strip;atlasBuiltKeys="";}}}
+// A stored chunk without a strip yet gets one from its shroud layer alone, so old saves fill in as they are looked at.
+function atlasFromRecord(key,rec){
+  let e=rec.e?rleDecode(rec.e,HOME_SIZE*HOME_SIZE,true):null;if(!e)return "";
+  let out="",any=false;
+  for(let gy=0;gy<ATLAS_CELLS;gy++)for(let gx=0;gx<ATLAS_CELLS;gx++){let ch="u";for(let yy=0;yy<ATLAS_CELL&&ch==="u";yy++)for(let xx=0;xx<ATLAS_CELL;xx++){if(e[(gy*ATLAS_CELL+yy)*HOME_SIZE+gx*ATLAS_CELL+xx]){ch="a";break;}}if(ch!=="u")any=true;out+=ch;}
+  return any?out:"";
+}
+function atlasChunkSvg(key,strip){
+  let c=atlasSvgCache[key];if(c&&c.strip===strip)return c.svg;
+  let parts=key.split(","),cx=parseInt(parts[0],10),cy=parseInt(parts[1],10),out='<g transform="translate('+(cx*ATLAS_CELLS)+' '+(cy*ATLAS_CELLS)+')">';
+  for(let gy=0;gy<ATLAS_CELLS;gy++){let run=0,runCh="";for(let gx=0;gx<=ATLAS_CELLS;gx++){let ch=gx<ATLAS_CELLS?strip.charAt(gy*ATLAS_CELLS+gx):"";if(ch!==runCh){if(runCh&&runCh!=="u")out+='<rect x="'+run+'" y="'+gy+'" width="'+(gx-run)+'" height="1" fill="'+(ATLAS_COLOURS[runCh]||ATLAS_COLOURS.a)+'"/>';run=gx;runCh=ch;}}}
+  out+="</g>";atlasSvgCache[key]={strip:strip,svg:out};return out;
+}
+// Live chunks are read one per refresh, round-robin over the colony's window and every rover window.
+function atlasTickLive(){
+  if(contextDepth>0)return;
+  let list=[];let across=MAP_SIZE/HOME_SIZE,cx0=chunkOf(WX),cy0=chunkOf(WY);
+  for(let cy=cy0;cy<cy0+across;cy++)for(let cx=cx0;cx<cx0+across;cx++)if(chunkGenerated(cx,cy))list.push({ctx:null,cx:cx,cy:cy});
+  let keys=Object.keys(roverContexts);
+  for(let k=0;k<keys.length;k++){let ctx=roverContexts[keys[k]],a=ctx.size/HOME_SIZE,x0=chunkOf(ctx.wx),y0=chunkOf(ctx.wy);for(let cy=y0;cy<y0+a;cy++)for(let cx=x0;cx<x0+a;cx++)if(chunkGenerated(cx,cy)&&!chunkInWindow({wx:WX,wy:WY,size:MAP_SIZE},cx,cy))list.push({ctx:ctx,cx:cx,cy:cy});}
+  if(!list.length)return;atlasCursor=(atlasCursor+1)%list.length;let job=list[atlasCursor];
+  if(job.ctx){let mainCtx=captureContext();mainWindowState=mainCtx;withContext(job.ctx,function(){atlasRecord(job.cx,job.cy);});mainWindowState=null;}
+  else atlasRecord(job.cx,job.cy);
+  // One stored chunk without a strip gets one from its shroud layer.
+  let store=atlasStore(),plane=planeStore(),pk=Object.keys(plane);for(let i=0;i<pk.length;i++){if(store[pk[i]]!==undefined)continue;store[pk[i]]=atlasFromRecord(pk[i],plane[pk[i]]);atlasBuiltKeys="";break;}
+}
+function refreshAtlas(full){
+  if(!osGame)return;
+  if(full||!atlasSrc)atlasTickLive();
+  let store=atlasStore(),keys=Object.keys(store).filter(function(k){return store[k];});
+  if(!keys.length){let hx=chunkOf(CENTRE),hy=chunkOf(centreY());keys=[chunkKey(hx,hy)];}
+  let joined=keys.join(";")+"#"+keys.map(function(k){return store[k]?store[k].length:0;}).join(",");
+  let rebuilt=false;
+  if(joined!==atlasBuiltKeys||!atlasSrc||(full&&osGame.elapsed-atlasBuiltAt>=4)){
+    let minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9;
+    for(let i=0;i<keys.length;i++){let p=keys[i].split(","),cx=parseInt(p[0],10),cy=parseInt(p[1],10);minX=Math.min(minX,cx);maxX=Math.max(maxX,cx);minY=Math.min(minY,cy);maxY=Math.max(maxY,cy);}
+    let w=(maxX-minX+1)*ATLAS_CELLS,h=(maxY-minY+1)*ATLAS_CELLS,size=Math.max(w,h),x0=minX*ATLAS_CELLS-Math.floor((size-w)/2),y0=minY*ATLAS_CELLS-Math.floor((size-h)/2);
+    atlasBox={x:x0,y:y0,size:size};
+    let parts=['<rect x="'+x0+'" y="'+y0+'" width="'+size+'" height="'+size+'" fill="#0b1519"/>'];
+    for(let i=0;i<keys.length;i++)if(store[keys[i]])parts.push(atlasChunkSvg(keys[i],store[keys[i]]));
+    let across=MAP_SIZE/HOME_SIZE;
+    for(let i=0;i<osGame.buildings.length;i++){let b=osGame.buildings[i];if(!b.built||b.kind==="floor")continue;parts.push('<rect x="'+(b.x/ATLAS_CELL).toFixed(2)+'" y="'+(b.y/ATLAS_CELL).toFixed(2)+'" width="'+Math.max(0.35,b.w/ATLAS_CELL)+'" height="'+Math.max(0.35,b.h/ATLAS_CELL)+'" fill="'+(b.kind==="wall"||b.kind==="door"?"#a08a5a":"#d3b06a")+'"/>');}
+    atlasSrc="data:image/svg+xml;utf8,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="'+x0+' '+y0+' '+size+' '+size+'" shape-rendering="crispEdges">'+parts.join("")+'</svg>');
+    atlasBuiltKeys=joined;atlasBuiltAt=osGame.elapsed;rebuilt=true;
+  }
+  let box=atlasBox,pct=function(v){return v;},mark=function(id,kind,x,y){return {id:id,kind:kind,style:{left:((x/ATLAS_CELL-box.x)/box.size*100)+"%",top:((y/ATLAS_CELL-box.y)/box.size*100)+"%"}};};
+  let marks=[];
+  marks.push(mark("home","home",CENTRE,centreY()));
+  for(let i=0;i<osGame.sites.length;i++){let s=osGame.sites[i];if(s.known)marks.push(mark(s.id,"ruin",s.x+1.5,s.y+1.5));}
+  for(let i=0;i<(osGame.camps||[]).length;i++){let c=osGame.camps[i];marks.push(mark(c.id,"camp",c.x+1,c.y+1));}
+  for(let i=0;i<(osGame.farCamps||[]).length;i++){let c=osGame.farCamps[i];marks.push(mark("fc"+i,"farcamp",c.x,c.y));}
+  let regs=osGame.regions||[];for(let i=0;i<regs.length;i++){if(!regs[i].known)continue;let s=regionSite(regs[i]);marks.push(mark(regs[i].id,"site",s.x,s.y));}
+  for(let i=0;i<osGame.animals.length;i++){let a=osGame.animals[i];if(a.dead||!a.hostile||!onMap(a.x,a.y)||!osGame.explored[tileId(a.x,a.y)])continue;marks.push(mark(a.id,"threat",a.x,a.y));}
+  for(let i=0;i<osGame.people.length;i++){let c=osGame.people[i];if(c.dead||c.away)continue;marks.push(mark(c.id,selectedId===c.id?"selected":c.rover?"rover":"settler",c.x,c.y));}
+  atlasMarks=marks;atlasLabel="SURVEY ATLAS · "+keys.length+" sector"+(keys.length===1?"":"s")+" · press to look";
+  let v=visibleTileRange,o=viewOrigin();
+  atlasView=v&&v.width>0?{left:(((o.wx+v.x)/ATLAS_CELL-box.x)/box.size*100)+"%",top:(((o.wy+v.y)/ATLAS_CELL-box.y)/box.size*100)+"%",width:(v.width/ATLAS_CELL/box.size*100)+"%",height:(v.height/ATLAS_CELL/box.size*100)+"%"}:{display:"none"};
+  return rebuilt;
+}
+// A press on the atlas looks there, wherever it is.
+function minimapJump(clientX,clientY,left,top,width,height){
+  if(!osGame||!(width>0)||!(height>0)||contextDepth>0)return;let fx=clamp((clientX-left)/width,0,1),fy=clamp((clientY-top)/height,0,1);
+  let x=(atlasBox.x+fx*atlasBox.size)*ATLAS_CELL,y=(atlasBox.y+fy*atlasBox.size)*ATLAS_CELL;
+  followColonistId="";requestMapJump(x,y);
+}

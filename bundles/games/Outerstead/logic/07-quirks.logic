@@ -1,0 +1,87 @@
+// Quirks: one or two habits per settler that change what they decide, not only how fast they work.
+// They come from a hash of the settler's id and the world seed, so a save from before quirks existed
+// gets the same ones every time it is loaded, and assigning them never touches the simulation RNG.
+const QUIRKS={
+  openSky:{name:"Hates enclosed rooms",text:"Sleeps badly under a roof and takes outdoor work first."},
+  stormworker:{name:"Comes alive in storms",text:"Works a quarter faster in a storm or a glass wind, and does not mind being out in it."},
+  stormAnxious:{name:"Anxious in storms",text:"Slower and unhappy while a storm or a glass wind blows; wants indoor work."},
+  mossbackFriend:{name:"Bonded with mossbacks",text:"Will not hunt a mossback, takes a cull hard, and gets a little more from the pens."},
+  echoDrawn:{name:"Drawn to the Echo",text:"Researches the Hollow faster, and faster still while Echo Rain falls."},
+  nightOwl:{name:"Night owl",text:"Prefers the night shift and works better in the dark."},
+  bigEater:{name:"Big appetite",text:"Gets hungry sooner; a cooked meal means more."},
+  firstIn:{name:"First in",text:"Drops everything for the wounded."}
+};
+const QUIRK_KEYS=Object.keys(QUIRKS);
+const QUIRK_ROLE_WEIGHTS={"Survey ranger":["openSky","stormworker"],"Xenobiologist":["echoDrawn","nightOwl"],"Habitat grower":["mossbackFriend","bigEater"],"Systems engineer":["firstIn","nightOwl"]};
+function quirkPicker(c){let h=hashSeed(c.id+":"+(osGame?osGame.seedLabel:""));return function(n){h=(Math.imul(h,1664525)+1013904223)>>>0;return Math.floor(h/4294967296*n);};}
+function quirksConflict(a,b){return a===b||(a==="stormworker"&&b==="stormAnxious")||(a==="stormAnxious"&&b==="stormworker");}
+function assignQuirks(c){
+  let next=quirkPicker(c),favoured=QUIRK_ROLE_WEIGHTS[c.role]||[],out=[];
+  out.push(favoured.length&&next(3)<2?favoured[next(favoured.length)]:QUIRK_KEYS[next(QUIRK_KEYS.length)]);
+  if(next(2)===0){let second=QUIRK_KEYS[next(QUIRK_KEYS.length)];if(!quirksConflict(out[0],second))out.push(second);}
+  c.quirks=out;
+  if(hasQuirk(c,"nightOwl")&&!c.child)c.schedule="night";
+  return out;
+}
+function hasQuirk(c,key){return !!(c&&c.quirks&&c.quirks.indexOf(key)>=0);}
+function quirkText(c){if(!c||!c.quirks||!c.quirks.length)return "";let out=[];for(let i=0;i<c.quirks.length;i++)if(QUIRKS[c.quirks[i]])out.push(QUIRKS[c.quirks[i]].name);return out.join(" · ");}
+function quirkDetail(c){if(!c||!c.quirks)return "";let out=[];for(let i=0;i<c.quirks.length;i++)if(QUIRKS[c.quirks[i]])out.push(QUIRKS[c.quirks[i]].name+": "+QUIRKS[c.quirks[i]].text);return out.join("\n");}
+function stormyWeather(){return osGame.weather==="Storm"||osGame.weather==="Glass Wind";}
+// Work speed from habits, the weather and an aching wound; multiplies the ordinary rate.
+function quirkWorkFactor(c,category){
+  let f=1;
+  if(stormyWeather()){if(hasQuirk(c,"stormworker"))f*=1.25;if(hasQuirk(c,"stormAnxious"))f*=0.8;}
+  if(hasQuirk(c,"echoDrawn")&&category==="research"){let t=osGame.researchId?techById(osGame.researchId):null;if(t&&t.branch==="Hollow Studies")f*=1.2;if(osGame.weather==="Echo Rain")f*=1.3;}
+  if(hasQuirk(c,"nightOwl")){let h=hourNow();f*=(h>=21||h<5)?1.1:0.92;}
+  if(c.achingUntil&&osGame.minutes<c.achingUntil)f*=0.85;
+  return f;
+}
+// Added to a job's score in selectJob; lower is chosen first. This is where habits, the weather and
+// friendships change who goes where: an open-sky settler takes the outdoor job, a glass wind sends
+// everyone else under a roof, and a partner or a friend runs to the wounded before a stranger does.
+function quirkJobBias(c,j){
+  let bias=0,indoors=!!roomAt(j.x,j.y);
+  if(hasQuirk(c,"openSky"))bias+=indoors?40:-40;
+  if(osGame.weather==="Glass Wind"&&!indoors&&!hasQuirk(c,"stormworker"))bias+=hasQuirk(c,"stormAnxious")?260:130;
+  if(j.type==="treat"){let patient=findColonist(j.target);if(patient){bias-=(c.relations[patient.id]||0)*1.2;if(c.partner===patient.id)bias-=80;}if(hasQuirk(c,"firstIn"))bias-=150;}
+  return bias;
+}
+function refusesJob(c,j){
+  if(j.type==="hunt"&&hasQuirk(c,"mossbackFriend")){let a=getAnimal(j.target);if(a&&a.kind==="mossback")return true;}
+  return false;
+}
+// Values: where a settler stands on the two questions the colony keeps arguing about. +1/-1 per axis.
+const VALUE_TEXT={home:{1:"Hollow-7 is home","-1":"Wants to go home"},hollow:{1:"Trusts the Hollow","-1":"Fears the Hollow"}};
+function assignValues(c){
+  let next=quirkPicker({id:c.id+"/values"}),p=c.personality||{};
+  let home=c.child||c.role==="Second generation"?1:(traitOf(c,"sociability")>=60?1:-1);if(!c.child&&next(4)===0)home=-home;
+  let hollow=traitOf(c,"curiosity")>=60?1:-1;if(traitOf(c,"nerve")<50&&next(3)===0)hollow=-1;if(next(4)===0)hollow=-hollow;
+  c.values={home:home,hollow:hollow};return c.values;
+}
+function valueOf(c,key){return c&&c.values&&(c.values[key]===1||c.values[key]===-1)?c.values[key]:0;}
+function valuesText(c){if(!c||!c.values)return "";let out=[];for(let k of ["home","hollow"]){let v=valueOf(c,k);if(v&&VALUE_TEXT[k][v])out.push(VALUE_TEXT[k][v]);}return out.join(" · ");}
+function opposedValues(a,b){return (valueOf(a,"home")*valueOf(b,"home")<0)||(valueOf(a,"hollow")*valueOf(b,"hollow")<0);}
+function argumentTopic(a,b){if(valueOf(a,"hollow")*valueOf(b,"hollow")<0)return "whether the Hollow should be answered at all";return "whether anyone should ever leave";}
+// A story that leans toward the Hollow pleases those who trust it and unsettles those who fear it.
+const STORY_LEANS={signal:{mark:1,wait:-1},dream:{compare:1,dream:-1},tomorrow:{sign:1},echoRain:{record:1,ignore:-1},glassSignal:{listen:1,cut:-1},quietfall:{observe:1,together:-1},choirPlea:{promise:1,decline:-1},helixOffer:{refuse:1},minaNotebook:{broadcast:1},tally:{count:1},ownVoice:{study:1},familiarGround:{aloud:1},meridianKnows:{share:1},choirKnows:{ask:1,quiet:-1},helixKnows:{refuse:1}};
+function reactToStory(id,choice){
+  let lean=STORY_LEANS[id]?STORY_LEANS[id][choice]:0;if(!lean)return;
+  let people=alivePeople();for(let i=0;i<people.length;i++){let v=valueOf(people[i],"hollow");if(!v)continue;let agree=v===lean;remember(people[i],agree?(lean>0?"We answered the Hollow":"We kept our distance"):(lean>0?"Too close to the Hollow":"We should have listened"),agree?3:-3,1440*2);}
+}
+// The ending is the colony's largest decision; those who wanted the other thing say so.
+function endingDissent(kind){
+  let people=alivePeople(),against=[];
+  for(let i=0;i<people.length;i++){let p=people[i],home=valueOf(p,"home"),hollow=valueOf(p,"hollow"),score=0;
+    if(kind==="departure")score=-home;else if(kind==="integration")score=hollow+(home>0?0.5:0);else score=-hollow;
+    if(kind==="silence"&&hasQuirk(p,"echoDrawn")){score-=1;remember(p,"It was still singing",-8,1440*6);}
+    if(score>0)remember(p,"We chose right",6,1440*10);else if(score<0){remember(p,"Not what I would have chosen",-6,1440*10);against.push(p.short);}
+  }
+  if(!against.length)return "";
+  return " Not everyone agreed: "+(against.length===1?against[0]+" would have chosen differently.":against.slice(0,-1).join(", ")+" and "+against[against.length-1]+" would have chosen differently.");
+}
+// A child is young for eight Sols, then old enough to help until they come of age at twenty.
+function childStage(c){if(!c||!c.child)return "";return osGame.minutes-(c.born||0)<1440*8?"young":"older";}
+// A child ages through their twenty Sols toward sixteen; adults keep the age they arrived with.
+function displayedAge(c){if(!c.child)return c.age;return Math.min(15,Math.floor((osGame.minutes-(c.born||0))/(1440*20)*16));}
+function parentNearby(c){if(!c.parents)return null;for(let i=0;i<c.parents.length;i++){let p=findColonist(c.parents[i]);if(p&&!p.dead&&sqDistance(p.x,p.y,c.x,c.y)<=16)return p;}return null;}
+function mossbackFriends(){let out=[],people=alivePeople();for(let i=0;i<people.length;i++)if(hasQuirk(people[i],"mossbackFriend"))out.push(people[i]);return out;}

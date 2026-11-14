@@ -1,0 +1,96 @@
+// The escape guide. Optional and choice-driven: it reads the run, lays out the steps a route still
+// needs, and turns each choice into orders for the list. It never acts on its own, and switching it
+// off changes nothing about the simulation.
+let guideEnabled=true,guideAutoAt=0,guidedStartPending=false,guideTrackGame=null,guideTrackRoute="",guideTrackSteps={};
+function guideState(){if(!omGame.guide)omGame.guide={route:"",skipped:[],auto:false};if(omGame.guide.auto===undefined)omGame.guide.auto=false;return omGame.guide;}
+function guideChooseRoute(id){let r=routeById(id);if(!r||!omGame)return false;omGame.guide={route:id,skipped:[],auto:guideState().auto};omGame.selectedRoute=id;say(r.name+": the guide lays out the steps. Each choice adds orders to your list.");refreshAll();return true;}
+function guideSkip(stepId){let g=guideState();if(g.skipped.indexOf(stepId)<0)g.skipped.push(stepId);refreshAll();}
+function guideUnskip(stepId){let g=guideState();g.skipped=g.skipped.filter(function(x){return x!==stepId;});refreshAll();}
+function guideReset(){if(!omGame)return;omGame.guide={route:"",skipped:[],auto:guideState().auto};refreshAll();}
+// Autopilot: with this on, the guide queues its own first choice whenever the list runs dry. Auto day comes on with it.
+function guideToggleAuto(){let g=guideState();g.auto=!g.auto;if(g.auto){if(!omGame.autoDay&&!startAutoDay()){g.auto=false;return;}guideAutoAt=omGame.elapsed+1;say("The guide will queue its first choice whenever your list runs dry. Switch it off any time.");}else say("The guide waits for your choices again.");refreshAll();}
+// One tap on the title: a new sentence with the guide on your story lead and the autopilot driving.
+function guidedStart(){guidedStartPending=true;confirmNewGame();}
+function applyGuidedStart(){if(!omGame||omGame.over)return;guideEnabled=true;saveSettings();let lead=omGame.story&&routeById(omGame.story.route)?omGame.story.route:"tunnel";omGame.guide={route:lead,skipped:[],auto:false};omGame.selectedRoute=lead;guideToggleAuto();if(omGame.guide.auto)say("Guided start: "+routeById(lead).name+". The guide queues each step and Auto day plays it. Skip a step or change route on the Day panel any time.");}
+function guideOrders(){let list=orderList().slice(),t=player().task;if(t)list.unshift(t);return list;}
+function guideQueued(match){let n=0,list=guideOrders();for(let i=0;i<list.length;i++)if(match(list[i]))n++;return n;}
+function toggleGuide(){let sheet=guideSheetOpen;guideEnabled=!guideEnabled;saveSettings();if(guideEnabled){if(sheet){refreshAll();}else setPanel("day");}else{guideSheetOpen=false;refreshAll();}}
+function jobForSite(siteId){let s=siteById(siteId);if(!s)return null;for(let j of JOBS)if(j.zone===s.zone)return j;return null;}
+function jobUnlocked(j){return !j||!j.unlock||omGame.stats.work>=2||(player().background==="clerk"&&j.id==="records")||(player().background==="technician"&&j.id==="maintenance");}
+function supplySiteFor(item){for(let s of SITES)if(s.item===item&&s.verbs.indexOf("take")>=0)return s;return null;}
+function recipeFor(item){for(let r of RECIPES)if(r.output===item)return r;return null;}
+function traderFor(item){for(let c of omGame.people){if(c.role!=="inmate"||c.escaped)continue;let d=inmateDef(c.id);if(d&&d.trade===item)return c;}return null;}
+function requestAssignment(jobId){if(!jobFor(jobId))return false;return queueTask({type:"assignment",site:"noticeboard",job:jobId,duration:3,illegal:0});}
+function requestFetch(stashId,item,count){let d=stashDef(stashId);if(!d||!ITEMS[item])return false;return queueTask({type:"fetch",site:d.site,stash:stashId,item:item,count:Math.max(1,count||1),duration:2,illegal:0});}
+function requestBuy(lineId){if(!shopLine(lineId))return false;return queueTask({type:"buy",site:"canteen",line:lineId,duration:2,illegal:0});}
+// The steps a route still needs, in the order a player would take them. Only undone steps are listed.
+function guideSteps(){
+  let g=guideState(),r=routeById(g.route);if(!r||!omGame||omGame.over||omGame.escape)return [];
+  let p=player(),d=projectById(r.project),s=projectState(d.id),steps=[],needLock=null;
+  // Fixtures inside work rooms need that room's detail; the choice queues the change first.
+  function accessJob(siteId){let job=jobForSite(siteId);return job&&p.job!==job.id?job:null;}
+  function accessLabel(siteId,verb){let job=accessJob(siteId);return "Queue: "+(job?job.name+" detail, then ":"")+verb;}
+  function withAccess(siteId,run){return function(){let job=accessJob(siteId);if(job)requestAssignment(job.id);run();};}
+  let claimed={},stashClaimed={},stepIds={};
+  function add(step){let id=step.id;if(stepIds[id]){stepIds[id]++;step.id=id+"#"+stepIds[id];}else stepIds[id]=1;step.skipped=g.skipped.indexOf(step.id)>=0;step.queued=step.match?guideQueued(step.match):0;steps.push(step);}
+  function need(item,n,why){
+    // Project costs are paid from your pockets, so stored goods are fetched first without double-counting shared items.
+    let already=claimed[item]||0,have=Math.max(0,itemCount(item)-already),used=Math.min(have,n);claimed[item]=already+used;if(used>=n)return;let missing=n-used,rec=recipeFor(item),rack=supplySiteFor(item),choices=[];
+    let best=null,bestAvail=0;for(let st of STASHES){let k=st.id+":"+item,avail=Math.max(0,(omGame.stashes[st.id][item]||0)-(stashClaimed[k]||0));if(avail>bestAvail){bestAvail=avail;best=st;}}
+    if(best){let k=best.id+":"+item,take=Math.min(bestAvail,missing);stashClaimed[k]=(stashClaimed[k]||0)+take;
+      add({match:function(t){return t.type==="fetch"&&t.item===item;},id:"fetch:"+item,title:"Fetch "+ITEMS[item].name+" ×"+take+" from the "+best.name.toLowerCase(),text:"Project materials are paid from your pockets. "+(why?"Needed "+why+".":""),choices:[{id:"fetch",primary:true,locked:false,label:"Queue: fetch ×"+take,hint:"A visit to "+siteById(best.site).name+".",run:function(){requestFetch(best.id,item,take);}}]});
+      missing-=take;if(missing<=0)return;}
+    if(rec){
+      for(let id of Object.keys(rec.cost))need(id,rec.cost[id]*missing,"for the "+ITEMS[item].name.toLowerCase());
+      let job=jobForSite(rec.site),locked=!jobUnlocked(job);if(locked&&!needLock)needLock=job;
+      choices.push({id:"craft",primary:true,locked:locked,label:"Queue: "+(p.job!==job.id?job.name+" detail, then craft":"craft")+" "+ITEMS[item].name+(missing>1?" ×"+missing:""),hint:"Made at "+siteById(rec.site).name+" from "+goodsText(rec.cost)+"."+(locked?" Needs two work batches first.":""),run:function(){if(p.job!==job.id)requestAssignment(job.id);requestCraft(rec.id,Math.min(5,missing));}});
+      add({match:function(t){return (t.type==="craft"&&t.recipe===rec.id)||(t.type==="assignment"&&t.job===job.id);},id:"craft:"+item,title:"Make "+ITEMS[item].name+(missing>1?" ×"+missing:""),text:ITEMS[item].description+(why?" Needed "+why+".":""),choices:choices});return;
+    }
+    if(rack){let job=jobForSite(rack.id),locked=!jobUnlocked(job);if(locked&&!needLock)needLock=job;
+      choices.push({id:"collect",primary:true,locked:locked,label:"Queue: "+(p.job!==job.id?job.name+" detail, then collect":"collect")+" ×"+Math.min(missing,REPEAT_LIMIT),hint:rack.name+" refills every 45 game minutes; the orders wait for each refill."+(locked?" Needs two work batches first.":""),run:function(){if(p.job!==job.id)requestAssignment(job.id);for(let i=0;i<Math.min(missing,REPEAT_LIMIT);i++)requestAction(rack.id,"take");}});}
+    let line=null;for(let l of SHOP)if(l.item===item)line=l;
+    if(line)choices.push({id:"buy",primary:!rack,locked:false,label:"Queue: buy ×"+Math.min(missing,line.limit)+" at the commissary · "+line.price*Math.min(missing,line.limit)+" scrip",hint:line.limit+" a day at the meal counter; the order waits for the scrip.",run:function(){for(let i=0;i<Math.min(missing,line.limit);i++)requestBuy(line.id);}});
+    let trader=traderFor(item);
+    if(trader)choices.push({id:"trade",primary:!rack&&!line,locked:false,label:"Queue: buy ×"+Math.min(missing,REPEAT_LIMIT)+" from "+trader.short+" · "+ITEMS[item].price+" scrip each",hint:"Inmate trades restock; the orders wait between buys.",run:function(){for(let i=0;i<Math.min(missing,REPEAT_LIMIT);i++)requestSocial(trader.id,"trade");}});
+    if(!choices.length)choices.push({id:"none",primary:false,locked:true,label:"No source in this prison",hint:"Ask around; some things only come from people.",run:function(){}});
+    add({match:function(t){return (rack&&t.type==="take"&&t.site===rack.id)||(line&&t.type==="buy"&&t.line===line.id)||(trader&&t.type==="trade"&&t.actor===trader.id);},id:"get:"+item,title:"Get "+ITEMS[item].name+" ×"+missing,text:ITEMS[item].description+(why?" Needed "+why+".":""),choices:choices});
+  }
+  if(!s||!s.complete){if(!s||!s.paid)for(let id of Object.keys(d.cost))need(id,d.cost[id],"for "+d.name.toLowerCase());for(let id of d.requires)need(id,1,"to work on "+d.name.toLowerCase());}
+  if(r.id==="maintenance"){need("uniform",1,"for cover");need("pass",1,"for cover");}
+  if(!knownIntel(r.intel)){let site=findIntelSite(r.intel);let lockedObserve=!jobUnlocked(accessJob(site));if(accessJob(site)&&!jobUnlocked(accessJob(site))&&!needLock)needLock=accessJob(site);add({match:function(t){return t.type==="observe"&&t.site===site;},id:"observe",title:"Study "+castText(siteById(site).name),text:INTEL[r.intel].body,choices:[{id:"observe",primary:true,locked:lockedObserve,label:accessLabel(site,"study it in person"),hint:"A rumour is not enough; observation is."+(lockedObserve?" Needs two work batches first.":""),run:withAccess(site,function(){requestAction(site,"observe");})}]});}
+  if(!(s&&s.complete)){let lockedProject=!jobUnlocked(accessJob(d.site));if(accessJob(d.site)&&lockedProject&&!needLock)needLock=accessJob(d.site);add({match:function(t){return t.type==="project"&&t.project===d.id;},id:"project",title:"Prepare: "+d.name,text:d.description,choices:[{id:"project",primary:true,locked:lockedProject,label:accessLabel(d.site,s&&s.paid?"resume the project":"work the project"),hint:d.id==="tunnel"?"Worked after lock-in over a few nights; Auto pauses while the night officer looks in.":d.id==="perimeter"?"Dusk work, 19:00 to 21:00; Auto pauses while an officer can see the fence.":"Progress persists; interrupted work resumes.",run:withAccess(d.site,function(){requestProject(d.id);})}]});}
+  if(r.id==="cargo"&&p.job!=="loading"){let job=jobFor("loading"),locked=!jobUnlocked(job);add({match:function(t){return t.type==="assignment"&&t.job==="loading";},id:"job:loading",title:"Join the freight detail",text:"The loading dock only opens to freight porters.",choices:[{id:"job",primary:true,locked:locked,label:"Queue: change to Freight porter",hint:locked?"Needs two work batches first.":"A visit to the noticeboard.",run:function(){requestAssignment("loading");}}]});}
+  if(r.id==="maintenance"&&!hasUniformPass()&&itemCount("uniform")&&itemCount("pass"))add({id:"dress",title:"Wear the uniform",text:"A worn uniform with a carried pass reads as staff during the day.",choices:[{id:"wear",primary:true,locked:false,label:"Wear it now",hint:"Take it off again with Remove uniform in Pockets.",run:function(){if(!omGame.wearing)toggleUniform();}}]});
+  if(needLock&&omGame.stats.work<2)steps.unshift({match:function(t){return t.type==="work";},queued:guideQueued(function(t){return t.type==="work";}),id:"unlock",title:"Complete two work batches",text:needLock.name+" is an advanced detail: two lawful batches at your current station unlock it.",skipped:g.skipped.indexOf("unlock")>=0,choices:[{id:"work",primary:true,locked:false,label:"Queue: two batches at "+siteById(jobFor(p.job).site).name,hint:"Runs during a work shift.",run:function(){requestWorkBatches(jobFor(p.job).site,2);}}]});
+  if(!omGame.escape)add({match:function(t){return t.type==="escape"&&t.route===r.id;},id:"go",title:"Go: "+r.name,text:r.description+" "+(r.pace||""),choices:[{id:"escape",primary:true,locked:false,label:"Queue the escape (it waits for its window)",hint:"Under Auto day the run leaves by itself at extraction.",run:function(){requestEscape(r.id);}},{id:"crew",primary:false,locked:!crewMembers().length,label:"Call the crew to the start first",hint:crewMembers().length?crewMembers().length+" allies will travel under their own access.":"No allies recruited yet.",run:function(){requestCrewMeet();}}]});
+  return steps;
+}
+function guideChoose(stepId,choiceId){
+  let steps=guideSteps();for(let step of steps){if(step.id!==stepId)continue;for(let c of step.choices)if(c.id===choiceId&&!c.locked){c.run();playCue("click");refreshAll();return true;}}
+  return false;
+}
+let guideCard=null;
+function projectGuide(){
+  guideCard=null;if(!guideEnabled||!omGame||omGame.over)return;
+  let g=guideState(),r=routeById(g.route);
+  if(!r){let lead=omGame.story?omGame.story.route:"tunnel";guideCard={route:"",routes:ROUTES.map(function(x){return {id:x.id,name:x.name,pace:x.pace||"",risk:typeof x.risk==="string"?x.risk:"",recommended:x.id===lead};}),autoDay:!!omGame.autoDay,auto:!!g.auto};return;}
+  let steps=guideSteps(),current=null,n=0,index=0;for(let step of steps){if(step.skipped)continue;n++;if(!current){current=step;index=n;}}
+  // A word when a step has been completed since the last look (not skipped, not a route change).
+  if(guideTrackGame!==omGame||guideTrackRoute!==r.id){guideTrackGame=omGame;guideTrackRoute=r.id;guideTrackSteps={};for(let s of steps)guideTrackSteps[s.id]=s.title;}
+  else if(!omGame.escape){let ids={},done=[];for(let s of steps)ids[s.id]=1;for(let id in guideTrackSteps)if(!ids[id]&&g.skipped.indexOf(id)<0)done.push(guideTrackSteps[id]);
+    if(done.length){say("Step done: "+done.join("; ")+(current?". Next: "+current.title:". The plan is ready")+".");playCue("complete");}
+    guideTrackSteps={};for(let s of steps)guideTrackSteps[s.id]=s.title;}
+  guideCard={route:r.id,routeName:r.name,remaining:n,index:index,autoDay:!!omGame.autoDay,auto:!!g.auto,escape:!!omGame.escape,skipped:g.skipped.length,
+    steps:steps.map(function(s,i){return {id:s.id,n:i+1,title:s.title,skipped:s.skipped,queued:s.queued,current:!!current&&s.id===current.id,state:s.skipped?"Skipped":s.queued?"Queued":current&&s.id===current.id?"Now":"Next"};}),
+    current:current?{id:current.id,title:current.title,text:current.text,queued:current.queued,choices:current.choices.map(function(c){return {id:c.id,label:c.label,hint:c.hint,primary:!!c.primary,locked:!!c.locked};})}:null};
+}
+// Once a second from the routine tick. Only acts when autopilot is on, Auto day is running and nothing is queued.
+function tickGuide(){
+  if(!omGame||omGame.over||omGame.escape||!guideEnabled)return;let g=omGame.guide;if(!g||!g.auto||!g.route)return;
+  let p=player();if(!omGame.autoDay||p.mode!=="routine"||p.task||orderList().length||dialog||omGame.challenge)return;
+  if(omGame.elapsed<guideAutoAt)return;guideAutoAt=omGame.elapsed+2;
+  if(!canInteractNow())return;
+  let steps=guideSteps(),current=null;for(let s of steps)if(!s.skipped){current=s;break;}
+  if(!current)return;let choice=null;for(let c of current.choices)if(c.primary&&!c.locked){choice=c;break;}if(!choice)for(let c of current.choices)if(!c.locked){choice=c;break;}
+  if(!choice)return;choice.run();if(orderList().length||p.task)say("Guide: "+choice.label.replace(/^Queue: /,"")+".");dirty();
+}

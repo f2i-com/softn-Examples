@@ -1,0 +1,22 @@
+<div>
+  <div className="os-section-title">Something that lasts.</div>
+  <span className="os-small os-dim">Materials are reserved when placed. Builders collect the kit and finish the work.</span>
+  <div className="os-category-grid">
+    #each (category in categoryCards) key={category.name}
+      <button className="os-btn" oson={String(category.selected)} @click={() => setCategory(category.name)}>{category.name}</button>
+    #end
+  </div>
+  <div className="os-catalogue">
+    #each (b in buildingCards) key={b.id}
+      <button className="os-catalogue-item" oson={String(b.selected)} oslocked={String(!b.unlocked)} @click={() => chooseBuild(b.id)}>
+        <img className="os-item-icon" src={asset(b.sprite)} alt="" />
+        <div><div className="os-item-name">{b.name}<span className="os-tiny os-dim"> · {b.size}</span></div><div className="os-item-cost">{b.cost}</div><div className="os-item-desc">{b.unlocked ? b.description : "Research: " + b.requirement}</div></div>
+      </button>
+    #end
+  </div>
+  <div className="os-rule" />
+  <div className="os-row"><button className="os-btn os-tab" @click={() => chooseTool("shelter")}>Bunkhouse plan</button><button className="os-btn os-tab os-danger" @click={() => chooseTool("erase")}>Dismantle</button></div>
+  <button className="os-btn os-wide" @click={clearAllDesignations}>Clear all gathering marks</button>
+  <button className="os-btn os-wide os-danger" disabled={!blueprintCount} @click={cancelAllBlueprints}>{blueprintCount ? "Cancel all " + blueprintCount + " blueprint(s) · full refund" : "No unbuilt blueprints to cancel"}</button>
+  <div className="os-item-desc">Drag to draw walls, floors and conduits: a straight run, or a box for a room outline (walls) or a filled area (floors), previewed as you drag. Touch: tap a tile then Apply here, or drag with one finger to draw; two fingers pan. Cancel an unbuilt blueprint for a full refund. Drag with Dismantle to cancel every blueprint and gathering designation in an area; built structures need a click and return half their materials.</div>
+</div>

@@ -1,0 +1,41 @@
+// Short spoken lines drawn above heads. Chosen deterministically from time and cast order, never from
+// the gameplay RNG, so a save replays identically. Speech is presentation with a timer, nothing more.
+const CHAT_LINES={
+ "the next match":["Kesh says the fence is in play.","Yard team needs a tall one.","Two points, no argument.","I'd bet tea on Block B."],
+ "canteen food":["The stew was a rumour today.","Tea's stronger on Tuesdays.","Perri denies the dessert.","Save me a seat at dinner."],
+ "news from home":["Letter came. Six weeks late.","My sister writes in code.","Photos, no words. Still good.","They're keeping my room."],
+ "work stories":["Folded four hundred sheets.","Records lost a form. Again.","The washer ate a sock.","Freight was early. Odd."],
+ "the weather":["Rain by dinner, I reckon.","Storm knocked the lights last week.","Yard's a bog after rain.","Sun on the east wall today."],
+ "the officers":["Voss counts twice. Always.","Oren walks the block at midnight.","New officer. Nervous one.","They swap the route on Sundays."],
+ "old times":["Six years in. Feels like ten.","I had a garden once.","My cellmate before you snored.","First week, I cried. Everyone does."],
+ "rumours":["Someone got out through laundry. Years back.","The tunnel's a myth. Probably.","Freight driver never checks the cart.","Records office loses forms on purpose."]
+};
+const GREETINGS={
+ morning:["Morning, {name}.","Sleep alright, {name}?","Count in ten. Don't be late.","New face. Keep it down."],
+ day:["Alright, {name}.","Keep your head down today.","Seen the noticeboard?","Trade you tea for news."],
+ evening:["Long day, {name}.","Evening count soon.","Tea later, {name}?","Association's the place to talk."],
+ night:["Lights out soon.","Sleep well, if you can.","Boots in the corridor later."]
+};
+const HOOP_LINES=["Nice shot.","Off the rim.","Pass it!","Your turn.","That's two.","Fence is out of bounds!"];
+const CARD_LINES=["Your deal.","That's cheating, technically.","I fold.","Tea says you're bluffing.","Again? Fine.","Count your cards."];
+const REACTIONS={
+ talk:["Keep it between us.","Ask me again tomorrow.","That's what I heard, anyway.","Don't quote me."],
+ accept:["Bring me one. Quietly.","I'll remember who asked."],
+ favor:["I won't forget this.","You keep your word. Good."],
+ trade:["Pleasure doing business.","Same time next week."],
+ recruit:["Count me in. Quietly.","Say when. I'll be there."],
+ distract:["Watch the yard. Give me a minute.","Volleyball rules are about to matter."]
+};
+function speak(c,text,seconds){if(!c||!text)return;c.speech={text:String(text).slice(0,60),until:omGame.elapsed+(seconds||3.5)};voiceForSpeech(c,text);}
+function speechOf(c){return c&&c.speech&&c.speech.until>omGame.elapsed?c.speech.text:"";}
+function pickLine(pool,salt){return pool[Math.abs(Math.floor(salt))%pool.length];}
+function greetingPool(){let m=minuteNow();return m<420?GREETINGS.morning:m<1080?GREETINGS.day:m<1350?GREETINGS.evening:GREETINGS.night;}
+// Inmates say hello when they pass you with a clear view, at most once every two game hours each.
+function tickGreetings(c){
+  if(c.role!=="inmate"||c.escaped||c.detainedUntil>omGame.minutes)return;
+  let p=player();if(!p||p.escaped||p.detainedUntil>omGame.minutes||omGame.escape||bedPose(p)||bedPose(c))return;
+  if((c.greetAt!==undefined&&omGame.elapsed<c.greetAt+120)||sqDistance(c.x,c.y,p.x,p.y)>6.25||!hasLineOfSight(c.x,c.y,p.x,p.y))return;
+  if(c.action.indexOf("Chatting with ")===0||c.action.indexOf("Talking with ")===0||c.action==="Eating at the table")return;
+  c.greetAt=omGame.elapsed;speak(c,pickLine(greetingPool(),activityIndex(c)+dayNow()*3+Math.floor(minuteNow()/120)).replace("{name}",p.short),3);
+}
+function reactionLine(type,c){let pool=REACTIONS[type];if(type==="talk"){for(let id in TRAIT_TALK)if(hasTrait(c,id)&&(activityIndex(c)+dayNow())%2===0){pool=TRAIT_TALK[id];break;}}if(type==="hold")pool=["Nobody looks in my bunk.","Out of sight. Ask when you need it."];if(type==="collect")pool=["Here. Never saw it.","Told you it was safe."];if(type==="dismiss")pool=["Fine. Your plan.","I will remember that."];if(!pool)return "";return pickLine(pool,activityIndex(c)+omGame.stats.met+omGame.stats.favors+dayNow());}

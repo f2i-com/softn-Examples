@@ -1,0 +1,161 @@
+// Blueprints reserve warehouse materials. Builders fetch a single construction kit.
+// Harvested resources, unlike reserved kits, physically travel with the carrier.
+function makeBuilding(kind,x,y,built) {
+  if(kind==="wall"||kind==="door")wallSpritesDirty=true;
+  let d=BUILDINGS[kind];if(!d)return null;
+  return {id:entityId("b"),kind:kind,x:x,y:y,w:d.w,h:d.h,built:built,progress:built?d.work:0,hp:d.hp,on:true,powered:false,network:-1,
+    escrow:built?{}:JSON.parse(JSON.stringify(d.cost)),growth:0,sown:false,charge:built&&d.capacity?d.capacity*0.3:0,claimedBy:"",reservedBy:"",blockedUntil:0,lastShot:0};
+}
+// Built floors and conduits are map layers, not structures: one bit per cell, so a floored bunkhouse costs no entities.
+function layerFor(kind){return kind==="floor"?osGame.floorTiles:kind==="conduit"?osGame.wireTiles:null;}
+function hasFloor(x,y){return !!(osGame&&osGame.floorTiles&&osGame.floorTiles[tileId(x,y)]);}
+function hasWire(x,y){return !!(osGame&&osGame.wireTiles&&osGame.wireTiles[tileId(x,y)]);}
+function setLayerTile(kind,x,y,on){let layer=layerFor(kind);if(!layer||!onMap(x,y))return;layer[tileId(x,y)]=on?1:0;topologyDirty=true;terrainDirty=true;viewDirty=true;minimapEpoch++;minimapStructEpoch++;}
+function countLayer(kind){let layer=layerFor(kind),n=0;if(layer)for(let i=0;i<layer.length;i++)if(layer[i])n++;return n;}
+function readyBuilding(kind,x,y) {
+  if(kind==="floor"||kind==="conduit"){setLayerTile(kind,x,y,true);return null;}
+  let b=makeBuilding(kind,x,y,true);osGame.buildings.push(b);objectIndex[b.id]=b;
+  if(!BUILDINGS[kind].underlay&&!BUILDINGS[kind].wire)for(let yy=y;yy<y+b.h;yy++)for(let xx=x;xx<x+b.w;xx++)if(onMap(xx,yy))cellBuilding[tileId(xx,yy)]=b.id;
+  buildingsEpoch++;return b;
+}
+function placementCheck(kind,x,y,ignoreCost) {
+  let d=BUILDINGS[kind];if(!d || d.category==="Hidden")return {ok:false,reason:"That item is not buildable."};
+  if(d.tech&&!hasTech(d.tech))return {ok:false,reason:"Research required: "+techName(d.tech)};
+  if(!onMap(x,y)||!onMap(x+d.w-1,y+d.h-1))return {ok:false,reason:"Outside the map."};
+  if(!mainWindowHas(x,y)||!mainWindowHas(x+d.w-1,y+d.h-1))return {ok:false,reason:"Too far from the colony to build here."};
+  if(!ignoreCost&&!stockHas(d.cost))return {ok:false,reason:"Need "+costText(d.cost)};
+  for(let yy=y;yy<y+d.h;yy++)for(let xx=x;xx<x+d.w;xx++){
+    let id=tileId(xx,yy);if(!osGame.explored[id])return {ok:false,reason:"Survey this area first."};
+    if(osGame.terrain[id]>=3)return {ok:false,reason:"Cannot build on water or cliff."};
+    let n=getNode(nodeAtCell[id]);if(n&&n.amount>0)return {ok:false,reason:"Harvest the "+n.kind+" first."};
+    if(!d.underlay&&!d.wire&&cellBuilding[id])return {ok:false,reason:"Another structure occupies this tile."};
+    for(let j=0;j<osGame.sites.length;j++){let s=osGame.sites[j];if(xx>=s.x&&xx<s.x+s.w&&yy>=s.y&&yy<s.y+s.h)return {ok:false,reason:"A buried structure occupies this ground."};}
+    if(d.underlay||d.wire){let occ=getBuilding(cellBuilding[id]);if(occ&&occ.kind==="lander")return {ok:false,reason:"Cannot build inside the lifeboat."};if((kind==="floor"&&hasFloor(xx,yy))||(kind==="conduit"&&hasWire(xx,yy)))return {ok:false,reason:"Already placed here."};for(let j=0;j<osGame.buildings.length;j++){let b=osGame.buildings[j];if(b.kind===kind&&b.x===xx&&b.y===yy)return {ok:false,reason:"Already placed here."};}}
+  }
+  if(osGame.buildings.length>=1000)return {ok:false,reason:"This build supports at most 1,000 structures and blueprints; finished floors and conduits do not count."};
+  return {ok:true,reason:"Ready to build"};
+}
+function queueBuilding(kind,x,y,quiet) {
+  x=Math.floor(x);y=Math.floor(y);let check=placementCheck(kind,x,y,false);
+  if(!check.ok){if(!quiet)say(check.reason);return false;}
+  let d=BUILDINGS[kind];if(!stockTake(d.cost))return false;
+  let b=makeBuilding(kind,x,y,false);osGame.buildings.push(b);objectIndex[b.id]=b;buildingsEpoch++;
+  if(!d.underlay&&!d.wire)for(let yy=y;yy<y+b.h;yy++)for(let xx=x;xx<x+b.w;xx++)cellBuilding[tileId(xx,yy)]=b.id;
+  viewDirty=true;addJob("build",b.id,"build",b.x,b.y,6);
+  if(!quiet){say(d.name+" planned. Materials reserved; a builder will fetch the kit.");playCue("place");}
+  return true;
+}
+function finishBuilding(b,c) {
+  if(b.kind==="wall"||b.kind==="door")wallSpritesDirty=true;
+  let d=BUILDINGS[b.kind];b.built=true;b.progress=d.work;b.escrow={};b.hp=d.hp;b.claimedBy="";
+  osGame.stats.built++;topologyDirty=true;terrainDirty=true;viewDirty=true;minimapEpoch++;minimapStructEpoch++;
+  // A finished floor or conduit becomes a layer bit and the blueprint entity is retired.
+  if(d.underlay||d.wire){setLayerTile(b.kind,b.x,b.y,true);for(let i=osGame.buildings.length-1;i>=0;i--)if(osGame.buildings[i].id===b.id)osGame.buildings.splice(i,1);delete objectIndex[b.id];buildingsEpoch++;if(selectedId===b.id){selectedId="";selectedType="";selectedCard=null;}return;}
+  if(b.kind==="memorial")for(let i=0;i<osGame.people.length;i++){let p=osGame.people[i];if(!p.dead&&p.hook==="photo"&&!p.hookDone){p.hookDone=true;remember(p,"Somewhere to put the photograph",6,1440*6);chronicle(p.short+" leaves the photograph at the stone","Nobody asked who was in it. "+p.short+" set it against the memory stone and went back to work.","people");}}
+  if(!d.underlay&&!d.wire&&b.kind!=="wall"){
+    playCue("build");
+    remember(c,"Built something that will last",3,800);
+    if(osGame.stats.built<15||d.tech)chronicle(d.name+" completed",c.name+" finished another small piece of home.","build");
+  }
+}
+function demolishBuilding(id,destroyed) {
+  let b=getBuilding(id);if(!b)return false;if(b.kind==="lander"){if(!destroyed)say("The lifeboat is your emergency warehouse and cannot be dismantled.");return false;}
+  cancelTargetJobs(id);
+  // Whatever sat in the workstation's buffers is not lost with the workstation: refunded when dismantled, spilled when destroyed.
+  let held={};for(let side of [b.input,b.made])if(side){let keys=Object.keys(side);for(let i=0;i<keys.length;i++)if(side[keys[i]]>0)held[keys[i]]=(held[keys[i]]||0)+side[keys[i]];}
+  if(Object.keys(held).length){if(destroyed){dropCarriedGoods({x:b.x+Math.floor(b.w/2),y:b.y+Math.floor(b.h/2),carry:held});chronicle(BUILDINGS[b.kind].name+" spills its stores",costText(held)+" lie where the "+BUILDINGS[b.kind].name.toLowerCase()+" stood. Haul them in.","danger");}else stockGive(held);}
+  if(!destroyed){if(!b.built)stockGive(b.escrow);else{let d=BUILDINGS[b.kind],refund={},keys=Object.keys(d.cost);for(let i=0;i<keys.length;i++)refund[keys[i]]=Math.floor(d.cost[keys[i]]/2);stockGive(refund);}}
+  for(let i=osGame.buildings.length-1;i>=0;i--)if(osGame.buildings[i].id===id)osGame.buildings.splice(i,1);
+  buildingsEpoch++;
+  wallSpritesDirty=true;delete objectIndex[id];topologyDirty=true;terrainDirty=true;viewDirty=true;minimapEpoch++;minimapStructEpoch++;
+  if(selectedId===id){selectedId="";selectedType="";selectedCard=null;}
+  return true;
+}
+// Dismantling a finished floor or conduit tile: the layer bit goes, the half-cost refund follows.
+function demolishLayerTile(kind,x,y){
+  if(!(kind==="floor"?hasFloor(x,y):hasWire(x,y)))return false;
+  setLayerTile(kind,x,y,false);let d=BUILDINGS[kind],refund={},keys=Object.keys(d.cost);for(let i=0;i<keys.length;i++)refund[keys[i]]=Math.floor(d.cost[keys[i]]/2);stockGive(refund);
+  if(kind==="floor"){let id=tileId(x,y);osGame.groundTiles[id]=osGame.groundTiles[id];}wallSpritesDirty=true;return true;
+}
+function dismantleSelected() {
+  if(selectedType!=="building")return;
+  let b=getBuilding(selectedId);if(!b)return;
+  if(demolishBuilding(b.id,false)){say(b.built?"Dismantled. Half the original materials were recovered.":"Blueprint cancelled. Reserved materials returned.");serviceTopology();refreshAll();}
+}
+function toggleSelectedBuilding() {
+  let b=getBuilding(selectedId);if(!b||!b.built)return;b.on=!b.on;viewDirty=true;tickPower(0);refreshAll();
+}
+function shelterPlan(x,y) {
+  let plan=[];let w=8,h=8;
+  for(let yy=0;yy<h;yy++)for(let xx=0;xx<w;xx++){
+    if(xx===0||yy===0||xx===w-1||yy===h-1)plan.push({kind:yy===h-1&&xx===4?"door":"wall",x:x+xx,y:y+yy});
+  }
+  plan.push({kind:"bed",x:x+1,y:y+1},{kind:"bed",x:x+3,y:y+1},{kind:"bed",x:x+5,y:y+1},{kind:"bed",x:x+1,y:y+4});
+  return plan;
+}
+function shelterCheck(x,y) {
+  let plan=shelterPlan(x,y),cost={};
+  if(osGame.buildings.length+plan.length>1000)return {ok:false,reason:"Not enough structure capacity for the complete bunkhouse.",plan:plan,cost:cost};
+  for(let i=0;i<plan.length;i++){
+    let p=plan[i],check=placementCheck(p.kind,p.x,p.y,true);if(!check.ok)return {ok:false,reason:"Shelter: "+check.reason,plan:plan,cost:cost};
+    let keys=Object.keys(BUILDINGS[p.kind].cost);for(let j=0;j<keys.length;j++)cost[keys[j]]=(cost[keys[j]]||0)+BUILDINGS[p.kind].cost[keys[j]];
+  }
+  if(!stockHas(cost))return {ok:false,reason:"Shelter requires "+costText(cost),plan:plan,cost:cost};
+  return {ok:true,reason:"",plan:plan,cost:cost};
+}
+function queueShelter(x,y) {
+  let check=shelterCheck(x,y);if(!check.ok){say(check.reason);return false;}
+  for(let i=0;i<check.plan.length;i++)queueBuilding(check.plan[i].kind,check.plan[i].x,check.plan[i].y,true);
+  say("Four-person bunkhouse planned. Builders will work through the blueprints.");refreshAll();return true;
+}
+function markHarvest(x1,y1,x2,y2) {
+  let count=0;let minX=Math.min(x1,x2),maxX=Math.max(x1,x2),minY=Math.min(y1,y2),maxY=Math.max(y1,y2);
+  for(let y=minY;y<=maxY;y++)for(let x=minX;x<=maxX;x++){
+    if(!onMap(x,y)||!osGame.explored[tileId(x,y)])continue;
+    let n=getNode(nodeAtCell[tileId(x,y)]);if(n&&n.amount>0&&!n.marked){n.marked=true;count++;}
+  }
+  say(count?count+" resource nodes designated for gathering.":"No unmarked resources in that area.");viewDirty=true;generateJobs();refreshAll();
+}
+function cancelDesignation(x,y) {
+  let n=getNode(nodeAtCell[tileId(x,y)]);if(n){n.marked=false;cancelTargetJobs(n.id);viewDirty=true;say("Gathering designation cancelled.");}
+}
+function rebuildRooms() {
+  // An enclosed room must lie within the bounds of its walls. Include one
+  // exterior cell around those bounds, rather than flooding unexplored country.
+  roomCells=Array(MAP_SIZE*MAP_SIZE).fill(-1);osGame.rooms=[];
+  let walls=[],x0=MAP_SIZE,y0=MAP_SIZE,x1=-1,y1=-1;
+  for(let i=0;i<osGame.buildings.length;i++){
+    let b=osGame.buildings[i];if(!b.built||!BUILDINGS[b.kind].roomWall||!onMap(b.x,b.y))continue;
+    let x=b.x-WX,y=b.y-WY;walls.push({x:x,y:y});x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x);y1=Math.max(y1,y);
+  }
+  if(walls.length){
+    x0=Math.max(0,x0-1);y0=Math.max(0,y0-1);x1=Math.min(MAP_SIZE-1,x1+1);y1=Math.min(MAP_SIZE-1,y1+1);
+    let width=x1-x0+1,height=y1-y0+1,area=width*height,blocked=Array(area).fill(0),seen=Array(area).fill(false),floorTiles=osGame.floorTiles;
+    for(let i=0;i<walls.length;i++)blocked[(walls[i].y-y0)*width+walls[i].x-x0]=1;
+    for(let start=0;start<area;start++){
+      if(seen[start]||blocked[start])continue;
+      let q=[start],head=0,outside=false,floors=0;seen[start]=true;
+      while(head<q.length){let id=q[head++],x=id%width,y=Math.floor(id/width);if(x===0||y===0||x===width-1||y===height-1)outside=true;if(floorTiles&&floorTiles[(y+y0)*MAP_SIZE+x+x0])floors++;
+        let ns=[id-1,id+1,id-width,id+width];
+        for(let k=0;k<4;k++){let n=ns[k];if(n<0||n>=area||seen[n]||blocked[n]||Math.abs(n%width-x)>1)continue;seen[n]=true;q.push(n);}
+      }
+      if(!outside&&q.length<=400){let room={id:osGame.rooms.length,size:q.length,floors:floors,temp:osGame.temperature,heated:false,beds:0,noisy:false,social:false,comfort:Math.min(8,Math.floor(floors/4))};osGame.rooms.push(room);for(let k=0;k<q.length;k++){let id=q[k];roomCells[(Math.floor(id/width)+y0)*MAP_SIZE+id%width+x0]=room.id;}}
+    }
+  }
+  for(let i=0;i<osGame.buildings.length;i++){let b=osGame.buildings[i];b.room=onMap(b.x,b.y)?roomCells[tileId(b.x,b.y)]:-1;if(b.built&&b.kind==="bed"&&b.room>=0)osGame.rooms[b.room].beds++;if(b.built&&b.room>=0&&(b.kind==="generator"||b.kind==="smelter"))osGame.rooms[b.room].noisy=true;if(b.built&&b.room>=0&&(b.kind==="table"||b.kind==="recreation"))osGame.rooms[b.room].social=true;}
+  // Comfort is what the room is like to live in: how much of the floor is laid, whether one or two people have
+  // it to themselves, whether there is a table to sit at, and whether a crowd or machinery spoils it.
+  for(let i=0;i<osGame.rooms.length;i++){let r=osGame.rooms[i],coverage=r.size?r.floors/r.size:0;r.comfort=Math.max(0,Math.min(8,Math.round(coverage*6)+(r.beds>=1&&r.beds<=2?1:0)+(r.social?1:0)-(r.beds>4?2:0)-(r.noisy?2:0)));}
+}
+function serviceTopology() {
+  if(topologyDirty){rebuildSpatial();rebuildRooms();rebuildPower();}
+}
+function roomAt(x,y) { let id=roomCells[tileId(x,y)];return id>=0?osGame.rooms[id]:null; }
+function countBuilt(kind) { let list=buildingsOfKind(kind),n=0;for(let i=0;i<list.length;i++)if(list[i].built&&onMap(list[i].x,list[i].y))n++;return n; }
+function anyPowered(kind) { let list=buildingsOfKind(kind);for(let i=0;i<list.length;i++){let b=list[i];if(b.built&&b.on&&b.powered&&onMap(b.x,b.y))return true;}return false; }
+function nearestBuilding(c,kinds,requireFree) {
+  let choices=[];
+  for(let k=0;k<kinds.length;k++){let list=buildingsOfKind(kinds[k]);for(let i=0;i<list.length;i++){let b=list[i];if(b.built&&b.on&&onMap(b.x,b.y)&&(!requireFree||!b.reservedBy||b.reservedBy===c.id))choices.push(b);}}
+  choices.sort(function(a,b){return sqDistance(c.x,c.y,a.x,a.y)-sqDistance(c.x,c.y,b.x,b.y);});
+  return choices;
+}

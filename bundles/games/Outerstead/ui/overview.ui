@@ -1,0 +1,42 @@
+<div className="os-stack">
+  #if (autoMode)
+    <div className="os-card"><span className="os-label">AUTO STEWARD</span><span className="os-prose">{autoStatusText}</span><button className="os-btn os-link" @click={() => setPanel("work")}>Manage automation</button></div>
+  #end
+  <div><div className="os-section-title">{hud.name}</div><span className="os-small os-dim">{hud.weather} · {hud.season} · Hollow-7</span></div>
+  #each (a in alertCards) key={a.id}
+    <div className="os-alert" ostype={String(a.type)}><div className="os-alert-title">{a.title}</div><div className="os-alert-body">{a.body}</div>
+      #if (a.action)
+        <button className="os-btn os-link" @click={() => focusAlert(a.id)}>{a.action}</button>
+      #end
+    </div>
+  #end
+  <div className="os-minimap" title="Survey display · click to look there" @click={(e) => minimapJump(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect().left, e.currentTarget.getBoundingClientRect().top, e.currentTarget.getBoundingClientRect().width, e.currentTarget.getBoundingClientRect().height)}>
+    <img className="os-minimap-ground" src={atlasSrc} alt="Survey map" draggable="false" />
+    <div className="os-minimap-view" style={atlasView} />
+    #each (m in atlasMarks) key={m.id}
+      <i className={"os-minimap-mark os-mm-" + m.kind} style={m.style} />
+    #end
+    <span className="os-minimap-label">{atlasLabel}</span>
+  </div>
+  <div className="os-research-shortcut" @click={() => setPanel("research")}><span className="os-label">RESEARCH</span><div className="os-small" style={{ marginTop: "5px" }}>{researchSummary}</div></div>
+  <div>
+    <div className="os-between"><span className="os-label">{campaignCard.tag}</span><span className="os-tiny os-dim">{campaignCard.progress}</span></div>
+    <div className="os-chapter-title">{campaignCard.title}</div>
+    <div className="os-goal-detail">{campaignCard.detail}</div>
+    #each (g in objectiveCards) key={g.id}
+      <div className="os-goal" osdone={String(g.done)}><div className="os-goal-icon">{g.done ? "✓" : "○"}</div><div><div className="os-goal-title">{g.title}</div><div className="os-goal-detail">{g.detail}</div>
+        #if (g.action)
+          <button className="os-btn os-link" @click={() => focusGoal(g.id)}>{g.action}</button>
+        #end
+      </div></div>
+    #end
+    #if (campaignCard.canRead)
+      <button className="os-btn os-link" @click={readChapter}>Read the last chapter</button>
+    #end
+  </div>
+  #if (suggestShelter)
+    <button className="os-btn os-wide" @click={() => chooseTool("shelter")}>Plan a four-person bunkhouse</button>
+    <span className="os-tiny os-dim">8 × 8 tiles · 127 wood + 2 metal. Includes four beds, walls, and a door. Choose clear ground away from the lifeboat.</span>
+  #end
+  <button className="os-btn os-link" @click={openHelp}>Read the field guide</button>
+</div>

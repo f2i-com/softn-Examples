@@ -1,0 +1,78 @@
+// The institution keeps moving even when the camera is elsewhere.
+function jobFor(id){for(let i=0;i<JOBS.length;i++)if(JOBS[i].id===id)return JOBS[i];return null;}
+function routineFor(c){
+  let r=routineNow();
+  if(currentAlert()>=3)return {id:"emergencyHome",kind:"sleep",zone:"home",name:"Lockdown: return to cell"};
+  let meal=activeMealRoutine(c,r);if(meal)return meal;
+  if(r.id==="count1"&&omGame.countKeys[dayNow()+":"+r.id])return {id:"breakfastApproach",kind:"approach",zone:"canteen",name:"Walking to breakfast"};
+  // Long trips are anticipated. In particular, a lawful automatic player must not
+  // miss evening count because association is at the other end of the prison.
+  if(r.id==="association"&&minuteNow()>=1200)return {id:"count2early",kind:"count",zone:"count",name:"Walking to evening count"};
+  if(r.id==="wake")return {id:"count1early",kind:"count",zone:"count",name:"Walking to morning count"};
+  return r;
+}
+function routineTarget(c,r){
+  if(r.zone==="home")return {x:c.homeX,y:c.homeY};
+  let index=0;for(let i=0;i<omGame.people.length;i++)if(omGame.people[i].id===c.id){index=i;break;}
+  if(r.zone==="count")return {x:24+(index%15)*2,y:32};
+  if(r.zone==="work")return dutyTarget(c);
+  if(r.zone==="canteen")return mealQueuePoints[index%Math.max(1,mealQueuePoints.length)]||{x:50,y:45};
+  if(r.zone==="yard")return {x:23+(index%7),y:39+Math.floor(index/7)*4};
+  if(r.zone==="association")return {x:28+(index%4),y:75+Math.floor(index/4)%3};
+  return {x:31,y:32};
+}
+function awardWork(c){
+  c.workBatches=(c.workBatches||0)+1;
+  if(c.id!=="player")return;
+  omGame.scrip=Math.min(9999,omGame.scrip+workPay(c.job));omGame.stats.work++;onPlayerWork();
+  if(omGame.stats.work===1){logEvent("Earned access","First work batch completed. Your assignment is also a key.","work");say("Work complete: +"+workPay(c.job)+" scrip. One more batch unlocks advanced assignments.");}
+  if(omGame.stats.work===2){say("Advanced work details unlocked. Visit the noticeboard to change assignment.");logEvent("Trusted with a different broom","Maintenance, records and freight assignments are now available.","work");}
+  let j=jobFor(c.job);if(j&&j.id==="laundry"&&!knownIntel("cargo"))learnIntel("cargo","rumor",false);
+  awardPriorityWork(c);dirty();
+}
+function tickRoutine(c,dt){
+  let r=routineFor(c),key=dayNow()+":"+r.id+":"+c.job;
+  // A routine change moves everyone at once; spreading the path searches over the next
+  // half second keeps any single host call cheap.
+  if(c.routineKey!==key){c.routineKey=key;c.routineTarget=routineTarget(c,r);c.workClock=0;clearPath(c);c.retryAt=omGame.elapsed+(activityIndex(c)%12)*0.1;}
+  if(r.kind==="eat"){tickMeal(c,dt,r);return;}
+  if(r.kind==="social"&&tickSocialLife(c,dt,r))return;
+  let target=c.routineTarget;if(!target)return;
+  let close=sqDistance(c.x,c.y,target.x+0.5,target.y+0.5)<(r.kind==="work"?.04:2.1);
+  if(!close){
+    if(c.pathCursor>=c.path.length&&omGame.elapsed>=c.retryAt){if(!routeTo(c,target.x,target.y))routeNear(c,target.x,target.y,1);}
+    c.idleClock=0;walkPath(c,dt);c.action=r.kind==="count"?r.name:r.kind==="sleep"?"Returning to cell":"Going to "+r.name.toLowerCase();return;
+  }
+  clearPath(c);
+  if(r.kind==="sleep"){tickBedRest(c,dt,r);return;}
+  c.idleClock=0;
+  c.action=r.kind==="work"?"Working: "+workDuty(c,Math.min(2,Math.floor(c.workClock/4))):r.kind==="eat"?"Eating":r.kind==="count"?"Present for count":"Taking a moment";
+  if(r.kind==="work"&&isWorkTime()&&currentAlert()<3){c.workClock+=dt;if(c.workClock>=12){c.workClock-=12;awardWork(c);}}
+  if(r.kind==="social")c.stress=Math.max(0,c.stress-dt*0.07);
+}
+function tickCount(){
+  let r=routineNow();if(r.kind!=="count")return;
+  let due=r.start+diffSettings().grace;if(minuteNow()<due)return;
+  let key=dayNow()+":"+r.id;if(omGame.countKeys[key])return;omGame.countKeys[key]=true;
+  let p=player();if(p.detainedUntil>omGame.minutes||omGame.escape)return;
+  let present=p.x>=22&&p.x<=61&&p.y>=31&&p.y<=34.8;
+  if(present){omGame.stats.counts++;omGame.personalSuspicion=Math.max(0,omGame.personalSuspicion-3);if(omGame.stats.counts===1){say("Present. Boring can be useful.");logEvent("The first count","Your name was called. You answered. Tomorrow you might need a different arrangement.","chapter");}}
+  else if(projectReady("decoy")){delete omGame.projects.decoy;logEvent("Present, approximately","The prepared decoy covered one missed count. It cannot be used again without rebuilding.","scheme");say("Decoy used: one missed count covered.");}
+  else {omGame.stats.missedCounts++;omGame.personalSuspicion=clamp(omGame.personalSuspicion+12,0,100);omGame.heat=clamp(omGame.heat+5,0,100);logEvent("Absent from count","The absence was recorded. Return to routine to ease suspicion, or commit to a plan.","security");say("Count missed: +12 suspicion. The run continues.");playCue("warning");}
+  // Bound attendance history to the last eight days.
+  let keys=Object.keys(omGame.countKeys);for(let i=0;i<keys.length;i++)if(Number(keys[i].split(":")[0])<dayNow()-8)delete omGame.countKeys[keys[i]];
+}
+function leaveAutoDay(){if(omGame&&omGame.autoDay){omGame.autoDay=false;socialPlanKey="";socialPlans={};dirty();}}
+function startAutoDay(){if(!canInteractNow()||dialog||omGame.challenge||omGame.escape){say("Finish the current situation before starting an automatic day.");return false;}returnToRoutine();omGame.autoDay=true;socialPlanKey="";socialPlans={};paused=false;focusPlayer();mobilePanelOpen=false;say("Auto day: count, meals, duties, social time and a bunk at lights out. Choose an action whenever you want control.");dirty();return true;}
+function toggleAutoDay(){if(!omGame)return;if(omGame.autoDay){leaveAutoDay();player().mode="manual";if(!player().task)clearPath(player());say("You have control. Orders keep running; choose your next move.");dirty();}else startAutoDay();}
+function watchFirstDay(){beginFirstCount();startAutoDay();}
+function toggleRoutine(){if(!canInteractNow())return;leaveAutoDay();let p=player();if(!p.task)clearPath(p);p.mode=p.mode==="routine"?"manual":"routine";p.routineKey="";omGame.sprinting=false;say(p.mode==="routine"?"Routine mode: attend counts, eat, work and rest automatically.":"Manual mode: click a destination or choose an interaction.");dirty();}
+function returnToRoutine(){if(!canInteractNow())return;let p=player();if(!p.task)clearPath(p);p.mode="routine";p.routineKey="";omGame.sprinting=false;dirty();}
+function tickNeeds(dt){
+  for(let i=0;i<omGame.people.length;i++){let c=omGame.people[i];if(c.escaped||c.role==="guard"||c.role==="staff")continue;c.food=clamp(c.food-dt*0.12,0,100);c.energy=clamp(c.energy-dt*0.045,0,100);if(c.food<10)c.stress=clamp(c.stress+dt*0.15,0,100);if(c.food<2)c.health=Math.max(25,c.health-dt*0.03);}
+  let p=player();if(p.mode==="routine"&&!omGame.escape&&p.detainedUntil<=omGame.minutes){omGame.personalSuspicion=Math.max(evidenceFloor(),omGame.personalSuspicion-dt*0.035);}
+  if(p.background==="medic"&&p.mode==="routine")p.stress=Math.max(0,p.stress-dt*0.02);
+  tickMilestones();tickCount();tickNight();tickOrders();tickGuide();tickApproaches();tickArguments();tickForce();tickAnnouncements();
+}
+
+function attendCount(){if(!canInteractNow())return false;if(player().task)interruptActiveOrder("Waiting until after count.");returnToRoutine();paused=false;dirty();return true;}

@@ -1,0 +1,84 @@
+// Optional downtime uses the normal simulation clock. No extra timers or job claims.
+function leisureSeed(c) {let n=parseInt(c.id.replace(/^[A-Za-z]+/,""),10);return Number.isFinite(n)?n:0;}
+function autoJobUrgency(c,j) {
+  if(!osGame.autoMode)return 0;
+  if(j.type==="treat"){let p=findColonist(j.target);if(p&&(p.bleed>0||p.health<40))return 650;}
+  if(osGame.stock.meals<Math.max(8,osGame.people.length*2)&&(j.category==="cook"||j.type==="harvest"))return 350;
+  return 0;
+}
+function leisureWorkWaiting(c) {
+  for(let i=0;i<osGame.jobs.length;i++){let j=osGame.jobs[i];if(!j.claimed&&c.priorities[j.category]&&j.blockedUntil<=osGame.elapsed&&!(j.type==="treat"&&j.target===c.id)&&jobStillValid(j))return true;}
+  return false;
+}
+function leisurePathSafe(c) {
+  if(c.path.length-c.pathCursor>32)return false;
+  for(let i=c.pathCursor;i<c.path.length;i++){
+    let cell=c.path[i];if(!osGame.explored[cell])return false;
+    for(let j=0;j<osGame.animals.length;j++){let a=osGame.animals[j];if(!a.dead&&a.hostile&&sqDistance(cell%MAP_SIZE+WX+.5,Math.floor(cell/MAP_SIZE)+WY+.5,a.x,a.y)<64)return false;}
+  }
+  return true;
+}
+function leisureSpotFree(x,y,c) {
+  for(let i=0;i<osGame.people.length;i++){let p=osGame.people[i],t=p.task;if(p.id!==c.id&&!p.dead&&((t&&t.leisure&&t.goalX===x&&t.goalY===y)||sqDistance(p.x,p.y,x+.5,y+.5)<.6))return false;}
+  return true;
+}
+function badLeisureWeather() {return osGame.weather==="Storm"||osGame.weather==="Glass Wind"||osGame.temperature<-4||osGame.temperature>35;}
+function beginLeisure(c,kind,target,x,y) {
+  if(!leisureSpotFree(x,y,c)||!routeTo(c,{x:x,y:y},true))return false;
+  if(!leisurePathSafe(c)){c.path=[];c.pathCursor=0;return false;}
+  c.task={type:"recreation",personal:true,leisure:true,activity:kind,targetId:target,phase:"travel",progress:0,goalX:x,goalY:y,checkAt:osGame.elapsed+1.2,duration:8+(leisureSeed(c)%5),socialDone:false};
+  let venue=getBuilding(target);if(isDiningTable(venue))for(let p of tableSeats(venue))if(p.x===x&&p.y===y)c.task.seat=p.seat;
+  c.action=kind==="stroll"?"Taking a short walk":kind==="games"?"Heading to the common room":kind==="social"?"Going to the gathering table":"Visiting the memory stone";
+  viewDirty=true;return true;
+}
+function startIdleActivity(c) {
+  // Personal time is the settler's own; the steward decides colony work, not whether people are people.
+  if(c.task||c.drafted||c.equipTarget||c.carry||c.food<30||c.health<40||c.bleed>0||osGame.elapsed<(c.leisureAt||0))return false;
+  c.leisureAt=osGame.elapsed+7+(leisureSeed(c)%5);
+  // Equip only otherwise idle, unarmed settlers; explicit dropping opts out.
+  if(!heldWeapon(c)&&!c.autoEquipOptOut&&!c.child){
+    let pickups=0;
+    for(let i=0;i<osGame.weapons.length&&pickups<2;i++){let w=osGame.weapons[i];if(!w.holder&&!w.claimedBy&&sqDistance(c.x,c.y,w.x,w.y)<100&&osGame.explored[tileId(w.x,w.y)]&&!nearestHostile(w.x,w.y,9)){pickups++;if(requestWeapon(c,w,true))return true;}}
+  }
+  let venues=nearestBuilding(c,["recreation","table","memorial"],false),attempts=0;
+  let cycle=c.leisureCycle||0;c.leisureCycle=cycle+1;
+  if(cycle%3!==2||badLeisureWeather())for(let i=0;i<Math.min(venues.length,4);i++){
+    let b=venues[(i+cycle)%venues.length];if(sqDistance(c.x,c.y,b.x,b.y)>144||nearestHostile(b.x,b.y,9))continue;
+    let points=isDiningTable(b)?tableSeats(b):accessPoints(b),offset=leisureSeed(c)%Math.max(1,points.length);
+    for(let j=0;j<points.length&&attempts<3;j++){
+      let p=points[(j+offset)%points.length];if(isDiningTable(b)&&!tableSeatFree(c,b,p))continue;if(badLeisureWeather()&&!roomAt(p.x,p.y))continue;if(!leisureSpotFree(p.x,p.y,c))continue;
+      attempts++;if(beginLeisure(c,b.kind==="recreation"?"games":b.kind==="table"?"social":"reflect",b.id,p.x,p.y))return true;
+    }
+  }
+  if(!badLeisureWeather()){
+    let base=leisureSeed(c)+cycle,dirs=[[3,0],[2,3],[-3,2],[-2,-3],[0,-4],[4,-2],[-4,0],[0,4]];
+    for(let i=0;i<8&&attempts<3;i++){
+      let d=dirs[(base+i)%8],x=Math.floor(c.x)+d[0],y=Math.floor(c.y)+d[1];
+      if(!passable(x,y)||!osGame.explored[tileId(x,y)]||sqDistance(x,y,CENTRE,centreY())>22*22||!leisureSpotFree(x,y,c))continue;
+      attempts++;if(beginLeisure(c,"stroll","",x,y))return true;
+    }
+  }
+  return false;
+}
+function updateLeisure(c,dt) {
+  let t=c.task;
+  if(osGame.elapsed>=t.checkAt){
+    t.checkAt=osGame.elapsed+1.2;
+    let h=hourNow(),bedtime=c.schedule==="night"?h>8&&h<16:c.schedule!=="flexible"&&(h>21||h<5);
+    if(c.food<45||c.rest<25||(bedtime&&c.rest<78)||c.bleed>0||c.health<40||badLeisureWeather()&&!roomAt(c.x,c.y)||t.targetId&&!getBuilding(t.targetId)||leisureWorkWaiting(c)){
+      releaseTask(c,true);c.waitUntil=0;chooseJob(c);return;
+    }
+  }
+  if(t.phase==="travel"){
+    if(c.pathEpoch!==pathEpoch){if(!routeTo(c,{x:t.goalX,y:t.goalY},true)||!leisurePathSafe(c)){releaseTask(c,true);return;}}
+    let arrived=walkPath(c,dt,1.25);if(c.pathFailed){releaseTask(c,true);return;}if(arrived){t.phase="work";c.path=[];c.pathCursor=0;}return;
+  }
+  faceTable(c);t.progress+=dt;c.recreation=Math.min(95,c.recreation+dt*(t.activity==="games"?1.5:.7));
+  c.action=t.activity==="games"?"Playing a table game":t.activity==="social"?"Taking time for company":t.activity==="reflect"?"A moment of reflection":"Enjoying the view";
+  if(!t.socialDone&&t.progress>=3){
+    for(let i=0;i<osGame.people.length;i++){let p=osGame.people[i];if(p.id===c.id||p.dead||p.drafted||!p.task||!p.task.leisure||p.task.phase!=="work"||sqDistance(c.x,c.y,p.x,p.y)>16||!hasLineOfSight(c.x,c.y,p.x,p.y))continue;
+      if(!p.task.socialDone){c.relations[p.id]=clamp((c.relations[p.id]||0)+2,-100,100);p.relations[c.id]=clamp((p.relations[c.id]||0)+2,-100,100);remember(c,"A quiet moment with "+p.short,3,600);remember(p,"A quiet moment with "+c.short,3,600);p.task.socialDone=true;}t.socialDone=true;break;
+    }
+  }
+  if(t.progress>=t.duration){remember(c,t.activity==="games"?"Time for a table game":"A little room to breathe",3,700);finishTask(c);c.leisureAt=osGame.elapsed+5;}
+}

@@ -1,0 +1,360 @@
+  let objects = []
+  let lights = []
+  let cameraPos = { x: 0, y: 3.4, z: 9.2 }
+  let showWireframe = false
+  let selectedId = ""
+  let selectedType = ""
+  let selectedLabel = ""
+  let objectCount = 0
+  let currentSky = "sunset"
+  let skies = ["sunset", "day", "night", "dusk", "overcast"]
+  let skyIdx = 0
+  let useTextures = true
+  let elapsed = 0
+
+  let initialObjects = []
+
+  function cloneObj(o) {
+    let copy = {}
+    let keys = Object.keys(o)
+    let k = 0
+    while (k < keys.length) {
+      copy[keys[k]] = o[keys[k]]
+      k = k + 1
+    }
+    return copy
+  }
+
+  function _init() {
+    let colors = ["#6366f1", "#ec4899", "#14b8a6", "#f59e0b", "#ef4444", "#8b5cf6", "#22d3ee"]
+    let types = ["box", "sphere", "torus", "cone", "dodecahedron", "icosahedron", "octahedron"]
+    let textures = ["brick", "checker", "metal", "wood", "stone", "dots", "stripes"]
+    let objs = []
+
+    // Blender PBR hero models
+    objs.push({
+      id: "chrono-orrery",
+      label: "Chrono Orrery",
+      type: "model",
+      modelUrl: "assets/models/chrono-orrery.glb",
+      position: { x: 0, y: -1.5, z: 0 },
+      scale: { x: 1.05, y: 1.05, z: 1.05 },
+      parts: {
+        Ring_Outer: { rotation: { x: 0, y: 0, z: 0 } },
+        Ring_Mid: { rotation: { x: 0, y: 0, z: 0 } },
+        Ring_Inner: { rotation: { x: 0, y: 0, z: 0 } }
+      },
+      castShadow: true,
+      receiveShadow: true,
+      interactive: true,
+      cursor: "pointer"
+    })
+    objs.push({
+      id: "crystal-relic-0",
+      label: "Crystal Relic",
+      type: "model",
+      modelUrl: "assets/models/crystal-relic.glb",
+      position: { x: -4.4, y: -1.5, z: -2.2 },
+      scale: { x: 0.9, y: 0.9, z: 0.9 },
+      parts: {
+        Floating_Shard: { rotation: { x: 0, y: 0, z: 0 } },
+        Halo_Ring: { rotation: { x: 0, y: 0, z: 0 } }
+      },
+      castShadow: true,
+      receiveShadow: true,
+      interactive: true,
+      cursor: "pointer"
+    })
+
+    let i = 0
+    let count = 7
+    while (i < count) {
+      let angle = (i / count) * Math.PI * 2
+      let x = Math.cos(angle) * 3.4
+      let z = Math.sin(angle) * 3.4
+      let obj = {
+        id: "shape-" + i,
+        type: types[i],
+        position: { x: x, y: 0.1, z: z },
+        color: colors[i],
+        metalness: types[i] === "torus" || types[i] === "octahedron" ? 0.78 : 0.35,
+        roughness: 0.32,
+        wireframe: false,
+        texture: textures[i],
+        textureRepeat: { x: 2, y: 2 },
+        bumpScale: 0.05,
+        castShadow: true,
+        interactive: true,
+        cursor: "pointer",
+        animate: {
+          rotateY: 0.005 + (i * 0.003),
+          floatAmplitude: 0.28 + (i * 0.04),
+          floatSpeed: 0.8 + (i * 0.15)
+        }
+      }
+      if (types[i] === "torus") { obj.radius = 0.6 }
+      if (types[i] === "cone") { obj.radius = 0.5; obj.height = 1.2 }
+      objs.push(obj)
+      i = i + 1
+    }
+
+    let ground = {
+      id: "ground",
+      type: "plane",
+      position: { x: 0, y: -1.5, z: 0 },
+      rotation: { x: -Math.PI / 2, y: 0, z: 0 },
+      width: 26,
+      height: 26,
+      color: "#1e1b4b",
+      texture: "grid",
+      textureRepeat: { x: 16, y: 16 },
+      metalness: 0.2,
+      roughness: 0.78,
+      receiveShadow: true,
+      opacity: 0.88
+    }
+    objs.push(ground)
+
+    objects = objs
+    objectCount = objs.length - 1
+
+    let saved = []
+    let si = 0
+    while (si < objs.length) {
+      saved.push(cloneObj(objs[si]))
+      si = si + 1
+    }
+    initialObjects = saved
+
+    lights = [
+      { id: "ambient", type: "ambient", color: "#556080", intensity: 0.5 },
+      { id: "hemi", type: "hemisphere", color: "#dbeafe", groundColor: "#1e1b4b", intensity: 0.65 },
+      { id: "dir1", type: "directional", color: "#fff2dc", intensity: 1.5, position: { x: 6, y: 10, z: 6 }, castShadow: true, shadowMapSize: 2048, follow: "view", shadowBias: -0.0003 },
+      { id: "orrery-core", type: "point", color: "#fbbf24", intensity: 4.5, distance: 11, decay: 1.8, position: { x: 0, y: 0.15, z: 0 } },
+      { id: "relic-glow", type: "point", color: "#c084fc", intensity: 3.2, distance: 9, decay: 1.8, position: { x: -4.4, y: 0.2, z: -2.2 } }
+    ]
+  }
+
+  function demoStep(rawDt) {
+    let dt = rawDt || 0.016
+    if (dt > 0.08) { dt = 0.08 }
+    elapsed = elapsed + dt
+
+    let updated = false
+    let newObjs = []
+    let i = 0
+    while (i < objects.length) {
+      let obj = objects[i]
+      if (obj.id === "chrono-orrery") {
+        let c = cloneObj(obj)
+        c.parts = {
+          Ring_Outer: { rotation: { x: Math.sin(elapsed * 0.45) * 0.15, y: elapsed * 0.42, z: 0 } },
+          Ring_Mid: { rotation: { x: elapsed * 0.62, y: -elapsed * 0.3, z: 0.2 } },
+          Ring_Inner: { rotation: { x: 0, y: elapsed * 0.95, z: Math.cos(elapsed * 0.7) * 0.35 } }
+        }
+        newObjs.push(c)
+        updated = true
+      } else if (obj.type === "model" && obj.modelUrl === "assets/models/crystal-relic.glb") {
+        let c = cloneObj(obj)
+        c.parts = {
+          Floating_Shard: {
+            position: { x: 0, y: Math.sin(elapsed * 2.1 + i) * 0.09, z: 0 },
+            rotation: { x: 0, y: elapsed * 1.15, z: 0 }
+          },
+          Halo_Ring: {
+            rotation: { x: Math.cos(elapsed * 1.3 + i) * 0.28, y: -elapsed * 0.85, z: 0 }
+          }
+        }
+        newObjs.push(c)
+        updated = true
+      } else {
+        newObjs.push(obj)
+      }
+      i = i + 1
+    }
+    if (updated) { objects = newObjs }
+  }
+
+  function toggleWireframe() {
+    showWireframe = !showWireframe
+    let newObjs = []
+    let i = 0
+    while (i < objects.length) {
+      let copy = cloneObj(objects[i])
+      if (copy.type !== "model") { copy.wireframe = showWireframe }
+      newObjs.push(copy)
+      i = i + 1
+    }
+    objects = newObjs
+  }
+
+  function randomizeColors() {
+    let palette = ["#6366f1", "#ec4899", "#14b8a6", "#f59e0b", "#ef4444", "#8b5cf6", "#22d3ee", "#a3e635", "#fb923c", "#38bdf8"]
+    let newObjs = []
+    let i = 0
+    while (i < objects.length) {
+      let copy = cloneObj(objects[i])
+      if (copy.id !== "ground" && copy.type !== "model") {
+        copy.color = palette[Math.floor(Math.random() * palette.length)]
+      }
+      newObjs.push(copy)
+      i = i + 1
+    }
+    objects = newObjs
+  }
+
+  function cycleSky() {
+    skyIdx = (skyIdx + 1) % skies.length
+    currentSky = skies[skyIdx]
+  }
+
+  function toggleTextures() {
+    useTextures = !useTextures
+    let texList = ["brick", "checker", "metal", "wood", "stone", "dots", "stripes"]
+    let newObjs = []
+    let i = 0
+    while (i < objects.length) {
+      let copy = cloneObj(objects[i])
+      if (copy.id === "ground") {
+        copy.texture = useTextures ? "grid" : ""
+      } else if (copy.type !== "model") {
+        copy.texture = useTextures ? texList[i % texList.length] : ""
+      }
+      newObjs.push(copy)
+      i = i + 1
+    }
+    objects = newObjs
+  }
+
+  function addShape() {
+    let types = ["box", "sphere", "torus", "cone", "dodecahedron", "icosahedron", "octahedron", "cylinder"]
+    let colors = ["#6366f1", "#ec4899", "#14b8a6", "#f59e0b", "#ef4444", "#8b5cf6", "#22d3ee", "#a3e635"]
+    let t = types[Math.floor(Math.random() * types.length)]
+    let c = colors[Math.floor(Math.random() * colors.length)]
+    let x = (Math.random() - 0.5) * 8
+    let z = (Math.random() - 0.5) * 8
+    let y = Math.random() * 2.2
+
+    let newObj = {
+      id: "shape-" + Date.now(),
+      type: t,
+      position: { x: x, y: y, z: z },
+      color: c,
+      metalness: 0.35,
+      roughness: 0.35,
+      wireframe: showWireframe,
+      castShadow: true,
+      interactive: true,
+      cursor: "pointer",
+      animate: {
+        rotateY: 0.005 + Math.random() * 0.02,
+        floatAmplitude: 0.2 + Math.random() * 0.3,
+        floatSpeed: 0.8 + Math.random() * 0.5
+      }
+    }
+    if (t === "torus") { newObj.radius = 0.55 }
+    if (t === "cone" || t === "cylinder") { newObj.radius = 0.48; newObj.height = 1.1 }
+
+    let newObjs = objects.slice()
+    newObjs.push(newObj)
+    objects = newObjs
+    objectCount = newObjs.length - 1
+  }
+
+  function addRelic() {
+    let ang = Math.random() * Math.PI * 2
+    let r = 3.6 + Math.random() * 2.6
+    let newRelic = {
+      id: "crystal-relic-" + Date.now(),
+      label: "Crystal Relic",
+      type: "model",
+      modelUrl: "assets/models/crystal-relic.glb",
+      position: { x: Math.cos(ang) * r, y: -1.5, z: Math.sin(ang) * r },
+      rotation: { x: 0, y: Math.random() * Math.PI * 2, z: 0 },
+      scale: { x: 0.85, y: 0.85, z: 0.85 },
+      parts: {
+        Floating_Shard: { rotation: { x: 0, y: 0, z: 0 } },
+        Halo_Ring: { rotation: { x: 0, y: 0, z: 0 } }
+      },
+      castShadow: true,
+      receiveShadow: true,
+      interactive: true,
+      cursor: "pointer"
+    }
+    let newObjs = objects.slice()
+    newObjs.push(newRelic)
+    objects = newObjs
+    objectCount = newObjs.length - 1
+  }
+
+  function labelForObject(obj) {
+    if (!obj) return ""
+    if (obj.label) return obj.label
+    if (!obj.type) return "Shape"
+    return obj.type.charAt(0).toUpperCase() + obj.type.slice(1)
+  }
+
+  function resetScene() {
+    showWireframe = false
+    useTextures = true
+    selectedId = ""
+    selectedType = ""
+    selectedLabel = ""
+    let objs = []
+    let i = 0
+    while (i < initialObjects.length) {
+      objs.push(cloneObj(initialObjects[i]))
+      i = i + 1
+    }
+    objects = objs
+    objectCount = objs.length - 1
+  }
+
+  // The selected object highlights cleanly; clicking the ground clears selection.
+  function handleClick(info) {
+    let hitId = info && info.objectId ? info.objectId : ""
+    if (!hitId || hitId === "ground") {
+      selectedId = ""
+      selectedType = ""
+      selectedLabel = ""
+    } else {
+      selectedId = hitId
+    }
+    let newObjs = []
+    let i = 0
+    while (i < objects.length) {
+      let obj = objects[i]
+      let copy = cloneObj(obj)
+      if (selectedId !== "" && obj.id === selectedId) {
+        selectedLabel = labelForObject(obj)
+        if (obj.type !== "model") {
+          copy.emissive = obj.color || "#fbbf24"
+          copy.emissiveIntensity = 0.65
+          selectedType = obj.type
+        } else {
+          selectedType = obj.label || "PBR Model"
+        }
+      } else if (obj.id !== "ground" && obj.type !== "model") {
+        copy.emissive = "#000000"
+        copy.emissiveIntensity = 0
+      }
+      newObjs.push(copy)
+      i = i + 1
+    }
+    objects = newObjs
+  }
+
+  function removeSelected() {
+    if (selectedId === "") { return }
+    let newObjs = []
+    let i = 0
+    while (i < objects.length) {
+      if (objects[i].id !== selectedId) { newObjs.push(objects[i]) }
+      i = i + 1
+    }
+    objects = newObjs
+    objectCount = newObjs.length - 1
+    selectedId = ""
+    selectedType = ""
+    selectedLabel = ""
+  }

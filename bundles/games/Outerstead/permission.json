@@ -1,0 +1,12 @@
+{
+  "app": {
+    "id": "com.outerstead.firstlight",
+    "name": "Outerstead",
+    "version": "0.61.6"
+  },
+  "permissions": {
+    "files": {
+      "enabled": true
+    }
+  }
+}

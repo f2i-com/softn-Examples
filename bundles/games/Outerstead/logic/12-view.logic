@@ -1,0 +1,388 @@
+// Renderer window affects presentation only; offscreen simulation continues.
+let visibleTileRange=null;
+function setVisibleTileRange(r){
+ if(!r||typeof r!=="object")return;
+ let size=Math.max(MAP_SIZE,viewMapTiles||0);
+ for(let k of ["x","y","width","height"])if(typeof r[k]!=="number"||!Number.isFinite(r[k])||r[k]<0||r[k]>size)return;
+ if(r.x+r.width>size||r.y+r.height>size)return;
+ if(visibleTileRange&&visibleTileRange.x===r.x&&visibleTileRange.y===r.y&&visibleTileRange.width===r.width&&visibleTileRange.height===r.height)return;
+ visibleTileRange={x:r.x,y:r.y,width:r.width,height:r.height};if(r.x>0&&r.y>0&&r.x+r.width<size&&r.y+r.height<size)hintViewport(r.width*TILE*zoomLevel,r.height*TILE*zoomLevel);
+ // A renderer report only updates culling. Moving/rebuilding the map here can
+ // cause another report to enter the same refresh while it is still publishing.
+ if(osGame&&screen==="game")withView(function(){refreshStructures();projectActors();});
+}
+function tileInView(x,y,w,h,bounds){
+ // Renderer reports arrive after drawing and can describe the previous window
+ // during zoom/rebase. Once measured, the live camera is authoritative: never
+ // unmount visible sprites because a delayed report is stale or briefly empty.
+ if(viewportKnown){let r=bounds||visibleWorldRect(),pad=2+96/(TILE*zoomLevel);return x+(w||1)>=r.x-pad&&y+(h||1)>=r.y-pad&&x<=r.x+r.w+pad&&y<=r.y+r.h+pad;}
+ if(!visibleTileRange)return true;
+ let r=visibleTileRange;if(!r.width||!r.height)return false;
+ x=x-WX;y=y-WY;return x+(w||1)>=r.x-2&&y+(h||1)>=r.y-2&&x<=r.x+r.width+2&&y<=r.y+r.height+2;
+}
+// Compact view models are the only bridge between persistent simulation and UI.
+// Rendering does not draw random numbers or award gameplay milestones.
+let categoryCards=[];
+let pageTitle="Settlement";
+let researchSummary="No active project";
+let gridStyle={};
+let landingScenario="landing";
+let endingCards=[];
+let ambienceText="Sound off";
+let debugStatus="";
+let blockedWorkCards=[];
+let blueprintCount=0;
+let worldBiomeFilter="none";
+let recordCards=[];
+function projectRecord(){
+  if(activePanel!=="chronicle"){recordCards=[];return;}
+  let s=osGame.stats,t=osGame.threats||{waves:0};
+  recordCards=[{name:"Sols",value:String(dayNow())},{name:"People who called it home",value:String(osGame.people.length)},{name:"Died here",value:String(s.deaths)},{name:"Harvests",value:String(s.harvests)},{name:"Meals cooked",value:String(Math.floor(s.mealsCooked))},{name:"Discoveries",value:String(Object.keys(osGame.tech).length)},{name:"Archives recovered",value:s.studied+" of 3"},{name:"Predators brought down",value:String(s.attacks)},{name:"Waves survived",value:String(t.waves||0)},{name:"Raids suffered · camps broken",value:(s.raided||0)+" · "+(s.campsBroken||0)},{name:"Born here",value:String(s.births||0)},{name:"Mossbacks tamed · food grazed",value:(s.tamed||0)+" · "+(s.grazed||0)},{name:"Ridge",value:osGame.ridgeName||"Unnamed"}];
+}
+let workBoardText="";
+let workRetryAvailable=false;
+function refreshWorkBoard() {
+  blockedWorkCards=[];workBoardText="";workRetryAvailable=false;
+  if(!osGame||(activePanel!=="work"&&dialog!=="work"))return;
+  let cards=[],total=0,claimed=0,blocked=0;
+  for(let i=0;i<osGame.jobs.length;i++){
+    let j=osGame.jobs[i];if(!jobStillValid(j))continue;total++;
+    if(j.claimed){claimed++;continue;}
+    let reason="";
+    if(j.blockedUntil>osGame.elapsed){reason=j.reason||"Waiting to try again";workRetryAvailable=true;}
+    else {
+      let enabled=false;for(let k=0;k<osGame.people.length;k++){let c=osGame.people[k];if(!c.dead&&c.priorities[j.category]){enabled=true;break;}}
+      if(!enabled)reason="No living colonist has "+WORK_LABELS[WORK_KEYS.indexOf(j.category)]+" enabled.";
+    }
+    if(!reason)continue;blocked++;
+    if(cards.length<12){let target=targetForJob(j),name=j.type==="survey"?"Survey destination":j.type==="treat"?target.name:j.type==="excavate"?target.name:j.type==="gather"?(target.kind==="pile"?"Dropped supplies":target.kind==="tree"?"Ironbark stand":target.kind==="berries"?"Sunberry bush":target.kind+" deposit"):BUILDINGS[target.kind].name;
+      cards.push({id:j.id,name:name,reason:reason,location:Math.floor(j.x)+", "+Math.floor(j.y)});
+    }
+  }
+  blockedWorkCards=cards;workBoardText=total+" tasks · "+claimed+" claimed · "+blocked+" blocked"+(blocked>12?" · showing first 12":"");
+}
+function clockText(minute) {let h=Math.floor(minute/60)%24,m=Math.floor(minute%60);return (h<10?"0":"")+h+":"+(m<10?"0":"")+m;}
+function needsBar(value,colour) {return {width:Math.round(clamp(value,0,100))+"%",background:colour};}
+function spritePath(kind) {return "assets/sprites/"+kind+".svg";}
+function actorSprite(c) {if(c.look)return spritePath(c.look);if(c.spriteIndex!==undefined)return spritePath("colonist"+(c.spriteIndex%4));let i=0;for(let j=0;j<FOUNDERS.length;j++)if(c.colour===FOUNDERS[j].colour)i=j;return spritePath("colonist"+i);}
+function moodName(value) {return value>=85?"Inspired":value>=65?"Content":value>=45?"Steady":value>=25?"Struggling":"Distressed";}
+function taskExplanation(c) {
+  if(c.dead)return "Their story lives in the colony chronicle.";
+  if(c.drafted)return "Command mode: click a destination or creature. Stand down to resume autonomous work.";
+  if(c.health<22)return "Downed. Another colonist with Treat enabled must reach them.";
+  if(c.equipTarget)return "Walking to a reserved weapon. Other settlers cannot take it. Drafting cancels pickup; your current weapon stays with you until the swap.";
+  if(c.task&&c.task.leisure)return "Optional downtime. Checks for work every 1.2 simulation seconds; hunger, bedtime and danger take precedence.";
+  if(c.task){if(c.task.phase==="deliver")return "Supplies enter the warehouse only when this delivery arrives.";if(c.task.type==="sleep")return "Resting until recovered, or until hunger becomes urgent.";if(c.task.type==="eat")return "A meal has been reserved; cancellation returns it to stock.";let job=c.task.jobId?getJob(c.task.jobId):null;if(job){if(job.type==="treat"&&c.partner===job.target)return "Ran to their partner. Friends and partners reach the wounded before strangers do.";if(job.type==="treat"&&hasQuirk(c,"firstIn"))return "First in, as always: treatment weighs far more for them than any other job.";if(hasQuirk(c,"openSky")&&!roomAt(job.x,job.y)&&osGame.weather!=="Glass Wind")return "Took the outdoor job first: they hate enclosed rooms.";if(hasQuirk(c,"stormworker")&&stormyWeather()&&!roomAt(job.x,job.y))return "Out in the weather by choice, and working a quarter faster for it.";}if(osGame.weather==="Glass Wind")return roomAt(c.x,c.y)?"Working under a roof while the glass wind blows outside.":"Out in the glass wind: cuts mount every hour and a half without shelter.";return "Selected by work priority, skill, distance, and current needs.";}
+  let count=0,blocked=0;for(let i=0;i<osGame.jobs.length;i++){let j=osGame.jobs[i];if(c.priorities[j.category]&&(!j.claimed||j.claimed===c.id)){count++;if(j.blockedUntil>osGame.elapsed)blocked++;}}
+  return count?(blocked?blocked+" eligible tasks are blocked. Check materials, power, and paths.":"Matching available work to priorities and reachable targets."):"No eligible unclaimed tasks. Designate resources, place blueprints, or choose research.";
+}
+// The camera is drawn for whichever window the screen shows, so a call from outside a window (every frame, drags, hovers) sizes and places the world like the projection does.
+function refreshCamera() {if(contextDepth===0)projectWatchBanner();if(contextDepth===0&&viewMode==="far"&&viewWindow)return withView(refreshCameraInWindow);return refreshCameraInWindow();}
+function refreshCameraInWindow() {
+  // While following, the camera eases with exactly the same timing as the actors, so the followed
+  // settler stays put on screen instead of lagging the viewport and jumping to catch up.
+  let following=!!followColonistId&&!pointerState;
+  worldBiomeFilter=osGame?biomeOf().filter:"none";
+  let px=Math.round(panX),py=Math.round(panY);
+  worldStyle={position:"absolute",left:"50%",top:"50%",width:(MAP_SIZE*TILE)+"px",height:(MAP_SIZE*TILE)+"px",transform:"translate(-50%, -50%) translate("+px+"px, "+py+"px) scale("+round1(zoomLevel*100)/100+")",transformOrigin:"center center",transition:"none"};
+  let w=1,h=1;
+  if(toolKind.indexOf("build:")===0){let d=BUILDINGS[toolKind.slice(6)];if(d){w=d.w;h=d.h;}}
+  if(toolKind==="shelter"){w=8;h=8;}
+  if(hoverCellX<0||hoverCellY<0){hoverStyle={display:"none"};return;}
+  let x=hoverCellX,y=hoverCellY,colour="#9cccc5";
+  if(toolKind==="erase")colour="#e98671";
+  if(pointerState&&pointerState.mode==="paint"&&(toolKind==="harvest"||toolKind==="erase")){x=Math.min(x,pointerState.x);y=Math.min(y,pointerState.y);w=Math.abs(hoverCellX-pointerState.x)+1;h=Math.abs(hoverCellY-pointerState.y)+1;}
+  mapPlan=[];
+  if(pointerState&&pointerState.mode==="paint"&&toolKind.indexOf("build:")===0&&toolPaints()&&osGame){let kind=toolKind.slice(6),cells=planCells(kind,pointerState.x,pointerState.y,hoverCellX,hoverCellY),ok=0;
+    for(let i=0;i<cells.length&&i<400;i++){let c=cells[i],r=placementCheck(kind,c.x,c.y,true);if(r.ok)ok++;mapPlan.push({id:c.x+"_"+c.y,style:{position:"absolute",left:(worldPx(c.x))+"px",top:(worldPy(c.y))+"px",width:TILE+"px",height:TILE+"px",background:(r.ok?"#a6d69a":"#e98671")+"55",boxShadow:"inset 0 0 0 1px "+(r.ok?"#a6d69a":"#e98671"),boxSizing:"border-box",zIndex:12,pointerEvents:"none"}});}
+    let shape=planShape(kind,pointerState.x,pointerState.y,hoverCellX,hoverCellY);footerText=ok+" of "+cells.length+" "+BUILDINGS[kind].name.toLowerCase()+"(s) can go here"+(shape==="outline"?" · room outline":shape==="fill"?" · filled area":"")+" · release to place";
+    hoverStyle={display:"none"};return;}
+  if(toolKind.indexOf("build:")===0&&osGame){let result=placementCheck(toolKind.slice(6),x,y,false);colour=result.ok?"#a6d69a":"#e98671";footerText=result.reason;}
+  hoverStyle={display:"block",position:"absolute",left:worldPx(x)+"px",top:worldPy(y)+"px",width:(w*TILE)+"px",height:(h*TILE)+"px",border:"2px solid "+colour,background:toolKind==="select"?"transparent":colour+"25",boxSizing:"border-box",zIndex:12,pointerEvents:"none"};
+}
+function walkingSprite(c) {
+  let base=actorSprite(c).slice(0,-4),dx=c.headingX||0,dy=typeof c.headingY==="number"?c.headingY:1;
+  if(Math.abs(dx)>Math.abs(dy))base+="-"+(dx<0?"west":"east");
+  else if(dy<0)base+="-north";
+  if(!reducedMotion&&!c.dead&&c.pathCursor<c.path.length)base+="-walk"+(Math.floor(osGame.elapsed*6)%2+1);
+  return base+".svg";
+}
+// A glyph for the work in hand, shown beside the settler while they are at it.
+const TASK_MARKS={treat:"✚",rescue:"✚",research:"◎",build:"⚒",repair:"⚒",sow:"✿",harvest:"✂",produce:"⚙",excavate:"⛏",survey:"◇",hunt:"➶",tame:"♥",bury:"†",strike:"⚔",gather:"⌁"};
+function taskMark(c){let t=c.task;if(!t||t.personal||c.dead||c.health<22)return "";if(t.phase!=="work"&&t.type!=="hunt"&&t.type!=="tame"&&t.type!=="strike")return "";return TASK_MARKS[t.type]||"";}
+function colonistPose(c) {
+  if(c.dead||c.health<22)return "still";
+  if(c.hurtUntil>osGame.elapsed)return "hurt";
+  if(c.drafted&&c.attackUntil>osGame.elapsed)return "attack";
+  if(c.equippedUntil>osGame.elapsed)return "equip";
+  if(c.path&&c.pathCursor<c.path.length)return "walk";
+  if(c.drafted||!c.task||c.task.phase!=="work")return "still";
+  if(c.task.leisure)return c.task.activity==="games"?"play":c.task.activity==="social"?"chat":"relax";
+  let kind=c.task.type;
+  if(kind==="sleep")return "sleep";
+  if(kind==="eat")return "eat";
+  if(kind==="build"||kind==="repair"||kind==="gather"||kind==="excavate")return "work-heavy";
+  if(kind==="research"||kind==="produce"||kind==="sow"||kind==="harvest"||kind==="treat")return "work-light";
+  return "still";
+}
+function refreshActors() {let started=perfEnabled?perfNow():0;try{return withView(function(){return projectActors();});}finally{perfRecord("actorProjection",started);}}
+function projectActors() {
+  if(!osGame)return;
+  // left/top change the window basis instantly; transform animates only real
+  // world movement. A zoom-induced rebase must never animate a stationary actor.
+  projectWeapons();projectVisualFx();
+  let people=[],animals=[],shots=[],tables={},bounds=viewportKnown?visibleWorldRect():null;
+  for(let i=0;i<osGame.people.length;i++){let c=osGame.people[i];if(!c.dead&&!c.away&&seatedAtTable(c))tables[c.task.targetId]=(tables[c.task.targetId]||0)+1;}
+  if(mapPrints.length){let kept=[];for(let i=0;i<mapPrints.length;i++){let age=osGame.elapsed-mapPrints[i].at;if(age>=0&&age<8)kept.push(mapPrints[i]);}mapPrints=kept;}
+  for(let i=0;i<osGame.people.length;i++){
+    let c=osGame.people[i];if(c.away||c.carried||c.buried||!osGame.explored[tileId(c.x,c.y)]||!tileInView(c.x-1,c.y-2,2,3,bounds))continue;
+    let pose=colonistPose(c),sleeping=pose==="sleep",bed=sleeping?getBuilding(c.task.targetId):null,groundSleep=sleeping&&(!bed||bed.kind==="bedroll"),py=sleeping?(groundSleep?worldPy(c.y)-20:worldPy(bed.y)+7):worldPy(c.y)-27;
+    let weapon=heldWeapon(c),armed=!!(weapon&&c.drafted&&!c.dead&&c.health>=22),aimX=typeof c.headingX==="number"?c.headingX:1,aimY=c.headingY||0,aimAngle=Math.atan2(aimY,aimX)*180/Math.PI;
+    let range=weaponStats(c).range*TILE;
+    let seated=!!seatedAtTable(c),seatBuilding=seated?getBuilding(c.task.targetId):null;
+    let seatX=seated?worldPx(seatBuilding.x)+(c.task.seat<2?12:52):worldPx(c.x),seatY=seated?worldPy(seatBuilding.y)+22+(c.task.seat%2)*25:0;
+    if(seated)py=seatY-27;
+    let tool="";if(pose==="work-heavy"||pose==="work-light"){let kind=c.task.type;if(kind==="build"||kind==="repair")tool="hammer";else if(kind==="excavate")tool="pick";else if(kind==="gather"){let node=getNode(c.task.targetId);tool=node&&node.kind==="tree"?"axe":"pick";}else if(kind==="sow")tool="hoe";else if(kind==="harvest")tool="sickle";}
+    let chat=pose==="chat"||(seated&&(tables[c.task.targetId]||0)>1&&(Math.floor(osGame.elapsed/2.5)+i)%3===0);
+    if(pose==="walk"&&!c.dead&&!reducedMotion){let tr=printTrack[c.id];if(!tr||sqDistance(tr.x,tr.y,c.x,c.y)>=0.6){let ter=osGame.terrain[tileId(c.x,c.y)];if(ter===5||worldSnow||osGame.weather==="Rain"||osGame.weather==="Storm"||osGame.weather==="Echo Rain"){mapPrints.push({id:"fp"+(printSeq++),at:osGame.elapsed,snow:worldSnow&&ter!==5,style:{position:"absolute",left:round1(worldPx(c.x)-4)+"px",top:round1(worldPy(c.y)-2)+"px",transform:"rotate("+Math.round(Math.atan2(c.headingY||0,c.headingX||1)*180/Math.PI)+"deg)"}});if(mapPrints.length>90)mapPrints.shift();}printTrack[c.id]={x:c.x,y:c.y};}}
+    people.push({phase:Math.floor(osGame.elapsed*6)%4,tool:tool,chat:chat,idle:pose==="still"&&!c.dead&&!c.drafted&&c.health>=22,seated:seated,child:!!c.child,id:c.id,name:c.short,showRange:selectedId===c.id&&c.drafted&&!c.dead&&c.health>=22,rangeStyle:{width:(range*2)+"px",height:(range*2)+"px",left:(16-range)+"px",top:(27-range)+"px"},armed:armed,weaponSprite:weapon?spritePath("weapon-"+weapon.kind):"",weaponStyle:{transform:"rotate("+round1(aimX<0?aimAngle-180:aimAngle)+"deg)"+(aimX<0?" scaleX(-1)":"")},sprite:seated?actorSprite(c).slice(0,-4)+(c.task.seat<2?"-east-sit.svg":"-west-sit.svg"):sleeping?actorSprite(c).slice(0,-4)+"-sleep.svg":walkingSprite(c),pose:pose,sleeping:sleeping,groundSleep:groundSleep,animate:!paused&&!dialogPausesSimulation()&&!reducedMotion&&!osGame.over&&!c.dead&&c.health>=22,left:(c.headingX||0)<0,drafted:c.drafted,dead:c.dead,carrying:!!c.carry||!!c.carryBody||!!c.kit,carryKind:c.carry?Object.keys(c.carry)[0]:(c.carryBody?"body":c.kit?"kit":""),selected:selectedId===c.id,working:pose==="work-heavy"||pose==="work-light",mark:taskMark(c),style:{left:(-WX*TILE)+"px",top:(-WY*TILE)+"px",transform:"translate("+round1(seatX+WX*TILE-16)+"px,"+round1(py+WY*TILE)+"px)"+(c.dead?" rotate(80deg)":""),opacity:c.dead?0.55:1},labelStyle:{color:c.drafted?"#ffbc82":c.colour}});
+  }
+  for(let i=0;i<osGame.animals.length;i++){let a=osGame.animals[i];if(!osGame.explored[tileId(a.x,a.y)]||!tileInView(a.x-1,a.y-1,2,2,bounds)||!inSight(a.x,a.y))continue;
+    let size=animalSize(a.kind),pose=animalPose(a);animals.push({id:a.id,glow:!!animalStats(a.kind).flying,marked:!!a.marked,tamed:!!a.tamed,sprite:pose.sprite,poseStyle:pose.style,moving:!paused&&!dialogPausesSimulation()&&!reducedMotion&&!a.dead&&a.movingUntil>osGame.elapsed,hostile:a.hostile,attacking:!paused&&!dialogPausesSimulation()&&!reducedMotion&&!a.dead&&a.attackUntil>osGame.elapsed,style:{left:(-WX*TILE)+"px",top:(-WY*TILE)+"px",width:size+"px",height:size+"px",transform:"translate("+round1(a.x*TILE-size/2)+"px,"+round1(a.y*TILE-size/2)+"px)"+(a.dead?" rotate(90deg)":""),opacity:a.dead?0.3:1}});
+  }
+  for(let i=0;i<osGame.effects.length;i++){let f=osGame.effects[i];let dx=(f.bx-f.ax)*TILE,dy=(f.by-f.ay)*TILE;if(!onMap(Math.floor(f.ax),Math.floor(f.ay))||!osGame.explored[tileId(f.ax,f.ay)]||!tileInView(Math.min(f.ax,f.bx),Math.min(f.ay,f.by),Math.abs(f.bx-f.ax),Math.abs(f.by-f.ay),bounds))continue;shots.push({id:f.id,style:{position:"absolute",left:worldPx(f.ax)+"px",top:worldPy(f.ay)+"px",width:Math.sqrt(dx*dx+dy*dy)+"px",height:"2px",transform:"rotate("+(Math.atan2(dy,dx)*180/Math.PI)+"deg)",transformOrigin:"left center",background:f.kind==="acid"?"#a9e088":f.kind==="claw"?"#d76c57":f.kind==="melee"?"#d9e5df":"#f5d491",zIndex:10,opacity:reducedMotion?0.4:0.85,pointerEvents:"none"}});}
+  mapColonists=people;mapAnimals=animals;mapEffects=shots;projectStoryCaption();tickFollowCamera();
+}
+let wallSpritesDirty=true;
+let wallSpriteCache={};
+function joinedWallSprite(b,cells) {
+  let mask=0,other=null;
+  if(b.y>WY){other=cells[tileId(b.x,b.y-1)];if(other&&(!b.built||other.built))mask+=1;}
+  if(b.x<WX+MAP_SIZE-1){other=cells[tileId(b.x+1,b.y)];if(other&&(!b.built||other.built))mask+=2;}
+  if(b.y<WY+MAP_SIZE-1){other=cells[tileId(b.x,b.y+1)];if(other&&(!b.built||other.built))mask+=4;}
+  if(b.x>WX){other=cells[tileId(b.x-1,b.y)];if(other&&(!b.built||other.built))mask+=8;}
+  return spritePath(b.kind+"-join"+mask);
+}
+let doorsOpenKey="";
+function doorsBusy(){let key="";for(let i=0;i<mapBuildings.length;i++){let b=mapBuildings[i];if(b.kind==="door")key+=b.open?"1":"0";}let walkers=[];for(let i=0;i<osGame.people.length;i++){let c=osGame.people[i];if(!c.dead)walkers.push(c);}let now="";for(let i=0;i<mapBuildings.length;i++){let b=mapBuildings[i];if(b.kind==="door"){let src=getBuilding(b.id);now+=src&&doorInUse(src,walkers)?"1":"0";}}return now!==key;}
+function doorInUse(b,walkers){for(let i=0;i<walkers.length;i++){let w=walkers[i];if(Math.abs(w.x-(b.x+.5))<1.3&&Math.abs(w.y-(b.y+.5))<1.3)return true;}return false;}
+function refreshStructures() {refreshSight();
+  let buildings=[],sites=[],jobs=[],activeWork={},bounds=viewportKnown?visibleWorldRect():null;
+  let walkers=[];for(let i=0;i<osGame.people.length;i++){let c=osGame.people[i],t=c.task;if(c.dead||c.carried||c.buried)continue;walkers.push(c);if(t&&!t.personal&&t.phase==="work"&&t.targetId)activeWork[t.targetId]=t.type;}
+  for(let i=0;i<osGame.animals.length;i++){let a=osGame.animals[i];if(!a.dead&&a.tamed)walkers.push(a);}
+  if(wallSpritesDirty){
+    let cells={};wallSpriteCache={};
+    for(let i=0;i<osGame.buildings.length;i++){let b=osGame.buildings[i];if((b.kind==="wall"||b.kind==="door")&&onMap(b.x,b.y))cells[tileId(b.x,b.y)]=b;}
+    let keys=Object.keys(cells);for(let i=0;i<keys.length;i++){let b=cells[keys[i]];wallSpriteCache[b.id]=joinedWallSprite(b,cells);}
+    wallSpritesDirty=false;
+  }
+  for(let i=0;i<osGame.buildings.length;i++){
+    let b=osGame.buildings[i],d=BUILDINGS[b.kind];if((d.underlay||d.wire)&&b.built)continue;if(!osGame.explored[tileId(b.x,b.y)]||!tileInView(b.x,b.y,b.w,b.h,bounds)||(b.built&&!inSight(b.x+b.w/2,b.y+b.h/2)))continue;
+    let raised=b.kind==="wall"||b.kind==="door";
+    let glow=b.built&&b.powered&&b.on&&(b.kind==="lamp"||b.kind==="heater"||b.kind==="generator"||b.kind==="archive"||b.kind==="beacon");
+    let night=worldNight>0.16,canGlow=b.built&&["lamp","cookfire","kitchen","lab","clinic","workshop","archive","beacon","radio","heater","generator","chemist","smelter"].indexOf(b.kind)>=0;
+    let lit=canGlow&&night&&b.on!==false&&(b.kind==="cookfire"||b.kind==="generator"||!d.power||b.powered);
+    let chimney=b.built&&b.on!==false&&((b.kind==="heater"&&b.powered&&osGame.temperature<8)||(b.kind==="generator"&&!!(osGame.power&&osGame.power.generation>0))||(b.kind==="smelter"&&!!activeWork[b.id]));
+    let sparks=!!activeWork[b.id]&&activeWork[b.id]==="produce"&&(b.kind==="workshop"||b.kind==="smelter"||b.kind==="fuelpress");
+    let roof=b.built&&!raised&&!d.crop&&!d.underlay&&!d.wire&&b.kind!=="cookfire"&&b.kind!=="lamp"&&b.kind!=="stockpile";
+    let madeCount=0;if(b.made){let mk=Object.keys(b.made);for(let k=0;k<mk.length;k++)madeCount+=b.made[mk[k]]||0;}
+    buildings.push({lit:lit,canGlow:canGlow,chimney:chimney,sparks:sparks,roof:roof,sown:!!(d.crop&&b.built&&b.sown),stack:madeCount>=8?3:madeCount>=4?2:1,flame:b.built&&b.on!==false&&(b.kind==="cookfire"||(b.kind==="smelter"&&b.powered)),id:b.id,kind:b.kind,sprite:raised?wallSpriteCache[b.id]:spritePath(b.kind),raised:raised,built:b.built,selected:selectedId===b.id,needsPower:!!d.power&&b.built&&b.on&&!b.powered,made:hasGoods(b.made)?Object.keys(b.made).filter(function(k){return b.made[k]>0;})[0]:"",madeFull:(function(){if(!hasGoods(b.made))return false;let base=baseRecipeFor(b);return !!base&&madeFull(b,base);})(),crop:!!d.crop,open:b.kind==="door"&&b.built&&doorInUse(b,walkers),stage:d.crop&&b.built?(b.sown?Math.min(3,Math.floor(b.growth*4)):-1):-1,spriteStyle:d.crop&&b.built&&b.sown?{transform:"scale("+round1(0.55+0.45*b.growth)+")",transformOrigin:"50% 100%"}:{},smoke:b.built&&!!(d.produce||d.power)&&b.hp<d.hp*0.35,steam:!!activeWork[b.id]&&activeWork[b.id]==="produce"&&(b.kind==="cookfire"||b.kind==="kitchen"||b.kind==="chemist"),hammer:!!activeWork[b.id]&&(activeWork[b.id]==="build"||activeWork[b.id]==="repair"),progress:Math.round(b.built?b.growth*100:clamp(b.progress/(d.work||1)*100,0,100)),barStyle:{width:Math.round(b.built?b.growth*100:clamp(b.progress/(d.work||1)*100,0,100))+"%"},style:{position:"absolute",left:(worldPx(b.x))+"px",top:(worldPy(b.y))+"px",width:(b.w*TILE)+"px",height:(b.h*TILE)+"px",zIndex:raised?9:(d.crop?4:5),opacity:b.built?1:0.62,outline:selectedId===b.id?"2px solid #a5ded4":"none",outlineOffset:"1px",filter:b.built?(d.crop?"saturate("+(0.4+b.growth*0.6)+")":(glow?"drop-shadow(0 0 13px "+(b.kind==="archive"?"#64e0da80":"#f4b55d80")+")":"none")):"sepia(1) saturate(.8) hue-rotate(120deg)",pointerEvents:"none"}});
+  }
+  for(let i=0;i<osGame.sites.length;i++){let s=osGame.sites[i];if(!s.known||!tileInView(s.x,s.y,3,3,bounds))continue;sites.push({id:s.id,name:s.name,studied:s.studied,sprite:spritePath("ruin"+i),style:{position:"absolute",left:(worldPx(s.x))+"px",top:(worldPy(s.y))+"px",width:"96px",height:"96px",zIndex:5,filter:"drop-shadow(0 0 12px #50d4dc45)",outline:selectedId===s.id?"2px solid #99e7e4":"none",pointerEvents:"none"}});}
+  for(let i=0;i<osGame.nodes.length;i++){let n=osGame.nodes[i];if(n.marked&&n.amount>0&&osGame.explored[tileId(n.x,n.y)]&&tileInView(n.x,n.y,1,1,bounds))jobs.push({id:n.id,label:"⌁",style:{position:"absolute",left:worldPx(n.x)+"px",top:worldPy(n.y)+"px",width:"32px",height:"32px",border:"1px dashed #eacb84",boxSizing:"border-box",color:"#ffe4a0",textAlign:"center",zIndex:6,pointerEvents:"none"}});}
+  for(let i=0;i<osGame.jobs.length;i++){let j=osGame.jobs[i];if(j.type==="survey"&&tileInView(j.x,j.y,1,1,bounds))jobs.push({id:j.id,label:"◇",style:{position:"absolute",left:worldPx(j.x)+"px",top:worldPy(j.y)+"px",width:"32px",height:"32px",color:"#8fe7df",textAlign:"center",fontSize:"24px",zIndex:11,pointerEvents:"none"}});}
+  mapBuildings=buildings;mapRuins=sites;mapJobs=jobs;
+}
+// A room is named for the people whose beds are in it; more than two and it is a bunkhouse.
+function roomLabel(room){
+  let owners=[];for(let i=0;i<osGame.buildings.length;i++){let b=osGame.buildings[i];if(b.built&&b.kind==="bed"&&b.room===room.id&&b.owner){let o=findColonist(b.owner);if(o&&!o.dead&&owners.indexOf(o.short)<0)owners.push(o.short);}}
+  if(!owners.length)return room.beds>0?"Bunkroom":"Room";if(owners.length===1)return owners[0]+"'s room";if(owners.length===2)return owners[0]+" and "+owners[1]+"'s room";return "Bunkhouse";
+}
+function refreshInspector() {
+  selectedCard=null;relationshipCards=[];
+  if(selectedType==="colonist"){
+    let c=findColonist(selectedId);if(!c)return;let needs=[{name:"Health",value:c.health,colour:"#db967c"},{name:"Nutrition",value:c.food,colour:"#b7c878"},{name:"Rest",value:c.rest,colour:"#91bcca"},{name:"Recreation",value:c.recreation,colour:"#c4a4c5"},{name:"Morale",value:c.mood,colour:"#dbbf7b"}];
+    for(let i=0;i<needs.length;i++){needs[i].value=Math.round(needs[i].value);needs[i].style=needsBar(needs[i].value,needs[i].colour);}
+    let skills=[],memories=[],injuries=[];for(let i=0;i<WORK_KEYS.length;i++)skills.push({name:WORK_LABELS[i],value:Math.floor(c.skills[WORK_KEYS[i]]||0)});
+    for(let i=c.memories.length-1;i>=0;i--)memories.push({text:c.memories[i].text,value:(c.memories[i].value>0?"+":"")+c.memories[i].value,positive:c.memories[i].value>=0});
+    for(let i=0;i<c.injuries.length;i++){let injury=c.injuries[i];injuries.push({text:(injury.part||injury.region||"Injury")+" · "+(injury.cause||injury.type||"Wound")+(injury.tended?" · tended":" · needs tending")});}
+    let keys=Object.keys(c.relations);for(let i=0;i<keys.length;i++){let other=findColonist(keys[i]);if(!other)continue;relationshipCards.push({id:other.id,name:other.name,value:Math.round(c.relations[keys[i]]),label:c.partner===other.id?"Partner":(c.relations[keys[i]]>55?"Friend":(c.relations[keys[i]]<0?"Strained":"Acquaintance"))});}
+    selectedCard={type:"colonist",id:c.id,name:c.name,subtitle:(c.child?(childStage(c)==="young"?"Young child":"Child of the colony, old enough to help"):c.role)+" · "+displayedAge(c),sprite:actorSprite(c),description:c.bio,trait:c.trait,personality:personalityText(c),quirks:quirkText(c),quirkDetail:quirkDetail(c),knacks:knackText(c),values:valuesText(c),action:c.action,why:taskExplanation(c),drafted:c.drafted,dead:c.dead,mood:moodName(c.mood),needs:needs,skills:skills,memories:memories,injuries:injuries,bleeding:c.bleed>0,schedule:c.schedule,carrying:c.carry?costText(c.carry):"Nothing",weapon:weaponStats(c).name,weaponDetail:weaponStats(c).range+" tile range · "+weaponStats(c).damage+" damage",hasWeapon:!!heldWeapon(c),canEquip:c.health>=22&&!c.dead,pickup:!!c.equipTarget,rover:!!c.rover,party:c.rover&&c.rover.party?partyText(c):"",partyId:c.rover&&c.rover.party?c.rover.party:"",watching:!!c.rover&&viewRoverId===c.id,rations:c.rover?c.rover.rations:0,walked:c.rover?Math.round(c.rover.walked||0):0,pack:c.rover&&hasGoods(c.rover.pack||{})?costText(c.rover.pack):"an empty pack",atCamp:!!(c.rover&&farCampNear(c.x,c.y,6)),canSettle:canSettleHere(c),canSetOut:!c.dead&&!c.child&&!c.away&&!c.rover&&c.health>=50};
+  }else if(selectedType==="weapon"){
+    let w=getWeapon(selectedId);if(!w)return;selectedCard={type:"weapon",id:w.id,name:WEAPONS[w.kind].name,sprite:spritePath("weapon-"+w.kind),subtitle:"RECOVERABLE EQUIPMENT",action:w.claimedBy?"Pickup assigned":"On the ground",description:WEAPONS[w.kind].description,available:!w.holder&&!w.claimedBy};
+  }else if(selectedType==="building"){
+    let b=getBuilding(selectedId);if(!b)return;let d=BUILDINGS[b.kind],state=!b.built?"Blueprint · "+Math.floor(b.progress/(d.work||1)*100)+"%":!b.on?"Switched off":d.produce&&b.hp<d.hp*0.3?"Damaged · repairs required":d.power&&!b.powered?"Disconnected or insufficient power":"Operational";
+    let details=[],room=roomAt(b.x,b.y);details.push({name:"Condition",value:Math.round(b.hp)+" / "+d.hp});
+    if(d.power)details.push({name:"Power demand",value:d.power+" W"});if(d.produce)details.push({name:"Generating",value:Math.round(b.output||0)+" W"});if(recipeFor(b)||hasGoods(b.input))details.push({name:"Inputs",value:bufferText(b)});if(hasGoods(b.made)){let base=baseRecipeFor(b);details.push({name:"Finished",value:costText(b.made)+(base&&madeFull(b,base)?" · output full · waiting for a hauler":" · waiting for a hauler")});}if(d.capacity)details.push({name:"Battery",value:Math.round(b.charge)+" / "+d.capacity+" Wh"});
+    if(b.network>=0)details.push({name:"Network",value:"Circuit "+(b.network+1)});
+    if(osGame.terrain[tileId(b.x,b.y)]===5)details.push({name:"Ground",value:"Marsh · slow going, good for crops beside it"});details.push({name:"Room",value:room?roomLabel(room)+" · "+Math.round(room.temp)+"°C · comfort "+room.comfort+"/8"+(room.noisy?" · noisy":"")+(room.beds>4?" · crowded":""):"Outdoors"});
+    if(d.crop)details.push({name:"Crop",value:!b.sown?"Waiting for sowing":b.quarantineUntil>osGame.minutes?"Quarantined":Math.round(b.growth*100)+"% grown"});
+    if(!b.built)details.push({name:"Materials",value:"Reserved: "+costText(b.escrow)});
+    if(b.kind==="stockpile")details.push({name:"Takes",value:storeFilterText(b)});if(b.kind==="pen")details.push({name:"Mossbacks",value:penHeadcount(b)+" of 3 · 6 raw food each per Sol"});
+    if(b.kind==="grave")details.push({name:"Resting here",value:b.occupant?b.occupant+" · Sol "+(b.buriedSol||"?"):b.reservedBy?"Reserved":"Empty"});
+    let reason=state;for(let i=0;i<osGame.jobs.length;i++){let j=osGame.jobs[i];if(j.target===b.id&&j.reason)reason=j.reason;}
+    let ownerName=b.kind==="bed"&&b.owner?(function(){let o=findColonist(b.owner);return o&&!o.dead?o.short:"";})():"";
+    selectedCard={type:"building",id:b.id,name:ownerName?ownerName+"'s bed":d.name,subtitle:(room?roomLabel(room)+" · ":"")+b.w+" × "+b.h+" tiles",sprite:spritePath(b.kind),description:d.description,action:state,why:reason,details:details,built:b.built,on:b.on,canDismantle:b.kind!=="lander",isStore:b.kind==="stockpile"&&b.built};
+  }else if(selectedType==="camp"){
+    let c=getCamp(selectedId);if(!c)return;selectedCard={type:"camp",id:c.id,name:"Raider camp",subtitle:"ASHWALKERS",sprite:spritePath("camp"),description:c.roused?"The camp is roused. "+c.raiders+" Ashwalkers are defending it; bring them down to recover the goods.":"Ashwalkers are camped here with what they took. They will move on in "+Math.max(0,Math.ceil((c.until-osGame.minutes)/60))+" hours. A strike party can rouse the camp; arm the explorer first.",goods:costText(c.goods),roused:c.roused};
+  }else if(selectedType==="ruin"){
+    let s=getSite(selectedId);if(!s)return;selectedCard={type:"ruin",id:s.id,name:s.name,subtitle:"HOLLOW ARCHIVE",sprite:spritePath("ruin"+osGame.sites.indexOf(s)),description:s.studied?s.text:"A sealed structure beneath the stone. Assign an explorer to recover its archive and unusual materials.",action:excavationCheck(s),progress:Math.min(100,Math.floor(s.progress/95*100)),studied:s.studied,ready:excavationCheck(s)==="Ready to explore"};
+  }else if(selectedType==="animal"){
+    let a=getAnimal(selectedId);if(!a)return;selectedCard={type:"animal",id:a.id,name:a.name,subtitle:a.tamed?"TAMED · GRAZING":a.hostile?"HOSTILE WILDLIFE":"NATIVE WILDLIFE",huntable:!a.hostile&&!!animalStats(a.kind).meat&&!a.tamed,marked:!!a.marked,hostile:a.hostile,tamed:!!a.tamed,taming:!!a.taming,tameable:a.kind==="mossback"&&!a.hostile&&!a.tamed&&hasTech("husbandry"),sprite:animalPose(a).sprite,description:a.kind==="lanternwing"?"A nocturnal flier that glows softly and keeps to the water. Harmless. Settlers who see them sleep a little easier.":a.kind==="raider"?"An Ashwalker after the warehouse. Raiders fight anyone within reach, take what they can carry from the racks or lifeboat, and run for the map edge. Bring them down to recover the goods.":a.kind==="pilgrim"?"Tall, pale and slow, crossing the map on business of its own. It has never been seen to hurt anyone. Settlers who watch it remember, and some of them dream.":a.kind==="maw"?"A burrowing predator drawn up by mining. Armoured, slow and hard-biting; it does not stop. Fight it at range or from behind barricades.":a.kind==="spitter"?"A glass-backed predator that spits from five tiles away. Walls block its attack; carbines outrange it.":a.kind==="mossback"?"A heavy, moss-coated herbivore. Usually peaceful; dangerous when provoked.":a.kind==="needlehare"?"A small native forager. More interested in the plants than the people.":"An aggressive frontier predator. Keep colonists together and use cover.",action:a.dead?"Dead":Math.round(a.health)+" health · "+animalActivity(a),dead:a.dead};
+  }else if(selectedType==="node"){
+    let n=getNode(selectedId);if(!n)return;selectedCard={type:"node",id:n.id,name:n.kind==="tree"?"Ironbark stand":n.kind==="ore"?"Metal-bearing outcrop":n.kind==="stone"?"Loose stone":n.kind==="glass"?"Hollowglass shards":n.kind==="pile"?(n.debris?"Wreckage · "+n.resource:"Dropped supplies"):"Sunberry bush",subtitle:"LOCAL RESOURCE",description:"Gatherers carry the yield back to a stockpile or the lifeboat. A designation does not immediately add resources to stock.",action:Math.floor(n.amount)+" remaining",marked:n.marked};
+  }
+}
+function refreshPanels() {
+  refreshWorkBoard();
+  let cats=[];for(let i=0;activePanel==="build"&&i<BUILD_CATEGORIES.length;i++)cats.push({name:BUILD_CATEGORIES[i],selected:buildCategory===BUILD_CATEGORIES[i]});categoryCards=cats;
+  let builds=[],keys=Object.keys(BUILDINGS);for(let i=0;activePanel==="build"&&i<keys.length;i++){let d=BUILDINGS[keys[i]];if(d.category!==buildCategory)continue;let unlocked=!d.tech||hasTech(d.tech);builds.push({id:keys[i],name:d.name,sprite:spritePath(keys[i]),description:d.description,size:d.w+" × "+d.h,cost:costText(d.cost),unlocked:unlocked,affordable:stockHas(d.cost),selected:toolKind==="build:"+keys[i],requirement:d.tech?techName(d.tech):""});}buildingCards=builds;
+  let research=[];for(let i=0;activePanel==="research"&&i<TECHS.length;i++){let t=TECHS[i];if(t.branch==="Hollow Studies"&&osGame.storyStage===0)continue;let state=researchCheck(t),value=osGame.researchProgress[t.id]||0;let queueAt=researchQueue().indexOf(t.id);research.push({id:t.id,name:t.name,branch:t.branch,description:t.description,cost:t.cost,progress:Math.min(t.cost,Math.floor(value)),status:state,available:state==="Available",done:state==="Completed",active:osGame.researchId===t.id,queued:queueAt>=0,queueLabel:queueAt>=0?"Queued #"+(queueAt+1)+(state==="Available"?" · ready":state.indexOf("Requires")===0?" · waiting for "+state.slice(9).replace(/\.$/,""):"")+" · remove":"Queue next",queueable:state!=="Completed"&&osGame.researchId!==t.id&&(state==="Available"||state.indexOf("Requires")===0),barStyle:{width:Math.min(100,value/t.cost*100)+"%"}});}researchCards=research;
+  researchSummary=(osGame.researchId?techName(osGame.researchId)+" · "+Math.floor(osGame.researchProgress[osGame.researchId]||0)+" / "+techById(osGame.researchId).cost:"Choose your next discovery")+(researchQueue().length?" · "+researchQueue().length+" queued":"");
+  let work=[],living=dialog==="work"?alivePeople():[];for(let i=0;i<living.length;i++){let c=living[i],priorities=[];for(let j=0;j<WORK_KEYS.length;j++){let k=WORK_KEYS[j];priorities.push({id:k,label:WORK_LABELS[j],value:c.priorities[k]||"–",raw:c.priorities[k],skill:Math.floor(c.skills[k]||0)});}work.push({id:c.id,name:c.short,role:c.role,quirks:quirkText(c),schedule:c.schedule,priorities:priorities});}workCards=work;
+  let storage=[];for(let i=0;activePanel==="storage"&&i<RESOURCE_KEYS.length;i++){let k=RESOURCE_KEYS[i];storage.push({id:k,name:k==="meals"?("Meals"+((osGame.qualityMeals||0)>0?" · "+Math.min(Math.floor(osGame.stock.meals),Math.floor(osGame.qualityMeals))+" from the kitchen":"")):k==="parts"?"Components":k==="raw"?"Raw ingredients":k==="glass"?"Hollowglass":k==="cores"?"Echo cores":k.charAt(0).toUpperCase()+k.slice(1),amount:Math.floor(osGame.stock[k]),hasTarget:osGame.policy[k]!==undefined,target:osGame.policy[k]||0});}storageCards=storage;
+  let trades=[];for(let i=0;activePanel==="frontier"&&i<TRADE_OFFERS.length;i++){let t=TRADE_OFFERS[i],remaining=tradeLimit(t)-(osGame.trades[t.id]||0);trades.push({id:t.id,name:t.name,cost:costText(t.give),receive:t.weapon?WEAPONS[t.weapon].name+" · delivered south of camp":costText(t.receive),remaining:remaining,available:(!t.weapon||osGame.weapons.length<128)&&osGame.traderUntil>osGame.minutes&&remaining>0&&stockHas(t.give)});}tradeCards=trades;
+  projectWatchBanner();if(activePanel==="frontier")projectFrontierMood();if(activePanel==="frontier"||dialog==="expedition")projectRegions();if(dialog==="expedition")expeditionPlanView=expeditionPlanCard();
+  blueprintCount=0;if(activePanel==="build")for(let i=0;i<osGame.buildings.length;i++)if(!osGame.buildings[i].built)blueprintCount++;
+  supplyMessage=osGame.traderUntil>osGame.minutes?"Meridian caravan · "+Math.ceil((osGame.traderUntil-osGame.minutes)/60)+" hours remaining · goodwill "+osGame.standing.Meridian:"No visiting caravan. A powered signal mast can call one in.";
+  let ruins=[];for(let i=0;activePanel==="frontier"&&i<osGame.sites.length;i++){let s=osGame.sites[i];if(!s.known)continue;ruins.push({id:s.id,name:s.name,status:excavationCheck(s),studied:s.studied,progress:Math.min(100,Math.floor(s.progress/95*100))});}ruinCards=ruins;
+  let endings=[];let endingsData=[{id:"departure",name:"Departure",description:"Leave with your people and the colony chronicle."},{id:"integration",name:"Integration",description:"Teach the old engine to remember without repeating."},{id:"silence",name:"Silence",description:"Let the next morning belong only to its inhabitants."}];
+  for(let i=0;activePanel==="frontier"&&i<endingsData.length;i++){let e=endingsData[i];e.status=endingCheck(e.id);e.ready=e.status==="Ready";endings.push(e);}endingCards=endings;
+  let journal=[];for(let i=0;activePanel==="chronicle"&&i<Math.min(100,osGame.chronicle.length);i++){let entry=osGame.chronicle[i];journal.push({id:entry.id,date:"SOL "+entry.sol+" · "+clockText(entry.minute),title:entry.title,body:entry.body,type:entry.type});}journalCards=journal;
+}
+function refreshAll() {let started=perfEnabled?perfNow():0;try{serviceViewWindow();refreshAtlas(true);return withView(function(){return projectAll(true);});}finally{perfRecord("projection",started);}}
+// The periodic refresh: the cheap, always-changing parts every time; structures, panels, the campaign and the
+// record only when their domain changed since the last pass, with a full pass at least every two seconds.
+function refreshPeriodic() {let started=perfEnabled?perfNow():0;try{serviceViewWindow();if(activePanel==="overview"||projectionAge>=1.5)refreshAtlas(projectionAge>=1.5);return withView(function(){return projectAll(false);});}finally{perfRecord("projection",started);}}
+let lastPanel="",lastDisconnected=-1;
+let minimapSrc="",minimapMarks=[],minimapView={display:"none"};
+let watchBannerText="";
+// The survey display: one small SVG of the explored map, rebuilt on the full pass, with marks laid over it.
+function minimapRow(y,colours) {
+  let out="",runStart=0,runKey="";
+  for(let x=0;x<=MAP_SIZE;x++){let key="";if(x<MAP_SIZE){let i=y*MAP_SIZE+x;key=!osGame.explored[i]?"u":(osGame.floorTiles&&osGame.floorTiles[i])?"f":osGame.terrain[i]===3?"w":osGame.terrain[i]===4?"r":osGame.terrain[i]===5?"m":"g"+Math.min(2,osGame.terrain[i]);}
+    if(key!==runKey){if(runKey&&runKey!=="u")out+='<rect x="'+runStart+'" y="'+y+'" width="'+(x-runStart)+'" height="1" fill="'+colours[runKey]+'"/>';runStart=x;runKey=key;}}
+  return out;
+}
+const MINIMAP_COLOURS={u:"#0b1519",g0:"#2d4839",g1:"#35543f",g2:"#4a6a3f",w:"#1c4a60",r:"#5a625c",m:"#2f5a55",f:"#7a6a48"};
+function refreshMinimap(full) {
+  // The ground picture is rebuilt only when tiles were revealed or structures changed, and only on a full pass;
+  // rows are cached, so a revealed patch costs its rows and the join, not the map.
+  if((full&&minimapBuiltEpoch!==minimapEpoch&&osGame.elapsed-minimapBuiltAt>=4)||!minimapSrc){minimapBuiltEpoch=minimapEpoch;minimapBuiltAt=osGame.elapsed;
+    if(minimapRows.length!==MAP_SIZE){minimapRows=[];for(let y=0;y<MAP_SIZE;y++)minimapRows.push(minimapRow(y,MINIMAP_COLOURS));minimapRowsDirty={};}
+    else{let keys=Object.keys(minimapRowsDirty);for(let i=0;i<keys.length;i++){let y=Number(keys[i]);if(y>=0&&y<MAP_SIZE)minimapRows[y]=minimapRow(y,MINIMAP_COLOURS);}minimapRowsDirty={};}
+    if(minimapStructBuilt!==minimapStructEpoch){minimapStructBuilt=minimapStructEpoch;let rects=[];
+      for(let i=0;i<osGame.buildings.length;i++){let b=osGame.buildings[i];if(!b.built||!onMap(b.x,b.y)||!osGame.explored[tileId(b.x,b.y)])continue;rects.push('<rect x="'+(b.x-WX)+'" y="'+(b.y-WY)+'" width="'+b.w+'" height="'+b.h+'" fill="'+(b.kind==="wall"||b.kind==="door"?"#a08a5a":b.kind==="floor"?"#7a6a48":"#d3b06a")+'"/>');}
+      minimapStructSvg=rects.join("");}
+    minimapSrc="data:image/svg+xml;utf8,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+MAP_SIZE+' '+MAP_SIZE+'" shape-rendering="crispEdges"><rect width="'+MAP_SIZE+'" height="'+MAP_SIZE+'" fill="'+MINIMAP_COLOURS.u+'"/>'+minimapRows.join("")+minimapStructSvg+'</svg>');
+  }
+  let marks=[],pct=100/MAP_SIZE;
+  for(let i=0;i<osGame.sites.length;i++){let s=osGame.sites[i];if(s.known)marks.push({id:s.id,kind:"ruin",style:{left:((s.x-WX+1.5)*pct)+"%",top:((s.y-WY+1.5)*pct)+"%"}});}
+  for(let i=0;i<(osGame.camps||[]).length;i++){let c=osGame.camps[i];marks.push({id:c.id,kind:"camp",style:{left:((c.x-WX+1)*pct)+"%",top:((c.y-WY+1)*pct)+"%"}});}
+  for(let i=0;i<osGame.animals.length;i++){let a=osGame.animals[i];if(a.dead||!a.hostile||!onMap(a.x,a.y)||!osGame.explored[tileId(a.x,a.y)])continue;marks.push({id:a.id,kind:"threat",style:{left:((a.x-WX)*pct)+"%",top:((a.y-WY)*pct)+"%"}});}
+  for(let i=0;i<osGame.people.length;i++){let c=osGame.people[i];if(c.dead)continue;marks.push({id:c.id,kind:selectedId===c.id?"selected":"settler",style:{left:((c.x-WX)*pct)+"%",top:((c.y-WY)*pct)+"%"}});}
+  minimapMarks=marks;
+  let v=visibleTileRange;minimapView=v&&v.width>0?{left:(v.x*pct)+"%",top:(v.y*pct)+"%",width:(v.width*pct)+"%",height:(v.height*pct)+"%"}:{display:"none"};
+}
+
+function timedPart(name,fn){let started=perfEnabled?perfNow():0;try{fn();}finally{perfRecord(name,started);}}
+function projectAll(full) {
+  if(!osGame){refreshCamera();return;}
+  serviceTopology();timedPart("projection:sight",refreshSight);if(terrainDirty)timedPart("projection:terrain",rebuildTerrainView);else if(terrainRowsPending)timedPart("projection:terrain-rows",rebuildTerrainRows);
+  projectionAge+=0.5;if(full||viewDirty||projectionAge>=2){full=true;projectionAge=0;}
+  let living=alivePeople(),p=osGame.power||{generation:0,demand:0,stored:0,capacity:0},foodDays=(osGame.stock.meals+osGame.stock.raw*0.65)/Math.max(1,living.length*1.5);
+  hud={name:osGame.name,sol:dayNow(),time:clockText(osGame.minutes%1440),weather:osGame.weather,temperature:Math.round(osGame.temperature),population:everyoneAlive().length,wood:Math.floor(osGame.stock.wood),stone:Math.floor(osGame.stock.stone),metal:Math.floor(osGame.stock.metal),parts:Math.floor(osGame.stock.parts),meals:Math.floor(osGame.stock.meals),medicine:Math.floor(osGame.stock.medicine),foodDays:foodDays.toFixed(1),power:Math.round(p.generation)+" / "+Math.round(p.demand)+" W",stored:Math.round(p.stored)+" / "+Math.round(p.capacity)+" Wh",season:["Thaw","Longlight","Emberfall","Deepcold"][Math.floor((dayNow()-1)/12)%4]};
+  let everyone=everyoneAlive(),cards=[];for(let i=0;i<everyone.length;i++){let c=everyone[i];cards.push({id:c.id,name:c.short,role:c.role,quirks:quirkText(c),away:!!c.away,action:c.action,mood:c.away?"AWAY":c.rover?(c.rover.party?"ON THE ROAD":"ROVING"):moodName(c.mood),moodValue:Math.round(c.mood),sprite:actorSprite(c),selected:selectedId===c.id,drafted:c.drafted,health:Math.round(c.health),healthStyle:needsBar(c.health,"#ca997e"),restStyle:needsBar(c.rest,"#8baebd"),foodStyle:needsBar(c.food,"#a4ba73"),colour:c.colour});}colonistCards=cards;
+  if(full||storyDirty)timedPart("projection:campaign",projectCampaign);
+  let alerts=[];if(foodDays<2)alerts.push({id:"food",action:"Plan food production",title:"Low food reserves",body:hud.foodDays+" Sols estimated. Expand crops or trade.",type:"warning"});
+  let wounded=0,hostiles=0,raiders=0,disconnected=0;for(let i=0;i<living.length;i++)if(living[i].health<65||living[i].bleed>0)wounded++;
+  for(let i=0;i<osGame.animals.length;i++)if(osGame.animals[i].hostile&&!osGame.animals[i].dead&&osGame.explored[tileId(osGame.animals[i].x,osGame.animals[i].y)]){hostiles++;if(osGame.animals[i].kind==="raider")raiders++;}
+  for(let i=0;i<osGame.buildings.length;i++){let b=osGame.buildings[i];if(b.built&&b.on&&BUILDINGS[b.kind].power&&!b.powered)disconnected++;}
+  if(disconnected!==lastDisconnected){lastDisconnected=disconnected;structuresDirty=true;}
+  if(raiders)alerts.push({id:"hostiles",action:"Locate a hostile",title:"Raiders at the stores",body:raiders+" Ashwalkers are after the warehouse. Draft settlers and guard the racks; bring them down before they reach the edge.",type:"danger"});
+  else if(hostiles)alerts.push({id:"hostiles",action:"Locate a hostile",title:"Hostile creatures",body:hostiles+" detected. Draft settlers and hold a defensible line.",type:"danger"});
+  if(osGame.weather==="Glass Wind"){let exposed=exposedPeople().length;if(exposed)alerts.push({id:"exposed",action:"Find an exposed settler",title:"Glass Wind · "+exposed+" outside",body:"Cuts mount in the open. Rooms shelter; give them indoor work or let them wait it out.",type:"warning"});}
+  if(wounded)alerts.push({id:"medical",action:"Find injured colonist",title:"Treatment needed",body:wounded+" injured. Enable Treat for a healthy colonist.",type:"danger"});
+  let unburied=0;for(let i=0;i<osGame.people.length;i++)if(osGame.people[i].dead&&!osGame.people[i].buried)unburied++;
+  if(unburied&&!freeGrave(""))alerts.push({id:"burial",action:"Plan a grave",title:unburied===1?"A settler lies unburied":unburied+" settlers lie unburied",body:"Build a grave (4 stone). A hauler will carry the fallen there and the colony will gather to say goodbye.",type:"warning"});
+  if(osGame.funeral)alerts.push({id:"funeral",title:"A funeral for "+osGame.funeral.name,body:"Settlers are gathering at the grave. Drafted settlers and those in need stay away.",type:"info"});
+  if(disconnected)alerts.push({id:"power",action:"Find unpowered equipment",title:"Equipment without power",body:disconnected+" devices. Check conduits, generation, and fuel.",type:"warning"});
+  if(osGame.eventQueue.length)alerts.push({id:"incoming",action:"Read the chronicle",title:"Something is approaching",body:"A forecast or security warning is pending. See the chronicle.",type:"warning"});
+  if(osGame.traderUntil>osGame.minutes)alerts.push({id:"trade",action:"Open trading",title:"Caravan at the gate",body:"Trading available in Frontier.",type:"info"});
+  if(!alerts.length)alerts.push({id:"calm",title:"A quiet moment",body:"A chance to build something that lasts.",type:"info"});alertCards=alerts;
+  suggestShelter=countBuilt("bed")<4||!(osGame.rooms&&osGame.rooms.length);
+  
+  if(full)timedPart("projection:camps",projectCamps);if(full||storyDirty)timedPart("projection:record",projectRecord);
+  refreshAtmosphere();
+  let sun=sunAmount();worldNight=(1-sun)*0.36;worldSnow=Math.floor((dayNow()-1)/12)%4===3;
+  let t=toolKind;toolLabel=t.indexOf("build:")===0?"Build · "+BUILDINGS[t.slice(6)].name:t==="harvest"?"Gather · drag over resources":t==="survey"?"Survey · click a destination":t==="erase"?"Dismantle · click structures":t==="shelter"?"Bunkhouse · 8 × 8 blueprint":"Select / inspect";
+  footerText=touchControls?(t==="select"?"Tap to inspect · drag to pan · pinch to zoom":toolPaints()?"Drag to draw it out · tap then Apply for one tile · two fingers to pan":"Tap a tile, then Apply · drag to pan · pinch to zoom"):(t==="select"?"Drag to pan · right-click to order or clear":toolPaints()?"Drag to draw it out · right-click to cancel":"Right-click to cancel · drag to place");
+  fpsLabel=osGame.jobs.length+" tasks · 10 Hz simulation · seed "+osGame.seedLabel;
+  autoMode=!!osGame.autoMode;refreshAutoStatus();refreshPerformance();
+  if(full||stockDirty||researchDirty||storyDirty||activePanel!==lastPanel)timedPart("projection:panels",refreshPanels);lastPanel=activePanel;
+  timedPart("projection:inspector",refreshInspector);
+  if(!full&&!structuresDirty&&doorsBusy())structuresDirty=true;
+  if(full||structuresDirty)timedPart("projection:structures",refreshStructures);
+  refreshActors();refreshCamera();
+  viewDirty=false;structuresDirty=false;stockDirty=false;researchDirty=false;storyDirty=false;
+}
+
+// Authored diorama uses the exact terrain atlas and structure sprites used in play.
+// Independent of the simulation: opening the menu must not spend resources or RNG.
+function initialiseTitleScene() {
+  let ground=[],floor=[],objects=[];
+  for(let y=0;y<18;y++){
+    let row=[],deck=[],trees=[];
+    for(let x=0;x<24;x++){
+      let water=x<3+Math.sin(y*.5)*1.5;
+      row.push(water?6+(y%2):(x*7+y*11)%4);
+      deck.push(x>=8&&x<=16&&y>=5&&y<=11?12+(x+y)%2:-1);
+      trees.push(!water&&(y<2||y>15||x>21)&&(x*3+y)%4===0?16+(x+y)%3:-1);
+    }
+    ground.push(row);floor.push(deck);objects.push(trees);
+  }
+  titleLayers=[ground,floor,objects];
+  let pieces=[["lander",4,7],["farm",18,6],["farm",18,10],["solar",9,2],["solar",13,2],["generator",16,3],["bed",9,6],["bed",11,6],["lab",14,6],["table",12,9],["kitchen",9,9],["stockpile",6,12],["lamp",8,8],["lamp",17,10],["radio",16,13]];
+  let result=[];
+  for(let i=0;i<pieces.length;i++){let p=pieces[i],d=BUILDINGS[p[0]];result.push({id:i,sprite:spritePath(p[0]),style:{position:"absolute",left:p[1]*32+"px",top:p[2]*32+"px",width:d.w*32+"px",height:d.h*32+"px"}});}
+  let titleWalls={};for(let x=8;x<=16;x++)titleWalls[tileId(x,5)]={kind:"wall",built:true,x:x,y:5};
+  for(let x=8;x<=16;x++)result.push({id:"wall"+x,sprite:joinedWallSprite(titleWalls[tileId(x,5)],titleWalls),style:{position:"absolute",left:x*32+"px",top:"144px",width:"32px",height:"48px",zIndex:9}});
+  titleStructures=result;
+}
+// Following: the actor tick sets where the camera should be; the game loop eases the pan there every frame in whole
+// pixels, with no CSS transition, so the world and the tile map's clip window never disagree for a frame.
+let followPanX=0,followPanY=0,followHasTarget=false;
+function tickFollowCamera() {
+  if(!followColonistId||pointerState||screen!=="game")return;
+  let c=findColonist(followColonistId);
+  if(!c||c.dead){followColonistId="";followHasTarget=false;return;}
+  let o=viewOrigin(),s=TILE*zoomLevel;followPanX=(o.size/2-(c.x-o.wx))*s;followPanY=(o.size/2-(c.y-o.wy))*s;followHasTarget=true;
+  if(Math.abs(followPanX-panX)>viewportPxW*1.5||Math.abs(followPanY-panY)>viewportPxH*1.5){panX=followPanX;panY=followPanY;}
+}
+function tickCameraEase(dt){
+  if(!followColonistId||pointerState||!followHasTarget||screen!=="game")return;
+  let k=1-Math.exp(-(dt||0.016)/0.09),dx=followPanX-panX,dy=followPanY-panY;
+  if(Math.abs(dx)<0.4&&Math.abs(dy)<0.4){if(dx||dy){panX=followPanX;panY=followPanY;refreshCamera();}return;}
+  panX+=dx*k;panY+=dy*k;refreshCamera();
+}
+
+// Side-profile herbivores use front/rear drawings for vertical travel. The
+// top-down crawler rotates from its artwork's south-facing baseline.
+// Pose lives on a child so a turn cannot spin the world-position transform.
+function animalPose(a) {
+  let dx=typeof a.headingX==="number"?a.headingX:(animalRotates(a.kind)?0:(a.facing===-1?-1:1));
+  let dy=typeof a.headingY==="number"?a.headingY:(animalRotates(a.kind)?1:0);
+  let sprite=a.kind,transform="none";
+  if(animalStats(a.kind).sideOnly){if(dx<0)transform="scaleX(-1)";return {sprite:spritePath(sprite),style:{width:"100%",height:"100%",transform:transform,transformOrigin:"50% 50%"}};}
+  if(animalRotates(a.kind))transform="rotate("+round1(Math.atan2(dy,dx)*180/Math.PI-90)+"deg)";
+  else if(Math.abs(dy)>Math.abs(dx))sprite+="-"+(dy<0?"north":"south");
+  else if(dx<0)transform="scaleX(-1)";
+  return {sprite:spritePath(sprite),style:{width:"100%",height:"100%",transform:transform,transformOrigin:"50% 50%"}};
+}
+function animalActivity(a) {
+  if(a.hostile)return a.movingUntil>osGame.elapsed?"Pursuing":"Alert";
+  return a.movingUntil>osGame.elapsed?"Roaming":"Foraging";
+}
+
+// What a settler on the road is doing, for their card.
+function partyText(c){let e=expeditionById(c.rover.party);if(!e)return "With a party";let reg=regionById(e.regionId);return (EXPEDITION_PURPOSES[e.purpose]||"Walking")+" · "+(reg?reg.name:"the country")+" · "+(e.phase==="out"?"walking out":e.phase==="work"?"at the site":e.phase==="camp"?"holding the camp":"walking home");}

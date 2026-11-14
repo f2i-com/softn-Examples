@@ -12,14 +12,14 @@
     "node": "^20.19.0 || >=22.12.0"
   },
   "scripts": {
-    "bundle": "node scripts/build-bundle.cjs",
-    "build": "node scripts/build-release.cjs",
+    "bundle": "node scripts/build/build-bundle.cjs",
+    "build": "node scripts/build/build-release.cjs",
     "test": "npm run test:logic && npm run test:validators && npm run test:promptly && npm run test:bundles",
-    "test:logic": "node scripts/test-texasholdem-gameplay.cjs && node scripts/test-texasholdem-authority.cjs && node scripts/test-texasholdem-authority-client.cjs && node scripts/test-texasholdem-authority-http.cjs && node scripts/test-warblewire-protocol.cjs",
-    "test:validators": "node scripts/test-bundle-validator.cjs && node scripts/test-promptly-audio-validator.cjs",
-    "test:promptly": "node bundles/PromptlyUnemployed/check-geometry.cjs && node bundles/PromptlyUnemployed/check-spawns.cjs && node bundles/PromptlyUnemployed/check-audio.cjs",
-    "test:bundles": "node scripts/test-all-bundles.cjs",
-    "validate": "node scripts/test-all-bundles.cjs"
+    "test:logic": "node scripts/test/texasholdem/test-gameplay.cjs && node scripts/test/texasholdem/test-authority.cjs && node scripts/test/texasholdem/test-authority-client.cjs && node scripts/test/texasholdem/test-authority-http.cjs && node scripts/test/test-warblewire-protocol.cjs",
+    "test:validators": "node scripts/test/test-bundle-validator.cjs && node scripts/test/test-promptly-audio-validator.cjs",
+    "test:promptly": "node scripts/test/promptly/check-geometry.cjs && node scripts/test/promptly/check-spawns.cjs && node scripts/test/promptly/check-audio.cjs",
+    "test:bundles": "node scripts/test/test-all-bundles.cjs",
+    "validate": "node scripts/test/test-all-bundles.cjs"
   },
   "devDependencies": {
     "fflate": "^0.8.3"

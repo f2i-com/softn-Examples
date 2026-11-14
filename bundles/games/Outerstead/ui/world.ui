@@ -1,0 +1,144 @@
+<div className="os-viewport" @pointerleave={stopEdgePan}
+ @wheel={(e) => mapWheel(e.deltaY, e.clientX, e.clientY, e.currentTarget.getBoundingClientRect().left, e.currentTarget.getBoundingClientRect().top, e.currentTarget.getBoundingClientRect().width, e.currentTarget.getBoundingClientRect().height)}
+ @contextmenu={(e) => e.preventDefault()}
+ @pointerdown={(e) => e.target.tagName === "CANVAS" ? [e.preventDefault(), e.currentTarget.setPointerCapture(e.pointerId), mapPointer("down",e.pointerId,e.pointerType,e.clientX,e.clientY,e.button,e.shiftKey,e.target.tagName,e.target.getBoundingClientRect().left,e.target.getBoundingClientRect().top,e.target.getBoundingClientRect().width,e.target.getBoundingClientRect().height,e.currentTarget.getBoundingClientRect().width,e.currentTarget.getBoundingClientRect().height)] : null}
+ @pointermove={(e) => mapPointer("move",e.pointerId,e.pointerType,e.clientX,e.clientY,e.button,e.shiftKey,e.target.tagName,e.target.getBoundingClientRect().left,e.target.getBoundingClientRect().top,e.target.getBoundingClientRect().width,e.target.getBoundingClientRect().height,e.currentTarget.getBoundingClientRect().width,e.currentTarget.getBoundingClientRect().height)}
+ @pointerup={(e) => mapPointer(e.clientX < e.currentTarget.getBoundingClientRect().left || e.clientX > e.currentTarget.getBoundingClientRect().right || e.clientY < e.currentTarget.getBoundingClientRect().top || e.clientY > e.currentTarget.getBoundingClientRect().bottom ? "cancel" : "up",e.pointerId,e.pointerType,e.clientX,e.clientY,e.button,e.shiftKey,e.target.tagName,e.target.getBoundingClientRect().left,e.target.getBoundingClientRect().top,e.target.getBoundingClientRect().width,e.target.getBoundingClientRect().height,e.currentTarget.getBoundingClientRect().width,e.currentTarget.getBoundingClientRect().height)}
+ @pointercancel={(e) => mapPointer("cancel",e.pointerId,e.pointerType,e.clientX,e.clientY,e.button,e.shiftKey,e.target.tagName,e.target.getBoundingClientRect().left,e.target.getBoundingClientRect().top,e.target.getBoundingClientRect().width,e.target.getBoundingClientRect().height,e.currentTarget.getBoundingClientRect().width,e.currentTarget.getBoundingClientRect().height)}
+ @lostpointercapture={(e) => mapPointer("cancel",e.pointerId,e.pointerType,e.clientX,e.clientY,e.button,e.shiftKey,e.target.tagName,e.target.getBoundingClientRect().left,e.target.getBoundingClientRect().top,e.target.getBoundingClientRect().width,e.target.getBoundingClientRect().height,e.currentTarget.getBoundingClientRect().width,e.currentTarget.getBoundingClientRect().height)}>
+  #if (edgeScroll && !dialog)
+    <div className="os-edge os-edge-left" @pointerenter={() => setEdgePan(-1,0)} @pointerleave={stopEdgePan} />
+    <div className="os-edge os-edge-right" @pointerenter={() => setEdgePan(1,0)} @pointerleave={stopEdgePan} />
+    <div className="os-edge os-edge-top" @pointerenter={() => setEdgePan(0,-1)} @pointerleave={stopEdgePan} />
+    <div className="os-edge os-edge-bottom" @pointerenter={() => setEdgePan(0,1)} @pointerleave={stopEdgePan} />
+  #end
+  <div className="os-world-colour" style={visualStyle}>
+  <div className="os-world" style={worldStyle} osbiome={worldBiomeFilter} osnight={String(worldNight > 0.16)} osweather={weatherClass} ossnow={String(worldSnow)}>
+    <TileMap key={terrainAsset} className="os-tilemap" viewport={true} smooth={highDetail} @visibleRangeChange={setVisibleTileRange} src={asset(terrainAsset || "assets/sprites/terrain.png")} tileSize={terrainTileSize} tilesetColumns={8} layers={viewTerrainLayers} mapWidth={viewMapTiles || 96} mapHeight={viewMapTiles || 96} scale={terrainScale} />
+    <div className="os-night" style={{ opacity: worldNight }} />
+    <div className="os-motes" />
+    #each (p in mapPrints) key={p.id}
+      <div className="os-footprint" ossnow={String(p.snow)} style={p.style} />
+    #end
+    #each (b in mapBuildings) key={b.id}
+      <div className={(b.built ? "os-building" : "os-building os-blueprint") + (b.raised ? " os-wall" : "")} style={b.style} osopen={String(b.open)} oslit={String(b.lit)} osroof={String(b.roof)} ossown={String(b.sown)}>
+        <img className="os-sprite" src={asset(b.sprite)} alt="" style={b.spriteStyle} />
+        #if (b.canGlow)<i className="os-glow" />#end
+        #if (b.chimney)<div className="os-chimney"><i /><i /></div>#end
+        #if (b.sparks)<div className="os-sparks"><i /><i /><i /></div>#end
+        #if (b.smoke)<div className="os-smoke"><i /><i /><i /></div>#end
+        #if (b.steam)<div className="os-steam"><i /><i /></div>#end
+        #if (b.hammer)<div className="os-hammer" />#end
+        #if (b.made)<div className="os-made" oskind={b.made} osfull={String(b.madeFull)} osstack={String(b.stack)} title={b.madeFull ? "Output full · waiting for a hauler" : "Finished goods waiting for a hauler"} />#end
+        #if (b.flame)<div className="os-ambient-fire"><i /><i /><b /></div>#end
+        #if (!b.built || b.crop)
+          <div className="os-map-progress"><i style={b.barStyle} /></div>
+        #end
+        #if (b.needsPower)
+          <div className="os-no-power">ϟ</div>
+        #end
+      </div>
+    #end
+    #each (site in mapRuins) key={site.id}
+      <div style={site.style}><img className="os-sprite" src={asset(site.sprite)} alt="" /><div className="os-site-label">{site.name}{site.studied ? " · recovered" : ""}</div></div>
+    #end
+    #each (camp in mapCamps) key={camp.id}
+      <div style={camp.style}><img className="os-sprite" src={asset(camp.sprite)} alt="" /><div className="os-site-label">{camp.far ? "Camp" : "Raider camp"}</div></div>
+    #end
+    #each (j in mapJobs) key={j.id}
+      <div style={j.style}>{j.label}</div>
+    #end
+    #each (a in mapAnimals) key={a.id}
+      <div className="os-animal" osglow={String(a.glow)} osmarked={String(a.marked)} ostamed={String(a.tamed)} style={a.style}><div style={a.poseStyle}><img className={a.attacking ? "os-sprite os-predator-strike" : a.moving ? "os-sprite os-animal-gait" : "os-sprite"} src={asset(a.sprite)} alt="" /></div></div>
+    #end
+    #each (w in mapWeapons) key={w.id}
+      <div className="os-ground-weapon" style={w.style}><img className="os-sprite" src={asset(w.sprite)} alt={w.name} /></div>
+    #end
+    #each (c in mapColonists) key={c.id}
+      <div className="os-actor" style={c.style} oschild={String(c.child)} osselected={String(c.selected)} osdrafted={String(c.drafted)} osanimate={String(c.animate)} osleft={String(c.left)} osseated={String(c.seated)} osgroundsleep={String(c.groundSleep)} ospose={c.pose} osphase={String(c.phase)} osidle={String(c.idle)}>
+        #if (c.showRange)
+          <div className="os-weapon-range" style={c.rangeStyle} />
+        #end
+        <div className="os-colonist-rest-frame"><div className={"os-colonist-body os-pose-" + c.pose}><img className="os-sprite" src={asset(c.sprite)} alt="" /></div></div>
+        #if (c.seated)
+          <span className="os-seat-mark" title="Seated at table" />
+          #if (c.pose === "eat")
+            <span className="os-meal-bowl" />
+          #end
+        #end
+        #if (c.armed && !c.seated)
+          <div className="os-held-weapon" style={c.weaponStyle}><img className="os-sprite" src={asset(c.weaponSprite)} alt="Equipped weapon" /></div>
+        #end
+        #if (c.sleeping)
+          <div className="os-sleep-sign" role="img" aria-label="Sleeping"><span>z</span><span>Z</span></div>
+        #end
+        #if (c.carrying)
+          <div className="os-carry" oskind={c.carryKind} />
+        #end
+        #if (c.working)
+          <div className="os-work-dot" />
+        #end
+        #if (c.tool)
+          <i className="os-handtool" oskind={c.tool} />
+        #end
+        #if (c.chat)
+          <span className="os-chat"><i /><i /><i /></span>
+        #end
+        #if (c.mark)
+          <div className="os-task-mark">{c.mark}</div>
+        #end
+        #if (!c.dead)
+          <div className="os-actor-label" style={c.labelStyle}>{c.name}</div>
+        #end
+      </div>
+    #end
+    #each (f in mapEffects) key={f.id}
+      <div style={f.style} />
+    #end
+    #if (gridVisible)
+      <div className="os-grid" />
+    #end
+    #each (f in visualFxViews) key={f.id}
+      <div className={"os-vfx os-vfx-" + f.kind} style={f.style}><i /><i /><i /><b /><em>{f.damage}</em></div>
+    #end
+    <div className={"os-incident " + incidentFxKind} style={incidentFxStyle}><i /><i /><i /></div>
+    #each (pc in mapPlan) key={pc.id}
+      <div style={pc.style} />
+    #end
+    <div style={hoverStyle} />
+  </div>
+  <div className={"os-weather " + weatherClass}><i /><i /></div>
+  </div>
+  #if (weatherNotice)
+    <div className="os-weather-notice">{weatherNotice}</div>
+  #end
+  <div className="os-map-hint"><div className="os-map-hint-title">{panMode ? "Drag to move map" : followColonistId ? "Following settler · drag to release" : toolLabel}</div><div className="os-map-hint-small">HOLLOW-7 · {hud.weather} · {hud.season}</div></div>
+  #if (paused)
+    <div className="os-pause-pill">PAUSED</div>
+  #end
+  <div className="os-map-zoom"><button className="os-btn os-pan-button" oson={String(panMode)} @click={togglePanMode}>{panMode ? "Pan ON" : "Pan"}</button><button className="os-btn os-icon-btn os-desktop-map" title="Toggle cursor-edge scrolling" oson={String(edgeScroll)} @click={toggleEdgeScroll}>↔</button><button className="os-btn os-icon-btn" title="Zoom in" @click={() => zoomBy(0.1)}>+</button><button className="os-btn os-icon-btn" title="Zoom out" @click={() => zoomBy(-0.1)}>−</button><button className="os-btn os-icon-btn" title="Return to colony centre" @click={focusCamp}>⌂</button><button className="os-btn os-icon-btn os-desktop-map" title="Toggle grid" oson={String(gridVisible)} @click={toggleGrid}>▦</button><button className="os-btn os-icon-btn os-desktop-map" title="Trace electrical conduits" oson={String(powerVisible)} @click={togglePowerOverlay}>ϟ</button></div>
+  #if (watchBannerText)
+    <div className="os-watch-banner"><span><b>{watchBannerText}</b></span><button className="os-btn os-tab" @click={focusCamp}>⌂ Back to colony</button></div>
+  #end
+  <div className="os-touch-actions">
+    #if (touchPlacement)
+      <button className="os-btn os-primary" @click={applyTouchTool}>Apply here</button>
+    #end
+    #if (toolKind !== "select" || panMode || selectedId)
+      <button className="os-btn" @click={cancelTool}>Cancel / clear</button>
+    #end
+  </div>
+  #if (storyCard && dialog !== "story")
+    <div className="os-caption" role="status">
+      <div className="os-caption-head"><span className="os-label os-cyan">{storyCard.tag}</span><span className="os-caption-title">{storyCard.title}</span><button className="os-btn os-icon-btn" title="Open as a dialog" @click={openStoryModal}>⤢</button></div>
+      <div className="os-caption-body">{storyCard.body}</div>
+      <div className="os-caption-choices">
+        #each (choice in storyCard.choices) key={choice.id}
+          <button className="os-btn os-caption-choice" @click={() => chooseStory(choice.id)}><div>{choice.label}</div><span>{choice.detail}</span></button>
+        #end
+      </div>
+      <div className="os-caption-foot"><span className="os-tiny os-dim">{storyAutoText}</span><div className="os-caption-timer"><div style={storyTimerStyle} /></div></div>
+    </div>
+  #end
+  <div className="os-map-coordinate">{hud.foodDays} SOLS OF FOOD · BATTERIES {hud.stored}</div>
+</div>

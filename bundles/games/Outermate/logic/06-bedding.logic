@@ -1,0 +1,83 @@
+// Beds are physical fixtures. Sleepers are drawn on them; nobody recovers properly on a cell floor.
+// Bed assignment is derived from the world (nearest bunk in the home block), so older saves with
+// one shared bunk per cell keep working: cellmates take numbered slots on the same fixture.
+let bedSlots={};
+function rebuildBeds(){
+  bedSlots={};let occupants={};
+  for(let c of omGame.people){
+    if(c.role!=="inmate"&&c.role!=="player")continue;
+    let best=null,bestD=20;
+    for(let b of omGame.props){if(b.kind!=="bunk"||zoneAt[tileId(b.x,b.y)]!==c.homeZone)continue;let d=sqDistance(b.x+b.w/2,b.y+b.h/2,c.homeX+.5,c.homeY+.5);if(d<bestD){best=b;bestD=d;}}
+    if(!best)continue;
+    let list=occupants[best.id]||(occupants[best.id]=[]);list.push(c.id);
+    bedSlots[c.id]={id:best.id,x:best.x,y:best.y,w:best.w,h:best.h,slot:list.length-1,shared:false};
+  }
+  for(let id of Object.keys(occupants))if(occupants[id].length>1)for(let who of occupants[id])bedSlots[who].shared=true;
+}
+function bedFor(c){return bedSlots[c.id]||null;}
+function isLightsOut(){return timeIn(LIGHTS_OUT,345);}
+function inBed(c){let bed=bedFor(c);return !!bed&&sqDistance(c.x,c.y,c.homeX+.5,c.homeY+.5)<=2.5;}
+// Routine sleep at the home bedside: settle on the edge of the bunk, then lie down once the lights go out.
+function tickBedRest(c,dt,r){
+  let bed=bedFor(c);
+  if(!bed){c.action="Dozing on the floor";c.energy=Math.min(100,c.energy+dt*0.25);return;}
+  if(r.id==="emergencyHome"&&!isLightsOut()){c.action="Confined to cell";c.stress=Math.max(0,c.stress-dt*0.05);c.energy=Math.min(100,c.energy+dt*0.15);return;}
+  // The bed clock survives the midnight routine change; it is cleared whenever the person moves.
+  c.idleClock+=dt;
+  if(isLightsOut()&&c.idleClock>=3){
+    c.action="Asleep";c.energy=Math.min(100,c.energy+dt*0.6);c.stress=Math.max(0,c.stress-dt*0.12);c.health=Math.min(100,c.health+dt*0.02);
+    if(c.id==="player")omGame.sleepClock=(omGame.sleepClock||0)+dt;
+  }else{c.action="Settling in";c.energy=Math.min(100,c.energy+dt*0.2);c.stress=Math.max(0,c.stress-dt*0.06);if(c.id==="player"&&r.id!=="emergencyHome")tickCellTalk(c,dt);}
+  let talk=omGame.cellTalk;if(talk&&talk.until>omGame.elapsed&&(c.id==="player"||c.id===talk.peer)&&c.action==="Settling in"){let other=actorById(c.id==="player"?talk.peer:"player");if(other)c.action="Chatting with "+other.short;
+    if(c.id===talk.peer&&!talk.second&&omGame.elapsed>=talk.until-3.5){talk.second=true;speak(c,pickLine(["Sleep. It's the only free thing here.","Half eleven and three. Same boots.","Tomorrow's another count."],dayNow()),3.2);}}
+}
+// The other person whose bunk is in your cell. Older saves share one bunk, so the home tiles are adjacent.
+function cellmateOf(c){
+  let best=null,d=17;for(let a of omGame.people){if(a.id===c.id||a.role!=="inmate"||a.escaped||a.homeZone!==c.homeZone)continue;let n=sqDistance(a.homeX,a.homeY,c.homeX,c.homeY);if(n<d){d=n;best=a;}}
+  return best;
+}
+// A quiet word before lights out, once a day: a little trust, the cellmate's rumour, and word of the rounds.
+function tickCellTalk(p,dt){
+  if(omGame.cellTalk||omGame.cellTalkDay===dayNow()||p.idleClock<4)return;
+  let mate=cellmateOf(p);if(!mate||mate.action!=="Settling in"||mate.detainedUntil>omGame.minutes||!inBed(mate))return;
+  omGame.cellTalkDay=dayNow();omGame.cellTalk={peer:mate.id,until:omGame.elapsed+7,second:false};speak(mate,pickLine(["Officer walks the fronts at night.","New here? Keep to the routine.","They count us, not our plans."],dayNow()+activityIndex(mate)),3.2);
+  let d=inmateDef(mate.id),gain=2+(p.background==="talker"?1:0);
+  if(!mate.met){mate.met=true;omGame.stats.met++;}
+  mate.trust=clamp(mate.trust+gain,0,100);remember(mate,"Talked with "+p.short+" after lock-in.");
+  if(d)learnIntel(d.rumor,"rumor",false);let first=!omGame.knowledge.rounds;learnIntel("rounds","rumor",false);
+  logEvent("Lights-out conversation",mate.name+" talks quietly from the other bunk. +"+gain+" trust."+(first?" They mention the officer who walks the cell fronts at night.":""),"social");
+  say(mate.short+" talks quietly before the lights go. +"+gain+" trust.");
+}
+// Lights out and the morning summary. Runs on the one-second needs cadence; once per phase per day.
+function tickNight(){
+  let m=minuteNow(),day=dayNow(),key="";
+  if(m>=LIGHTS_OUT)key=day+":lights";else if(m>=345&&m<360)key=day+":wake";else return;
+  if(omGame.nightKey===key)return;omGame.nightKey=key;
+  if(key.indexOf(":lights")>0){
+    omGame.sleepClock=0;
+    logEvent("Lights out","Cell lights are off until 05:45. Anyone still moving through the blocks is a question waiting to be asked.","life");
+    if(player().mode==="routine"||omGame.autoDay)say("Lights out. Your inmate is settling into the bunk for the night.");else say("Lights out. Sleep in your bunk to recover before the morning count.");
+    playCue("notice");return;
+  }
+  // The run begins at 05:50 on day 1: there was no night to summarise.
+  if(omGame.minutes<1440){omGame.sleepClock=0;omGame.ledger={scrip:omGame.scrip,work:omGame.stats.work,counts:omGame.stats.counts,met:omGame.stats.met};return;}
+  let p=player(),hours=Math.round((omGame.sleepClock||0)*GAME_MINUTES_PER_SECOND/60*10)/10,ledger=omGame.ledger||{scrip:omGame.scrip,work:omGame.stats.work,counts:omGame.stats.counts,met:omGame.stats.met};
+  let earned=omGame.scrip-ledger.scrip,batches=omGame.stats.work-ledger.work,counts=omGame.stats.counts-ledger.counts,met=omGame.stats.met-ledger.met;
+  let report=" Yesterday: "+(earned>=0?"+":"")+earned+" scrip, "+batches+" work batch"+(batches===1?"":"es")+", "+counts+" of 2 counts, "+met+" new contact"+(met===1?"":"s")+". Suspicion "+Math.round(omGame.personalSuspicion)+"%.";
+  omGame.ledger={scrip:omGame.scrip,work:omGame.stats.work,counts:omGame.stats.counts,met:omGame.stats.met};
+  if(hours>=5){p.stress=Math.max(0,p.stress-10);logEvent("Lights on","Slept "+hours+" hours in your bunk. Rested: stress eased by 10."+report,"life");say("05:45. You slept "+hours+" hours. Morning count is at 06:00.");}
+  else if(hours>0){logEvent("Lights on","Only "+hours+" hours in your bunk. A short night makes for a long day."+report,"life");say("05:45. A short night: "+hours+" hours of sleep. Count is at 06:00.");}
+  else{p.stress=Math.min(100,p.stress+6);logEvent("Lights on","No sleep in your bunk last night. Stress +6. Rest when you can."+report,"life");say("05:45. No sleep last night. Morning count is at 06:00.");}
+  omGame.sleepClock=0;
+}
+// Where a person is drawn while using a bed, or null when they are standing.
+function bedPose(c){
+  let a=c.action;
+  if(a==="Asleep"||a==="Settling in"||a==="Confined to cell"||(a.indexOf("Chatting with ")===0&&omGame.cellTalk&&omGame.cellTalk.until>omGame.elapsed&&(c.id==="player"||c.id===omGame.cellTalk.peer))){let bed=bedFor(c);if(!bed||!inBed(c))return null;return {bed:bed,lying:a==="Asleep",slot:bed.slot};}
+  if(a==="Lying down"&&c.task&&c.task.type==="rest"){
+    let s=siteById(c.task.site);if(!s||sqDistance(c.x,c.y,s.ax+.5,s.ay+.5)>.09)return null;
+    let bed=s.id==="bunk"?bedFor(c):{x:s.x,y:s.y,w:s.w,h:s.h,slot:0};if(!bed)return null;
+    return {bed:bed,lying:true,slot:0};
+  }
+  return null;
+}

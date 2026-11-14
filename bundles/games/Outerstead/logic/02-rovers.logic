@@ -1,0 +1,245 @@
+// Rovers. A settler who sets out alone leaves the colony's window and walks the plane on their own: they carry a
+// small window of their own (ROVER_SIZE tiles, two chunks across, chunk-aligned) that slides after them, generating
+// country from the seed a chunk ahead of them and writing what they explored back to the plane store when they move on.
+// The engine's grid code runs unchanged inside a rover's window because the whole grid state (origin, layers,
+// indexes, view caches, path cache) is a context that can be swapped in and out around a rover's tick or a view.
+const ROVER_SIZE=192;
+const ROVER_MARGIN=32;
+// Share a small search allowance across everyone and every simulation step in
+// one host frame. Unreachable survey destinations must not run hundreds of A*s.
+let roverRouteBudget=2,simulationFrameActive=false,roverRouteSearches={};
+function beginRoverRoute(c,goal){let key=Math.floor(c.x)+","+Math.floor(c.y)+":"+goal.x+","+goal.y+":"+WX+","+WY+":"+pathEpoch,q=roverRouteSearches[c.id];if(!q||q.key!==key){q={key:key,cursor:0};roverRouteSearches[c.id]=q;}q.index=0;q.pending=false;return q;}
+function tryRoverPath(c,x,y){let q=roverRouteSearches[c.id],i=q.index++;if(i<q.cursor)return null;if(roverRouteBudget<=0){q.pending=true;return null;}roverRouteBudget--;q.cursor=i+1;return findPath(c.x,c.y,x,y);}
+let roverContexts={};
+function captureContext(){
+  return {size:MAP_SIZE,wx:WX,wy:WY,mapTiles:mapTiles,terrain:osGame.terrain,groundTiles:osGame.groundTiles,explored:osGame.explored,floorTiles:osGame.floorTiles,wireTiles:osGame.wireTiles,nodes:osGame.nodes,
+    navBlocked:navBlocked,nodeAtCell:nodeAtCell,cellBuilding:cellBuilding,underlayAtCell:underlayAtCell,wireAtCell:wireAtCell,nodeIndex:nodeIndex,roomCells:roomCells,
+    terrainLayers:terrainLayers,terrainRows:terrainRows,terrainRowsPending:terrainRowsPending,terrainDirty:terrainDirty,minimapSrc:minimapSrc,minimapRows:minimapRows,minimapRowsDirty:minimapRowsDirty,minimapEpoch:minimapEpoch,minimapBuiltEpoch:minimapBuiltEpoch,minimapBuiltAt:minimapBuiltAt,
+    pathEpoch:pathEpoch,pathCache:pathCache,pathCacheKeys:pathCacheKeys,wallSpriteCache:wallSpriteCache,wallSpritesDirty:wallSpritesDirty,sightStamp:sightStamp,sightBase:sightBase,sightVisible:sightVisible,sightBaseEpoch:sightBaseEpoch};
+}
+function applyContext(ctx){
+  MAP_SIZE=ctx.size;WX=ctx.wx;WY=ctx.wy;mapTiles=ctx.mapTiles;osGame.terrain=ctx.terrain;osGame.groundTiles=ctx.groundTiles;osGame.explored=ctx.explored;osGame.floorTiles=ctx.floorTiles;osGame.wireTiles=ctx.wireTiles;osGame.nodes=ctx.nodes;
+  navBlocked=ctx.navBlocked;nodeAtCell=ctx.nodeAtCell;cellBuilding=ctx.cellBuilding;underlayAtCell=ctx.underlayAtCell;wireAtCell=ctx.wireAtCell;nodeIndex=ctx.nodeIndex;roomCells=ctx.roomCells;
+  terrainLayers=ctx.terrainLayers;terrainRows=ctx.terrainRows;terrainRowsPending=ctx.terrainRowsPending;terrainDirty=ctx.terrainDirty;minimapSrc=ctx.minimapSrc;minimapRows=ctx.minimapRows;minimapRowsDirty=ctx.minimapRowsDirty;minimapEpoch=ctx.minimapEpoch;minimapBuiltEpoch=ctx.minimapBuiltEpoch;minimapBuiltAt=ctx.minimapBuiltAt;
+  pathEpoch=ctx.pathEpoch===undefined?0:ctx.pathEpoch;pathCache=ctx.pathCache;pathCacheKeys=ctx.pathCacheKeys;wallSpriteCache=ctx.wallSpriteCache;wallSpritesDirty=ctx.wallSpritesDirty;sightStamp=ctx.sightStamp||[];sightBase=ctx.sightBase||[];sightVisible=ctx.sightVisible||[];sightBaseEpoch=ctx.sightBaseEpoch===undefined?-1:ctx.sightBaseEpoch;
+}
+let contextDepth=0;
+// Run fn inside a rover's window, then write the window's state back into the context and restore the colony's.
+function withContext(ctx,fn){
+  // A rover may generate a chunk owned by the colony through a nested context.
+  // Restore that updated colony snapshot, including its navigation revision.
+  let prev=contextDepth===0&&mainWindowState&&mainWindowState.terrain===osGame.terrain?mainWindowState:captureContext();applyContext(ctx);contextDepth++;
+  try{return fn();}finally{Object.assign(ctx,captureContext());applyContext(prev);contextDepth--;}
+}
+let mainWindowState=null;
+function mainWindow(){return contextDepth>0&&mainWindowState?mainWindowState:{size:MAP_SIZE,wx:WX,wy:WY};}
+function roverOriginFor(x,y){return {wx:chunkOf(x-HOME_SIZE/2)*HOME_SIZE,wy:chunkOf(y-HOME_SIZE/2)*HOME_SIZE};}
+function blankContext(size,wx,wy){
+  let n=size*size,ctx={size:size,wx:wx,wy:wy,mapTiles:size,terrain:[],groundTiles:[],explored:[],floorTiles:[],wireTiles:[],nodes:[],navBlocked:[],nodeAtCell:[],cellBuilding:[],underlayAtCell:[],wireAtCell:[],nodeIndex:{},roomCells:[],
+    terrainLayers:[],terrainRows:{},terrainRowsPending:false,terrainDirty:true,minimapSrc:"",minimapRows:[],minimapRowsDirty:{},minimapEpoch:0,minimapBuiltEpoch:-1,minimapBuiltAt:-1e9,pathEpoch:0,pathCache:{},pathCacheKeys:[],wallSpriteCache:{},wallSpritesDirty:true,sightStamp:[],sightBase:[],sightVisible:[],sightBaseEpoch:-1};
+  ctx.terrain=Array(n).fill(6);ctx.groundTiles=Array(n).fill(0);ctx.explored=Array(n).fill(false);ctx.floorTiles=Array(n).fill(0);ctx.wireTiles=Array(n).fill(0);ctx.navBlocked=Array(n).fill(1);ctx.nodeAtCell=Array(n).fill("");ctx.cellBuilding=Array(n).fill("");ctx.underlayAtCell=Array(n).fill("");ctx.wireAtCell=Array(n).fill("");ctx.roomCells=Array(n).fill(-1);
+  return ctx;
+}
+// Copy one chunk's tiles and nodes from another window into the current one.
+function copyChunkFrom(src,cx,cy){
+  let ox=cx*HOME_SIZE,oy=cy*HOME_SIZE;
+  for(let y=oy;y<oy+HOME_SIZE;y++)for(let x=ox;x<ox+HOME_SIZE;x++){let i=tileId(x,y),j=(y-src.wy)*src.size+(x-src.wx);osGame.terrain[i]=src.terrain[j];osGame.groundTiles[i]=src.groundTiles[j];osGame.explored[i]=src.explored[j]||osGame.explored[i]||false;osGame.floorTiles[i]=src.floorTiles[j];osGame.wireTiles[i]=src.wireTiles[j];if(navBlocked.length===MAP_SIZE*MAP_SIZE)navBlocked[i]=(osGame.terrain[i]===3||osGame.terrain[i]===4||osGame.terrain[i]===6)?1:0;}
+  for(let k=0;k<src.nodes.length;k++){let n=src.nodes[k];if(n.amount>0&&chunkOf(n.x)===cx&&chunkOf(n.y)===cy){let m=addResourceNode(n.x,n.y,n.kind,n.amount);if(m){m.marked=false;if(n.resource)m.resource=n.resource;if(n.debris)m.debris=true;}}}
+}
+function chunkInWindow(ctx,cx,cy){return cx>=chunkOf(ctx.wx)&&cy>=chunkOf(ctx.wy)&&cx<chunkOf(ctx.wx)+ctx.size/HOME_SIZE&&cy<chunkOf(ctx.wy)+ctx.size/HOME_SIZE;}
+// What a rover saw of ground the colony's window owns goes to the colony's layers.
+function mergeExploredToMain(mainCtx){
+  if(!mainCtx)return;let changed=false;
+  for(let i=0;i<MAP_SIZE*MAP_SIZE;i++){if(!osGame.explored[i])continue;let x=i%MAP_SIZE+WX,y=Math.floor(i/MAP_SIZE)+WY;if(x>=mainCtx.wx&&y>=mainCtx.wy&&x<mainCtx.wx+mainCtx.size&&y<mainCtx.wy+mainCtx.size){let j=(y-mainCtx.wy)*mainCtx.size+(x-mainCtx.wx);if(!mainCtx.explored[j]){mainCtx.explored[j]=true;changed=true;}}}
+  if(changed){mainCtx.terrainDirty=true;mainCtx.minimapSrc="";mainCtx.minimapRows=[];mainCtx.minimapEpoch++;}
+}
+// Fill a window from the plane: chunks the colony's window owns are generated there if need be and copied, chunks
+// in the store come back, and the rest stay unmade until the rover reveals them.
+function fillWindowFromPlane(mainCtx){
+  let across=MAP_SIZE/HOME_SIZE,cx0=chunkOf(WX),cy0=chunkOf(WY);
+  for(let cy=cy0;cy<cy0+across;cy++)for(let cx=cx0;cx<cx0+across;cx++){
+    if(mainCtx&&chunkInWindow(mainCtx,cx,cy)){if(chunkGenerated(cx,cy))copyChunkFrom(mainCtx,cx,cy);else{let ox=cx*HOME_SIZE,oy=cy*HOME_SIZE;for(let y=oy;y<oy+HOME_SIZE;y++)for(let x=ox;x<ox+HOME_SIZE;x++){let i=tileId(x,y);osGame.terrain[i]=6;osGame.groundTiles[i]=0;osGame.explored[i]=false;osGame.floorTiles[i]=0;osGame.wireTiles[i]=0;}}}
+    else loadChunk(cx,cy);
+  }
+  for(let i=0;i<MAP_SIZE*MAP_SIZE;i++)navBlocked[i]=(osGame.terrain[i]===3||osGame.terrain[i]===4||osGame.terrain[i]===6)?1:0;
+  pathEpoch++;pathCache={};pathCacheKeys=[];terrainDirty=true;minimapSrc="";minimapRows=[];minimapEpoch++;
+}
+// Write a rover window's generated chunks back to the plane (skipping any the colony's window owns).
+function flushContextToPlane(ctx,mainCtx){
+  withContext(ctx,function(){let across=MAP_SIZE/HOME_SIZE,cx0=chunkOf(WX),cy0=chunkOf(WY);mergeExploredToMain(mainCtx);
+    for(let cy=cy0;cy<cy0+across;cy++)for(let cx=cx0;cx<cx0+across;cx++){if(mainCtx&&chunkInWindow(mainCtx,cx,cy))continue;storeChunk(cx,cy);}});
+}
+function flushRovers(){let mainCtx=captureContext();let keys=Object.keys(roverContexts);for(let i=0;i<keys.length;i++)flushContextToPlane(roverContexts[keys[i]],mainCtx);}
+// A party on the road shares one window, keyed by its expedition; a rover alone has their own.
+function roverKey(c){return c.rover&&c.rover.party?c.rover.party:c.id;}
+function roverKeyOf(id){let v=findColonist(id);return v&&v.rover?roverKey(v):"";}
+function roverContext(c){
+  if(!c.rover)return null;let key=roverKey(c),ctx=roverContexts[key];if(ctx)return ctx;
+  let mainCtx=captureContext(),o=roverOriginFor(c.x,c.y);ctx=blankContext(ROVER_SIZE,o.wx,o.wy);roverContexts[key]=ctx;
+  mainWindowState=mainCtx;withContext(ctx,function(){fillWindowFromPlane(mainCtx);ensureChunksAround(c.x,c.y,MAP_SIZE/2);revealArea(c.x,c.y,7);});mainWindowState=null;
+  return ctx;
+}
+function dropContextKey(key){let ctx=roverContexts[key];if(!ctx)return;flushContextToPlane(ctx,captureContext());delete roverContexts[key];}
+function dropRoverContext(c){let key=roverKey(c);if(c.rover&&c.rover.party){let e=expeditionById(c.rover.party);if(e&&partyMembers(e).some(function(m){return m.id!==c.id;}))return;}dropContextKey(key);if(viewRoverId===c.id)viewRoverId="";}
+// A rover who dies out there: their window goes to the plane unless the party still needs it; a party with nobody left is lost.
+function roverDied(c){
+  let party=c.rover&&c.rover.party?expeditionById(c.rover.party):null;dropRoverContext(c);c.rover=null;
+  if(party&&!partyMembers(party).length)partyLost(party);
+}
+// Setting out: rations from the stores, the current task dropped, a window of their own.
+function setOutRover(id){
+  let c=findColonist(id||selectedId);if(!c||c.dead||c.child||c.away||c.rover||c.health<50){say("Only a healthy adult at home can set out.");return false;}
+  let rations=Math.min(8,Math.floor(osGame.stock.meals||0));if(rations)stockTake({meals:rations});
+  releaseTask(c,true);cancelWeaponPickup(c);c.drafted=false;c.autoDefend=false;c.order=null;c.combatTarget="";c.path=[];c.pathCursor=0;
+  c.rover={goal:null,rations:rations,resting:false,returning:false,homeX:CENTRE,homeY:centreY(),walked:0,pack:{},forage:"",forageProgress:0,chunk:""};c.action="Setting out";
+  roverContext(c);followColonistId=c.id;cancelTargetJobs(c.id);
+  chronicle(c.short+" sets out",c.name+" has left the lights with "+rations+" meal"+(rations===1?"":"s")+" in a pack. Right-click the ground to send them on; the country is made as they reach it.","colony");
+  say(c.short+" has set out. Right-click to send them on; Return to colony brings them home.");refreshAll();return true;
+}
+function roverOrder(c,x,y){if(!c.rover)return;c.rover.goal={x:x,y:y};c.rover.returning=false;c.rover.resting=false;c.rover.forage="";c.path=[];c.pathCursor=0;c.action="Walking";}
+function packTotal(pack){let n=0,keys=Object.keys(pack||{});for(let i=0;i<keys.length;i++)n+=pack[keys[i]];return n;}
+function nodeResource(n){return n.kind==="tree"?"wood":n.kind==="berries"?"raw":n.kind==="pile"?(n.resource||"metal"):n.kind;}
+// Forage: walk to the nearest worked-out ground's node within reach and fill the pack from it.
+function roverForage(id){
+  let c=findColonist(id||selectedId);if(!c||!c.rover)return;let ctx=roverContext(c),found=null,best=24*24;
+  withContext(ctx,function(){for(let i=0;i<osGame.nodes.length;i++){let n=osGame.nodes[i];if(n.amount<=0||!osGame.explored[tileId(n.x,n.y)])continue;let d=sqDistance(c.x,c.y,n.x+.5,n.y+.5);if(d<best){best=d;found=n;}}});
+  if(!found){say("Nothing to forage within reach. Walk on and try again.");return;}
+  if(packTotal(c.rover.pack)>=40){say(c.short+"'s pack is full.");return;}
+  c.rover.forage=found.id;c.rover.forageProgress=0;c.rover.goal={x:found.x,y:found.y};c.rover.returning=false;c.rover.resting=false;c.path=[];c.pathCursor=0;c.action="Foraging";say(c.short+" goes to forage.");refreshAll();
+}
+// What a chunk holds for the first rover to walk into it: nothing, a find, a rest, or teeth. Decided by the seed.
+function roverChunkEvent(c,cx,cy){
+  if(!osGame.roverSeen)osGame.roverSeen={};let key=chunkKey(cx,cy);if(osGame.roverSeen[key])return;osGame.roverSeen[key]=true;
+  if(cx===chunkOf(c.rover.homeX)&&cy===chunkOf(c.rover.homeY))return;
+  let roll=crewRng(hashSeed(String(osGame.seed>>>0)+"|encounter|"+cx+"|"+cy)).next(),r=c.rover;
+  if(roll<0.5)return;
+  if(roll<0.62){let n=1+Math.floor((roll-0.5)*25);r.pack.glass=(r.pack.glass||0)+n;remember(c,"Shards in the open",4,1440*3);chronicle(c.short+" finds a shard field","Hollowglass lying loose where the wind dropped it. "+n+" went into the pack.","hollow");return;}
+  if(roll<0.72){r.pack.parts=(r.pack.parts||0)+2;r.pack.metal=(r.pack.metal||0)+6;remember(c,"A hauler on its side",3,1440*3);chronicle(c.short+" finds a wreck","A cargo hauler that came down long before the colony did. Parts and metal went into the pack.","colony");return;}
+  if(roll<0.8){c.rest=100;c.food=Math.min(100,c.food+20);remember(c,"A warm spring, alone",8,1440*6);chronicle(c.short+" finds a warm spring","Water warm enough to sit in, and nobody for a hundred tiles. "+c.short+" sat in it.","people");return;}
+  if(roll<0.9){let hurt=12+Math.floor((roll-0.8)*120);injureColonist(c,hurt,"a crawler pack, alone in the open",true);remember(c,"Teeth in the grey",-6,1440*4);chronicle(c.short+" meets crawlers","A pack came out of the grey with nobody to help. "+c.short+" got clear, hurt.","danger");if(c.health<40){r.goal=null;c.action="Hurt · resting";r.resting=true;}return;}
+  remember(c,"Old tracks going nowhere",1,1440*2);chronicle(c.short+" finds old tracks","Boot prints older than the colony, going somewhere nobody went.","hollow");
+}
+function roverReturn(id){let c=findColonist(id||selectedId);if(!c||!c.rover)return;c.rover.goal={x:c.rover.homeX+2,y:c.rover.homeY+8};c.rover.returning=true;c.rover.resting=false;c.path=[];c.pathCursor=0;c.action="Coming home";say(c.short+" is coming home.");refreshAll();}
+function roverHead(id,dx,dy){let c=findColonist(id||selectedId);if(!c||!c.rover)return;roverOrder(c,Math.round(c.x+dx*HOME_SIZE),Math.round(c.y+dy*HOME_SIZE));say(c.short+" heads "+(dx<0?"west":dx>0?"east":dy<0?"north":"south")+".");refreshAll();}
+function roverRejoin(c){
+  delete roverRouteSearches[c.id];
+  let party=c.rover.party?expeditionById(c.rover.party):null;
+  if(roverContexts[roverKey(c)]){dropRoverContext(c);terrainDirty=true;}
+  let pack=c.rover.pack||{},brought=hasGoods(pack)?costText(pack):"";if(hasGoods(pack))stockGive(pack);
+  c.rover=null;c.path=[];c.pathCursor=0;c.pathEpoch=-1;c.action="Home again";structuresDirty=true;viewDirty=true;
+  if(party){partyMemberHome(party,c);return;}
+  chronicle(c.short+" is home",c.name+" walked back into the lights"+(brought?" with "+brought+".":"."),"colony");say(c.short+" is home.");
+}
+// A waypoint toward a goal that may be beyond the rover's window: as far along the line as the window allows.
+function roverWaypoint(c,goal){
+  if(onMap(goal.x,goal.y))return goal;
+  let dx=goal.x-c.x,dy=goal.y-c.y,len=Math.max(1,Math.sqrt(dx*dx+dy*dy)),reach=ROVER_SIZE/2-ROVER_MARGIN+16;
+  for(let attempt=0;attempt<7;attempt++){let ang=Math.atan2(dy,dx)+(attempt%2?1:-1)*Math.ceil(attempt/2)*0.35,d=Math.min(len,reach);
+    let x=Math.floor(clamp(c.x+Math.cos(ang)*d,WX+1,WX+MAP_SIZE-2)),y=Math.floor(clamp(c.y+Math.sin(ang)*d,WY+1,WY+MAP_SIZE-2));
+    for(let r=0;r<4;r++){for(let oy=-r;oy<=r;oy++)for(let ox=-r;ox<=r;ox++){if(passable(x+ox,y+oy)&&tryRoverPath(c,x+ox,y+oy)!==null)return {x:x+ox,y:y+oy};}}}
+  return null;
+}
+// The rover's window slides one chunk when they come near its edge.
+function roverRecentre(c){
+  let dx=0,dy=0;
+  if(c.x<WX+ROVER_MARGIN)dx=-HOME_SIZE;else if(c.x>WX+MAP_SIZE-ROVER_MARGIN)dx=HOME_SIZE;
+  if(c.y<WY+ROVER_MARGIN)dy=-HOME_SIZE;else if(c.y>WY+MAP_SIZE-ROVER_MARGIN)dy=HOME_SIZE;
+  if(!dx&&!dy)return false;
+  let mainCtx=mainWindowState,across=MAP_SIZE/HOME_SIZE,cx0=chunkOf(WX),cy0=chunkOf(WY);mergeExploredToMain(mainCtx);
+  for(let cy=cy0;cy<cy0+across;cy++)for(let cx=cx0;cx<cx0+across;cx++){if(mainCtx&&chunkInWindow(mainCtx,cx,cy))continue;storeChunk(cx,cy);}
+  osGame.nodes=[];nodeIndex={};for(let i=0;i<MAP_SIZE*MAP_SIZE;i++){nodeAtCell[i]="";}
+  WX+=dx;WY+=dy;fillWindowFromPlane(mainCtx);
+  c.path=[];c.pathCursor=0;c.pathEpoch=-1;
+  return true;
+}
+// One tick of a rover's life, inside their own window.
+function tickRover(c,dt){
+  if(!c.rover||c.dead)return;let ctx=roverContext(c);
+  let mainCtx=captureContext();mainWindowState=mainCtx;
+  withContext(ctx,function(){
+    let r=c.rover,mins=dt*GAME_MINUTES_PER_SECOND;if(!r.pack)r.pack={};
+    c.food=Math.max(0,c.food-mins*0.06);c.rest=Math.max(0,c.rest-(r.resting?-mins*0.5:mins*0.05));c.recreation=Math.max(0,c.recreation-mins*0.02);
+    if(c.food<25&&r.rations>0){r.rations--;c.food=Math.min(100,c.food+45);remember(c,"Trail rations",1,600);}
+    else if(c.food<25&&r.pack&&(r.pack.raw||0)>=2){r.pack.raw-=2;if(!r.pack.raw)delete r.pack.raw;c.food=Math.min(100,c.food+25);remember(c,"Ate from the pack",0,600);}
+    // Alone, out of rations and hungry: nobody needs to tell them to turn back.
+    if(!r.party&&!r.returning&&r.rations<=0&&c.food<30&&(r.pack.raw||0)<2){r.goal={x:r.homeX+2,y:r.homeY+8};r.returning=true;r.resting=false;r.forage="";c.path=[];c.pathCursor=0;c.action="Coming home, hungry";chronicle(c.short+" turns for home",c.name+" is out of rations and hungry, and has turned back toward the lights on their own.","colony");}
+    else if(!r.party&&!r.returning&&(c.bleed>0||c.health<35)){r.goal={x:r.homeX+2,y:r.homeY+8};r.returning=true;r.resting=false;r.forage="";c.path=[];c.pathCursor=0;c.action="Coming home, injured";chronicle(c.short+" turns for home",c.name+" is injured and has turned back toward camp for care.","colony");}
+    {let ck=chunkKey(chunkOf(c.x),chunkOf(c.y));if(ck!==r.chunk){r.chunk=ck;roverChunkEvent(c,chunkOf(c.x),chunkOf(c.y));if(c.dead)return;}}
+    if(c.bleed>0){c.health-=dt*c.bleed;c.bleed=Math.max(0,c.bleed-dt*(r.resting?0.008:0.004));if(c.health<=0){killColonist(c,"injuries, far from the lights");return;}}
+    if(c.food<=0){c.health=Math.max(0,c.health-mins*0.08);if(c.health<=0){killColonist(c,"starvation, far from the lights");return;}}
+    let camp=farCampNear(c.x,c.y,3),night=sunAmount()<0.05,weather=osGame.weather;
+    if(r.resting&&camp)c.rest=Math.min(100,c.rest+mins*0.5);
+    // Nights and weather out there: a fire keeps the teeth away; the wind cuts whoever is walking in it.
+    if(night&&!camp&&!r.resting&&osGame.difficulty!=="peaceful"&&randomUnit()<dt*0.004/(r.party?3:1)){injureColonist(c,4,"something in the dark",true);remember(c,"Bitten in the dark",-3,1440*2);c.action="Something in the dark";}
+    if(weather==="Glass Wind"&&!camp&&!r.resting&&randomUnit()<dt*0.02)injureColonist(c,3,"the glass wind, far from shelter",true);
+    if(weather==="Cold snap"&&!camp)c.rest=Math.max(0,c.rest-mins*0.04);
+    if(c.rest<8&&!r.resting){r.resting=true;c.action=camp?"Resting by the fire":"Resting under the sky";}
+    if(r.resting){if(c.rest>=70)r.resting=false;else return;}
+    if(r.party){if(tickParty(c,dt))return;}else roverRecentre(c);
+    ensureChunksAround(c.x,c.y,MAP_SIZE/2);
+    let home=mainCtx.wx<=c.x&&c.x<mainCtx.wx+mainCtx.size&&mainCtx.wy<=c.y&&c.y<mainCtx.wy+mainCtx.size;
+    if(r.returning&&home&&sqDistance(c.x,c.y,r.homeX,r.homeY)<=20*20){roverRejoin(c);return;}
+    if(!r.goal){c.action="Waiting for orders · "+r.rations+" ration"+(r.rations===1?"":"s");return;}
+    let arrived=sqDistance(c.x,c.y,r.goal.x+.5,r.goal.y+.5)<(r.forage?2.3:1.5);
+    if(arrived&&r.forage){let n=getNode(r.forage);if(!n||n.amount<=0){r.forage="";r.goal=null;c.action="Nothing left there";return;}
+      r.forageProgress+=dt;c.action="Foraging · "+packTotal(r.pack)+" in the pack";if(r.forageProgress<(n.kind==="tree"?9:n.kind==="pile"?2:12))return;
+      let qty=Math.min(n.amount,8,40-packTotal(r.pack)),res=nodeResource(n);if(qty>0){n.amount-=qty;r.pack[res]=(r.pack[res]||0)+qty;}
+      if(n.amount<=0){n.marked=false;nodeAtCell[tileId(n.x,n.y)]="";dirtyTerrainRow(n.y);}nodesEpoch++;r.forage="";r.goal=null;c.action="Foraged "+qty+" "+res+" · "+packTotal(r.pack)+" in the pack";remember(c,"Living off the country",2,1440*2);return;}
+    if(arrived){if(!r.returning){r.goal=null;c.action="Arrived · "+r.rations+" ration"+(r.rations===1?"":"s");remember(c,"The wider country",3,1440*3);}return;}
+    if(!c.path||c.pathCursor>=c.path.length||c.pathEpoch!==pathEpoch){
+      let route=beginRoverRoute(c,r.goal);
+      let wp=roverWaypoint(c,r.goal);
+      if(!wp){if(!route.pending){route.cursor=0;r.noWay=(r.noWay||0)+1;}if(r.noWay>40){c.action=r.returning?"No way home · retrying":"No way through";if(!r.returning)r.goal=null;r.noWay=0;}else c.action="Finding a way";return;}
+      let p=onMap(r.goal.x,r.goal.y)?tryRoverPath(c,wp.x,wp.y):findPath(c.x,c.y,wp.x,wp.y);
+      if(p===null){for(let rad=1;rad<=10&&p===null;rad++)for(let oy=-rad;oy<=rad&&p===null;oy++)for(let ox=-rad;ox<=rad&&p===null;ox++){if(Math.max(Math.abs(ox),Math.abs(oy))!==rad)continue;let nx=wp.x+ox,ny=wp.y+oy;if(passable(nx,ny)){let q=tryRoverPath(c,nx,ny);if(q!==null){p=q;wp={x:nx,y:ny};}}}}
+      if(p===null){if(!route.pending){route.cursor=0;r.noWay=(r.noWay||0)+1;}if(r.noWay>40){c.action=r.returning?"No way home · retrying":"No way through";if(!r.returning)r.goal=null;r.noWay=0;}else c.action="Finding a way";return;}
+      delete roverRouteSearches[c.id];
+      r.noWay=0;c.path=p;c.pathCursor=0;c.pathEpoch=pathEpoch;c.destination={x:wp.x,y:wp.y};c.pathFailed=false;
+    }
+    let bx=c.x,by=c.y;walkPath(c,dt,weather==="Storm"||weather==="Rain"?1.7:2.2);c.action=(r.regroup?"Catching up with the party":r.returning?"Coming home":"Walking")+" · "+r.rations+" ration"+(r.rations===1?"":"s");
+    r.walked=(r.walked||0)+Math.sqrt(sqDistance(bx,by,c.x,c.y));
+    if(Math.floor(bx)!==Math.floor(c.x)||Math.floor(by)!==Math.floor(c.y))revealArea(c.x,c.y,7);
+  });
+  mainWindowState=null;
+}
+// The view follows a rover when they are selected or followed; everything else is drawn from the colony's window.
+
+// Far camps: a fire and a lean-to made from the pack, somewhere out on the plane. Rest is better there, the night
+// keeps its teeth to itself, and a colony can decide to make one its new home.
+function farCamps(){if(!osGame.farCamps)osGame.farCamps=[];return osGame.farCamps;}
+function farCampNear(x,y,r){let list=farCamps();for(let i=0;i<list.length;i++)if(sqDistance(list[i].x+.5,list[i].y+.5,x,y)<=r*r)return list[i];return null;}
+function makeFarCamp(id){
+  let c=findColonist(id||selectedId);if(!c||!c.rover){say("Only a rover can make camp out there.");return false;}
+  if((c.rover.pack.wood||0)<6){say(c.short+" needs 6 wood in the pack to make camp. Forage timber first.");return false;}
+  if(farCampNear(c.x,c.y,12)){say("There is already a camp here.");return false;}
+  c.rover.pack.wood-=6;if(!c.rover.pack.wood)delete c.rover.pack.wood;
+  let camp={id:entityId("fc"),x:Math.floor(c.x),y:Math.floor(c.y),sol:dayNow(),by:c.short};farCamps().push(camp);
+  c.rover.goal=null;c.rover.resting=true;c.action="Making camp";remember(c,"A fire of my own",5,1440*4);
+  noteFact("camps",1);chronicle(c.short+" makes camp",c.name+" built a fire and a lean-to "+Math.round(Math.sqrt(sqDistance(c.x,c.y,c.rover.homeX,c.rover.homeY)))+" tiles from the colony. Settlers rest well there, and a colony could call it home.","colony");
+  say(c.short+" has made camp.");viewDirty=true;refreshAll();return true;
+}
+// Whether the colony could settle at this rover's camp: everyone alive is here, nobody is away.
+function canSettleHere(c){
+  if(!c||!c.rover)return false;let camp=farCampNear(c.x,c.y,6);if(!camp)return false;
+  let all=everyoneAlive();for(let i=0;i<all.length;i++){let p=all[i];if(p.away)return false;if(!p.rover||sqDistance(p.x,p.y,camp.x+.5,camp.y+.5)>12*12)return false;}
+  return true;
+}
+// Settle: the colony's centre moves to the camp, the colony's window slides to it, and everyone rejoins.
+function settleHere(id){
+  let c=findColonist(id||selectedId);if(!canSettleHere(c)){say("Everyone has to be at the camp, and nobody away, before the colony can settle.");return false;}
+  let camp=farCampNear(c.x,c.y,6),old={x:CENTRE,y:centreY()};
+  let nwx=chunkOf(camp.x)*HOME_SIZE-Math.floor(MAP_SIZE/HOME_SIZE/2)*HOME_SIZE,nwy=chunkOf(camp.y)*HOME_SIZE-Math.floor(MAP_SIZE/HOME_SIZE/2)*HOME_SIZE;
+  flushRovers();
+  let people=everyoneAlive();for(let i=0;i<people.length;i++){let p=people[i];if(p.rover){dropRoverContext(p);p.rover=null;p.path=[];p.pathCursor=0;p.pathEpoch=-1;p.action="Settling";}}
+  setCentre(camp.x,camp.y);
+  if(nwx!==WX||nwy!==WY)moveWindow(nwx,nwy);else{topologyDirty=true;serviceTopology();}
+  for(let i=0;i<people.length;i++){let p=people[i];if(!onMap(p.x,p.y)){p.x=camp.x+1.5;p.y=camp.y+1.5;}}
+  // The colony's stove and bedrolls follow it: a fresh landing camp around the fire.
+  let placed=0;for(let k=0;k<4;k++){for(let r=1;r<6&&placed<=k;r++)for(let dy=-r;dy<=r&&placed<=k;dy++)for(let dx=-r;dx<=r&&placed<=k;dx++){let x=camp.x+dx,y=camp.y+dy;if(Math.max(Math.abs(dx),Math.abs(dy))!==r)continue;if(passable(x,y)&&!cellBuilding[tileId(x,y)]&&!nodeAtCell[tileId(x,y)]){readyBuilding("bedroll",x,y);placed++;}}}
+  for(let r=1;r<6;r++){let done=false;for(let dy=-r;dy<=r&&!done;dy++)for(let dx=-r;dx<=r&&!done;dx++){let x=camp.x+dx,y=camp.y+dy;if(Math.max(Math.abs(dx),Math.abs(dy))!==r)continue;if(passable(x,y)&&passable(x+1,y)&&!cellBuilding[tileId(x,y)]&&!cellBuilding[tileId(x+1,y)]&&!nodeAtCell[tileId(x,y)]&&!nodeAtCell[tileId(x+1,y)]){readyBuilding("cookfire",x,y);done=true;}}if(done)break;}
+  if(!hasLocalWarehouse()){for(let r=1;r<7;r++){let done=false;for(let dy=-r;dy<=r&&!done;dy++)for(let dx=-r;dx<=r&&!done;dx++){let x=camp.x+dx,y=camp.y+dy;if(Math.max(Math.abs(dx),Math.abs(dy))!==r)continue;if(passable(x,y)&&passable(x+1,y)&&passable(x,y+1)&&passable(x+1,y+1)&&!cellBuilding[tileId(x,y)]&&!cellBuilding[tileId(x+1,y)]&&!cellBuilding[tileId(x,y+1)]&&!cellBuilding[tileId(x+1,y+1)]&&!nodeAtCell[tileId(x,y)]&&!nodeAtCell[tileId(x+1,y)]&&!nodeAtCell[tileId(x,y+1)]&&!nodeAtCell[tileId(x+1,y+1)]){readyBuilding("stockpile",x,y);done=true;}}if(done)break;}}
+  topologyDirty=true;serviceTopology();revealArea(camp.x,camp.y,14);generateJobs();
+  osGame.name=osGame.name;noteFact("moves",1);
+  chronicle("A new home","The colony has settled at "+c.short+"'s camp, "+Math.round(Math.sqrt(sqDistance(camp.x,camp.y,old.x,old.y)))+" tiles from where it landed. What was built before waits where it stands; the fire here is the centre now.","milestone");
+  say("The colony has a new home. Caravans, threats and arrivals now come to this ground.");followColonistId="";viewAt(camp.x,camp.y);refreshAll();return true;
+}

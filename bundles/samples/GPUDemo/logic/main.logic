@@ -1,0 +1,354 @@
+// GPU Compute Demo — flat state machine (avoids deep callback nesting)
+
+let status = "Ready"
+let result = ""
+let deviceReady = false
+let running = false
+
+// Input data
+let inputA = "1, 2, 3, 4, 5, 6, 7, 8"
+let inputB = "10, 20, 30, 40, 50, 60, 70, 80"
+function computeShaderCode(op) {
+  let opExpr = "a[i] + b[i]"
+  if (op === "mul") { opExpr = "a[i] * b[i]" }
+  else if (op === "saxpy") { opExpr = "2.5 * a[i] + b[i]" }
+  else if (op === "relu") { opExpr = "max(0.0, a[i] * b[i] - 0.5)" }
+  let code = "@group(0) @binding(0) var<storage, read> a : array<f32>;\n"
+  code = code + "@group(0) @binding(1) var<storage, read> b : array<f32>;\n"
+  code = code + "@group(0) @binding(2) var<storage, read_write> result : array<f32>;\n"
+  code = code + "@compute @workgroup_size(64)\n"
+  code = code + "fn main(@builtin(global_invocation_id) gid : vec3u) {\n"
+  code = code + "  let i = gid.x;\n"
+  code = code + "  if (i < arrayLength(&a)) {\n"
+  code = code + "    result[i] = " + opExpr + ";\n"
+  code = code + "  }\n"
+  code = code + "}\n"
+  return code
+}
+
+function doubleShaderCode() {
+  let code = "@group(0) @binding(0) var<storage, read> input : array<f32>;\n"
+  code = code + "@group(0) @binding(1) var<storage, read_write> output : array<f32>;\n"
+  code = code + "@compute @workgroup_size(64)\n"
+  code = code + "fn main(@builtin(global_invocation_id) gid : vec3u) {\n"
+  code = code + "  let i = gid.x;\n"
+  code = code + "  if (i < arrayLength(&input)) {\n"
+  code = code + "    output[i] = input[i] * 2.0;\n"
+  code = code + "  }\n"
+  code = code + "}\n"
+  return code
+}
+
+let kernelOp = "add"
+let currentWgsl = computeShaderCode("add")
+let gpuElapsedMs = 0
+let _dispatchAt = 0
+
+// State machine storage (all globals — no closure vars across callbacks)
+let _step = ""
+let _bufAId = ""
+let _bufBId = ""
+let _bufOutId = ""
+let _shaderId = ""
+let _pipeId = ""
+let _len = 0
+let _dataA = []
+let _dataB = []
+
+function log(msg) {
+  status = msg
+}
+
+let gpuMissing = false
+
+function _checkError(res) {
+  if (res && res.error) {
+    _cleanupResources()
+    let msg = String(res.error)
+    log("Error: " + msg)
+    running = false
+    // No adapter or device means no WebGPU here at all: say so where the
+    // answer would have gone, not only in the status strip.
+    if (msg.toLowerCase().indexOf("adapter") >= 0 || msg.toLowerCase().indexOf("device") >= 0 || msg.toLowerCase().indexOf("webgpu") >= 0) {
+      gpuMissing = true
+      result = "WebGPU is not available in this browser. Chrome, Edge or Firefox on a machine with a graphics card can run this."
+    } else {
+      result = msg
+    }
+    return true
+  }
+  return false
+}
+
+function formatVector(data) {
+  if (!data || !data.length) { return "(empty)" }
+  let parts = []
+  let i = 0
+  while (i < data.length && i < 24) {
+    let v = Math.round(data[i] * 1000) / 1000
+    parts.push(String(v))
+    i = i + 1
+  }
+  return "[ " + parts.join(", ") + (data.length > 24 ? (", … (" + data.length + " total)") : "") + " ]"
+}
+
+function setKernelOp(op) {
+  kernelOp = op
+  currentWgsl = computeShaderCode(op)
+}
+
+function loadBenchPreset(count) {
+  if (count === 8) {
+    inputA = "1, 2, 3, 4, 5, 6, 7, 8"
+    inputB = "10, 20, 30, 40, 50, 60, 70, 80"
+    log("Loaded 8-element sample vectors")
+    return
+  }
+  let a = []
+  let b = []
+  let i = 0
+  while (i < count) {
+    a.push(String((i % 17) + 1))
+    b.push(String(((i * 3) % 19) + 0.5))
+    i = i + 1
+  }
+  inputA = a.join(", ")
+  inputB = b.join(", ")
+  log("Loaded " + count + "-element benchmark vectors")
+}
+
+function parseNumbers(str) {
+  let parts = str.split(",")
+  let nums = []
+  let i = 0
+  while (i < parts.length) {
+    let n = parseFloat(parts[i].trim())
+    if (!isNaN(n)) {
+      nums.push(n)
+    }
+    i = i + 1
+  }
+  return nums
+}
+
+// ── Two-input WGSL compute kernels ──
+
+function runAddition() {
+  if (running) return
+  running = true
+  gpuMissing = false
+  gpuElapsedMs = 0
+  result = ""
+  currentWgsl = computeShaderCode(kernelOp)
+  log("Starting GPU " + kernelOp.toUpperCase() + " compute...")
+
+  let a = parseNumbers(inputA)
+  let b = parseNumbers(inputB)
+
+  if (a.length === 0 || b.length === 0) {
+    log("Error: enter comma-separated numbers")
+    running = false
+    return
+  }
+  if (a.length !== b.length) {
+    log("Error: arrays must be same length")
+    running = false
+    return
+  }
+
+  _len = a.length
+  _step = "add"
+  _dataA = a
+  _dataB = b
+  softn.ai.gpu.requestDevice(function(dev) {
+    if (_checkError(dev)) return
+    _addStep2()
+  })
+}
+
+function _addStep2() {
+  log("Creating buffers (" + _len + " floats each)...")
+  softn.ai.gpu.createBuffer({ data: _dataA }, "storage", function(res) {
+    if (_checkError(res)) return
+    _bufAId = res.bufferId
+    _addStep3()
+  })
+}
+
+function _addStep3() {
+  softn.ai.gpu.createBuffer({ data: _dataB }, "storage", function(res) {
+    if (_checkError(res)) return
+    _bufBId = res.bufferId
+    _addStep4()
+  })
+}
+
+function _addStep4() {
+  softn.ai.gpu.createBuffer({ size: _len * 4 }, "storage", function(res) {
+    if (_checkError(res)) return
+    _bufOutId = res.bufferId
+    _addStep5()
+  })
+}
+
+function _addStep5() {
+  log("Compiling " + kernelOp.toUpperCase() + " WGSL shader...")
+  let code = computeShaderCode(kernelOp)
+  currentWgsl = code
+  softn.ai.gpu.createShader({ code: code }, function(res) {
+    if (_checkError(res)) return
+    _shaderId = res.shaderId
+    _addStep6()
+  })
+}
+
+function _addStep6() {
+  log("Creating pipeline...")
+  softn.ai.gpu.createPipeline({ shader: _shaderId }, function(res) {
+    if (_checkError(res)) return
+    _pipeId = res.pipelineId
+    _addStep7()
+  })
+}
+
+function _addStep7() {
+  log("Dispatching compute...")
+  _dispatchAt = Date.now()
+  let wgCount = Math.ceil(_len / 64)
+  softn.ai.gpu.dispatch(_pipeId, [
+    { binding: 0, buffer: _bufAId },
+    { binding: 1, buffer: _bufBId },
+    { binding: 2, buffer: _bufOutId }
+  ], [wgCount, 1, 1], function(res) {
+    if (_checkError(res)) return
+    _addStep8()
+  })
+}
+
+function _addStep8() {
+  log("Reading results...")
+  softn.ai.gpu.readBuffer(_bufOutId, function(res) {
+    if (_checkError(res)) return
+    gpuMissing = false
+    gpuElapsedMs = _dispatchAt > 0 ? Math.max(1, Date.now() - _dispatchAt) : 1
+    result = formatVector(res.data)
+    log("Done (" + gpuElapsedMs + " ms): " + kernelOp.toUpperCase() + " over " + _len + " elements.")
+    running = false
+    _cleanupResources()
+  })
+}
+
+function _cleanupResources() {
+  if (_bufAId !== "") { softn.ai.gpu.release(_bufAId, function(r) {}) }
+  if (_bufBId !== "") { softn.ai.gpu.release(_bufBId, function(r) {}) }
+  if (_bufOutId !== "") { softn.ai.gpu.release(_bufOutId, function(r) {}) }
+  if (_shaderId !== "") { softn.ai.gpu.release(_shaderId, function(r) {}) }
+  if (_pipeId !== "") { softn.ai.gpu.release(_pipeId, function(r) {}) }
+  _bufAId = ""
+  _bufBId = ""
+  _bufOutId = ""
+  _shaderId = ""
+  _pipeId = ""
+}
+
+// ── Inline Multiply Shader ──
+
+function runInlineShader() {
+  if (running) return
+  running = true
+  gpuMissing = false
+  gpuElapsedMs = 0
+  result = ""
+  currentWgsl = doubleShaderCode()
+  log("Running inline double shader...")
+
+  let a = parseNumbers(inputA)
+  _len = a.length
+  if (_len === 0) {
+    log("Error: enter comma-separated numbers in A")
+    running = false
+    return
+  }
+
+  _step = "mul"
+  _dataA = a
+  softn.ai.gpu.requestDevice(function(dev) {
+    if (_checkError(dev)) return
+    _mulStep2()
+  })
+}
+
+function _mulStep2() {
+  softn.ai.gpu.createBuffer({ data: _dataA }, "storage", function(res) {
+    if (_checkError(res)) return
+    _bufAId = res.bufferId
+    _mulStep3()
+  })
+}
+
+function _mulStep3() {
+  softn.ai.gpu.createBuffer({ size: _len * 4 }, "storage", function(res) {
+    if (_checkError(res)) return
+    _bufOutId = res.bufferId
+    _mulStep4()
+  })
+}
+
+function _mulStep4() {
+  let code = doubleShaderCode()
+  currentWgsl = code
+
+  softn.ai.gpu.createShader({ code: code }, function(res) {
+    if (_checkError(res)) return
+    _shaderId = res.shaderId
+    _mulStep5()
+  })
+}
+
+function _mulStep5() {
+  softn.ai.gpu.createPipeline({ shader: _shaderId }, function(res) {
+    if (_checkError(res)) return
+    _pipeId = res.pipelineId
+    _mulStep6()
+  })
+}
+
+function _mulStep6() {
+  _dispatchAt = Date.now()
+  let wgCount = Math.ceil(_len / 64)
+  softn.ai.gpu.dispatch(_pipeId, [
+    { binding: 0, buffer: _bufAId },
+    { binding: 1, buffer: _bufOutId }
+  ], [wgCount, 1, 1], function(res) {
+    if (_checkError(res)) return
+    _mulStep7()
+  })
+}
+
+function _mulStep7() {
+  softn.ai.gpu.readBuffer(_bufOutId, function(res) {
+    if (_checkError(res)) return
+    gpuMissing = false
+    gpuElapsedMs = _dispatchAt > 0 ? Math.max(1, Date.now() - _dispatchAt) : 1
+    result = formatVector(res.data)
+    log("Done (" + gpuElapsedMs + " ms): the GPU doubled " + _len + " values.")
+    running = false
+    _cleanupResources()
+  })
+}
+
+function cleanup() {
+  gpuMissing = false
+  gpuElapsedMs = 0
+  if (typeof softn !== "undefined" && softn.ai && softn.ai.gpu && softn.ai.gpu.releaseAll) {
+    softn.ai.gpu.releaseAll(function(res) {
+      deviceReady = false
+      result = ""
+      log("All GPU resources released")
+    })
+  } else {
+    deviceReady = false
+    result = ""
+    log("All GPU resources released")
+  }
+}

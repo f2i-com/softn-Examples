@@ -1,0 +1,7 @@
+// Main power and emergency power are distinct. A blackout is an opportunity, not invisibility.
+function mainPowerOn(){return omGame.power.offUntil<=omGame.minutes;}
+function setPowerFault(minutes,source){omGame.power.offUntil=Math.max(omGame.power.offUntil,omGame.minutes+minutes);omGame.power.source=source;omGame.heat=clamp(omGame.heat+8,0,100);updateSecurityPolicy();logEvent("Main circuit down","Emergency cameras and the east searchlight remain active. Main power returns near "+clockText(omGame.power.offUntil)+".","power");playCue("power");dirty();}
+function tickPowerAndWeather(){
+  if(omGame.power.source!=="normal"&&mainPowerOn()){omGame.power.source="normal";logEvent("Lights return","Main power restored. Prepared blackouts must be rebuilt after use.","power");playCue("notice");dirty();}
+  if(omGame.minutes>=omGame.weatherUntil){omGame.weather=pick(["Clear","Clear","Rain","Fog","Storm"]);omGame.weatherUntil=omGame.minutes+randomInt(480,960);dirty();}
+}

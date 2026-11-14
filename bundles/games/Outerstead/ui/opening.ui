@@ -1,0 +1,23 @@
+<import BrandLogo from="./brand-logo.ui" />
+<import OpeningShots from="./opening-shots.ui" />
+<div className="os-opening" osstage={String(openingStage)} osstarted={String(openingStarted)}>
+  <div className="os-opening-stars" /><div className="os-opening-horizon" />
+  <div className="os-opening-content">
+    <div className="os-label">HOLLOW-7 / ARRIVAL</div>
+    <div className="os-opening-logo"><BrandLogo /></div>
+    <h1>{openingHeading}</h1><p className="os-opening-line">{openingLine}</p>
+    <div className="os-opening-window"><div className="os-title-colour" style={visualStyle}><OpeningShots /></div></div>
+    <div className="os-opening-actions">
+      #if (!openingStarted)
+        <button className="os-btn os-primary" @click={startOpening}>Play trailer · with sound</button>
+      #else
+        <button className="os-btn" @click={toggleSound}>{ambienceText}</button>
+      #end
+      <button className="os-btn" @click={toggleNarration}>{narrationEnabled ? "Narration: on" : "Narration: off"}</button>
+      <button className="os-btn" @click={finishOpening}>Skip to title</button>
+      <button className="os-btn" @click={openPresentation}>Picture &amp; sound</button>
+    <button className="os-btn" @click={setMotion}>{reducedMotion ? "Animations: off" : "Animations: on"}</button>
+    </div>
+    <p className="os-opening-credit">First Light · music & narration generated with ElevenLabs</p>
+  </div>
+</div>

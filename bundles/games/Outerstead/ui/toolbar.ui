@@ -1,0 +1,13 @@
+<div className="os-toolbar">
+  <button className="os-btn os-tool" oson={String(autoMode)} title="Automatically designate nearby supplies and choose practical research" @click={toggleAutoMode}>{autoMode ? "AUTO ON" : "AUTO OFF"}</button>
+  <button className="os-btn os-tool" oson={String(activePanel === "overview")} @click={() => setPanel("overview")}><span>⌂</span>COLONY</button>
+  <button className="os-btn os-tool" oson={String(activePanel === "build")} @click={() => setPanel("build")}><span>⚒</span>BUILD</button>
+  <button className="os-btn os-tool" oson={String(toolKind === "harvest")} @click={() => chooseTool("harvest")}><span>⌁</span>GATHER</button>
+  <button className="os-btn os-tool" oson={String(activePanel === "work")} @click={() => setPanel("work")}><span>♙</span>WORK</button>
+  <button className="os-btn os-tool" oson={String(activePanel === "research")} @click={() => setPanel("research")}><span>⌬</span>RESEARCH</button>
+  <button className="os-btn os-tool" oson={String(activePanel === "storage")} @click={() => setPanel("storage")}><span>▣</span>STOCK</button>
+  <button className="os-btn os-tool" oson={String(activePanel === "frontier")} @click={() => setPanel("frontier")}><span>◇</span>FRONTIER</button>
+  <button className="os-btn os-tool" oson={String(activePanel === "chronicle")} @click={() => setPanel("chronicle")}><span>▤</span>CHRONICLE</button>
+  <div className="os-toolbar-divider" />
+  <button className="os-btn os-tool" @click={openSaves}>SAVE</button>
+</div>

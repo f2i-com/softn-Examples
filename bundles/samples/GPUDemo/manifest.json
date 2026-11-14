@@ -1,0 +1,29 @@
+{
+  "name": "GPUDemo",
+  "version": "1.1.0",
+  "description": "Vector maths on your graphics card: switch between WebGPU WGSL compute kernels (Add, Multiply, SAXPY, ReLU) and 8..4096-element benchmarks with timing",
+  "main": "ui/main.ui",
+  "icon": "assets/icon.svg",
+  "files": {
+    "ui": [
+      "ui/main.ui"
+    ],
+    "logic": [
+      "logic/main.logic"
+    ],
+    "assets": [
+      "assets/icon.svg"
+    ]
+  },
+  "config": {
+    "window": {
+      "title": "GPU Compute",
+      "width": 700,
+      "height": 600
+    },
+    "theme": {
+      "primary": "#10b981",
+      "mode": "dark"
+    }
+  }
+}

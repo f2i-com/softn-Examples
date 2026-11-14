@@ -1,0 +1,44 @@
+// Sound is on by default. Browsers only allow audio after a gesture, so a refused start is retried
+// a few seconds later instead of being remembered as a permanent failure.
+let runInBackground=true,ambienceEnabled=true,ambienceHandle="",ambiencePending=false,ambienceFailed=false,ambienceToken=0,ambienceRetryClock=0;
+function stopAmbience(){let handle=ambienceHandle;ambienceHandle="";ambiencePending=false;ambienceToken++;if(handle&&softn.audio&&softn.audio.stop)softn.audio.stop(handle,function(){});}
+function syncAmbience(){
+ let wanted=ambienceEnabled&&omGame&&!omGame.over&&!dialog&&(screen==="game"?!paused:screen==="title"&&demoRun&&!titleReplayPaused);
+ if(!wanted){if(ambienceHandle||ambiencePending)stopAmbience();return;}
+ if(ambienceHandle||ambiencePending||ambienceFailed||typeof softn==="undefined"||!softn.audio||!softn.audio.play)return;
+ ambiencePending=true;let token=++ambienceToken;
+ try{softn.audio.play("assets/audio/greywall-ambience.mp3",{volume:.08,loop:true},function(result){
+  let handle=result&&result.handle;
+  if(token!==ambienceToken){if(handle&&softn.audio.stop)softn.audio.stop(handle,function(){});return;}
+  ambiencePending=false;if(handle)ambienceHandle=handle;else{ambienceFailed=true;ambienceRetryClock=0;}dirty();
+ });}catch(e){ambiencePending=false;ambienceFailed=true;dirty();}
+}
+function tickAmbienceRetry(dt){if(!ambienceFailed||!ambienceEnabled)return;ambienceRetryClock+=dt;if(ambienceRetryClock>=8){ambienceRetryClock=0;ambienceFailed=false;}}
+function toggleAmbience(){ambienceEnabled=!ambienceEnabled;ambienceFailed=false;if(!ambienceEnabled)stopAmbience();saveSettings();syncAmbience();dirty();}
+function playCue(name){cueAudio(name);if(!soundEnabled||typeof softn==="undefined"||!softn.audio||typeof softn.audio.play!=="function")return;try{softn.audio.play("assets/audio/"+name+".mp3",{volume:0.18,loop:false},function(){});}catch(e){lastWarning="Audio unavailable in this host.";}}
+function saveSettings(){try{localStorage.setItem(SAVE_PREFIX+"settings",JSON.stringify({guideEnabled:guideEnabled,runInBackground:runInBackground,musicEnabled:musicEnabled,voiceEnabled:voiceEnabled,ambienceEnabled:ambienceEnabled,reducedMotion:reducedMotion,soundEnabled:soundEnabled,showSecurity:showSecurity,fullSecurity:fullSecurity,highContrast:highContrast,pauseOnNotice:pauseOnNotice}));}catch(e){}}
+function loadSettings(){try{let t=localStorage.getItem(SAVE_PREFIX+"settings");if(t){let s=JSON.parse(t);guideEnabled=s.guideEnabled!==false;runInBackground=s.runInBackground!==false;musicEnabled=s.musicEnabled!==false;voiceEnabled=s.voiceEnabled!==false;ambienceEnabled=s.ambienceEnabled!==false;reducedMotion=!!s.reducedMotion;soundEnabled=s.soundEnabled!==false;showSecurity=s.showSecurity!==false;fullSecurity=!!s.fullSecurity;highContrast=!!s.highContrast;pauseOnNotice=s.pauseOnNotice!==false;}autoIndex=clamp(parseInt(localStorage.getItem(SAVE_PREFIX+"autoIndex")||"0",10)||0,0,2);}catch(e){}}
+function toggleSetting(id){if(id==="motion")reducedMotion=!reducedMotion;if(id==="background")runInBackground=!runInBackground;if(id==="sound"){soundEnabled=!soundEnabled;playCue("notice");}if(id==="security")showSecurity=!showSecurity;if(id==="full")fullSecurity=!fullSecurity;if(id==="contrast")highContrast=!highContrast;if(id==="pause")pauseOnNotice=!pauseOnNotice;saveSettings();dirty();}
+function openDialog(id){dialog=id;if(id==="saves")refreshSlots();dirty();}
+function closeDialog(){if(["arrival","challenge","detained","ending","error"].indexOf(dialog)>=0)return;if(dialog==="restart")guidedStartPending=false;dialog="";dirty();}
+function returnToTitle(){guidedStartPending=false;if(omGame)saveSlot(autoIndex,true);paused=true;screen="title";dialog="";contextMenu=null;refreshSlots();dirty();}
+function confirmNewGame(){if(omGame&&!omGame.over&&!demoRun){dialog="restart";return;}newGame();}
+function chooseBackground(id){if(BACKGROUNDS.some(function(d){return d.id===id;})){backgroundChoice=id;dirty();}}
+function chooseDifficulty(id){if(DIFFICULTIES[id])difficultyChoice=id;dirty();}
+function setSpeed(value){if([1,2,4].indexOf(value)<0)return;gameSpeed=value;paused=false;dirty();}
+function togglePause(){if(!omGame||omGame.over)return;paused=!paused;dirty();}
+function openPanel(id){activePanel=id;mobilePanelOpen=true;refreshAll();}
+function toggleSprint(){if(!omGame)return;omGame.sprinting=!omGame.sprinting;say(omGame.sprinting?"Run enabled. Energy drains faster; attention matters.":"Walking pace.");dirty();}
+
+function setPanel(id){moreOpen=false;guideSheetOpen=false;openPanel(id);}
+// Template handlers must go through a function that marks the view dirty: a bare assignment in a
+// click expression changes the state but nothing redraws until the next simulation frame, which on a
+// paused phone is never. The drawer's close button was the visible case.
+function closePanel(){mobilePanelOpen=false;moreOpen=false;contextMenu=null;dirty();}
+// The guide as a sheet over the map: the same card as the Day panel, one tap from the routine bar.
+function toggleGuideSheet(){guideSheetOpen=!guideSheetOpen;if(guideSheetOpen){if(!guideEnabled){guideEnabled=true;saveSettings();}contextMenu=null;moreOpen=false;mobilePanelOpen=false;}refreshAll();}
+function closeGuideSheet(){guideSheetOpen=false;dirty();}
+function toggleStory(){storyOpen=!storyOpen;dirty();}
+function toggleSetup(){setupOpen=!setupOpen;dirty();}
+function choosePalette(n){if([0,1,2,3,4,5].indexOf(n)>=0)characterPalette=n;dirty();}
+function toggleMore(){moreOpen=!moreOpen;if(moreOpen)contextMenu=null;dirty();}

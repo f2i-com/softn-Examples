@@ -1,0 +1,33 @@
+{
+  "name": "HouseBuilder",
+  "version": "1.1.0",
+  "description": "Draw a house from above and see it in 3D with HDR lighting, AgX tone mapping, GTAO, animated doors, room area labels, a rich furniture catalogue, save slots, OBJ/JSON export, and a first-person walkthrough.",
+  "main": "ui/main.ui",
+  "icon": "assets/icon.svg",
+  "files": {
+    "ui": [
+      "ui/main.ui"
+    ],
+    "logic": [
+      "logic/main.logic"
+    ],
+    "assets": [
+      "assets/icon.svg",
+      "assets/env/sunny-meadow.hdr",
+      "assets/models/garden-tree.glb",
+      "assets/models/patio-lamp.glb"
+    ]
+  },
+  "config": {
+    "window": {
+      "title": "House Builder",
+      "width": 1280,
+      "height": 800
+    },
+    "theme": {
+      "primary": "#f59e0b",
+      "mode": "dark"
+    }
+  },
+  "author": "SoftN"
+}

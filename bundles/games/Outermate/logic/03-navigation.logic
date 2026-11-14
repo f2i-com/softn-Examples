@@ -1,0 +1,117 @@
+// Adapted from Outerstead's eight-neighbour, binary-heap A*. Shared scratch buffers and
+// bounded copy-on-read caching retained. NEW: actor access classes + security policy epoch.
+function rebuildSpatial(){
+  navBlocked=[];doorAt=[];zoneAt=[];
+  for(let i=0;i<MAP_SIZE*MAP_SIZE;i++){navBlocked.push(omGame.walls[i]?1:0);doorAt.push(null);zoneAt.push("grounds");}
+  for(let i=0;i<ZONES.length;i++){let z=ZONES[i];for(let y=z.y;y<z.y+z.h;y++)for(let x=z.x;x<z.x+z.w;x++)zoneAt[tileId(x,y)]=z.id;}
+  if(omGame.generation&&omGame.generation.version>=3)for(let id of omGame.generation.courtyards)zoneAt[id]="grounds";
+  for(let i=0;i<omGame.props.length;i++){let b=omGame.props[i];if(!b.solid)continue;for(let y=b.y;y<b.y+b.h;y++)for(let x=b.x;x<b.x+b.w;x++)if(onMap(x,y))navBlocked[tileId(x,y)]=1;}
+  for(let i=0;i<omGame.doors.length;i++){let d=omGame.doors[i];doorAt[tileId(d.x,d.y)]=d;navBlocked[tileId(d.x,d.y)]=0;}
+  // Author-defined interaction anchors are a traversable part of their fixture.
+  for(let i=0;i<SITES.length;i++)navBlocked[tileId(SITES[i].ax,SITES[i].ay)]=0;
+  pathEpoch++;pathCache={};pathCacheKeys=[];navSeen=[];navClosed=[];navCost=[];navFrom=[];navSerial=0;
+  rebuildIndexes();rebuildActivityStations();rebuildBeds();
+}
+function updateSecurityPolicy(){
+  let key=(timeIn(345,1320)?"day":"night")+":"+(isWorkTime()?"work":"free")+":"+currentAlert()+":"+(omGame.power.offUntil>omGame.minutes?"outage":"main");
+  if(omGame.policyKey!==key){omGame.policyKey=key;securityEpoch++;}
+}
+function accessProfile(c){
+  // Officers and staff pass every door: crossing rooms does not change their access.
+  if(c.role==="guard"||c.role==="staff")return {role:c.role,key:c.role+":"+pathEpoch};
+  let zone=zoneOf(c),escape=omGame.escape&&((c.id==="player")||(c.crew&&c.crewState==="following"))?omGame.escape.route:"";
+  let uniform=(c.id==="player"?hasUniformPass():c.crew&&omGame.escape&&omGame.escape.route==="maintenance");
+  let a={role:c.role,job:c.job,home:c.homeZone,zone:zone,returning:c.mode==="routine"||c.role==="inmate",uniform:uniform,escape:escape};
+  a.key=a.role+":"+a.job+":"+a.home+":"+a.zone+":"+(a.returning?1:0)+":"+(a.uniform?1:0)+":"+escape+":"+securityEpoch+":"+pathEpoch;
+  return a;
+}
+function doorPasses(a,d){
+  if(a.role==="guard"||a.role==="staff")return true;
+  if(d.kind==="freight")return a.escape==="cargo"||a.escape==="paper";
+  if(d.kind==="service")return a.escape==="maintenance"||(a.escape==="blackout"&&omGame.power.offUntil>omGame.minutes);
+  if(d.kind==="perimeter")return a.escape==="breach";
+  if(d.kind==="staff")return false;
+  if(d.kind==="cell")return timeIn(345,1320)||d.job===a.home||a.uniform;
+  if(d.kind==="block")return timeIn(345,1320)||a.uniform||(a.returning&&a.home===d.job)||(a.zone!==d.job&&a.home===d.job);
+  if(d.kind==="public")return timeIn(345,1320)||a.uniform||a.zone===d.job;
+  if(d.kind==="work"){
+    if(a.zone===d.job)return true; // Leaving a room remains possible after a shift ends.
+    if(currentAlert()>=3)return false;
+    if(a.uniform&&timeIn(345,1320))return true;
+    return isWorkTime()&&((a.job===d.job)||(a.job==="kitchen"&&d.job==="canteen"));
+  }
+  return false;
+}
+function passableWith(a,x,y){if(!onMap(x,y))return false;let cell=tileId(x,y);if(navBlocked[cell])return false;let d=doorAt[cell];return !d||doorPasses(a,d);}
+function passableFor(c,x,y){return passableWith(accessProfile(c),x,y);}
+function heuristic(a,b){let dx=Math.abs(a%MAP_SIZE-b%MAP_SIZE),dy=Math.abs(Math.floor(a/MAP_SIZE)-Math.floor(b/MAP_SIZE));return Math.max(dx,dy)+0.41421356*Math.min(dx,dy);}
+function findPath(c,sx,sy,gx,gy){
+  pathRequests++;let a=accessProfile(c),key=Math.floor(sx)+","+Math.floor(sy)+":"+Math.floor(gx)+","+Math.floor(gy)+":"+a.key;
+  if(hasOwn(pathCache,key)){pathHits++;let cached=pathCache[key];return cached===null?null:cached.slice();}
+  let result=searchPath(a,sx,sy,gx,gy);
+  if(pathCacheKeys.length>=384){let oldest=pathCacheKeys.shift();delete pathCache[oldest];}
+  pathCacheKeys.push(key);pathCache[key]=result===null?null:result.slice();return result;
+}
+function searchPath(a,sx,sy,gx,gy){
+  sx=Math.floor(sx);sy=Math.floor(sy);gx=Math.floor(gx);gy=Math.floor(gy);
+  if(!onMap(sx,sy)||!passableWith(a,gx,gy))return null;
+  let start=tileId(sx,sy),goal=tileId(gx,gy);if(start===goal)return [];
+  navSerial++;if(navSerial>100000000){navSerial=1;navSeen=[];navClosed=[];}
+  let stamp=navSerial,heapI=[start],heapF=[heuristic(start,goal)],expanded=0;
+  navSeen[start]=stamp;navCost[start]=0;navFrom[start]=-1;
+  while(heapI.length&&expanded<6500){
+    let cur=heapI[0],lastI=heapI.pop(),lastF=heapF.pop();
+    if(heapI.length){heapI[0]=lastI;heapF[0]=lastF;let p=0;while(true){let l=p*2+1,r=l+1,b=p;if(l<heapI.length&&heapF[l]<heapF[b])b=l;if(r<heapI.length&&heapF[r]<heapF[b])b=r;if(b===p)break;let ti=heapI[p],tf=heapF[p];heapI[p]=heapI[b];heapF[p]=heapF[b];heapI[b]=ti;heapF[b]=tf;p=b;}}
+    if(navClosed[cur]===stamp)continue;navClosed[cur]=stamp;expanded++;
+    if(cur===goal){let out=[],at=goal;while(at!==start&&at!==-1){out.push(at);at=navFrom[at];if(out.length>MAP_SIZE*MAP_SIZE)return null;}out.reverse();return out;}
+    let x=cur%MAP_SIZE,y=Math.floor(cur/MAP_SIZE);
+    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+      if((dx===0&&dy===0)||!passableWith(a,x+dx,y+dy))continue;
+      if(dx&&dy&&(!passableWith(a,x+dx,y)||!passableWith(a,x,y+dy)))continue;
+      let id=tileId(x+dx,y+dy);if(navClosed[id]===stamp)continue;
+      let cost=navCost[cur]+(dx&&dy?1.41421356:1);
+      if(navSeen[id]===stamp&&cost>=navCost[id])continue;
+      navSeen[id]=stamp;navCost[id]=cost;navFrom[id]=cur;
+      let k=heapI.length;heapI.push(id);heapF.push(cost+heuristic(id,goal));
+      while(k>0){let p=Math.floor((k-1)/2);if(heapF[p]<=heapF[k])break;let ti=heapI[p],tf=heapF[p];heapI[p]=heapI[k];heapF[p]=heapF[k];heapI[k]=ti;heapF[k]=tf;k=p;}
+    }
+  }
+  return null;
+}
+function routeTo(c,x,y){
+  let p=findPath(c,c.x,c.y,x,y);if(p===null){c.path=[];c.pathCursor=0;c.destination=null;c.retryAt=omGame.elapsed+3;return false;}
+  if(!p.length&&sqDistance(c.x,c.y,Math.floor(x)+0.5,Math.floor(y)+0.5)>0.000001)p.push(tileId(x,y));
+  c.path=p;c.pathCursor=0;c.destination={x:Math.floor(x),y:Math.floor(y)};c.pathEpoch=pathEpoch;c.pathProfile=accessProfile(c).key;c.retryAt=0;return true;
+}
+function routeNear(c,x,y,radius){
+  let a=accessProfile(c),points=[];for(let dy=-radius;dy<=radius;dy++)for(let dx=-radius;dx<=radius;dx++)if(passableWith(a,Math.floor(x)+dx,Math.floor(y)+dy))points.push({x:Math.floor(x)+dx,y:Math.floor(y)+dy});
+  points.sort(function(a,b){return sqDistance(a.x,a.y,c.x,c.y)-sqDistance(b.x,b.y,c.x,c.y);});
+  for(let i=0;i<Math.min(points.length,16);i++)if(routeTo(c,points[i].x,points[i].y))return true;return false;
+}
+function walkPath(c,dt,multiplier){
+  if(!c.path||c.pathCursor>=c.path.length)return true;
+  let a=accessProfile(c);
+  if(c.pathEpoch!==pathEpoch||c.pathProfile!==a.key){
+    let dest=c.destination;if(!dest||!routeTo(c,dest.x,dest.y))return false;a=accessProfile(c);
+  }
+  let speed=multiplier||2.25;if(c.dragging)speed*=0.55;
+  if(c.role==="player"){if(c.background==="runner")speed*=1.15;if(omGame.sprinting&&c.energy>12){speed*=1.6;c.energy=Math.max(0,c.energy-dt*1.0);}if(c.energy<10)speed*=0.7;}
+  let budget=dt*speed;
+  while(budget>0&&c.pathCursor<c.path.length){
+    let cell=c.path[c.pathCursor],xx=cell%MAP_SIZE,yy=Math.floor(cell/MAP_SIZE),tx=xx+0.5,ty=yy+0.5;
+    // Revalidate the next edge, even on a cached path and even mid-step.
+    let cx=Math.floor(c.x),cy=Math.floor(c.y),diag=xx!==cx&&yy!==cy;
+    if(!passableWith(a,xx,yy)||(diag&&(!passableWith(a,xx,cy)||!passableWith(a,cx,yy)))){c.pathEpoch=-1;c.retryAt=omGame.elapsed+0.5;return false;}
+    let dx=tx-c.x,dy=ty-c.y,d=Math.sqrt(dx*dx+dy*dy);
+    if(d>0.00001){c.headingX=dx/d;c.headingY=dy/d;c.headingAngle=Math.atan2(dy,dx);}
+    if(d<=budget){c.x=tx;c.y=ty;budget-=d;c.pathCursor++;}else{c.x+=dx/d*budget;c.y+=dy/d*budget;budget=0;}
+    let door=doorAt[tileId(c.x,c.y)];if(door)door.openUntil=omGame.elapsed+0.9;
+  }
+  return c.pathCursor>=c.path.length;
+}
+function hasLineOfSight(ax,ay,bx,by){
+  let dx=bx-ax,dy=by-ay,n=Math.ceil(Math.max(Math.abs(dx),Math.abs(dy))*2);
+  for(let i=1;i<n;i++){let x=Math.floor(ax+dx*i/n),y=Math.floor(ay+dy*i/n);if(!onMap(x,y))return false;let id=tileId(x,y);if(omGame.walls[id]===1)return false;let d=doorAt[id];if(d&&d.openUntil<=omGame.elapsed&&d.kind!=="perimeter"&&d.kind!=="cell")return false;}
+  return true;
+}
+function clearPath(c){c.path=[];c.pathCursor=0;c.destination=null;c.pathEpoch=-1;c.pathProfile="";}

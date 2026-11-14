@@ -1,0 +1,50 @@
+// Milestones: the first of things, said once and kept in the log. Presentation with a memory, nothing more.
+const MILESTONES=[
+ {id:"firstCount",title:"Present and correct",text:"Your first count answered. The routine has a shape now.",test:function(){return omGame.stats.counts>=1;}},
+ {id:"firstWork",title:"First batch",text:"Work pays scrip and opens doors. Two batches unlock the advanced details.",test:function(){return omGame.stats.work>=1;}},
+ {id:"fiveWork",title:"Reliable hands",text:"Five batches. Officers stop looking twice at you in the work rooms.",test:function(){return omGame.stats.work>=5;}},
+ {id:"threeMet",title:"Known face",text:"Three contacts made. Rumours become a map.",test:function(){return omGame.stats.met>=3;}},
+ {id:"firstCraft",title:"Made, not bought",text:"Your first craft. The bench is the quiet heart of every plan.",test:function(){return omGame.stats.crafted>=1;}},
+ {id:"firstFavor",title:"A promise kept",text:"A favour delivered. Trust is the only currency that compounds.",test:function(){return omGame.stats.favors>=1;}},
+ {id:"observed",title:"Seen it yourself",text:"A route studied in person. A rumour is not enough; observation is.",test:function(){return omGame.stats.observations>=1;}},
+ {id:"prepared",title:"Ready when you are",text:"A project prepared. The plan is no longer theoretical.",test:function(){return omGame.stats.projects>=1;}},
+ {id:"fiftyScrip",title:"Flush",text:"Fifty scrip. The commissary and the traders are yours.",test:function(){return omGame.scrip>=50;}},
+ {id:"cleanDay",title:"Clean sheet",text:"A full day without a missed count.",test:function(){return dayNow()>=2&&omGame.stats.missedCounts===0;}},
+ {id:"trusted",title:"Someone believes you",text:"An inmate trusts you enough to be recruited.",test:function(){for(let c of omGame.people)if(c.role==="inmate"&&c.id!=="player"&&c.trust>=35)return true;return false;}}
+];
+function tickMilestones(){
+  if(!omGame||omGame.over||omGame.escape||!omGame.milestones)return;
+  for(let m of MILESTONES){if(omGame.milestones[m.id])continue;let hit=false;try{hit=!!m.test();}catch(e){hit=false;}if(!hit)continue;
+    omGame.milestones[m.id]=dayNow();say("Milestone: "+m.title+". "+m.text);logEvent("Milestone: "+m.title,m.text,"life");playCue("complete");return;}
+}
+// Small, bounded institutional incidents. Outcomes change the simulation, not just a counter.
+function runIncident(id){
+  let e=null;for(let i=0;i<INCIDENTS.length;i++)if(INCIDENTS[i].id===id)e=INCIDENTS[i];if(!e)return;
+  logEvent(e.title,castText(e.body),"incident");omGame.lastAnnouncement=castText(e.body);
+  if(e.effect==="calm")player().stress=Math.max(0,player().stress-8);
+  if(e.effect==="watch")omGame.heat=clamp(omGame.heat+14,0,100);
+  if(e.effect==="tea")grantCellRation("tea");
+  if(e.effect==="paper")grantCellRation("paper");
+  if(e.effect==="swap"){omGame.patrolReverse=!omGame.patrolReverse;let k=Object.keys(omGame.knowledge);for(let i=0;i<k.length;i++)if(k[i].indexOf("guard_")===0)omGame.knowledge[k[i]].confidence="changed";}
+  if(e.effect==="fault")setPowerFault(45,"fault");
+  if(e.effect==="visitor"){omGame.nextSearch=Math.max(omGame.nextSearch,omGame.minutes+1440);omGame.heat=Math.max(0,omGame.heat-10);}
+  if(e.effect==="shortage"){let p=player();p.food=Math.max(0,p.food-12);p.stress=Math.min(100,p.stress+6);omGame.siteCooldown.kitchen=Math.max(omGame.siteCooldown.kitchen||0,omGame.minutes+240);}
+  if(e.effect==="camera"){if(!omGame.cameraFaults)omGame.cameraFaults={};omGame.cameraFaults.camWork=omGame.minutes+180;}
+  if(e.effect==="rain"){omGame.weather="Rain";omGame.weatherUntil=omGame.minutes+360;}
+  if(e.effect==="distraction")omGame.distractions.push({id:entityId("div"),x:27.5,y:43.5,until:omGame.elapsed+18,source:"kesh"});
+  if(e.effect==="investigation"){let count=0;for(let i=0;i<omGame.evidence.length;i++)if(!omGame.evidence[i].resolved&&omGame.evidence[i].suspect==="player")count++;if(count>=3){omGame.lockdownUntil=omGame.minutes+90;logEvent("A targeted lockdown","Access has tightened for 90 game minutes. Return to routine or wait for the restriction to lift.","security");}else omGame.heat=clamp(omGame.heat+5,0,100);}
+  say(e.title+". Check the notebook for details.");dirty();
+}
+function tickDirector(){
+  tickPowerAndWeather();
+  if(!omGame.search&&omGame.minutes>=omGame.nextSearch-45&&!omGame.escape)announceSearch();
+  if(omGame.search){let s=omGame.search;if(s.stage==="announced"&&omGame.minutes>=s.at){s.stage="walking";s.started=omGame.minutes;let g=actorById(s.guard);clearPath(g);}if(s.stage==="walking"&&omGame.minutes-s.started>240){logEvent("Search postponed","The assigned officer could not reach the area in time. No items were removed remotely.","security");omGame.search=null;omGame.nextSearch=omGame.minutes+180;}}
+  if(omGame.minutes>=omGame.nextIncident&&!omGame.escape&&player().detainedUntil<=omGame.minutes){
+    let recent=omGame.recentIncidents||(omGame.recentIncidents=[]),options=INCIDENTS.filter(function(e){return recent.indexOf(e.id)<0&&!(e.effect==="rain"&&omGame.weather!=="Clear");});
+    let chosen=pick(options.length?options:INCIDENTS).id;recent.push(chosen);if(recent.length>4)recent.shift();runIncident(chosen);omGame.nextIncident=omGame.minutes+randomInt(300,600);}
+  for(let i=omGame.distractions.length-1;i>=0;i--)if(omGame.distractions[i].until<=omGame.elapsed)omGame.distractions.splice(i,1);
+  if(omGame.distractions.length>8)omGame.distractions.length=8;
+  for(let i=0;i<omGame.evidence.length;i++)if(omGame.minutes-omGame.evidence[i].at>2880)omGame.evidence[i].resolved=true;
+  if(!omGame.escape&&omGame.lockdownUntil<=omGame.minutes)omGame.heat=Math.max(0,omGame.heat-0.18);
+  updateSecurityPolicy();dirty();
+}

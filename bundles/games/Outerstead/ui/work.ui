@@ -1,0 +1,34 @@
+<div className="os-modal-head"><div><span className="os-label">WORK AND DAILY LIFE</span><div className="os-modal-title">A place for everyone's talents.</div></div><button className="os-btn os-icon-btn" title="Close menu" @click={closeDialog}>×</button></div>
+<span className="os-prose">Click a priority to cycle 1 → 2 → 3 → 4 → off. One is highest; off disables that job category. Settlers consider priorities before distance and skill. Hunger, sleep, treatment needs, and command mode can take precedence. Hover a priority to see the relevant skill.</span>
+<div className="os-work-desktop os-work-scroll" style={{ marginTop: "18px" }}>
+  <table className="os-work-table"><thead><tr><th>COLONIST</th><th>BUILD</th><th>HAUL</th><th>FARM</th><th>COOK</th><th>MINE</th><th>CRAFT</th><th>STUDY</th><th>TREAT</th><th>EXPLORE</th><th>SCHEDULE</th></tr></thead><tbody>
+    #each (person in workCards) key={person.id}
+      <tr><td>{person.name}<br /><span className="os-tiny os-amber">{person.quirks}</span></td>
+        #each (priority in person.priorities) key={priority.id}
+          <td><button className="os-btn os-priority" ospriority={String(priority.raw)} title={"Skill " + priority.skill + "/10"} @click={() => setWorkPriority(person.id, priority.id)}>{priority.value}</button></td>
+        #end
+        <td><button className="os-btn os-priority" @click={() => cycleSchedule(person.id)}>{person.schedule}</button></td>
+      </tr>
+    #end
+  </tbody></table>
+</div>
+<div className="os-work-mobile">
+ #each (person in workCards) key={person.id}
+  <div className="os-card"><div className="os-section-title">{person.name}</div><span className="os-small os-dim">{person.role}</span>
+   <div className="os-work-priorities">
+    #each (priority in person.priorities) key={priority.id}
+     <button className="os-btn os-priority" ospriority={String(priority.raw)} title={person.name + " · " + priority.label + " · Skill " + priority.skill + "/10"} @click={() => setWorkPriority(person.id, priority.id)}><span>{priority.label}</span><b>{priority.raw === 0 ? "Off" : priority.value}</b><span>{"Skill " + priority.skill + "/10"}</span></button>
+    #end
+   </div>
+   <div className="os-work-schedule"><span>Sleep schedule</span><button className="os-btn" @click={() => cycleSchedule(person.id)}>{person.schedule}</button></div>
+  </div>
+ #end
+</div>
+<div className="os-help-grid" style={{ marginTop: "22px" }}><div className="os-card"><span className="os-label">SCHEDULES</span><span className="os-prose">Day: favour sleep from 21:00 to 05:00. Night: favour sleep from 08:00 to 16:00. Flexible: sleep when exhausted. Severe hunger interrupts normal work regardless of schedule.</span></div><div className="os-card"><span className="os-label">BLOCKED WORK</span><span className="os-prose">Check a structure's power, the recipe's materials, a reachable approach, and at least one available worker. Drafted settlers do not perform ordinary jobs.</span></div></div>
+
+<div className="os-panel-section">
+  <p>Auto steward gathers known nearby resources to reserve targets, queues practical research, and schedules preventive repairs. Urgent treatment and food work get extra priority within enabled categories. Idle settlers collect available equipment, socialise, play games, or take short safe walks, checking for new work throughout their break. Place buildings yourself; colonists build, farm, cook, repair and haul according to their work priorities. Needs and drafted orders take precedence.</p>
+  <button className="os-btn" @click={toggleAutoMode}>{autoMode ? "Disable auto steward" : "Enable auto steward"}</button>
+  <button className="os-btn" @click={toggleProfiler}>{perfEnabled ? "Stop profiler" : "Profile simulation"}</button>
+  <p>{performanceText}</p>
+</div>

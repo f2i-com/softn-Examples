@@ -1,0 +1,28 @@
+<import ColonyScene from="./title-scene.ui" />
+#each (shot in openingShotViews) key={shot.id}
+  <div className={"os-trailer-shot os-trailer-shot-" + shot.id}>
+    #if (shot.home)
+      <ColonyScene />
+    #else
+      <div className="os-trailer-map">
+        <TileMap key={terrainAsset} src={asset(terrainAsset || "assets/sprites/terrain.png")} tileSize={terrainTileSize} tilesetColumns={8} layers={shot.layers} mapWidth={24} mapHeight={18} scale={terrainScale} />
+        #each (b in shot.pieces) key={b.id}
+          <img className="os-trailer-building" src={asset(b.sprite)} style={b.style} alt="" />
+        #end
+        #each (c in shot.actors) key={c.id}
+          <div className={"os-trailer-actor os-trailer-" + c.motion} style={c.style}>
+            <img className="os-sprite" src={asset(c.sprite)} alt="" />
+            #if (c.motion === "eat")<span className="os-meal-bowl" />#end
+            #if (c.motion === "repair")<span className="os-trailer-tool">⚒</span>#end
+          </div>
+        #end
+        #if (shot.id === 1)<div className="os-trailer-landing-dust" />#end
+        #if (shot.id === 4)<div className="os-trailer-surge"><i /><i /></div>#end
+        #if (shot.id === 5)<div className="os-trailer-hollow"><i /><i /></div>#end
+      </div>
+    #end
+    #if (shot.id === 4)<div className="os-trailer-rain" /><div className="os-trailer-storm-light" />#end
+    #if (shot.id === 5)<div className="os-trailer-mist" />#end
+    <div className="os-opening-shade" />
+  </div>
+#end

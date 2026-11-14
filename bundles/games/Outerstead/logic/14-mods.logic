@@ -1,0 +1,201 @@
+// Mod scripts never share this VM. Only validated JSON commands enter the colony.
+let modLibrary=[];
+let modCards=[];
+let modPending=null;
+let modPreview=null;
+let modStatus="Install a ZIP to add scripted events to this colony.";
+let modAvailable=false;
+let modEpoch=0;
+let modBusy=false;
+let modImportBusy=false;
+let modInbox=null;
+let modSequence=0;
+let modStartedAt=0;
+const MOD_STORAGE="outerstead.mods.v1";
+const MOD_CAPS=["stock","memory","recreation","weather","threat","message","story"];
+const MOD_ID_RE=/^[a-z][a-z0-9-]{0,31}$/;
+// One effect command, validated against the same bounds whether it comes from an update or a story choice.
+function validateModEffect(command,stock){
+  requireRecord(command,"mod command");let type=command.type;
+  if(type==="stock"){if(RESOURCE_KEYS.indexOf(command.resource)<0)throw new Error("Unknown stock resource.");boundedNumber(command.amount,-100,100,"mod stock amount");if(stock){stock[command.resource]+=command.amount;boundedNumber(stock[command.resource],0,1000000,"resulting stock");}}
+  else if(type==="memory"||type==="recreation"){if(command.person!=="all"&&!findColonist(command.person))throw new Error("Unknown colonist.");boundedNumber(command.amount,-12,12,"mod need amount");if(type==="memory"){boundedString(command.text,100,"mod memory");boundedNumber(command.duration,30,1440,"mod memory duration");}}
+  else if(type==="weather"){if(["Clear","Rain","Fog","Storm","Cold snap","Heat wave","Glass Wind","Echo Rain"].indexOf(command.weather)<0)throw new Error("Unknown weather.");boundedNumber(command.duration,30,1440,"mod weather duration");}
+  else if(type==="threat"){boundedNumber(command.count,1,3,"mod threat count");if(Math.floor(command.count)!==command.count)throw new Error("Threat count must be whole.");}
+  else if(type==="message"){boundedString(command.title,100,"mod message title");boundedString(command.body,500,"mod message");}
+  else throw new Error("Unsupported mod command.");
+}
+// A mod story: prose plus up to four choices whose effects are ordinary, pre-validated commands.
+function validateModStory(m,command){
+  if(typeof command.id!=="string"||!MOD_ID_RE.test(command.id))throw new Error("Invalid story id.");
+  boundedString(command.title,100,"story title");boundedString(command.body,1200,"story body");if(command.tag!==undefined)boundedString(command.tag,40,"story tag");
+  listBound(command.choices,4,"story choices");if(!command.choices.length)throw new Error("A story needs at least one choice.");
+  let ids=[],choices=[];
+  for(let ch of command.choices){requireRecord(ch,"story choice");if(typeof ch.id!=="string"||!MOD_ID_RE.test(ch.id)||ids.indexOf(ch.id)>=0)throw new Error("Invalid or duplicate choice id.");ids.push(ch.id);boundedString(ch.label,60,"choice label");if(ch.detail!==undefined)boundedString(ch.detail,140,"choice detail");
+    let effects=ch.commands===undefined?[]:ch.commands;listBound(effects,6,"choice effects");let out=[];
+    for(let e of effects){requireRecord(e,"choice effect");if(e.type==="story")throw new Error("Stories cannot nest.");if(m.capabilities.indexOf(e.type)<0)throw new Error("Undeclared effect: "+e.type);validateModEffect(e,null);out.push(JSON.parse(JSON.stringify(e)));}
+    choices.push({id:ch.id,label:ch.label,detail:ch.detail||"",commands:out});
+  }
+  if(command.auto!==undefined&&ids.indexOf(command.auto)<0)throw new Error("Unknown default choice.");
+  return {title:command.title,tag:command.tag||(m.name.toUpperCase()+" / STORY"),body:command.body,choices:choices,mod:m.id,modName:m.name,story:command.id,auto:command.auto||ids[0]};
+}
+function modStoryKey(def){return "mod:"+def.mod+":"+def.story;}
+function clearModStories(){let keys=Object.keys(STORY_EVENTS);for(let i=0;i<keys.length;i++)if(keys[i].indexOf("mod:")===0)delete STORY_EVENTS[keys[i]];}
+function registerModStories(){clearModStories();if(!osGame||!osGame.modStories)return;let keys=Object.keys(osGame.modStories);for(let i=0;i<keys.length;i++)STORY_EVENTS[keys[i]]=osGame.modStories[keys[i]];}
+function queueModStory(def){
+  if(!osGame.modStories)osGame.modStories={};if(!osGame.modStoryQueue)osGame.modStoryQueue=[];
+  let key=modStoryKey(def);
+  if(!osGame.modStories[key]&&Object.keys(osGame.modStories).length>=12)throw new Error("This colony already holds twelve mod stories.");
+  osGame.modStories[key]=def;registerModStories();
+  if(osGame.modStoryQueue.indexOf(key)<0&&!(osGame.pendingEvent&&osGame.pendingEvent.id===key)){if(osGame.modStoryQueue.length>=4)throw new Error("Too many mod stories are waiting.");osGame.modStoryQueue.push(key);}
+}
+function nextModStory(){if(!osGame.modStoryQueue)return "";while(osGame.modStoryQueue.length){let key=osGame.modStoryQueue.shift();if(STORY_EVENTS[key])return key;}return "";}
+function applyModEffects(modId,modName,commands){
+  for(let command of commands){let type=command.type;
+    if(type==="stock"){osGame.stock[command.resource]=clamp((osGame.stock[command.resource]||0)+command.amount,0,1000000);trimQualityMeals();stockDirty=true;}
+    if(type==="memory"||type==="recreation"){for(let p of osGame.people){if(!p.dead&&(command.person==="all"||command.person===p.id)){if(type==="memory")remember(p,"["+modId+"] "+command.text,command.amount,command.duration);else p.recreation=clamp(p.recreation+command.amount,0,100);}}}
+    if(type==="weather"){osGame.weather=command.weather;osGame.weatherUntil=osGame.minutes+command.duration;osGame.weatherFront=null;onWeatherArrives(command.weather);}
+    if(type==="threat")launchThreat(command.count);
+    if(type==="message")chronicle("["+modName+"] "+command.title,command.body,"colony");
+  }
+  viewDirty=true;
+}
+function resolveModStory(id,choice){
+  let def=osGame.modStories?osGame.modStories[id]:null;if(!def)return;
+  let picked=null;for(let i=0;i<def.choices.length;i++)if(def.choices[i].id===choice)picked=def.choices[i];if(!picked)return;
+  applyModEffects(def.mod,def.modName,picked.commands);
+  let entry=colonyMod(def.mod);if(entry){if(!entry.answers)entry.answers={};let keys=Object.keys(entry.answers);if(keys.length>=32&&entry.answers[def.story]===undefined)delete entry.answers[keys[0]];entry.answers[def.story]=choice;}
+  chronicle("["+def.modName+"] "+def.title,picked.label+".","event");
+}
+function validateModStories(g){
+  if(g.modStories===undefined){g.modStories={};g.modStoryQueue=[];return;}
+  requireRecord(g.modStories,"mod stories");let keys=Object.keys(g.modStories);if(keys.length>12)failSave("Too many mod stories.");
+  for(let i=0;i<keys.length;i++){let key=keys[i],d=g.modStories[key];requireRecord(d,"mod story");if(typeof d.mod!=="string"||!/^[a-z][a-z0-9-]{2,47}$/.test(d.mod)||typeof d.story!=="string"||!MOD_ID_RE.test(d.story)||key!=="mod:"+d.mod+":"+d.story)failSave("Invalid mod story key.");
+    boundedString(d.title,100,"mod story title");boundedString(d.tag,40,"mod story tag");boundedString(d.body,1200,"mod story body");boundedString(d.modName,60,"mod story author");boundedString(d.auto,32,"mod story default");
+    listBound(d.choices,4,"mod story choices");if(!d.choices.length)failSave("Empty mod story.");let ids=[];
+    for(let ch of d.choices){requireRecord(ch,"mod story choice");if(typeof ch.id!=="string"||!MOD_ID_RE.test(ch.id)||ids.indexOf(ch.id)>=0)failSave("Invalid mod story choice.");ids.push(ch.id);boundedString(ch.label,60,"mod choice label");boundedString(ch.detail,140,"mod choice detail");listBound(ch.commands,6,"mod choice effects");for(let e of ch.commands){if(e&&e.type==="story")failSave("Nested mod story.");validateModEffect(e,null);}}
+    if(ids.indexOf(d.auto)<0)failSave("Unknown mod story default.");
+  }
+  if(g.modStoryQueue===undefined)g.modStoryQueue=[];listBound(g.modStoryQueue,4,"mod story queue");for(let k of g.modStoryQueue)if(!g.modStories[k])failSave("Unknown queued mod story.");
+  for(let i=0;i<keys.length;i++)STORY_EVENTS[keys[i]]=g.modStories[keys[i]];
+}
+function modDataCheck(data) {
+  let visits=0;
+  function walk(v,depth){if(++visits>1000||depth>8)throw new Error("Mod data is too complex.");if(typeof v==="number"&&!Number.isFinite(v))throw new Error("Invalid mod number.");if(v&&typeof v==="object"){let keys=Object.keys(v);for(let k of keys){if(k==="__proto__"||k==="constructor"||k==="prototype")throw new Error("Unsafe mod key.");walk(v[k],depth+1);}}}
+  walk(data,0);let text=JSON.stringify(data);if(!text||text.length>4096)throw new Error("Mod data exceeds 4 KiB.");return JSON.parse(text);
+}
+function validateModPackage(files,hash) {
+  if(!files||typeof files!=="object"||!files["mod.json"])throw new Error("ZIP needs mod.json at its root.");
+  let m=JSON.parse(files["mod.json"]);requireRecord(m,"mod manifest");
+  if(m.format!=="outerstead-mod"||m.api!==1)throw new Error("This mod needs a different Outerstead API.");
+  if(typeof m.id!=="string"||!/^[a-z][a-z0-9-]{2,47}$/.test(m.id))throw new Error("Use a lowercase mod ID, 3–48 characters.");
+  boundedString(m.name,60,"mod name");boundedString(m.version,24,"mod version");boundedString(m.author,60,"mod author");boundedString(m.description,500,"mod description");
+  if(!m.name||!m.version)throw new Error("Mod name and version are required.");
+  listBound(m.scripts,8,"mod scripts");if(!m.scripts.length)throw new Error("List at least one script.");listBound(m.capabilities,6,"mod capabilities");
+  let caps=[];for(let cap of m.capabilities){if(MOD_CAPS.indexOf(cap)<0||caps.indexOf(cap)>=0)throw new Error("Unknown or duplicate capability.");caps.push(cap);}
+  let seen=[],source="";for(let name of m.scripts){if(typeof name!=="string"||!/^[a-zA-Z0-9_][a-zA-Z0-9_/-]*\.js$/.test(name)||name.indexOf("..")>=0||seen.indexOf(name)>=0)throw new Error("Invalid script path.");if(typeof files[name]!=="string")throw new Error("Missing script: "+name);seen.push(name);source+="\n"+files[name]+"\n";}
+  if(source.length>65536)throw new Error("Combined scripts exceed 64 KiB.");
+  if(typeof hash!=="string"||!/^[a-f0-9]{64}$/.test(hash))throw new Error("Mod archive fingerprint is missing.");
+  return {id:m.id,name:m.name,version:m.version,author:m.author,description:m.description,capabilities:caps,source:source,hash:hash};
+}
+function checkedLibraryEntry(m) {
+  requireRecord(m,"installed mod");boundedString(m.source,65536,"mod code");
+  let manifest={format:"outerstead-mod",api:1,id:m.id,name:m.name,version:m.version,author:m.author,description:m.description,capabilities:m.capabilities,scripts:["main.js"]};
+  let entry=validateModPackage({"mod.json":JSON.stringify(manifest),"main.js":""},m.hash);entry.source=m.source;return entry;
+}
+function initialiseMods() {
+  modAvailable=typeof softn!=="undefined"&&!!softn.sandbox&&!!softn.sandbox.run&&!!softn.files&&!!softn.files.pickFile&&!!softn.files.readZipText;
+  try{let raw=localStorage.getItem(MOD_STORAGE);if(raw){if(raw.length>600000)throw new Error("Mod library is too large.");let list=JSON.parse(raw);listBound(list,8,"installed mods");let ids=[];for(let m of list){let entry=checkedLibraryEntry(m);if(ids.indexOf(entry.id)>=0)throw new Error("Duplicate installed mod.");ids.push(entry.id);modLibrary.push(entry);}}}catch(e){modLibrary=[];modStatus="Could not read the mod library: "+String(e.message||e);}
+  refreshMods();
+}
+function persistModLibrary(next) {let text=JSON.stringify(next);localStorage.setItem(MOD_STORAGE,text);if(localStorage.getItem(MOD_STORAGE)!==text)throw new Error("The host did not retain the mod library.");modLibrary=next;}
+function invalidateMods() {modEpoch++;modInbox=null;modBusy=false;clearModStories();}
+function colonyMod(id) {if(!osGame||!osGame.mods)return null;for(let m of osGame.mods)if(m.id===id)return m;return null;}
+function installedMod(id) {for(let m of modLibrary)if(m.id===id)return m;return null;}
+function matchingMod(entry) {let m=installedMod(entry.id);return m&&m.hash===entry.hash&&m.version===entry.version?m:null;}
+function refreshMods() {
+  let cards=[];
+  for(let m of modLibrary){let c=colonyMod(m.id),match=c&&c.hash===m.hash&&c.version===m.version;cards.push({id:m.id,name:m.name,version:m.version,author:m.author,description:m.description,capabilities:m.capabilities.join(", "),linked:!!c,enabled:!!(match&&c.enabled),available:true,status:!osGame?"Installed · load a colony to enable":c&&!match?"Saved colony uses another version · remove its link before enabling":c&&c.error?"Stopped: "+c.error:match&&c.enabled?"Enabled · runs while the colony is playing":"Disabled for this colony",canEnable:!!osGame&&(!c||match)});}
+  if(osGame&&osGame.mods){for(let c of osGame.mods){if(!installedMod(c.id))cards.push({id:c.id,name:c.id,version:c.version,author:"",description:"This save references a mod that is not installed. Install its original ZIP or remove the link to continue without it.",capabilities:"",linked:true,enabled:c.enabled,available:false,status:"Missing ZIP · never loaded from save data",canEnable:false});}}
+  modCards=cards;modPreview=modPending?{name:modPending.name,version:modPending.version,author:modPending.author,description:modPending.description,capabilities:modPending.capabilities.join(", ")}:null;
+}
+function openMods() {resetMapGesture();paused=true;dialog="mods";modImportBusy=false;refreshMods();}
+function importModZip() {
+  if(!modAvailable||modImportBusy)return;modImportBusy=true;modStatus="Choose a mod ZIP…";
+  try{
+    softn.files.pickFile({accept:".zip,application/zip",multiple:false},function(files){
+      try{
+        if(files&&files.error){modImportBusy=false;modStatus=String(files.error);refreshMods();return;}
+        if(!files||!files.length){modImportBusy=false;modStatus="No file selected.";refreshMods();return;}
+        if(files[0].size>262144){modImportBusy=false;modStatus="Choose a ZIP smaller than 256 KiB.";refreshMods();return;}
+        softn.files.readZipText(files[0].ref,function(result){modImportBusy=false;try{if(!result||result.error)throw new Error(result&&result.error||"Archive could not be read.");modPending=validateModPackage(result.files,result.hash);modStatus="Review this mod, then install it. It starts disabled.";}catch(e){modPending=null;modStatus=String(e.message||e);}refreshMods();});
+      }catch(e){modImportBusy=false;modStatus=String(e.message||e);refreshMods();}
+    });
+  }catch(e){modImportBusy=false;modStatus=String(e.message||e);refreshMods();}
+}
+function cancelModImport() {modPending=null;refreshMods();}
+function installPendingMod() {
+  if(!modPending)return;
+  try{if(installedMod(modPending.id))throw new Error("That ID is installed. Remove it before installing a different version.");if(modLibrary.length>=8)throw new Error("Eight installed mods is the current limit.");let next=modLibrary.slice();next.push(modPending);persistModLibrary(next);modStatus=modPending.name+" installed. Enable it for this colony when ready.";modPending=null;}catch(e){modStatus=String(e.message||e);}refreshMods();
+}
+function toggleColonyMod(id) {
+  if(!osGame)return;let m=installedMod(id),c=colonyMod(id);if(!m)return;
+  if(c&&(c.hash!==m.hash||c.version!==m.version)){modStatus="Remove the saved mod link first. Different code cannot inherit its state.";return;}
+  if(!osGame.mods)osGame.mods=[];
+  if(!c){if(osGame.mods.length>=8){modStatus="Remove an old mod link first.";return;}c={id:m.id,version:m.version,hash:m.hash,enabled:false,data:{},nextAt:osGame.elapsed,error:""};osGame.mods.push(c);}
+  c.enabled=!c.enabled;c.error="";c.nextAt=osGame.elapsed;invalidateMods();modStatus=m.name+(c.enabled?" enabled. Resume the colony to run it.":" disabled. Earlier world changes remain.");refreshMods();
+}
+function removeModLink(id) {if(!osGame||!osGame.mods)return;osGame.mods=osGame.mods.filter(function(m){return m.id!==id;});invalidateMods();modStatus="Saved mod link and private mod state removed. Earlier world changes remain.";refreshMods();}
+function uninstallMod(id) {
+  try{persistModLibrary(modLibrary.filter(function(m){return m.id!==id;}));let c=colonyMod(id);if(c)c.enabled=false;invalidateMods();modStatus="Mod uninstalled. Its colony link is kept for save compatibility; earlier changes remain.";}catch(e){modStatus=String(e.message||e);}refreshMods();
+}
+function validateSavedMods(g) {
+  if(g.mods===undefined){g.mods=[];return;}
+  listBound(g.mods,8,"saved mods");let ids=[];
+  for(let m of g.mods){requireRecord(m,"saved mod");if(typeof m.id!=="string"||!/^[a-z][a-z0-9-]{2,47}$/.test(m.id)||ids.indexOf(m.id)>=0)throw new Error("Invalid saved mod ID.");ids.push(m.id);boundedString(m.version,24,"saved mod version");if(typeof m.hash!=="string"||!/^[a-f0-9]{64}$/.test(m.hash)||typeof m.enabled!=="boolean")throw new Error("Invalid saved mod identity.");if(m.answers!==undefined){requireRecord(m.answers,"mod answers");let ak=Object.keys(m.answers);if(ak.length>32)throw new Error("Too many mod answers.");for(let k of ak)if(!MOD_ID_RE.test(k)||typeof m.answers[k]!=="string"||m.answers[k].length>32)throw new Error("Invalid mod answer.");}m.data=modDataCheck(m.data);boundedNumber(m.nextAt,0,100100000,"mod clock");boundedString(m.error,500,"mod error");if(Object.keys(m).some(function(k){return ["id","version","hash","enabled","data","nextAt","error","answers"].indexOf(k)<0;}))throw new Error("Saved mods cannot contain executable files.");}
+}
+function modContext(c) {
+  let people=[];for(let p of osGame.people)if(!p.dead)people.push({id:p.id,name:p.short,health:p.health,food:p.food,rest:p.rest,recreation:p.recreation,mood:p.mood,drafted:p.drafted});
+  let buildings={};for(let b of osGame.buildings)if(b.built)buildings[b.kind]=(buildings[b.kind]||0)+1;
+  return {api:1,event:"update",answers:JSON.parse(JSON.stringify(c.answers||{})),minutes:osGame.minutes,day:dayNow(),weather:osGame.weather,difficulty:osGame.difficulty,stock:JSON.parse(JSON.stringify(osGame.stock)),people:people,buildings:buildings,data:modDataCheck(c.data)};
+}
+function validateModResult(m,result) {
+  requireRecord(result,"mod response");let data=modDataCheck(result.data===undefined?{}:result.data),commands=result.commands||[];listBound(commands,8,"mod commands");
+  let stock=JSON.parse(JSON.stringify(osGame.stock));
+  let checkedCommands=[],stories=0;
+  for(let command of commands){requireRecord(command,"mod command");let type=command.type;if(m.capabilities.indexOf(type)<0)throw new Error("Undeclared command: "+type);
+    if(type==="story"){if(++stories>2)throw new Error("At most two stories per update.");checkedCommands.push({type:"story",story:validateModStory(m,command)});continue;}
+    validateModEffect(command,stock);checkedCommands.push(command);
+  }
+  return {data:data,commands:checkedCommands,stock:stock};
+}
+function applyModResult(entry,m,result) {
+  let checked=validateModResult(m,result);osGame.stock=checked.stock;trimQualityMeals();stockDirty=true;
+  for(let command of checked.commands){let type=command.type;
+    if(type==="memory"||type==="recreation"){for(let p of osGame.people){if(!p.dead&&(command.person==="all"||command.person===p.id)){if(type==="memory")remember(p,"["+m.id+"] "+command.text,command.amount,command.duration);else p.recreation=clamp(p.recreation+command.amount,0,100);}}}
+    if(type==="weather"){osGame.weather=command.weather;osGame.weatherUntil=osGame.minutes+command.duration;osGame.weatherFront=null;onWeatherArrives(command.weather);}
+    if(type==="threat")launchThreat(command.count);
+    if(type==="message")chronicle("["+m.name+"] "+command.title,command.body,"colony");
+    if(type==="story")queueModStory(command.story);
+  }
+  entry.data=checked.data;viewDirty=true;
+}
+function tickMods() {
+  if(!osGame||paused||dialogPausesSimulation()||osGame.over)return;
+  if(modInbox){let inbox=modInbox;modInbox=null;let entry=colonyMod(inbox.id);if(inbox.epoch===modEpoch&&entry&&entry.enabled){let m=matchingMod(entry);if(m){try{if(inbox.result&&inbox.result.error)throw new Error(inbox.result.error);applyModResult(entry,m,inbox.result.value);}catch(e){entry.enabled=false;entry.error=String(e.message||e).slice(0,500);chronicle("Mod stopped: "+m.name,entry.error,"colony");modStatus=entry.error;}refreshMods();}}}
+  if(modBusy&&Date.now()-modStartedAt>10000){modBusy=false;modSequence++;modStatus="A mod script timed out and was skipped.";}
+  if(!modAvailable||modBusy||paused||dialogPausesSimulation()||!osGame.mods)return;
+  // Oldest due hook first: slow scripts cannot starve later-installed mods.
+  let entry=null;
+  for(let candidate of osGame.mods){if(!candidate.enabled||candidate.nextAt>osGame.elapsed||!matchingMod(candidate))continue;if(!entry||candidate.nextAt<entry.nextAt)entry=candidate;}
+  if(!entry)return;let m=matchingMod(entry);
+  entry.nextAt=osGame.elapsed+20;modBusy=true;modStartedAt=Date.now();let epoch=modEpoch,id=entry.id,sequence=++modSequence;
+  try{
+    softn.sandbox.run(m.source,modContext(entry),function(result){if(sequence!==modSequence)return;modBusy=false;if(epoch===modEpoch)modInbox={id:id,epoch:epoch,result:result};});
+  }catch(e){
+    modBusy=false;entry.enabled=false;entry.error=String(e.message||e).slice(0,500);chronicle("Mod stopped: "+m.name,entry.error,"colony");modStatus=entry.error;refreshMods();
+  }
+}
+
+function stageCampfireMod() {try{modPending=validateModPackage({"mod.json":"{\"format\": \"outerstead-mod\", \"api\": 1, \"id\": \"campfire-stories\", \"name\": \"Campfire Stories\", \"version\": \"1.0.0\", \"author\": \"Outerstead\", \"description\": \"Once each sol, settlers share a meal and a story. Costs two wood and one meal per living settler; restores recreation and adds a warm memory. Needs a built gathering table.\", \"scripts\": [\"main.js\"], \"capabilities\": [\"stock\", \"memory\", \"recreation\", \"message\"]}","main.js":"// update receives a snapshot; return commands and JSON data for the next call.\nfunction update(ctx) {\n  const data = ctx.data || {};\n  if (data.lastDay === ctx.day || !ctx.people.length || !ctx.buildings.table || ctx.stock.wood < 2 || ctx.stock.meals < ctx.people.length) return {data: data, commands: []};\n  // The first gathering is immediately available; later ones happen once per sol.\n  return {data: {lastDay: ctx.day, gatherings: (data.gatherings || 0) + 1}, commands: [\n    {type: \"stock\", resource: \"wood\", amount: -2},\n    {type: \"stock\", resource: \"meals\", amount: -ctx.people.length},\n    {type: \"recreation\", person: \"all\", amount: 8},\n    {type: \"memory\", person: \"all\", text: \"Stories around the campfire\", amount: 6, duration: 720},\n    {type: \"message\", title: \"A story worth sharing\", body: \"Someone remembers a kitchen on another world. For a little while, Hollow-7 feels less lonely.\"}\n  ]};\n}\n"},"2a59bd6738029f69c92ca60bb568a4ab0efc47d7c3da37e62788fcc19a8c28af");modStatus="Review Campfire Stories, then install it disabled.";}catch(e){modStatus=String(e.message||e);}refreshMods();}
+
+function missingModCount(){let count=0;if(osGame&&osGame.mods)for(let m of osGame.mods)if(m.enabled&&!matchingMod(m))count++;return count;}

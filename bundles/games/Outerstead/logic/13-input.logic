@@ -1,0 +1,281 @@
+// Input handlers receive Softn's serialisable event fields, never DOM objects.
+function setPanel(name) {resetMapGesture();mobilePanelOpen=true;panMode=false;activePanel=name;toolKind="select";refreshAll();}
+function setCategory(name) {buildCategory=name;activePanel="build";refreshAll();}
+function chooseBuild(kind) {resetMapGesture();let d=BUILDINGS[kind];if(!d||d.category==="Hidden")return;if(d.tech&&!hasTech(d.tech)){say("Research "+techName(d.tech)+" first.");return;}mobilePanelOpen=false;panMode=false;followColonistId="";activePanel="build";toolKind="build:"+kind;selectedId="";selectedType="";refreshAll();}
+function chooseTool(kind) {resetMapGesture();followColonistId="";mobilePanelOpen=false;panMode=false;toolKind=kind;selectedId="";selectedType="";if(kind==="harvest"||kind==="survey")activePanel="overview";refreshAll();}
+function cancelTool() {resetMapGesture();followColonistId="";mobilePanelOpen=false;panMode=false;selectedId="";selectedType="";if(activePanel==="inspect")activePanel="overview";toolKind="select";hoverCellX=-1;hoverCellY=-1;pointerState=null;refreshAll();}
+function toggleGrid() {gridVisible=!gridVisible;}
+function togglePowerOverlay() {powerVisible=!powerVisible;terrainDirty=true;refreshAll();}
+function zoomBy(amount) {let z1=zoomLevel,z2=clampZoom(zoomLevel+amount);if(z2===z1)return;pendingMapJump=null;panX*=z2/z1;panY*=z2/z1;zoomLevel=z2;refreshView();}
+// Mouse wheel: zoom about the cursor, so the tile under the pointer stays under the pointer.
+// The world sits centred in the viewport, shifted by (panX, panY) and scaled about its own centre, so a
+// world point p (pixels from the world centre) lands at pan + p * zoom from the viewport centre.
+function mapWheel(deltaY,clientX,clientY,left,top,width,height) {
+  if(!osGame||screen!=="game"||!(width>0)||!(height>0)||!Number.isFinite(deltaY)||deltaY===0)return;
+  noteViewport(width,height);let z1=zoomLevel,z2=clampZoom(z1*(deltaY>0?1/1.12:1.12));if(z2===z1)return;
+  pendingMapJump=null;
+  let cx=clientX-left-width/2,cy=clientY-top-height/2;
+  panX=cx-(cx-panX)*z2/z1;panY=cy-(cy-panY)*z2/z1;zoomLevel=z2;
+  refreshView();
+}
+function focusAt(x,y) {setCameraWorld(x,y);refreshCamera();}
+function focusCamp() {followColonistId="";viewAt(CENTRE,centreY());refreshAll();}
+function panLimit() {return 1e9;}
+function selectColonist(id) {resetMapGesture();let c=findColonist(id);if(!c)return;mobilePanelOpen=true;panMode=false;selectedId=id;selectedType="colonist";activePanel="inspect";toolKind="select";inspectTab="overview";refreshAll();}
+function focusColonist(id) {let c=findColonist(id);if(!c)return;followColonistId="";selectColonist(id);viewAt(c.x,c.y);refreshAll();}
+function inspectWorkJob(id) {
+  let j=getJob(id),target=j?targetForJob(j):null;
+  if(!j||!target||!jobStillValid(j)){say("That task has cleared.");refreshAll();return;}
+  dialog="";stopEdgePan();followColonistId="";panMode=false;pointerState=null;toolKind="select";hoverCellX=-1;hoverCellY=-1;
+  selectedId=target.id||"";selectedType=j.type==="gather"?"node":j.type==="treat"?"colonist":j.type==="excavate"?"ruin":j.type==="survey"?"":"building";
+  activePanel=selectedType?"inspect":"work";mobilePanelOpen=true;inspectTab="overview";
+  focusAt(target.x+(target.w?target.w/2:0),target.y+(target.h?target.h/2:0));refreshAll();
+}
+function retryBlockedWork() {
+  if(!osGame)return;let count=0;
+  for(let i=0;i<osGame.jobs.length;i++){let j=osGame.jobs[i];if(!j.claimed&&j.blockedUntil>osGame.elapsed&&jobStillValid(j)){j.blockedUntil=0;j.reason="";count++;}}
+  say(count?count+(count===1?" task can":" tasks can")+" be retried when a colonist next looks for work.":"No waiting tasks to retry.");refreshAll();
+}
+function focusAlert(kind) {
+  if(!osGame)return;
+  if(kind==="food"){buildCategory="Food";setPanel("build");return;}
+  if(kind==="burial"){buildCategory="People";setPanel("build");return;}
+  if(kind==="trade"){setPanel("frontier");return;}
+  if(kind==="incoming"){setPanel("chronicle");return;}
+  let targets=[],type="";
+  if(kind==="medical"){
+    type="colonist";for(let i=0;i<osGame.people.length;i++){let c=osGame.people[i];if(!c.dead&&!c.carried&&(c.health<65||c.bleed>0))targets.push(c);}
+    targets.sort(function(a,b){return (b.bleed>0?1:0)-(a.bleed>0?1:0)||a.health-b.health;});
+  }else if(kind==="hostiles"){
+    type="animal";for(let i=0;i<osGame.animals.length;i++){let a=osGame.animals[i];if(a.hostile&&!a.dead&&osGame.explored[tileId(a.x,a.y)])targets.push(a);}
+  }else if(kind==="exposed"){
+    type="colonist";targets=exposedPeople();
+  }else if(kind==="power"){
+    type="building";for(let i=0;i<osGame.buildings.length;i++){let b=osGame.buildings[i];if(b.built&&b.on&&BUILDINGS[b.kind].power&&!b.powered)targets.push(b);}
+  }
+  if(!targets.length){say("That warning has cleared.");refreshAll();return;}
+  let next=0;for(let i=0;i<targets.length;i++)if(targets[i].id===selectedId)next=(i+1)%targets.length;
+  let target=targets[next];stopEdgePan();followColonistId="";panMode=false;toolKind="select";pointerState=null;hoverCellX=-1;hoverCellY=-1;
+  selectedId=target.id;selectedType=type;activePanel="inspect";mobilePanelOpen=true;inspectTab="overview";
+  focusAt(target.x+(type==="building"?target.w/2:0),target.y+(type==="building"?target.h/2:0));refreshAll();
+}
+function selectSite(id) {let s=getSite(id);if(!s||!s.known)return;followColonistId="";mobilePanelOpen=true;panMode=false;selectedId=id;selectedType="ruin";activePanel="inspect";toolKind="select";focusAt(s.x+1.5,s.y+1.5);refreshAll();}
+function selectInspectorTab(tab) {inspectTab=tab;}
+function togglePause() {if(!osGame||osGame.over||dialogPausesSimulation())return;paused=!paused;loopAccumulator=0;viewDirty=true;}
+function setSpeed(speed) {if([1,2,4].indexOf(speed)<0||!osGame||osGame.over||dialogPausesSimulation())return;gameSpeed=speed;paused=false;loopAccumulator=0;}
+function closeDialog() {resetMapGesture();if(!osGame&&screen==="game"){recoverToTitle();return;}
+  if(osGame&&osGame.pendingEvent&&dialog==="story"){if(storyCaptions){dialog="";refreshAll();return;}say("Choose a response to dismiss this incident.");return;}
+  if(dialog!=="story")stopChapterNarration();
+  if(dialogPausesSimulation())paused=true;dialog="";storyCard=null;refreshAll();
+}
+function startAfterArrival() {if(!osGame){recoverToTitle();return;}dialog="";paused=false;loopAccumulator=0;generateJobs();say(osGame.scenario==="established"?"Enable AUTO for supply gathering and research, or choose work yourself.":"Plan shelter and growing plots. AUTO can help gather nearby supplies.");}
+function openHelp() {resetMapGesture();paused=true;dialog="help";}
+function openMenu() {resetMapGesture();paused=true;dialog="menu";}
+function showTitle() {clearResume();resetMapGesture();paused=true;screen="title";dialog="";refreshSlots();}
+function requestNew(scenario) {
+  landingScenario=scenario;
+  if(osGame&&!osGame.over){dialog="confirm-new";paused=true;return;}
+  if(scenario==="landing"){openCrew();return;}
+  startNewSettlement();
+}
+function confirmNewSettlement(){if(landingScenario==="landing"){openCrew();return;}startNewSettlement();}
+function startNewSettlement() {
+  clearResume();
+  if(!seedText.trim())seedText="HOLLOW-7";applyCrewCode(seedText);
+  seedText=seedText.trim().slice(0,120);colonyNameText=colonyNameText.trim().slice(0,36)||"Lantern Reach";
+  dialog="";createWorld(hashSeed(seedText),landingScenario);tickPower(0);updateClimate(0);refreshAll();
+}
+function setMapSizeChoice(value) {mapSizeChoice=MAP_SIZES.indexOf(value)>=0?value:288;}
+function setBiome(value) {biomeChoice=BIOMES[value]?value:"hills";}
+function setDifficulty(value) {difficultyChoice=value==="peaceful"?"peaceful":"frontier";}
+function markSelectedNode() {let n=getNode(selectedId);if(!n)return;n.marked=!n.marked;if(!n.marked)cancelTargetJobs(n.id);generateJobs();viewDirty=true;refreshAll();}
+function orderHuntSelected() {
+  let a=getAnimal(selectedId);if(!a||a.dead)return;let candidates=alivePeople();if(!candidates.length)return;
+  candidates.sort(function(x,y){return sqDistance(x.x,x.y,a.x,a.y)-sqDistance(y.x,y.y,a.x,a.y);});let c=candidates[0];releaseTask(c,true);cancelWeaponPickup(c);c.drafted=true;c.autoDefend=false;c.combatTarget=a.id;
+  say(c.short+" is targeting "+a.name+". Move them within weapon range, then stand down when finished.");selectColonist(c.id);
+}
+function canvasPosition(e,rect) {
+  let r=rect||{left:e.targetLeft,top:e.targetTop,width:e.targetWidth,height:e.targetHeight};
+  if(!r.width||!r.height)return null;
+  let x=Math.floor((e.clientX-r.left)/r.width*MAP_SIZE)+WX,y=Math.floor((e.clientY-r.top)/r.height*MAP_SIZE)+WY;
+  return {x:clamp(x,WX,WX+MAP_SIZE-1),y:clamp(y,WY,WY+MAP_SIZE-1)};
+}
+function eventOnMap(e) {return String(e.targetTag||"").toUpperCase()==="CANVAS";}
+function onWorldPointerDown(e) {
+  if(screen!=="game"||dialog||!osGame||!eventOnMap(e))return;
+  if(e.button===2){rightClickMap(e);return;}
+  let p=canvasPosition(e);if(!p)return;
+  hoverCellX=p.x;hoverCellY=p.y;
+  let pan=panMode||e.button===1||e.shiftKey;
+  if(pan)followColonistId="";
+  pointerState={mode:pan?"pan":toolKind==="select"?"tap":"paint",x:p.x,y:p.y,lastX:p.x,lastY:p.y,clientX:e.clientX,clientY:e.clientY,panX:panX,panY:panY,rect:{left:e.targetLeft,top:e.targetTop,width:e.targetWidth,height:e.targetHeight}};
+  refreshCamera();
+}
+function onWorldPointerMove(e) {
+  if(screen!=="game"||dialog||!osGame)return;
+  if(pointerState&&pointerState.mode==="tap"&&sqDistance(e.clientX,e.clientY,pointerState.clientX,pointerState.clientY)>=36){pointerState.mode="pan";followColonistId="";}
+  if(pointerState&&pointerState.mode==="pan"){
+    panX=clamp(pointerState.panX+e.clientX-pointerState.clientX,-panLimit(),panLimit());panY=clamp(pointerState.panY+e.clientY-pointerState.clientY,-panLimit(),panLimit());refreshCamera();return;
+  }
+  if(!eventOnMap(e)&&!pointerState)return;
+  let p=canvasPosition(e,pointerState?pointerState.rect:null);if(!p)return;
+  hoverCellX=p.x;hoverCellY=p.y;refreshCamera();
+}
+// What a drag lays out: a straight run for conduits; walls and barricades become a room outline when the drag is
+// clearly a box; floors fill the box. Orthogonal runs avoid accidental diagonal gaps in walls and circuits.
+function planShape(kind,x1,y1,x2,y2){let dx=Math.abs(x2-x1),dy=Math.abs(y2-y1);if((kind==="wall"||kind==="barricade")&&dx>=2&&dy>=2)return "outline";if(kind==="floor"&&dx>=1&&dy>=1)return "fill";return "line";}
+function planCells(kind,x1,y1,x2,y2){
+  let cells=[],shape=planShape(kind,x1,y1,x2,y2);
+  if(shape==="line"){let horizontal=Math.abs(x2-x1)>=Math.abs(y2-y1),length=horizontal?Math.abs(x2-x1):Math.abs(y2-y1);for(let i=0;i<=length;i++)cells.push({x:horizontal?x1+Math.sign(x2-x1)*i:x1,y:horizontal?y1:y1+Math.sign(y2-y1)*i});return cells;}
+  let minX=Math.min(x1,x2),maxX=Math.max(x1,x2),minY=Math.min(y1,y2),maxY=Math.max(y1,y2);
+  for(let y=minY;y<=maxY;y++)for(let x=minX;x<=maxX;x++){if(shape==="fill"||x===minX||x===maxX||y===minY||y===maxY)cells.push({x:x,y:y});}
+  return cells;
+}
+function paintLine(kind,x1,y1,x2,y2) {
+  let cells=planCells(kind,x1,y1,x2,y2),count=0;
+  for(let i=0;i<cells.length;i++)if(queueBuilding(kind,cells[i].x,cells[i].y,true))count++;
+  let shape=planShape(kind,x1,y1,x2,y2);
+  say(count?count+" "+BUILDINGS[kind].name.toLowerCase()+" blueprint(s) placed"+(shape==="outline"?" as a room outline.":shape==="fill"?" across the area.":"."):"No blueprints placed. Check materials and clear ground.");
+}
+function toolPaints(){return toolKind==="harvest"||toolKind==="erase"||(toolKind.indexOf("build:")===0&&["wall","floor","conduit","barricade"].indexOf(toolKind.slice(6))>=0);}
+// Bulk clearing: every gathering mark on the map, with its jobs.
+function clearAllDesignations(){
+  if(!osGame)return;let count=0;for(let i=0;i<osGame.nodes.length;i++){let n=osGame.nodes[i];if(n.marked){n.marked=false;cancelTargetJobs(n.id);count++;}}
+  if(count){generateJobs();viewDirty=true;}say(count?count+" gathering designation(s) cleared.":"Nothing is marked for gathering.");refreshAll();
+}
+function onWorldPointerUp(e) {
+  if(!pointerState)return;let drag=pointerState;pointerState=null;
+  if(drag.mode==="pan"||screen!=="game"||dialog)return;
+  let p=canvasPosition(e,drag.rect);if(!p)return;
+  if(toolKind==="harvest"){markHarvest(drag.x,drag.y,p.x,p.y);return;}
+  if(toolKind.indexOf("build:")===0){let kind=toolKind.slice(6);if(kind==="wall"||kind==="floor"||kind==="conduit"||kind==="barricade")paintLine(kind,drag.x,drag.y,p.x,p.y);else queueBuilding(kind,p.x,p.y,false);serviceTopology();refreshAll();return;}
+  if(toolKind==="shelter"){queueShelter(p.x,p.y);return;}
+  if(toolKind==="survey"){
+    if(!passable(p.x,p.y)){say("Choose traversable ground beside that terrain.");return;}
+    addJob("survey","survey"+p.x+"x"+p.y,"explore",p.x,p.y,10);say("Survey destination assigned. Explorers reveal terrain as they travel.");refreshAll();return;
+  }
+  if(toolKind==="erase"){
+    if(drag.x!==p.x||drag.y!==p.y){cancelBlueprintsIn(drag.x,drag.y,p.x,p.y);serviceTopology();refreshAll();return;}
+    let id=cellBuilding[tileId(p.x,p.y)];if(!id){for(let i=osGame.buildings.length-1;i>=0;i--){let b=osGame.buildings[i];if(b.x===p.x&&b.y===p.y){id=b.id;break;}}}
+    if(id)demolishBuilding(id,false);else if(demolishLayerTile("conduit",p.x,p.y))say("Conduit removed.");else if(demolishLayerTile("floor",p.x,p.y))say("Floor lifted.");else cancelDesignation(p.x,p.y);serviceTopology();refreshAll();return;
+  }
+  handleMapSelection(p.x,p.y);
+}
+// Dragging with Dismantle clears every unbuilt blueprint and gathering mark in the box; built structures need a deliberate click.
+function cancelBlueprintsIn(x1,y1,x2,y2) {
+  let minX=Math.min(x1,x2),maxX=Math.max(x1,x2),minY=Math.min(y1,y2),maxY=Math.max(y1,y2),count=0,designations=0;
+  for(let i=osGame.buildings.length-1;i>=0;i--){let b=osGame.buildings[i];if(b.built||b.x+b.w-1<minX||b.x>maxX||b.y+b.h-1<minY||b.y>maxY)continue;if(demolishBuilding(b.id,false))count++;}
+  for(let y=minY;y<=maxY;y++)for(let x=minX;x<=maxX;x++){let n=getNode(nodeAtCell[tileId(x,y)]);if(n&&n.marked){n.marked=false;cancelTargetJobs(n.id);designations++;}}
+  if(designations){generateJobs();viewDirty=true;}
+  say(count||designations?count+" blueprint(s) cancelled with a full refund"+(designations?" · "+designations+" gathering designation(s) cleared":"")+".":"No blueprints or designations in that area. Click a built structure to dismantle it.");
+}
+function cancelAllBlueprints() {
+  if(!osGame)return;let count=0;
+  for(let i=osGame.buildings.length-1;i>=0;i--){let b=osGame.buildings[i];if(!b.built&&demolishBuilding(b.id,false))count++;}
+  serviceTopology();say(count?count+" blueprint(s) cancelled. Reserved materials returned to the warehouse.":"There are no unbuilt blueprints.");refreshAll();
+}
+function handleMapSelection(x,y) {
+  let animal=null;for(let i=0;i<osGame.animals.length;i++){let a=osGame.animals[i];if(!a.dead&&sqDistance(a.x,a.y,x+0.5,y+0.5)<1.3&&osGame.explored[tileId(x,y)]){animal=a;break;}}
+  let selected=selectedType==="colonist"?findColonist(selectedId):null;
+  if(selected&&selected.drafted){if(!osGame.explored[tileId(x,y)]){say("Survey this area before issuing combat orders.");return;}commandColonist(selected,x,y,animal?animal.id:"");refreshAll();return;}
+  if(!osGame.explored[tileId(x,y)]){say("Unsurveyed terrain. Use Survey to send an explorer.");return;}
+  for(let i=0;i<osGame.people.length;i++){let c=osGame.people[i];if(sqDistance(c.x,c.y,x+0.5,y+0.5)<1.2){selectColonist(c.id);return;}}
+  mobilePanelOpen=true;
+  if(animal){selectedId=animal.id;selectedType="animal";activePanel="inspect";refreshAll();return;}
+  for(let i=0;i<osGame.sites.length;i++){let s=osGame.sites[i];if(x>=s.x&&x<s.x+s.w&&y>=s.y&&y<s.y+s.h&&s.known){selectedId=s.id;selectedType="ruin";activePanel="inspect";refreshAll();return;}}
+  let camps=campList();for(let i=0;i<camps.length;i++){let c=camps[i];if(x>=c.x&&x<c.x+2&&y>=c.y&&y<c.y+2&&osGame.explored[tileId(x,y)]){selectedId=c.id;selectedType="camp";activePanel="inspect";refreshAll();return;}}
+  for(let i=0;i<osGame.weapons.length;i++){let w=osGame.weapons[i];if(!w.holder&&Math.floor(w.x)===x&&Math.floor(w.y)===y){selectWeapon(w.id);return;}}
+  let b=getBuilding(cellBuilding[tileId(x,y)]);
+  if(!b)for(let i=osGame.buildings.length-1;i>=0;i--){let other=osGame.buildings[i];if(other.x===x&&other.y===y){b=other;break;}}
+  if(b){selectedId=b.id;selectedType="building";activePanel="inspect";refreshAll();return;}
+  let node=getNode(nodeAtCell[tileId(x,y)]);if(node&&node.amount>0){selectedId=node.id;selectedType="node";activePanel="inspect";refreshAll();return;}
+  mobilePanelOpen=false;selectedId="";selectedType="";activePanel="overview";refreshAll();
+}
+function onGameKey(e) {
+  if(e.targetEditable||e.ctrlKey||e.metaKey||e.altKey)return;
+  let k=String(e.key||"");if(screen!=="game")return;
+  if(k==="Escape"){if(dialog)closeDialog();else cancelTool();return;}
+  if(dialogPausesSimulation())return;
+  if(k===" "){if(!e.repeat)togglePause();return;}
+  if(dialog)return;
+  if(k==="1"||k==="2"||k==="3"||k==="4"){setSpeed(k==="1"?1:k==="2"?2:4);return;}
+  if(k.indexOf("Arrow")===0)followColonistId="";
+  if(k==="ArrowLeft")panX+=80;if(k==="ArrowRight")panX-=80;if(k==="ArrowUp")panY+=80;if(k==="ArrowDown")panY-=80;
+  if(k==="+"||k==="=")zoomBy(.1);if(k==="-")zoomBy(-.1);
+  if(e.repeat){refreshCamera();return;}
+  k=k.toLowerCase();
+  if(k==="b")setPanel("build");if(k==="h")chooseTool("harvest");if(k==="e")chooseTool("survey");if(k==="r")setPanel("research");if(k==="f")chooseBuild("farm");if(k==="g")toggleGrid();if(k==="p")togglePowerOverlay();if(k==="d"&&selectedType==="colonist")toggleDraft(selectedId);if(k==="?")openHelp();if(k==="home")focusCamp();refreshCamera();
+}
+function onGameBlur() {resetMapGesture();edgeX=0;edgeY=0;pointerState=null;if(backgroundPlay)return;loopAccumulator=0;if(screen==="game"&&osGame){paused=true;viewDirty=true;statusText="Paused while the app is not in focus.";}}
+function setMotion() {reducedMotion=!reducedMotion;refreshActors();}
+function toggleSound() {
+  soundEnabled=!soundEnabled;ambienceText=soundEnabled?"Sound on":"Sound off";audioResumePending=false;
+  restartBackgroundAudio();savePresentationPreferences();
+}
+function restartBackgroundAudio() {
+  stopOpeningNarration();stopWeatherAudio();
+  audioRevision++;cueRevision++;let revision=audioRevision;
+  audioHandle="";cueHandle="";
+  try{
+    if(typeof softn==="undefined"||!softn.audio){if(soundEnabled){soundEnabled=false;ambienceText="Sound unavailable";}return;}
+    softn.audio.stopAll(function(){});
+    if(!soundEnabled)return;
+    quietAudioMuted=!!(osGame&&osGame.quietUntil>osGame.minutes);
+    softn.audio.setVolume(quietAudioMuted?0:audioVolume,function(){});
+    softn.audio.play(musicEnabled?"assets/audio/first-light.mp3":"assets/audio/hollow-air.mp3",{volume:musicEnabled?0.24:0.28,loop:true},function(result){
+      if(revision!==audioRevision||!soundEnabled){if(result&&result.handle)softn.audio.stop(result.handle,function(){});return;}
+      if(result&&(result.played||result.pending)){audioHandle=result.handle;if(result.pending)audioResumePending=true;ambienceText=result.pending?"Sound ready · tap to play":"Sound on";}
+      else{soundEnabled=false;ambienceText="Sound unavailable · retry";stopOpeningNarration();}
+    });
+    playOpeningNarration();syncWeatherAudio();
+  }catch(error){soundEnabled=false;ambienceText="Sound unavailable · retry";stopOpeningNarration();}
+}
+function toggleMusic() {musicEnabled=!musicEnabled;if(soundEnabled)restartBackgroundAudio();savePresentationPreferences();}
+function toggleEffects() {effectsEnabled=!effectsEnabled;if(!effectsEnabled){cueRevision++;try{if(cueHandle)softn.audio.stop(cueHandle,function(){});}catch(error){}cueHandle="";}syncWeatherAudio();savePresentationPreferences();}
+function cycleAudioVolume() {audioVolume=audioVolume===0.65?1:audioVolume===1?0.35:0.65;audioVolumeText=audioVolume===1?"Volume: high":audioVolume===0.35?"Volume: low":"Volume: medium";try{if(soundEnabled)softn.audio.setVolume(quietAudioMuted?0:audioVolume,function(){});}catch(error){}savePresentationPreferences();}
+function previewSound() {playCue("discovery");}
+function playCue(name) {
+  if(!soundEnabled||!effectsEnabled||(osGame&&osGame.quietUntil>osGame.minutes))return;
+  let files={warning:"warning-soft.mp3",discovery:"discovery-soft.mp3",build:"build-complete.mp3",place:"place-soft.mp3"};
+  if(!files[name])return;
+  // One effect at a time, with a real-time cooldown independent of simulation speed.
+  if(name==="warning"){if(audioClock-lastWarningAt<4)return;lastWarningAt=audioClock;}
+  else if(audioClock-lastCueAt<3.2)return;
+  lastCueAt=audioClock;cueRevision++;let revision=cueRevision;
+  try{if(typeof softn!=="undefined"&&softn.audio){
+    if(cueHandle)softn.audio.stop(cueHandle,function(){});cueHandle="";
+    softn.audio.play("assets/audio/"+files[name],{volume:name==="warning"?0.6:0.45},function(result){
+      if(!result||!result.handle)return;
+      if(revision!==cueRevision||!soundEnabled||!effectsEnabled)softn.audio.stop(result.handle,function(){});
+      else cueHandle=result.handle;
+    });
+  }}catch(error){/* Optional audio cannot stop the simulation. */}
+}
+function openWork() {resetMapGesture();paused=true;dialog="work";refreshAll();}
+function openGallery() {resetMapGesture();paused=true;dialog="gallery";}
+
+// Quietfall affects sound without changing the player's sound preference.
+function syncQuietAudio() {
+  let shouldMute=!!(soundEnabled&&osGame&&osGame.quietUntil>osGame.minutes);
+  if(shouldMute===quietAudioMuted)return;
+  quietAudioMuted=shouldMute;
+  try{if(typeof softn!=="undefined"&&softn.audio&&softn.audio.setVolume)softn.audio.setVolume(shouldMute?0:audioVolume,function(){});}catch(error){/* Optional audio never blocks simulation. */}
+}
+
+function setEdgePan(x,y) {edgeX=x;edgeY=y;}
+function stopEdgePan() {edgeX=0;edgeY=0;}
+function toggleEdgeScroll() {edgeScroll=!edgeScroll;stopEdgePan();}
+function tickEdgePan(dt) {
+  if(dialog||screen!=="game"){stopEdgePan();return;}
+  if(!edgeScroll||pointerState||(!edgeX&&!edgeY))return;
+  followColonistId="";
+  panX=clamp(panX-edgeX*520*dt,-MAP_SIZE*TILE*zoomLevel/2,MAP_SIZE*TILE*zoomLevel/2);
+  panY=clamp(panY-edgeY*520*dt,-MAP_SIZE*TILE*zoomLevel/2,MAP_SIZE*TILE*zoomLevel/2);
+  hoverCellX=-1;hoverCellY=-1;refreshCamera();
+}
+
+function toggleTitleSetup() {titleSetupOpen=!titleSetupOpen;}
+function closeMobilePanel() {mobilePanelOpen=false;}
+function togglePanMode() {resetMapGesture();panMode=!panMode;if(panMode)followColonistId="";pointerState=null;mobilePanelOpen=false;stopEdgePan();}
+function onWorldPointerCancel() {touchPlacement=false;pointerState=null;stopEdgePan();hoverCellX=-1;hoverCellY=-1;refreshCamera();}
+function toggleFollowColonist(id) {let c=findColonist(id);if(!c||c.dead)return;followColonistId=followColonistId===id?"":id;mobilePanelOpen=false;if(followColonistId)viewAt(c.x,c.y);refreshAll();}

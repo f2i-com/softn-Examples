@@ -1,0 +1,151 @@
+// The signal chapters: a guided, state-driven campaign layered over the sandbox.
+// Chapters are plain data with live checks; only the chapter index, completed goals
+// and the pending beat persist. Beats are ordinary story dialogs, so mods, saves and
+// the test harness treat them like any other encounter.
+let campaignCard={tag:"",title:"",detail:"",progress:"",canRead:false,complete:false};
+const CAMPAIGN_CHAPTERS=[
+ {id:"touchdown",tag:"CHAPTER 1 / TOUCHDOWN",title:"Four walls before the cold",detail:"The lifeboat will not keep anyone warm for long. Make somewhere to sleep, seal it, and cook a real meal.",
+  goals:[
+   {id:"beds",title:"Four proper beds",detail:"Replace the emergency bedrolls with colony cots.",action:"Plan a bunkhouse",focus:"shelter",check:function(){return countBuilt("bed")>=4;}},
+   {id:"shelter",title:"A roof, not just a sky",detail:"Enclose a room with walls and a passable door.",check:function(){return !!(osGame.rooms&&osGame.rooms.length);}},
+   {id:"meals",title:"A hot meal",detail:"Cook at a field stove or kitchen. Raw ingredients keep nobody warm.",action:"Plan food production",focus:"food",check:function(){return osGame.stats.mealsCooked>0;}}],
+  beat:{title:"The first night with a roof",tag:"CHAPTER 1 / TOUCHDOWN",body:"The door slides shut and the wind becomes a sound on the other side of something. Nobody says anything for a while.\n\n{keeper} counts the plates. {engineer} listens to the wall creak and decides it is a good creak. {ranger} sleeps with her boots on. {scientist} writes the date at the top of a clean page, then crosses it out and writes 'Sol 1' instead.\n\nIt is not a home yet. It is where a home will go.",choices:[{id:"rest",label:"Let them sleep",detail:"Everyone remembers the first night under a roof."}]}},
+ {id:"roots",tag:"CHAPTER 2 / ROOTS",title:"Something that grows here",detail:"A shelter buys days. A harvest, a light and a place to think buy a future.",
+  goals:[
+   {id:"harvest",title:"The first harvest",detail:"Build a growing plot. Let farmers sow and harvest it.",action:"Plan food production",focus:"food",check:function(){return osGame.stats.harvests>0;}},
+   {id:"power",title:"Keep a light on",detail:"Build a generator or solar array and link consumers with conduits.",action:"Plan power",focus:"power",check:function(){return !!(osGame.power&&osGame.power.generation>0);}},
+   {id:"lab",title:"Room to think",detail:"Build a research station. Discoveries need a desk.",action:"Plan industry",focus:"industry",check:function(){return countBuilt("lab")>0;}}],
+  beat:{title:"Roots in strange soil",tag:"CHAPTER 2 / ROOTS",body:"The first sunroot comes out of the ground pale and knotted and entirely edible. {keeper} holds it up like evidence.\n\nThat evening the lamp outside the door stays on after dark for the first time. From the ridge, {ranger} reports, the settlement looks like exactly one star.\n\n{scientist} has started a second notebook. The first one filled up with things that do not add up: the age of the ridge, the grain of the stone, the way the local fungus grows toward the lifeboat.",choices:[{id:"stay",label:"Write it down",detail:"Everyone remembers deciding to stay. Current research gains 15 progress."}]}},
+ {id:"voice",tag:"CHAPTER 3 / THE VOICE BELOW",title:"Somebody has been here",detail:"The lifeboat hears a maintenance beacon under the eastern ridge. Its identifier is human. Find out who left it.",
+  goals:[
+   {id:"signal",title:"Answer the first signal",detail:"The beacon reveals itself once the colony has settled in.",check:function(){return !!osGame.storySeen.signal;}},
+   {id:"research",title:"More than survival",detail:"Complete any research project at a powered station.",action:"Choose a project",focus:"research",check:function(){return Object.keys(osGame.tech).length>0;}},
+   {id:"structure17",title:"Open Structure 17",detail:"Excavate the maintenance room under the eastern ridge.",action:"Locate the ruin",focus:"site0",check:function(){return osGame.storyStage>=1;}}],
+  beat:{title:"A locker with a familiar name",tag:"CHAPTER 3 / THE VOICE BELOW",body:"{engineer} does not touch the locker for a long time. The surname on it is spelled the way the family spells it, with the extra vowel nobody else ever gets right.\n\nInside: a torque wrench, a folded coat, and an inspection tag dated tomorrow.\n\n'Somebody is playing a joke,' {engineer} says, and then, quieter, 'Somebody has been playing it for three hundred years.'\n\n{scientist} bags the tag. {ranger} checks the horizon. {keeper} goes home and makes dinner for four, because that is what there is to do.",choices:[{id:"share",label:"Tell everyone tonight",detail:"An unsettling memory for all, but nobody carries it alone. Gain 1 Hollowglass."},{id:"quiet",label:"Keep it in the lab for now",detail:"Only the scientists carry the memory. Gain 1 Hollowglass."}]}},
+ {id:"keeps",tag:"CHAPTER 4 / WHAT THE STONE KEEPS",title:"A colony with your name",detail:"Learn to read the Hollow, grow what it grows, and open the buried ward in the south-west.",
+  goals:[
+   {id:"hollow",title:"Read the first archive",detail:"Research Hollow materials.",action:"Choose a project",focus:"research",check:function(){return hasTech("hollow");}},
+   {id:"mushroom",title:"Grow what grows here",detail:"Build a Hollowcap bed with recovered glass.",action:"Plan food production",focus:"food",check:function(){return countBuilt("mushroom")>0;}},
+   {id:"ward",title:"Open the buried ward",detail:"Excavate the ward south-west of camp.",action:"Locate the ruin",focus:"site1",check:function(){return osGame.storyStage>=2;}}],
+  beat:{title:"The same first shelter",tag:"CHAPTER 4 / WHAT THE STONE KEEPS",body:"The ward's archive lists a settlement with your colony's name. Its founders built an eight-by-eight bunkhouse north-west of their lifeboat, planted two sunroot plots, and argued about the generator noise.\n\nIn the records, the signal was logged for later. Nobody answered it. The chronicle ends on Sol 61 without saying why.\n\n{scientist} reads the entry three times. 'They made the same choices,' she says. 'Not similar. The same.' {engineer} points out that you have already answered the signal. {ranger} points out that the records do not say what happened to the people who did.",choices:[{id:"resolve",label:"We are not them",detail:"Everyone gains a defiant memory. Helix Recovery hears about your discovery."},{id:"caution",label:"Change something. Anything.",detail:"Everyone gains a wary memory and a little rest. Meridian goodwill rises."}]}},
+ {id:"recursion",tag:"CHAPTER 5 / RECURSION",title:"The engine that rehearses",detail:"Decode the repeated records, keep a mast powered so the frontier can hear you, and open the listening engine.",
+  goals:[
+   {id:"echo",title:"Decode the recursion",detail:"Research Recursive architecture.",action:"Choose a project",focus:"research",check:function(){return hasTech("echo");}},
+   {id:"radio",title:"Keep the frontier listening",detail:"Build and power a signal mast.",action:"Plan the frontier",focus:"frontier-build",check:function(){return anyPowered("radio");}},
+   {id:"engine",title:"Open the listening engine",detail:"Excavate the engine in the south-east.",action:"Locate the ruin",focus:"site2",check:function(){return osGame.storyStage>=3;}}],
+  beat:{title:"You were not the first",tag:"CHAPTER 5 / RECURSION",body:"The engine is warm. It has been rehearsing this settlement for centuries, rebuilding from fragments of archived memory, adjusting the terrain a little each time, waiting for a version that answers.\n\nIt has left the choice to you: a beacon that can call a craft down through the charged sky, or an interface that can teach the engine something new, or a single command that ends the rehearsal.\n\nNobody wants to talk about it at dinner. So they talk about the generator noise instead, and it is the best evening in a long while.",choices:[{id:"aloud",label:"Read the records aloud",detail:"Current research gains 25 progress. Everyone gains a heavy memory."},{id:"seal",label:"Seal the room until morning",detail:"Everyone gains a calm memory and a little recreation."}]}},
+ {id:"choice",tag:"CHAPTER 6 / THE CHOICE",title:"What comes next",detail:"Research a way forward, power the machinery it needs, and decide what Hollow-7 remembers about you.",
+  goals:[
+   {id:"path",title:"Choose a way forward",detail:"Research A way home or The listening world.",action:"Choose a project",focus:"research",check:function(){return hasTech("orbital")||hasTech("integration");}},
+   {id:"gate",title:"Power the machinery",detail:"Build and power an orbital beacon or Echo interface.",action:"Plan the frontier",focus:"frontier-build",check:function(){return anyPowered("beacon")||anyPowered("archive");}},
+   {id:"ending",title:"Decide",detail:"Choose Departure, Integration or Silence from Frontier.",action:"Open the frontier",focus:"frontier",check:function(){return !!osGame.ending;}}],
+  beat:{title:"What we leave in the stone",tag:"EPILOGUE",body:"Whatever you chose, the settlement is still here in the morning. Somebody complains about breakfast. The generator hums.\n\nThe chronicle continues for as long as you want to keep it. The colony is yours now, and nobody is rehearsing it.",choices:[{id:"close",label:"Close the chapter",detail:"Everyone remembers choosing, for a long time."}]}}
+];
+for(let i=0;i<CAMPAIGN_CHAPTERS.length;i++)STORY_EVENTS["chapter:"+CAMPAIGN_CHAPTERS[i].id]=CAMPAIGN_CHAPTERS[i].beat;
+function campaignById(id){for(let i=0;i<CAMPAIGN_CHAPTERS.length;i++)if(CAMPAIGN_CHAPTERS[i].id===id)return CAMPAIGN_CHAPTERS[i];return null;}
+function campaignState(){if(!osGame.campaign)osGame.campaign={chapter:0,done:{},beat:""};return osGame.campaign;}
+function campaignChapter(){let s=campaignState();return CAMPAIGN_CHAPTERS[s.chapter]||null;}
+function goalDone(ch,g){return !!campaignState().done[ch.id+"."+g.id];}
+function campaignKeyValid(key){
+  let parts=String(key).split(".");let ch=campaignById(parts[0]);if(!ch)return false;
+  if(parts.length===1)return true;if(parts.length!==2)return false;
+  for(let i=0;i<ch.goals.length;i++)if(ch.goals[i].id===parts[1])return true;return false;
+}
+// Silent runs mark already-satisfied goals without narration: new established colonies
+// and saves from before the campaign existed start at the right chapter.
+function updateCampaign(silent){
+  if(!osGame)return;let s=campaignState(),guard=0;
+  while(guard++<=CAMPAIGN_CHAPTERS.length){
+    let ch=CAMPAIGN_CHAPTERS[s.chapter];if(!ch)return;
+    let all=true;
+    for(let i=0;i<ch.goals.length;i++){let g=ch.goals[i],key=ch.id+"."+g.id;if(s.done[key])continue;if(g.check()){s.done[key]=true;if(!silent){say("Chapter goal complete: "+chapterView(ch).goals[i].title);viewDirty=true;}}else all=false;}
+    if(!all)return;
+    s.chapter++;s.done[ch.id]=true;
+    if(silent)continue;
+    s.beat=ch.id;chronicle("Chapter complete: "+ch.title,ch.tag+". "+ch.detail,"milestone");viewDirty=true;return;
+  }
+}
+function openCampaignBeat(){
+  let s=campaignState();if(!s.beat)return false;
+  let id="chapter:"+s.beat;if(!STORY_EVENTS[id]){s.beat="";return false;}
+  if(!storyCastReady(id))return false;
+  openStory(id,chapterCallbacks(s.beat));return true;
+}
+// Earlier decisions change later scenes: a paragraph the chapter beat gets only in this colony.
+function chapterCallbacks(chapterId){
+  let lines=[],jin=castHolder("engineer"),mina=castHolder("scientist");
+  if(chapterId==="recursion"){
+    if(osGame.choirPromise)lines.push("The Choir is on the band while the engine wakes, singing the pattern back to it a beat behind. They promised to learn the new song. They are already trying.");
+    if(osGame.storySeen.tomorrow&&jin)lines.push(jin.short+" finds the torque wrench on the console, warm, and does not pick it up this time.");
+    if(osGame.stats.deaths>0)lines.push("There is a name in the engine's rehearsal that nobody says aloud. It got here before the grave did.");
+  }
+  if(chapterId==="choice"){
+    if(osGame.charter)lines.push("A Meridian envoy has come up the road with a third offer, unasked: stay, as a Compact settlement, and let the Compact carry the decision with you. Whatever you choose, the lanterns stay lit.");
+    if(osGame.storySeen.jinWayfarer&&osGame.wayfarerService&&jin)lines.push(jin.short+" turns the lifeboat's transmitter off before the vote. The Wayfarer has its name on the stone; it does not need calling any more.");
+    let born=null;for(let i=0;i<osGame.people.length;i++){let p=osGame.people[i];if(!p.dead&&p.born!==undefined)born=p;}
+    if(born)lines.push(born.short+" has never seen another sky, and says so, once, when the adults have finished. Everybody hears it.");
+    if(mina&&hasQuirk(mina,"echoDrawn"))lines.push(mina.short+" asks, quietly, that whatever is chosen, somebody keep listening.");
+  }
+  return lines.join("\n\n");
+}
+function resolveChapterBeat(chapterId,choice){
+  let s=campaignState(),people=alivePeople();s.beat="";
+  if(chapterId==="touchdown")for(let p of people)remember(p,"The first night under a roof",6,1440*2);
+  if(chapterId==="roots"){for(let p of people)remember(p,"We decided to stay",5,1440*3);if(osGame.researchId){let t=techById(osGame.researchId);osGame.researchProgress[t.id]=Math.min(t.cost-1,(osGame.researchProgress[t.id]||0)+15);}}
+  if(chapterId==="voice"){stockGive({glass:1});osGame.tagAt=osGame.minutes+1440;for(let p of people)if(choice==="share"||p.skills.research>=6)remember(p,"The stone knows our names",-3,1440);}
+  if(chapterId==="keeps"){if(choice==="resolve"){osGame.standing.Helix+=8;for(let p of people)remember(p,"We are not them",4,1440*4);}else{osGame.standing.Meridian+=8;for(let p of people){p.rest=Math.min(100,p.rest+10);remember(p,"Change something. Anything.",2,1440*4);}}}
+  if(chapterId==="recursion"){if(choice==="aloud"){if(osGame.researchId){let t=techById(osGame.researchId);osGame.researchProgress[t.id]=Math.min(t.cost-1,(osGame.researchProgress[t.id]||0)+25);}for(let p of people)remember(p,"We read what the engine remembers",-4,1440*2);}else for(let p of people){p.recreation=Math.min(100,p.recreation+15);remember(p,"One more ordinary evening",5,1440*2);}}
+  if(chapterId==="choice")for(let p of people)remember(p,"We chose",8,1440*20);
+}
+function projectCampaign(){
+  let s=campaignState(),ch=campaignChapter(),goals=[];
+  if(ch){
+    let v=chapterView(ch);for(let i=0;i<v.goals.length;i++){let g=v.goals[i],done=goalDone(ch,g);goals.push({id:g.id,title:g.title,detail:g.detail,done:done,action:done?"":(g.action||"")});}
+    campaignCard={tag:v.tag,title:v.title,detail:v.detail,progress:"Chapter "+(s.chapter+1)+" of "+CAMPAIGN_CHAPTERS.length,canRead:s.chapter>0,complete:false};
+  }else campaignCard={tag:"EPILOGUE",title:"The chronicle continues",detail:"Every chapter is complete. The colony is yours to keep, grow or leave.",progress:CAMPAIGN_CHAPTERS.length+" of "+CAMPAIGN_CHAPTERS.length,canRead:true,complete:true};
+  objectiveCards=goals;
+}
+// Spoken chapter beats. Optional: captions carry the story when audio is off or missing.
+let storyNarration=false;
+let storyNarrationHandle="";
+let storyNarrationRevision=0;
+function storyNarrationFile(storyId){
+  if(!storyId||(osGame&&osGame.crewMode==="generated"))return "";
+  if(storyId.indexOf("chapter:")===0){for(let i=0;i<CAMPAIGN_CHAPTERS.length;i++)if(CAMPAIGN_CHAPTERS[i].id===storyId.slice(8))return i>=2&&mysteryId()!=="rehearsal"?"":"assets/audio/chapter-"+(i+1)+".mp3";return "";}
+  let side=SIDE_STORIES[storyId];return side&&side.narrated?"assets/audio/story-"+storyId+".mp3":"";
+}
+function stopChapterNarration(){
+  storyNarrationRevision++;
+  try{if(storyNarrationHandle&&typeof softn!=="undefined"&&softn.audio)softn.audio.stop(storyNarrationHandle,function(){});}catch(error){}
+  storyNarrationHandle="";
+}
+function playChapterNarration(){
+  stopChapterNarration();
+  let file=osGame&&osGame.pendingEvent?storyNarrationFile(osGame.pendingEvent.id):"";
+  storyNarration=!!file;
+  if(!file||!soundEnabled||!narrationEnabled||!osGame.pendingEvent)return;
+  let revision=storyNarrationRevision;
+  try{if(typeof softn!=="undefined"&&softn.audio)softn.audio.play(file,{volume:0.9,loop:false},function(result){
+    if(!result||!result.handle)return;
+    if(revision!==storyNarrationRevision||!osGame||!osGame.pendingEvent||!soundEnabled||!narrationEnabled)softn.audio.stop(result.handle,function(){});
+    else storyNarrationHandle=result.handle;
+  });}catch(error){/* The written beat is complete without audio. */}
+}
+function toggleStoryNarration(){narrationEnabled=!narrationEnabled;if(narrationEnabled)playChapterNarration();else stopChapterNarration();savePresentationPreferences();}
+function readChapter(){
+  let s=campaignState(),ch=CAMPAIGN_CHAPTERS[Math.min(s.chapter,CAMPAIGN_CHAPTERS.length)-1];if(!ch)return;
+  let b=chapterBeat(ch);resetMapGesture();archiveTitle=b.title;archiveBody=b.body;dialog="archive";
+}
+function focusGoal(goalId){
+  if(!osGame)return;let ch=campaignChapter();if(!ch)return;let goal=null;
+  for(let i=0;i<ch.goals.length;i++)if(ch.goals[i].id===goalId)goal=ch.goals[i];
+  if(!goal||!goal.focus)return;let f=goal.focus;
+  if(f==="shelter"){chooseTool("shelter");return;}
+  if(f==="food"){buildCategory="Food";setPanel("build");return;}
+  if(f==="power"){buildCategory="Power";setPanel("build");return;}
+  if(f==="industry"){buildCategory="Industry";setPanel("build");return;}
+  if(f==="frontier-build"){buildCategory="Frontier";setPanel("build");return;}
+  if(f==="research"){setPanel("research");return;}
+  if(f==="frontier"){setPanel("frontier");return;}
+  if(f.indexOf("site")===0){let s=osGame.sites[parseInt(f.slice(4),10)];if(s&&s.known)selectSite(s.id);else say("That site has not been found yet. Survey the frontier or follow the chapter's earlier leads.");}
+}

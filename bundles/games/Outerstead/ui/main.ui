@@ -1,0 +1,42 @@
+<logic src="../logic/main.logic" />
+<import Theme from="./styles.ui" />
+<import Opening from="./opening.ui" />
+<import TitleScreen from="./title.ui" />
+<import Hud from="./hud.ui" />
+<import Roster from="./roster.ui" />
+<import World from="./world.ui" />
+<import Inspector from="./inspector.ui" />
+<import Toolbar from="./toolbar.ui" />
+<import Dialogs from="./dialogs.ui" />
+<Theme />
+<div className={reducedMotion ? "os-root os-reduced" : "os-root"} osmotion={reducedMotion ? "off" : "on"} osdetail={highDetail ? "high" : "standard"} ospanelopen={String(mobilePanelOpen)} osplaying={String(!paused && !dialogPausesSimulation())}>
+  <Loop interval={100} running={true} @tick={gameLoop} />
+  #if (screen === "title")
+    #if (openingVisible)
+      <Opening />
+    #else
+      <TitleScreen />
+    #end
+  #else
+    <Hud />
+    <div className="os-body">
+      <Roster />
+      <World />
+      <Inspector />
+    </div>
+    <Toolbar />
+    <div className="os-status">
+      <span>{footerText}</span>
+      <span className="os-credits">
+        <a className="os-credit-link" href="https://www.formlogic.com" target="_blank" rel="noopener">Powered by FormLogic</a>
+        <span className="os-dim">· </span>
+        <a className="os-credit-link" href="https://www.lance.name" target="_blank" rel="noopener">Created by Lance</a>
+      </span>
+      <span className="os-dim os-performance">{fpsLabel}</span>
+    </div>
+  #end
+  #if (!dialog && toastText)
+    <div className="os-toast" role="status">{toastText}</div>
+  #end
+  <Dialogs />
+</div>

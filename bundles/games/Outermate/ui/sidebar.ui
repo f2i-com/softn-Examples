@@ -1,0 +1,26 @@
+<import Inspector from="./inspector.ui" />
+<import Day from="./day.ui" />
+<import Routine from="./routine.ui" />
+<import Crew from="./crew.ui" />
+<import Inventory from="./inventory.ui" />
+<import Security from="./security.ui" />
+<import Projects from="./schemes.ui" />
+<import Escape from="./escape.ui" />
+<import Notebook from="./notebook.ui" />
+<import Directory from="./directory.ui" />
+<aside className={"om-sidebar "+(mobilePanelOpen?"is-open":"")}>
+ <div className="om-panel-head"><div><span className="om-eyebrow">PERSONAL FILE / K-12</span><h2>{panelTitle}</h2></div><button className="om-btn om-close-panel" @click={closePanel} aria-label="Close panel">×</button></div>
+ <div className="om-panel-body" key={activePanel}>
+ #if (activePanel === "inspect")<Inspector />#end
+ #if (activePanel === "day")<Day />#end
+ #if (activePanel === "routine")<Routine />#end
+ #if (activePanel === "crew")<Crew />#end
+ #if (activePanel === "inventory")<Inventory />#end
+ #if (activePanel === "security")<Security />#end
+ #if (activePanel === "schemes")<Projects />#end
+ #if (activePanel === "escape")<Escape />#end
+ #if (activePanel === "notebook")<Notebook />#end
+ #if (activePanel === "map")<Directory />#end
+ </div>
+ <div className="om-panel-foot">Routine creates opportunity.</div>
+</aside>

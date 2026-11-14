@@ -1,0 +1,30 @@
+// The title screen shows a real Auto day running in the actual simulation and renderer.
+// The demo run is never saved and never becomes the player's run; starting a game or loading a
+// save replaces it. Its intake settings are fixed so the player's own choices are untouched.
+let demoRun=false,demoStarting=false,titleReplayPaused=false,demoAccumulator=0,demoActorClock=0,demoViewClock=0;
+const DEMO_SPEED=4;
+function newDemoGame(){
+  if(!booted||screen!=="title")return false;
+  let saved={name:playerName,seed:seedText,background:backgroundChoice,difficulty:difficultyChoice,palette:characterPalette,mode:prisonMode};
+  playerName="Alex Vale";seedText="GREYWALL-DEMO";backgroundChoice="mechanic";difficultyChoice="standard";characterPalette=0;prisonMode="classic";
+  demoStarting=true;
+  try{newGame();}finally{demoStarting=false;playerName=saved.name;seedText=saved.seed;backgroundChoice=saved.background;difficultyChoice=saved.difficulty;characterPalette=saved.palette;prisonMode=saved.mode;}
+  demoRun=true;screen="title";dialog="";toastText="";toastRemaining=0;mobilePanelOpen=false;activePanel="day";
+  omGame.nextIncident=1e9;omGame.nextSearch=1e9;
+  startAutoDay();zoomLevel=1;focusPlayer();paused=false;demoAccumulator=0;dirty();return true;
+}
+// Leaving the title for a real run: the demo is discarded and the camera returns to the play zoom.
+function endDemo(){if(!demoRun)return;demoRun=false;zoomLevel=0.85;toastText="";toastRemaining=0;titleReplayPaused=false;}
+function tickDemo(dt){
+  if(screen!=="title")return;
+  if(!demoRun||!omGame){newDemoGame();return;}
+  if(titleReplayPaused||reducedMotion||dialog)return;
+  demoAccumulator=Math.min(demoAccumulator+dt*DEMO_SPEED,STEP_SECONDS*6);let steps=0;
+  while(demoAccumulator>=STEP_SECONDS-0.000001&&steps<4){demoAccumulator-=STEP_SECONDS;advanceSimulation(STEP_SECONDS);steps++;}
+  demoActorClock+=dt;demoViewClock+=dt;
+  if(viewDirty||demoViewClock>=0.5){demoViewClock=0;demoActorClock=0;refreshAll();}
+  else if(demoActorClock>=0.1){demoActorClock=0;refreshActors();}
+}
+function toggleTitleReplay(){titleReplayPaused=!titleReplayPaused;dirty();}
+function demoCaption(){if(!demoRun||!omGame)return "A real prison day, about to start";return hud.time+" / "+hud.routine.toUpperCase();}
+function demoAction(){if(!demoRun||!omGame)return "Loading the demo";return playerCard.action||"";}

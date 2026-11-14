@@ -1,0 +1,55 @@
+// Weather that reaches everything. A front is not a modifier on one number: the same Glass Wind scours
+// the solar arrays and feeds the wind masts, cuts anyone left outside, grounds the lanternwings, keeps
+// the caravan in camp, wakes an old wound, and, if a mast is powered, carries the Hollow's signal.
+function weatherDuration(){return Math.max(0,osGame.weatherUntil-osGame.minutes);}
+function exposedPeople(){let out=[],people=alivePeople();for(let i=0;i<people.length;i++){let c=people[i];if(!roomAt(c.x,c.y))out.push(c);}return out;}
+// Called once when a front reaches the settlement.
+function onWeatherArrives(weather){
+  if(!osGame)return;
+  let people=alivePeople(),duration=weatherDuration();
+  if(weather==="Glass Wind"||weather==="Storm"){noteFact("fronts",1);
+    // A caravan in camp will not move in this. It stays until the front passes, and so do its goods.
+    if(osGame.traderUntil>osGame.minutes){osGame.traderUntil+=duration;chronicle("The caravan waits out the "+(weather==="Storm"?"storm":"wind"),"Nobody walks in this. The Meridian traders stay in camp until it passes; their goods stay on offer.","trade");}
+    for(let i=0;i<people.length;i++){let c=people[i];if(hasQuirk(c,"stormworker"))remember(c,"Weather worth working in",4,duration+60);if(hasQuirk(c,"stormAnxious")){let r=roomAt(c.x,c.y);remember(c,r&&r.comfort>=4?"Waiting it out somewhere warm":"Waiting for it to stop",r&&r.comfort>=4?-3:-6,duration+60);}}
+  }
+  if(weather==="Glass Wind"){
+    let flew=false;for(let i=0;i<osGame.animals.length;i++){let a=osGame.animals[i];if(a.kind==="lanternwing"&&!a.dead){a.dead=true;a.health=0;a.gone=true;a.diedAt=osGame.minutes-800;flew=true;}}
+    if(flew)chronicle("The lanternwings go to ground","Not one light over the water tonight. They will be back when the glass stops.","hollow");
+    // An old wound remembers the weather.
+    let hurt=[];for(let i=0;i<people.length;i++)if(people[i].injuries.length)hurt.push(people[i]);
+    if(hurt.length){let c=pick(hurt),injury=c.injuries[0],part=String(injury.part||injury.region||"wound").toLowerCase();c.achingUntil=osGame.weatherUntil;remember(c,"The old "+part+" wound aches in the wind",-5,duration+60);if(!(c.achedAt>osGame.minutes-1440)){c.achedAt=osGame.minutes;chronicle(c.short+"'s old wound aches",c.name+"'s "+part+" ("+(injury.cause||injury.type||"an old wound")+") hurts in the glass. Slower work until it passes.","people");}}
+    say("Glass Wind. Cuts mount in the open; rooms shelter.");
+  }
+  if(weather==="Storm"&&osGame.power){
+    let p=osGame.power,masts=countBuilt("wind")>0;
+    if(masts&&p.capacity>0&&p.stored>=p.capacity*0.4){chronicle("The night the lights held","The wind masts sang and the batteries were full when the front hit. Every lamp stayed on.","colony");for(let i=0;i<people.length;i++)remember(people[i],"The lights held in the storm",4,1440*2);}
+    else if(p.demand>0&&p.generation<=0&&p.stored<=p.capacity*0.1){chronicle("Dark in the storm","No wind mast, no charge in the batteries, and the storm has the solar arrays. The colony sits in the dark until it passes.","weather");for(let i=0;i<people.length;i++)remember(people[i],"Dark in the storm",-3,600);}
+  }
+  if(weather==="Echo Rain")for(let i=0;i<people.length;i++)if(hasQuirk(people[i],"echoDrawn"))remember(people[i],"The rain said something new",6,duration+120);
+  if(weather==="Cold snap")osGame.coldPensNoted=false;
+  viewDirty=true;
+}
+// Every simulated second: exposure in a glass wind. Ninety minutes in the open is a cut; a roof is enough.
+function tickWeatherEffects(minutes){
+  let people=alivePeople();
+  if(osGame.weather!=="Glass Wind")for(let i=0;i<people.length;i++)people[i].glassCutAt=0;
+  if(osGame.weather!=="Glass Wind"){for(let i=0;i<people.length;i++)if(people[i].exposure)people[i].exposure=Math.max(0,people[i].exposure-minutes*2);return;}
+  let factor=eventDamageFactor();
+  for(let i=0;i<people.length;i++){
+    let c=people[i];if(roomAt(c.x,c.y)){c.exposure=Math.max(0,(c.exposure||0)-minutes);continue;}
+    c.exposure=(c.exposure||0)+minutes;
+    if(c.exposure>=90){c.exposure-=90;
+      let damage=(hasQuirk(c,"stormworker")?1.5:3)*factor,first=!(c.glassCutAt>=osGame.weatherUntil-weatherDuration()-1&&c.glassCutAt<=osGame.minutes);
+      if(!hasQuirk(c,"stormworker"))remember(c,"Glass in every seam",-3,300);
+      if(factor<=0)continue;
+      if(first){c.glassCutAt=osGame.minutes;injureColonist(c,damage,"the glass wind",true);}
+      else{c.hurtUntil=osGame.elapsed+.65;emitVisualFx("hit",c.x,c.y,damage);c.health-=damage;if(c.health<=0)killColonist(c,"the glass wind");viewDirty=true;}
+    }
+  }
+}
+// Pens in a cold snap: the mossbacks huddle and graze half as much, noted once per snap.
+function coldPenYield(){
+  if(osGame.weather!=="Cold snap")return 6;
+  if(!osGame.coldPensNoted){osGame.coldPensNoted=true;chronicle("The pens go quiet","The mossbacks huddle and barely graze in the cold. Half the usual yield until it thaws.","colony");}
+  return 3;
+}

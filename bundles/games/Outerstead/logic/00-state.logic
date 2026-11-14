@@ -1,0 +1,271 @@
+// Outerstead: VM-owned simulation, UI-facing projections, and deterministic helpers.
+// The UI never references osGame or navigation scratch buffers directly.
+let osGame = null;
+let navBlocked = [];
+let cellBuilding = [];
+// Buildings and nodes by kind, rebuilt only when the arrays change, so a lookup for four beds does not walk
+// every structure and the steward does not walk every node four times.
+let buildingsByKind = {}, buildingsIndexRef = null, buildingsIndexLength = -1, buildingsEpoch = 0, buildingsIndexEpoch = -1;
+let nodesByKind = {}, nodesIndexRef = null, nodesIndexLength = -1, nodesEpoch = 0, nodesIndexEpoch = -1;
+function buildingsOfKind(kind) {
+  if(!osGame)return [];
+  if(buildingsIndexRef!==osGame.buildings||buildingsIndexLength!==osGame.buildings.length||buildingsIndexEpoch!==buildingsEpoch){
+    buildingsByKind={};for(let i=0;i<osGame.buildings.length;i++){let b=osGame.buildings[i];(buildingsByKind[b.kind]||(buildingsByKind[b.kind]=[])).push(b);}
+    buildingsIndexRef=osGame.buildings;buildingsIndexLength=osGame.buildings.length;buildingsIndexEpoch=buildingsEpoch;
+  }
+  return buildingsByKind[kind]||[];
+}
+function nodesOfKind(kind) {
+  if(!osGame)return [];
+  if(nodesIndexRef!==osGame.nodes||nodesIndexLength!==osGame.nodes.length||nodesIndexEpoch!==nodesEpoch){
+    nodesByKind={};for(let i=0;i<osGame.nodes.length;i++){let n=osGame.nodes[i];if(n.amount>0)(nodesByKind[n.kind]||(nodesByKind[n.kind]=[])).push(n);}
+    nodesIndexRef=osGame.nodes;nodesIndexLength=osGame.nodes.length;nodesIndexEpoch=nodesEpoch;
+  }
+  return nodesByKind[kind]||[];
+}
+// Floors and conduits by cell, for the terrain row rebuild; cellBuilding holds only structures that occupy a tile.
+let underlayAtCell = [];
+let wireAtCell = [];
+let roomCells = [];
+let powerGroups = [];
+let objectIndex = {};
+let nodeIndex = {};
+let pathEpoch = 0;
+let topologyDirty = true;
+let terrainDirty = true;
+// Rows of the terrain view that changed since the last rebuild; a full rebuild is only for changes that touch everything.
+let terrainRows = {};
+let terrainRowsPending = false;
+let minimapEpoch = 0, minimapBuiltEpoch = -1, minimapBuiltAt = -1e9, minimapRows = [], minimapRowsDirty = {}, minimapStructEpoch = 0, minimapStructBuilt = -1, minimapStructSvg = "";
+function dirtyTerrainRow(y) { y=y-WY; if(y<0||y>=MAP_SIZE)return; terrainRows[y] = true; terrainRowsPending = true; minimapRowsDirty[y] = true; minimapEpoch++; }
+let viewDirty = true;
+// Domain flags for the periodic refresh: each part of the view is rebuilt when its domain changed, or every two seconds.
+let structuresDirty = true;
+let stockDirty = true;
+let researchDirty = true;
+let storyDirty = true;
+let projectionAge = 0;
+let suggestShelter = true;
+let helpTopic = "all";
+function setHelpTopic(topic) { helpTopic = topic; }
+let loopAccumulator = 0;
+let viewClock = 0;
+let agentClock = 0;
+let presentationIdle = false;
+let realSaveClock = 0;
+let pointerState = null;
+let hoverCellX = -1;
+let hoverCellY = -1;
+let panX = 0;
+let panY = 0;
+let zoomLevel = 0.95;
+let toolKind = "select";
+let selectedId = "";
+let selectedType = "";
+let audioHandle = "";
+let audioRevision = 0;
+let cueRevision = 0;
+let cueHandle = "";
+let audioClock = 0;
+let lastCueAt = -10;
+let lastWarningAt = -10;
+let lastAlertKey = "";
+let autosaveIndex = 0;
+let lastFrameError = "";
+let booted = false;
+
+// Only these compact projections are read by the presentation.
+let screen = "title";
+let activePanel = "overview";
+let buildCategory = "Shelter";
+let paused = true;
+let gameSpeed = 1;
+let gridVisible = false;
+let powerVisible = false;
+let soundEnabled = false;
+let musicEnabled = true;
+let effectsEnabled = true;
+let audioVolume = 0.65;
+let audioVolumeText = "Volume: medium";
+let reducedMotion = false;
+let seedText = "HOLLOW-7";
+let colonyNameText = "Lantern Reach";
+let difficultyChoice = "frontier";
+let biomeChoice = "hills";
+const BIOMES={
+  hills:{name:"Lantern Hills",blurb:"The original valley: balanced timber, stone and ore, mild seasons. Rock ridges with narrow passes, and ore thickest along their feet.",density:0.22,ore:0.12,stone:0.36,berries:0.43,temperature:0,extraWeather:[],stock:{},filter:"none"},
+  rust:{name:"Rust Flats",blurb:"The hard site: open and exposed, ore-rich, timber-poor, hot days and glass on the wind. Old debris fields hold metal and Hollowglass; there are few places to hold a line. Bring metal, expect to trade for wood, and wall the camp early.",density:0.26,ore:0.30,stone:0.62,berries:0.66,temperature:2,extraWeather:["Glass Wind"],stock:{wood:-40,ore:30,metal:25},filter:"sepia(.28) hue-rotate(-14deg) saturate(1.08)"},
+  verdant:{name:"Verdant Basin",blurb:"Thick timber and berries, little ore, wet and foggy. Dense forest, marsh and lakes make for long walks; the wildlife is plentiful. Easy to feed, hard to industrialise.",density:0.28,ore:0.05,stone:0.20,berries:0.42,temperature:1,extraWeather:["Rain","Fog"],stock:{wood:40,raw:12,ore:-8},filter:"hue-rotate(10deg) saturate(1.15)"}
+};
+function biomeOf(){return BIOMES[osGame&&osGame.biome]||BIOMES.hills;}
+let statusText = "A home at the edge of everything.";
+let toastText = "";
+let toastRemaining = 0;
+let hud = { sol: 1, time: "06:00", weather: "Clear", temperature: 16, population: 4, wood: 0, stone: 0, metal: 0, parts: 0, meals: 0, medicine: 0, foodDays: "0", power: "0 / 0 W", stored: "0 Wh", season: "Thaw" };
+let colonistCards = [];
+let objectiveCards = [];
+let alertCards = [];
+let buildingCards = [];
+let researchCards = [];
+let workCards = [];
+let journalCards = [];
+let storageCards = [];
+let tradeCards = [];
+let ruinCards = [];
+let relationshipCards = [];
+let selectedCard = null;
+let inspectTab = "overview";
+let terrainLayers = [];
+// What the screen draws: the layers of whichever window is being watched, mirrored after every refresh (see withView).
+let viewTerrainLayers = [];
+let viewMapTiles = 96;
+let viewMinimapSrc = "";
+let viewRoverId = "";
+let mapBuildings = [];
+let mapColonists = [];
+let mapAnimals = [];
+let mapRuins = [];
+let mapEffects = [];
+let mapJobs = [];
+let worldStyle = {};
+let hoverStyle = { display: "none" };
+let worldNight = 0;
+let worldSnow = false;
+let mapPrints = [];
+let mapPlan = [];
+let printTrack = {};
+let printSeq = 0;
+let weatherClass = "clear";
+let toolLabel = "Select / inspect";
+let footerText = "";
+let storyCard = null;
+let dialog = "";
+let saveText = "";
+let slotCards = [];
+let saveMessage = "";
+let saveAvailable = false;
+let archiveTitle = "";
+let archiveBody = "";
+let supplyMessage = "No visiting caravan. A radio brings the frontier closer.";
+let achievementCards = [];
+let fpsLabel = "";
+let atlasLabel = "SURVEY ATLAS · press to look";
+
+const OS_VERSION = "0.61.6";
+const SAVE_SCHEMA = 6;
+// Older schemas are brought forward one step at a time before validation; each step is small and named.
+const SAVE_MIGRATIONS = {
+  1: function(g) { for(let i=0;i<(g.people||[]).length;i++){let c=g.people[i];if(c&&typeof c==="object"){if(!Array.isArray(c.quirks))delete c.quirks;if(!c.values||typeof c.values!=="object")delete c.values;}} g.schema=2; },
+  // 2 -> 3: workstation buffers, quality meals, helper children, rescue and supply work. Older games have none of it;
+  // the fields are optional, so the step only clears malformed leftovers and stamps the schema.
+  2: function(g) { for(let i=0;i<(g.buildings||[]).length;i++){let b=g.buildings[i];if(b&&typeof b==="object"){if(b.input!==undefined&&(typeof b.input!=="object"||b.input===null))delete b.input;if(b.made!==undefined&&(typeof b.made!=="object"||b.made===null))delete b.made;}} if(typeof g.qualityMeals!=="number")delete g.qualityMeals; g.schema=3; },
+  // 3 -> 4: built floors and conduits leave the structure list for two map layers.
+  3: function(g) { let w=g.mapSize||96,n=w*w; if(!Array.isArray(g.floorTiles)||g.floorTiles.length!==n){g.floorTiles=[];for(let i=0;i<n;i++)g.floorTiles.push(0);} if(!Array.isArray(g.wireTiles)||g.wireTiles.length!==n){g.wireTiles=[];for(let i=0;i<n;i++)g.wireTiles.push(0);}
+    if(Array.isArray(g.buildings))for(let i=g.buildings.length-1;i>=0;i--){let b=g.buildings[i];if(!b||typeof b!=="object"||!b.built)continue;if(b.kind==="floor"||b.kind==="conduit"){if(Number.isInteger(b.x)&&Number.isInteger(b.y)&&b.x>=0&&b.y>=0&&b.x<w&&b.y<w)(b.kind==="floor"?g.floorTiles:g.wireTiles)[b.y*w+b.x]=1;g.buildings.splice(i,1);}}
+    g.schema=4; },
+  // 4 -> 5: the map has a size and a set of generated chunks; older maps are 96 wide with one chunk.
+  4: function(g) { if(g.mapSize===undefined)g.mapSize=96; if(!g.chunks||typeof g.chunks!=="object")g.chunks={"0,0":true}; g.schema=5; },
+  // 5 -> 6: the map is a window on an infinite plane; older maps sit at the plane's origin with nothing stored beyond.
+  5: function(g) { if(!g.window||typeof g.window!=="object")g.window={x:0,y:0}; if(!g.plane||typeof g.plane!=="object")g.plane={}; g.schema=6; }
+};
+function migrateSave(g,from) { let v=from; while(v<SAVE_SCHEMA){ let step=SAVE_MIGRATIONS[v]; if(!step)failSave("No migration from save schema "+v+"."); step(g); v++; } return g; }
+let MAP_SIZE = 96;
+const TILE = 32;
+let CENTRE = 48;
+let mapTiles = 96;
+let mapSizeChoice = 288;
+let WX = 0;
+let WY = 0;
+const HOME_SIZE = 96;
+const MAP_SIZES = [96, 288, 480];
+function setMapSize(n) {MAP_SIZE=n;CENTRE=Math.floor(n/2);mapTiles=n;}
+function homeOrigin() {return osGame&&osGame.homeOrigin!==undefined?osGame.homeOrigin:CENTRE-HOME_SIZE/2;}
+function setCentre(x,y) {CENTRE=x;if(osGame){osGame.centre={x:x,y:y};}}
+function centreY() {return osGame&&osGame.centre?osGame.centre.y:CENTRE;}
+const STEP_SECONDS = 0.1;
+const GAME_MINUTES_PER_SECOND = 2;
+const RESOURCE_KEYS = ["wood","stone","ore","metal","parts","fuel","raw","meals","medicine","glass","cores"];
+const WORK_KEYS = ["build","haul","farm","cook","mine","craft","research","doctor","explore"];
+const WORK_LABELS = ["Build","Haul","Farm","Cook","Mine","Craft","Study","Treat","Explore"];
+
+function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
+function round1(n) { return Math.round(n * 10) / 10; }
+function sqDistance(ax, ay, bx, by) { let dx=ax-bx; let dy=ay-by; return dx*dx+dy*dy; }
+function tileId(x,y) { return (Math.floor(y)-WY)*MAP_SIZE+(Math.floor(x)-WX); }
+function onMap(x,y) { return x>=WX && y>=WY && x<WX+MAP_SIZE && y<WY+MAP_SIZE; }
+function hashSeed(value) {
+  let s=String(value); let h=2166136261;
+  for(let i=0;i<s.length;i++) { h=(h ^ s.charCodeAt(i))>>>0; h=Math.imul(h,16777619)>>>0; }
+  return h || 731927;
+}
+function randomUnit() { osGame.rng=(Math.imul(osGame.rng,1664525)+1013904223)>>>0; return osGame.rng/4294967296; }
+function randomInt(a,b) { return a+Math.floor(randomUnit()*(b-a+1)); }
+function pick(list) { return list[Math.floor(randomUnit()*list.length)]; }
+function entityId(prefix) { let id=prefix+osGame.nextId; osGame.nextId++; return id; }
+function dayNow() { return Math.floor(osGame.minutes/1440)+1; }
+function hourNow() { return (osGame.minutes%1440)/60; }
+function hasTech(id) { return !!(osGame && osGame.tech[id]); }
+function say(message) { toastText=message; toastRemaining=5; }
+let colonistLookup={};
+function findColonist(id) {
+  if(!osGame||!id)return null;
+  let index=colonistLookup[id],person=typeof index==="number"?osGame.people[index]:null;
+  if(person&&person.id===id)return person;
+  for(let i=0;i<osGame.people.length;i++)if(osGame.people[i].id===id){colonistLookup[id]=i;return osGame.people[i];}
+  delete colonistLookup[id];return null;
+}
+function alivePeople() { let list=[]; for(let i=0;i<osGame.people.length;i++)if(!osGame.people[i].dead&&!osGame.people[i].away&&!osGame.people[i].rover)list.push(osGame.people[i]); return list; }
+function getBuilding(id) { return objectIndex[id] || null; }
+function getNode(id) { return nodeIndex[id] || null; }
+function chronicle(title, body, type) {
+  if(!osGame)return;
+  osGame.chronicle.unshift({id:entityId("log"),sol:dayNow(),minute:Math.floor(osGame.minutes%1440),title:castText(title),body:castText(body||""),type:type||"colony"});
+  if(osGame.chronicle.length>240)osGame.chronicle.length=240;
+  viewDirty=true;storyDirty=true;
+}
+function remember(person,text,value,duration) {
+  if(!person || person.dead)return;text=castText(text);
+  for(let i=0;i<person.memories.length;i++) if(person.memories[i].text===text){person.memories[i].until=osGame.minutes+duration;return;}
+  person.memories.push({text:text,value:value,until:osGame.minutes+duration});
+  if(person.memories.length>16)person.memories.shift();
+}
+function stockHas(cost) { let keys=Object.keys(cost); for(let i=0;i<keys.length;i++)if((osGame.stock[keys[i]]||0)+0.0001<cost[keys[i]])return false; return true; }
+// Kitchen meals never outnumber the meals there are; called wherever meals leave the larder.
+function trimQualityMeals(){if(!osGame)return;if(!(osGame.qualityMeals>=0))osGame.qualityMeals=0;if(osGame.qualityMeals>osGame.stock.meals)osGame.qualityMeals=Math.max(0,Math.floor(osGame.stock.meals));}
+function stockTake(cost) { if(!stockHas(cost))return false;stockDirty=true; let keys=Object.keys(cost);for(let i=0;i<keys.length;i++)osGame.stock[keys[i]]-=cost[keys[i]];if(cost.meals)trimQualityMeals();return true; }
+function stockGive(goods) { stockDirty=true;let keys=Object.keys(goods);for(let i=0;i<keys.length;i++)if(RESOURCE_KEYS.indexOf(keys[i])>=0)osGame.stock[keys[i]]=clamp(osGame.stock[keys[i]]+goods[keys[i]],0,1000000); }
+function costText(cost) { let out=[];let keys=Object.keys(cost);for(let i=0;i<keys.length;i++)out.push(cost[keys[i]]+" "+(keys[i]==="parts"?"components":keys[i]));return out.join(" · ") || "No materials"; }
+
+let quietAudioMuted = false;
+
+// Bounded, VM-owned diagnostics. Only performanceText crosses into the UI.
+let autoMode = false;
+let edgeScroll = true;
+let edgeX = 0;let edgeY = 0;
+let performanceText = "Profiler off";
+let perfEnabled = false;
+let perfStats = {};
+function perfNow() { return Date.now(); }
+function perfRecord(name,started) {
+  if(!perfEnabled)return;
+  let s=perfStats[name];if(!s){s={calls:0,total:0,max:0};perfStats[name]=s;}
+  let ms=Math.max(0,perfNow()-started);s.calls++;s.total+=ms;s.max=Math.max(s.max,ms);
+}
+function toggleProfiler() {perfEnabled=!perfEnabled;perfStats={};pathRequests=0;pathHits=0;performanceText=perfEnabled?"Collecting VM timings…":"Profiler off";}
+function refreshPerformance() {
+  if(!perfEnabled)return;
+  let s=perfStats.tick||{calls:0,total:0,max:0};
+  performanceText="Tick "+(s.total/Math.max(1,s.calls)).toFixed(2)+" ms · peak "+s.max+" · paths "+pathRequests+" · cache "+Math.round(pathHits/Math.max(1,pathRequests)*100)+"%";
+}
+
+let autoBuildEnabled=false;
+let autoStatusText="Auto steward off";
+let autoPlanText="Building plans are manual.";
+
+// Presentation state never enters settlement saves.
+let titleLayers=[];
+let titleStructures=[];
+let titleSetupOpen=false;
+let mobilePanelOpen=false;
+let panMode=false;
+let followColonistId="";

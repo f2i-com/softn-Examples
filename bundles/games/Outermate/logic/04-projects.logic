@@ -1,0 +1,47 @@
+// Escape project escrow is persistent. Pausing never charges materials twice.
+function projectById(id){for(let i=0;i<PROJECTS.length;i++)if(PROJECTS[i].id===id)return PROJECTS[i];return null;}
+function projectState(id){return omGame.projects[id]||null;}
+function projectReady(id){let s=projectState(id);return !!s&&s.complete;}
+function projectFailure(id){
+  let d=projectById(id);if(!d)return "Unknown project.";let s=projectState(id);
+  if(s&&s.complete)return "Project already completed.";
+  for(let i=0;i<d.requires.length;i++)if(itemCount(d.requires[i])<1)return "Carry your "+ITEMS[d.requires[i]].name+" to work on this.";
+  if((!s||!s.paid)&&!hasGoods(d.cost))return "Need: "+goodsText(d.cost)+".";
+  if(id==="paper"&&!knownIntel("paper"))return "Observe the records terminal first.";
+  if(id==="tunnel"&&!omGame.riot&&timeIn(345,1320))return "Tunnel work needs the cover of lock-in. The cell is too busy before 22:00.";
+  if(id==="perimeter"&&!omGame.riot&&!timeIn(1140,1260))return "Fence work needs dusk: 19:00 to 21:00, while everyone else is in association. Plan around the evening count.";
+  if(id==="paper"&&!inventoryRoom("release",1)&&(!s||goodsBulk(d.cost)===0))return "Make room for the release packet.";
+  if((d.site==="powerPanel"||d.site==="workbench")&&omGame.power.offUntil>omGame.minutes)return "This project needs main power.";
+  return "";
+}
+function reserveProject(id){
+  let d=projectById(id);let s=projectState(id);
+  if(!s){s={progress:0,paid:false,complete:false,escrow:{},discovered:0};omGame.projects[id]=s;}
+  if(!s.paid){if(!takeGoods(d.cost))return false;s.paid=true;s.escrow=d.cost;logEvent("A beginning",d.name+": materials set aside. Interrupted work keeps its progress.","project");}
+  return true;
+}
+function requestProject(id){let d=projectById(id);if(!d)return false;return queueTask({type:"project",project:id,site:d.site,duration:d.work,illegal:d.noise});}
+function projectRate(id){let p=player(),rate=p.background==="mechanic"?1.25:1;if(id==="tunnel")rate*=historyFactor("tunnels");if(id==="paper"&&p.background==="clerk")rate*=1.35;if((id==="outage"||id==="service")&&p.background==="technician")rate*=1.3;return rate;}
+function tickProjectWork(t,dt){
+  let d=projectById(t.project),s=projectState(t.project),p=player();
+  let failure=projectFailure(t.project);if(failure){say(failure);interruptActiveOrder(failure);return;}
+  s.progress=Math.min(d.work,s.progress+dt*projectRate(d.id));t.progress=s.progress;
+  if(s.progress+0.0001>=d.work){
+    if(d.id==="paper"&&!inventoryRoom("release",1)){s.progress=d.work-0.01;say("Make one pocket space for the completed packet, then resume.");cancelPlayerTask();return;}
+    s.complete=true;s.escrow={};p.task=null;p.action="Project ready";omGame.stats.projects++;
+    if(d.id==="paper")giveItem("release",1);
+    logEvent("Prepared: "+d.name,d.description,"project");say(d.name+" is ready.");playCue("complete");securityEpoch++;dirty();
+  }
+}
+function cancelProject(id){
+  let s=projectState(id);if(!s||s.complete)return false;
+  if(player().task&&player().task.project===id)cancelPlayerTask();
+  if(s.paid)refundGoods(s.escrow);delete omGame.projects[id];say("Project cancelled. Materials returned; overflow goes to your cell stash.");dirty();return true;
+}
+function damageProject(id){
+  let s=projectState(id),d=projectById(id);if(!s||!s.paid)return;
+  s.discovered++;s.progress=Math.max(0,s.progress-d.work*0.45);s.complete=false;
+  // Paid construction remains paid: lost progress is time, not a second material charge.
+  addEvidence("Discovered project: "+d.name,d.site,"player",18);
+  logEvent("A setback, not an ending",d.name+" was disturbed during a search. Progress was lost, but the route can be repaired.","security");dirty();
+}

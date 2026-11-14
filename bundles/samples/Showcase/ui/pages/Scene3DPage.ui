@@ -1,0 +1,92 @@
+// Scene3DPage.ui - Demonstrates PBR Scene3D, HDR IBL, AgX tone mapping, GTAO, Bloom, GLB part articulation, and SceneAnchor
+
+<Stack direction=vertical gap=lg if={currentPage === "scene3d"}>
+  <Stack direction=vertical gap=xs>
+    <Heading level={2} style={{ color: getTextColor(), fontSize: "1.5rem" }}>3D & PBR</Heading>
+    <Text style={{ color: getMutedColor(), fontSize: "0.875rem" }}>
+      Articulated Blender GLB model lit with Radiance HDR image-based lighting, AgX tone mapping, follow-view shadows, GTAO, and bloom.
+    </Text>
+  </Stack>
+
+  <Card padding=lg style={{ background: getCardBg(), border: "1px solid " + getBorderColor(), borderRadius: "14px" }}>
+    <Stack direction=vertical gap=md>
+      <Box style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
+        <Stack direction=vertical gap=xs>
+          <Text fontWeight=medium style={{ color: getTextColor() }}>Chrono Orrery Studio Rig</Text>
+          <Box style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "0.5rem" }}>
+            <Text style={{ color: getMutedColor(), fontSize: "0.7rem", fontFamily: "ui-monospace, Menlo, Consolas, monospace" }}>Scene3D + SceneAnchor</Text>
+            <Text size=xs style={{ color: getMutedColor() }}>Drag to orbit, scroll to zoom, click any pedestal or the orrery to inspect</Text>
+          </Box>
+        </Stack>
+        <Box style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+          <Button variant={scene3dAnimate ? "primary" : "secondary"} size=sm @click={toggleScene3DAnimate}>
+            {scene3dAnimate ? "Pause Gimbals" : "Resume Gimbals"}
+          </Button>
+          <Button variant={scene3dBloom ? "primary" : "secondary"} size=sm @click={toggleScene3DBloom}>
+            {scene3dBloom ? "Bloom On" : "Bloom Off"}
+          </Button>
+          <Button variant={scene3dGtao ? "primary" : "secondary"} size=sm @click={toggleScene3DGtao}>
+            {scene3dGtao ? "GTAO On" : "GTAO Off"}
+          </Button>
+        </Box>
+      </Box>
+
+      <Box style={{
+        position: "relative",
+        height: "420px",
+        borderRadius: "10px",
+        overflow: "hidden",
+        border: "1px solid " + getBorderColor(),
+        background: darkMode ? "#090b12" : "#dbe4f0"
+      }}>
+        <Scene3D
+          fill={true}
+          objects={scene3dObjects}
+          lights={scene3dLights}
+          camera={scene3dCamera}
+          background={darkMode ? "#0b0f1a" : "#cfd9e8"}
+          fog={{ color: darkMode ? "#0b0f1a" : "#cfd9e8", near: 14, far: 36 }}
+          shadows={true}
+          orbitControls={true}
+          orbit={{ minDistance: 3.0, maxDistance: 14.0, maxPolar: 1.48 }}
+          expandable={true}
+          environment={{ url: "assets/env/studio-dusk.hdr", background: false }}
+          environmentIntensity={0.95}
+          toneMapping="agx"
+          toneMappingExposure={1.12}
+          effects={getScene3DEffects()}
+          @click={onScene3DClick}
+        >
+          <SceneAnchor object={scene3dSelected} offset={{ y: 1.55 }} place="above" clickThrough={true}>
+            <Box style={{
+              padding: "0.35rem 0.7rem",
+              borderRadius: "999px",
+              background: "rgba(15, 23, 42, 0.86)",
+              border: "1px solid rgba(99, 102, 241, 0.55)",
+              color: "#f8fafc",
+              fontSize: "0.72rem",
+              fontWeight: 600,
+              whiteSpace: "nowrap",
+              boxShadow: "0 6px 18px rgba(0,0,0,0.35)"
+            }}>
+              <Text size=xs style={{ color: "#f8fafc", fontWeight: 600 }}>{getScene3DSelectedLabel()}</Text>
+            </Box>
+          </SceneAnchor>
+        </Scene3D>
+      </Box>
+
+      <Box style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
+        <Box style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+          <Button variant=secondary size=sm @click={setScene3DCameraHero}>Hero Angle</Button>
+          <Button variant=secondary size=sm @click={setScene3DCameraTop}>Top Down</Button>
+          <Button variant=secondary size=sm @click={setScene3DCameraLow}>Low Rim</Button>
+        </Box>
+        <Text size=xs style={{ color: getMutedColor(), fontFamily: "ui-monospace, Menlo, Consolas, monospace" }}>
+          Selected: {getScene3DSelectedLabel()} | Outer {scene3dRingDeg} deg
+        </Text>
+      </Box>
+    </Stack>
+  </Card>
+
+  <Loop frame={true} running={currentPage === "scene3d" && scene3dAnimate} @tick={showcase3DStep} />
+</Stack>

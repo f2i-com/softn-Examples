@@ -1,0 +1,215 @@
+// Small physical inventory, bounded stash contents and transaction-safe crafting.
+const INVENTORY_CAPACITY = 12;
+const STASHES = [
+ {id:"cell",name:"Cell stash",site:"bunk",capacity:28,risk:0.38},
+ {id:"laundry",name:"Laundry cart",site:"laundryCart",capacity:16,risk:0.24},
+ {id:"workshop",name:"Workshop locker",site:"workbench",capacity:16,risk:0.3},
+ {id:"yard",name:"Yard drain",site:"yardDrain",capacity:16,risk:0.2}
+];
+let selectedStash="cell";
+function itemCount(id){return omGame&&omGame.inventory[id]||0;}
+function goodsBulk(goods){let n=0,keys=Object.keys(goods);for(let i=0;i<keys.length;i++)if(ITEMS[keys[i]])n+=goods[keys[i]]*ITEMS[keys[i]].bulk;return n;}
+function inventoryRoom(id,count){return goodsBulk(omGame.inventory)+ITEMS[id].bulk*count<=INVENTORY_CAPACITY;}
+function giveItem(id,n){if(!ITEMS[id]||n<1||!inventoryRoom(id,n))return false;omGame.inventory[id]=(omGame.inventory[id]||0)+n;dirty();return true;}
+function takeItem(id,n){if(itemCount(id)<n)return false;omGame.inventory[id]-=n;if(!omGame.inventory[id])delete omGame.inventory[id];if(id==="uniform"&&!itemCount("uniform"))omGame.wearing=false;dirty();return true;}
+function hasGoods(cost){let k=Object.keys(cost);for(let i=0;i<k.length;i++)if(itemCount(k[i])<cost[k[i]])return false;return true;}
+function takeGoods(cost){if(!hasGoods(cost))return false;let k=Object.keys(cost);for(let i=0;i<k.length;i++)takeItem(k[i],cost[k[i]]);return true;}
+function refundGoods(cost){let k=Object.keys(cost);for(let i=0;i<k.length;i++)for(let j=0;j<cost[k[i]];j++){if(!giveItem(k[i],1))omGame.stashes.cell[k[i]]=(omGame.stashes.cell[k[i]]||0)+1;}dirty();}
+// Replacement paperwork is possible after confiscation, never while a copy survives.
+function totalItemCount(id){let n=itemCount(id);for(let k of Object.keys(omGame.stashes))n+=omGame.stashes[k][id]||0;return n;}
+function recoverLostDocuments(){
+  if(!omGame.escape&&projectReady("paper")&&!totalItemCount("release")){delete omGame.projects.paper;logEvent("A form can be filed twice","The release packet is gone. You can prepare another at Records.","project");}
+  if(omGame.siteTaken.records&&!totalItemCount("records"))omGame.siteTaken.records=false;
+}
+function grantCellRation(id){let bag=omGame.stashes.cell;if(goodsBulk(bag)+ITEMS[id].bulk<=stashDef("cell").capacity){bag[id]=(bag[id]||0)+1;}else logEvent("Locker full","The spare ration was returned to the stores. Clear space in your cell stash.","life");}
+function goodsText(cost){let a=[],k=Object.keys(cost);for(let i=0;i<k.length;i++)a.push(cost[k[i]]+" "+(ITEMS[k[i]]?ITEMS[k[i]].name:k[i]));return a.join(" + ")||"No materials";}
+function stashDef(id){for(let i=0;i<STASHES.length;i++)if(STASHES[i].id===id)return STASHES[i];return null;}
+function nearSite(c,id){let s=siteById(id);return !!s&&sqDistance(c.x,c.y,s.ax+0.5,s.ay+0.5)<=6.3&&hasLineOfSight(c.x,c.y,s.ax+0.5,s.ay+0.5);}
+function canInteractNow(){return !!omGame&&!omGame.over&&player().detainedUntil<=omGame.minutes&&!(omGame.escape&&omGame.escape.phase==="transit");}
+function transferItem(id,stashId,withdraw,all){
+  let d=stashDef(stashId);if(!canInteractNow()||!d||!ITEMS[id])return false;
+  if(!nearSite(player(),d.site)){say("Walk to "+d.name+" to move items.");return false;}
+  let bag=omGame.stashes[stashId];
+  let available=withdraw?(bag[id]||0):itemCount(id),space=withdraw?INVENTORY_CAPACITY-goodsBulk(omGame.inventory):d.capacity-goodsBulk(bag);
+  let count=Math.min(available,all?available:1,Math.floor(space/ITEMS[id].bulk));
+  if(count<1){say(available<1?"No items to transfer.":withdraw?"No room in your pockets.":"That stash is full.");return false;}
+  if(withdraw){bag[id]-=count;if(!bag[id])delete bag[id];giveItem(id,count);}
+  else {takeItem(id,count);bag[id]=(bag[id]||0)+count;omGame.stats.stashes+=count;}
+  if(all)say((withdraw?"Withdrew ":"Stored ")+count+" "+ITEMS[id].name+(count<available?". The rest would not fit.":"."));
+  playCue("click");refreshAll();return true;
+}
+function toggleUniform(){if(!canInteractNow()||!itemCount("uniform")){say("You need a work uniform in your pockets.");return;}omGame.wearing=!omGame.wearing;player().exposedUntil=omGame.elapsed+3;say(omGame.wearing?"Work uniform worn. A pass is still required for cover.":"Back in inmate clothing.");dirty();}
+function shopLine(id){for(let i=0;i<SHOP.length;i++)if(SHOP[i].id===id)return SHOP[i];return null;}
+function shopSold(id){let s=omGame.shop;if(!s||s.day!==dayNow())return 0;return s.sold[id]||0;}
+function shopFailure(id,ignoreReach){
+  let d=shopLine(id);if(!d)return "Unknown commissary line.";
+  if(!canInteractNow())return "Not while detained or in transit.";
+  if(!ignoreReach&&!nearSite(player(),"canteen"))return "Walk to the meal counter first.";
+  if(shopSold(id)>=d.limit)return "Sold out until tomorrow.";
+  if(omGame.scrip<d.price)return "Not enough scrip.";
+  if(d.item&&!inventoryRoom(d.item,1))return "Your pockets are full.";
+  return "";
+}
+function buyShop(id){
+  let failure=shopFailure(id);if(failure){say(failure);return false;}
+  let d=shopLine(id),p=player();if(!omGame.shop||omGame.shop.day!==dayNow())omGame.shop={day:dayNow(),sold:{}};
+  omGame.scrip-=d.price;omGame.shop.sold[id]=(omGame.shop.sold[id]||0)+1;
+  if(d.item)giveItem(d.item,1);
+  if(d.effect==="food")p.food=Math.min(100,p.food+25);
+  if(d.effect==="letter"){p.stress=Math.max(0,p.stress-15);logEvent("A letter home","Eight scrip for an envelope and a stamp. Whatever you wrote, saying it eased the day. Stress −15.","life");}
+  say(d.effect==="letter"?"Letter posted. Stress eased.":d.effect==="food"?"Extra ration eaten. +25 fed.":"Bought "+ITEMS[d.item].name+" for "+d.price+" scrip.");playCue("click");dirty();return true;
+}
+function useTea(){if(!canInteractNow()||!takeItem("tea",1))return false;playCueNear("tea",player());player().stress=Math.max(0,player().stress-20);player().energy=Math.min(100,player().energy+8);say("Not good tea. Still, tea.");playCue("click");dirty();return true;}
+function recipeById(id){for(let i=0;i<RECIPES.length;i++)if(RECIPES[i].id===id)return RECIPES[i];return null;}
+function requestCraft(id,batches){let r=recipeById(id);if(!r||!validBatchCount(batches))return false;return queueTask({type:"craft",site:r.site,recipe:id,duration:r.work,illegal:r.illegal,batches:batches||1});}
+function validBatchCount(n){return n===undefined||(isFiniteNumber(n)&&Math.floor(n)===n&&n>=1&&n<=5);}
+function requestWorkBatches(site,batches){if(!validBatchCount(batches)||!siteById(site))return false;return queueTask({type:"work",site:site,duration:12,illegal:0,batches:batches||1});}
+function repeatCompletedBatch(t){
+ if((t.type!=="work"&&t.type!=="craft")||!(t.batches>1)||!canInteractNow())return;
+ let next={type:t.type,site:t.site,duration:t.duration,illegal:t.illegal,batches:t.batches-1};
+ if(t.recipe)next.recipe=t.recipe;
+ // A batch stops where the supplies or the shift stop; it does not linger as a waiting order.
+ let stop=taskFailure(next,false);if(stop){say("Batch order stopped: "+stop);return;}
+ queueTask(next);
+}
+function requestAction(id,verb){
+  if(!siteById(id))return false;
+  let s=siteById(id);if(s.verbs.indexOf(verb)<0&&verb!=="inspect")return false;
+  if(verb==="projects"){selectedId=id;selectedType="site";setPanel("schemes");return true;}
+  if(verb==="craft"){selectedId=id;selectedType="site";setPanel("inventory");return true;}
+  if(verb==="escape"){selectedId=id;selectedType="site";setPanel("escape");return true;}
+  if(verb==="shop"){selectedId=id;selectedType="site";setPanel("inventory");return true;}
+  let duration=verb==="observe"?6:verb==="work"?12:verb==="rest"?12:verb==="eat"?9.2:verb==="evidence"?12:3;
+  return queueTask({type:verb,site:id,duration:duration,illegal:verb==="take"&&s.item!=="tea"&&s.item!=="paper"?1:verb==="evidence"?2:0});
+}
+function selectJob(id){
+  let d=null;for(let i=0;i<JOBS.length;i++)if(JOBS[i].id===id)d=JOBS[i];if(!d)return false;
+  if(!nearSite(player(),"noticeboard")){say("Visit the work noticeboard in Association to change assignment.");return false;}
+  if(d.unlock&&omGame.stats.work<2&&!(id==="records"&&player().background==="clerk")&&!(id==="maintenance"&&player().background==="technician")){say("Complete two lawful work batches to qualify for this assignment.");return false;}
+  cancelPlayerTask();player().job=id;player().routineKey="";securityEpoch++;say("Assigned: "+d.name+". Work access opens during the two work shifts.");logEvent("A different route",d.name+" gives you a new legitimate reason to move.","work");dirty();return true;
+}
+function taskDescription(t){if(!t)return "";let s=siteById(t.site),c=actorById(t.actor);return t.type==="fetch"?"Fetch "+ITEMS[t.item].name+" from "+stashDef(t.stash).name:t.type==="buy"?"Buy "+(shopLine(t.line)?shopLine(t.line).name:"supplies")+" at the commissary":t.type==="assignment"&&t.job?"Change detail to "+jobFor(t.job).name:t.type==="walk"?"Walk to "+(zoneById(zoneAt[tileId(t.x,t.y)])?zoneById(zoneAt[tileId(t.x,t.y)]).label:"open ground")+" ("+t.x+", "+t.y+")":t.type==="inspect"&&c?"Meet "+c.short:t.type==="craft"?recipeById(t.recipe).name:t.type==="project"?projectById(t.project).name:t.type==="escape"?"Begin "+routeById(t.route).name:t.type==="observe"?"Observe "+s.name:t.type==="talk"?"Talk to "+c.short:t.type==="favor"?"Deliver favour":t.type==="accept"?"Hear a favour":t.type==="recruit"?"Make a promise":t.type==="trade"?"Trade with "+c.short:t.type==="distract"?"Arrange a diversion":t.type==="assignment"?"Read assignments":t.type==="evidence"?"Copy quota evidence":t.type==="take"?"Collect "+ITEMS[s.item].name:t.type==="work"?"Complete a work batch":t.type==="eat"?"Eat a meal":t.type==="rest"?(s&&s.kind==="bunk"?"Lie down in your bunk":s&&s.kind==="medbed"?"Rest in the infirmary bay":"Take a breather"):t.type==="buytea"?"Buy a tea ration":t.type==="stash"?"Open stash":"Inspect "+(s?s.name:"the area");}
+function taskFailure(t,atWork){
+  let p=player(),s=siteById(t.site),c=actorById(t.actor);
+  if(!canInteractNow())return "Not while detained or in transit.";
+  if(t.actor){
+    if(!c||c.escaped||(c.role!=="inmate"&&FORCE_TYPES.indexOf(t.type)<0))return "That inmate is not available.";
+    if(FORCE_TYPES.indexOf(t.type)>=0){let ff=forceTaskFailure(t,c);if(ff)return ff;}
+    if(t.type==="talk"&&c.talkAt>omGame.minutes)return "Let the conversation breathe. Try again after "+clockText(c.talkAt)+".";
+    if(t.type==="accept"&&c.favorStage!==0)return "That favour has already been discussed.";
+    if(t.type==="favor"){let d=inmateDef(c.id);if(c.favorStage===2)return "That favour is already complete.";if(c.favorStage!==1)return "Ask about a favour first.";if(itemCount(d.favorItem)<1)return "Bring one "+ITEMS[d.favorItem].name+".";}
+    if(t.type==="trade"){let d=inmateDef(c.id);if(omGame.scrip<tradePrice(c,d.trade))return "Not enough scrip.";if(!inventoryRoom(d.trade,1))return "Your pockets are full.";if(c.tradeAt>omGame.minutes)return "This contact restocks at "+clockText(c.tradeAt)+".";}
+    if(t.type==="recruit"){if(c.crew)return "Already part of your crew.";let need=recruitTrust(c);if(c.trust<need||c.favorStage<2)return "Earn "+need+" trust and complete their favour first.";let rival=rivalInCrew(c);if(rival&&c.trust<60)return c.short+" will not join while "+rival.short+" is in the plan; 60 trust would change that.";if(crewMembers().length>=3)return "A small plan: at most three allies.";}
+    let castFail=castTaskFailure(t,c);if(castFail)return castFail;
+    if(t.type==="distract"&&(!c.crew||omGame.favors<1))return "This needs a recruited ally and one favour.";
+    return "";
+  }
+  if(t.type==="walk")return onMap(t.x,t.y)?"":"Off the map.";
+  if(t.type==="buy"){let f=shopFailure(t.line,true);if(f)return f;}
+  if(t.type==="fetch"){let d=stashDef(t.stash);if(!d||!ITEMS[t.item])return "Unknown stash.";if(!(omGame.stashes[t.stash][t.item]>0))return "Nothing of that kind is stored there.";if(!inventoryRoom(t.item,1))return "Your pockets are full. Use a stash.";}
+  if(t.type==="assignment"&&t.job&&!jobFor(t.job))return "Unknown detail.";
+  if(!s)return "Unknown interaction.";
+  if(t.type==="eat"&&!activeMealRoutine(p))return "The meal counter opens at breakfast, lunch and dinner.";
+  if(t.type==="buytea"&&(omGame.scrip<3||!inventoryRoom("tea",1)))return "Tea costs 3 scrip and one pocket space.";
+  if(t.type==="work"){
+    let j=jobFor(p.job);if(!j||j.site!==s.id)return "You are not assigned to this station. Use the work noticeboard.";
+    if(!isWorkTime()||currentAlert()>=3)return "Lawful work is available during work shifts, outside lockdown.";
+  }
+  if(t.type==="take"){
+    if(!s.item)return "No supplies at this fixture.";
+    if((omGame.siteCooldown[s.id]||0)>omGame.minutes)return "Supplies refill at "+clockText(omGame.siteCooldown[s.id])+".";
+    if(!inventoryRoom(s.item,1))return "Your pockets are full. Use a stash.";
+    if((s.zone==="maintenance"||s.zone==="workshop")&&omGame.power.offUntil>omGame.minutes)return "Wait for the main circuit to recover.";
+  }
+  if(t.type==="observe"&&s.intel){let k=omGame.knowledge[s.intel];if(k&&k.nextAt>omGame.minutes&&k.confidence!=="rumor")return "Observe again after "+clockText(k.nextAt)+" to confirm the pattern.";}
+  if(t.type==="craft"){
+    let r=recipeById(t.recipe);if(!r||r.site!==s.id)return "Wrong work station.";
+    if(!t.paid&&!hasGoods(r.cost))return "Need: "+goodsText(r.cost)+".";
+    let remaining=goodsBulk(omGame.inventory)-(t.paid?0:goodsBulk(r.cost));if(remaining+ITEMS[r.output].bulk>INVENTORY_CAPACITY)return "Make room for the finished item.";
+    if((s.zone==="maintenance"||s.zone==="workshop")&&omGame.power.offUntil>omGame.minutes)return "This work station needs main power.";
+  }
+  if(t.type==="project")return projectFailure(t.project);
+  if(t.type==="escape")return escapeFailure(t.route);
+  if(t.type==="evidence"){if(itemCount("records")||omGame.siteTaken.records)return "You have already copied this file.";if(!knownIntel("paper"))return "Study the records terminal first.";if(!inventoryRoom("records",1))return "Make room for one file.";}
+  return "";
+}
+// A request joins the order list. It starts at once when nothing is running and it can be done now;
+// otherwise it waits with its reason showing. Only impossible requests are refused outright.
+function queueTask(t){
+  if(!canInteractNow()){say("You cannot do that right now.");return false;}
+  if(t.type!=="walk"&&!siteById(t.site)&&!actorById(t.actor)){say("Unknown interaction.");return false;}
+  let failure=taskFailure(t,false);
+  if(failure&&isPermanentFailure(failure)){say(failure);return false;}
+  let dup=duplicateOrder(t);if(dup){say(dup);dirty();return false;}
+  if(orderList().length>=ORDER_LIMIT){say("Your order list is full. Cancel something first.");return false;}
+  t.phase="travel";t.progress=0;t.paid=false;t.escrow={};t.repathAt=0;t.blocked=failure||"";
+  orderList().push(t);mobilePanelOpen=false;paused=false;
+  let started=!player().task&&startNextOrder();
+  if(!started){let why=t.blocked||(player().task?"after "+taskDescription(player().task):"");say("Queued: "+taskDescription(t)+(why?" · "+why:"")+" ("+orderList().length+" waiting)");}
+  dirty();return true;
+}
+function cancelPlayerTask(){let p=player();if(!p)return;if(p.task&&p.task.type==="craft"&&p.task.paid){refundGoods(p.task.escrow||{});p.task.paid=false;p.task.escrow={};}p.task=null;clearPath(p);p.action="Standing by";dirty();}
+function startTaskWork(t){
+  let failure=taskFailure(t,true);if(failure){say(failure);interruptActiveOrder(failure);return false;}
+  if(t.type==="craft"){let r=recipeById(t.recipe);if(!takeGoods(r.cost))return false;t.paid=true;t.escrow=r.cost;}
+  taskAudio(t);
+  if(t.type==="project"&&!reserveProject(t.project))return false;
+  t.phase="work";player().action=taskDescription(t);dirty();return true;
+}
+function completeTask(t){
+  let p=player(),s=siteById(t.site),c=actorById(t.actor);
+  if(t.actor){if(FORCE_TYPES.indexOf(t.type)>=0)completeForceTask(t,c);else completeSocialTask(t,c);return;}
+  if(t.type==="craft"){
+    let r=recipeById(t.recipe);if(!giveItem(r.output,1)){refundGoods(t.escrow);say("No room; reserved materials returned.");}else{omGame.stats.crafted++;logEvent("Something useful",ITEMS[r.output].name+" is finished.","project");playCue("complete");say(ITEMS[r.output].name+" ready.");}t.paid=false;t.escrow={};
+  }else if(t.type==="observe"){
+    if(s.intel)learnIntel(s.intel,"observed",true);observeNearbySecurity();if(s.id==="recordsDesk")learnIntel("quota","observed",true);playCue("intel");
+  }else if(t.type==="take"){
+    if(giveItem(s.item,1)){omGame.siteCooldown[s.id]=omGame.minutes+refillMinutes(s.id);omGame.stats.materials=(omGame.stats.materials||0)+1;say("Collected "+ITEMS[s.item].name+". Rack refills in "+refillMinutes(s.id)+" game minutes.");playCue("click");}
+  }else if(t.type==="work"){awardWork(p);p.workClock=0;
+  }else if(t.type==="rest"){say(siteById(t.site)&&siteById(t.site).kind==="bunk"?"You lay still for a while. Energy and calm restored.":"A small pocket of calm. Recovery complete.");
+  }else if(t.type==="buytea"){if(omGame.scrip>=3&&giveItem("tea",1)){omGame.scrip-=3;say("One tea ration.");}
+  }else if(t.type==="stash"){for(let i=0;i<STASHES.length;i++)if(STASHES[i].site===s.id)selectedStash=STASHES[i].id;setPanel("inventory");say("Stash open. Move one item or as many as will fit.");
+  }else if(t.type==="fetch"){let n=0;for(let i=0;i<(t.count||1);i++)if(transferItem(t.item,t.stash,true))n++;say(n?"Fetched "+ITEMS[t.item].name+" ×"+n+".":"Nothing could be withdrawn.");
+  }else if(t.type==="buy"){buyShop(t.line);
+  }else if(t.type==="assignment"){if(t.job&&jobFor(t.job)){if(!selectJob(t.job))setPanel("routine");}else{setPanel("routine");say("You are at the board. Choose your next work detail.");}
+  }else if(t.type==="evidence"){
+    if(giveItem("records",1)){omGame.siteTaken.records=true;omGame.personalSuspicion=clamp(omGame.personalSuspicion+10,0,100);addEvidence("A file is missing","records",null,12);learnIntel("quota","confirmed",true);say("Quota records copied. Get them beyond the walls.");}
+  }else if(t.type==="escape"){beginEscape(t.route);
+  }else if(t.type==="inspect"){say(castText(s.description));if(s.id==="bunk"){omGame.stats.inspectedCell=true;learnIntel("counts","observed",false);}}
+}
+function tickPlayerTask(dt){
+  let p=player(),t=p.task;if(!t)return;
+  if(t.phase==="travel"&&t.type==="walk"){
+    let done=walkPath(p,dt),there=Math.floor(p.x)===t.x&&Math.floor(p.y)===t.y;
+    if(there||(done&&p.pathCursor>=p.path.length)){p.task=null;p.action="Standing by";clearPath(p);dirty();return;}
+    if(done&&omGame.elapsed>=t.repathAt){t.repathAt=omGame.elapsed+1;if(!routeTo(p,t.x,t.y)){say("The way is blocked. Walk cancelled.");cancelPlayerTask();}}
+    p.action=omGame.sprinting?"Running":"Moving";return;
+  }
+  if(t.phase==="travel"){
+    let target=t.actor?actorById(t.actor):null;
+    if(target&&omGame.elapsed>=t.repathAt){t.repathAt=omGame.elapsed+1.2;if(!nearPerson(p,target))routeToPerson(p,target);}
+    let reached=target?nearPerson(p,target):nearSite(p,t.site);
+    if(!reached){let done=walkPath(p,dt);reached=target?nearPerson(p,target):nearSite(p,t.site);if(done&&!reached&&(!target||!routeToPerson(p,target))){say("The approach changed. Your order waits for a clear route.");interruptActiveOrder("No authorised path yet. Doors depend on your assignment, the shift and security.");}return;}
+    clearPath(p);if(!startTaskWork(t)){if(p.task)cancelPlayerTask();return;}
+  }
+  if(t.phase==="work"){
+    if(t.actor&&!nearPerson(p,actorById(t.actor))){t.phase="travel";t.repathAt=0;return;}
+    if(t.actor){let c=actorById(t.actor),dx=c.x-p.x,dy=c.y-p.y,length=Math.sqrt(dx*dx+dy*dy)||1;c.pauseUntil=omGame.elapsed+.3;clearPath(c);p.headingX=dx/length;p.headingY=dy/length;c.headingX=-p.headingX;c.headingY=-p.headingY;p.action="Talking with "+c.short;c.action="Talking with "+p.short;}
+    if(t.type==="project"){tickProjectWork(t,dt);return;}
+    if((t.type==="work"&&!isWorkTime())||(t.type==="eat"&&!activeMealRoutine(p))){say("The routine changed before you finished. Your order waits for the next chance.");interruptActiveOrder(t.type==="work"?"Lawful work is available during work shifts, outside lockdown.":"The meal counter opens at breakfast, lunch and dinner.");return;}
+    if(t.type==="eat"){let done=tickMeal(p,dt,activeMealRoutine(p));t.progress=p.meal&&p.meal.phase==="eat"?1.2+p.meal.progress:0;if(done){p.task=null;say("Meal finished. Your tray is empty.");dirty();}return;}
+    if(t.type==="rest"){
+      let s=siteById(t.site);if(!approachActivity(p,{x:s.ax,y:s.ay},dt)){p.action="Settling in to rest";return;}
+      p.action=t.site==="bench"?"Resting at the table":(s.kind==="bunk"||s.kind==="medbed")?"Lying down":"Recovering";p.headingX=0;p.headingY=t.site==="bench"?-1:1;
+      let recovery=Math.min(dt,Math.max(0,t.duration-t.progress))/Math.max(.1,t.duration);
+      p.energy=clamp(p.energy+35*recovery,0,100);p.stress=clamp(p.stress-22*recovery,0,100);p.health=clamp(p.health+15*recovery,0,100);
+    }
+    if(t.type==="work")p.action="Working: "+workDuty(p,Math.min(2,Math.floor(t.progress/4)));
+    if(t.type==="craft")p.action="Crafting: "+recipeById(t.recipe).name;
+    t.progress+=dt;if(t.progress+0.00001>=t.duration){
+      // Recheck outputs and escape conditions at commit; no duplicate rewards from repeated input.
+      let fail=taskFailure(t,true);if(fail){say(fail);interruptActiveOrder(fail);return;}
+      p.task=null;p.action="Standing by";completeTask(t);repeatCompletedBatch(t);dirty();
+    }
+  }
+}

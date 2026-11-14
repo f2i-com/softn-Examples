@@ -1,0 +1,269 @@
+  let currentPage = "charts"
+  let darkMode = (function() { try { var v = localStorage.getItem("softn-theme-preference"); if (v === "light") return false; if (v === "dark") return true; } catch(e) {} return true; })()
+
+  // Sortable list items for interactive page
+  let sortableItems = [
+    { id: "1", name: "Design System", category: "Frontend" },
+    { id: "2", name: "API Integration", category: "Backend" },
+    { id: "3", name: "Database Migration", category: "DevOps" },
+    { id: "4", name: "User Testing", category: "QA" },
+    { id: "5", name: "Performance Audit", category: "Engineering" }
+  ]
+
+  // Counter value for the interactive page's animated number demo
+  let counterValue = 0
+
+  // The four stat counters on the animations page, each with a target of its
+  // own so they do not move in lockstep.
+  let revenueValue = 0
+  let usersValue = 0
+  let conversionValue = 0
+  let latencyValue = 0
+
+  // Sun and moon for the theme toggles — the built-in Icon set has neither.
+  // Drawn with currentColor so the wrapper's colour decides the stroke.
+  let iconOpen = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+  let iconSun = iconOpen + '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>'
+  let iconMoon = iconOpen + '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'
+
+  // Theme helpers
+  function getBgColor() {
+    return darkMode ? "#09090b" : "#fafafa"
+  }
+
+  function getCardBg() {
+    return darkMode ? "#18181b" : "#ffffff"
+  }
+
+  function getBorderColor() {
+    return darkMode ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)"
+  }
+
+  function getTextColor() {
+    return darkMode ? "#fafafa" : "#09090b"
+  }
+
+  function getMutedColor() {
+    return darkMode ? "#a1a1aa" : "#71717a"
+  }
+
+  function getSidebarBg() {
+    return darkMode ? "#18181b" : "#ffffff"
+  }
+
+  function navigate(page) {
+    currentPage = page
+  }
+
+  function toggleTheme() {
+    darkMode = !darkMode
+    try { localStorage.setItem("softn-theme-preference", darkMode ? "dark" : "light") } catch(e) {}
+  }
+
+  function updateSortableItems(newItems) {
+    sortableItems = newItems
+  }
+
+  function randomizeCounter() {
+    counterValue = Math.floor(Math.random() * 10000)
+    revenueValue = 1000 + Math.floor(Math.random() * 90000)
+    usersValue = 100 + Math.floor(Math.random() * 25000)
+    conversionValue = Math.round((0.5 + Math.random() * 12) * 10) / 10
+    latencyValue = 40 + Math.floor(Math.random() * 400)
+  }
+
+  let scene3dElapsed = 0
+  let scene3dRingDeg = 0
+  let scene3dAnimate = true
+  let scene3dBloom = true
+  let scene3dGtao = true
+  let scene3dSelected = "chrono-orrery"
+  let scene3dCamera = {
+    position: { x: 4.4, y: 2.8, z: 5.6 },
+    lookAt: { x: 0, y: 1.0, z: 0 },
+    fov: 44
+  }
+  let scene3dLights = [
+    { type: "hemisphere", color: "#c7d2fe", groundColor: "#1e1b2e", intensity: 0.48 },
+    {
+      type: "directional",
+      color: "#fff5e4",
+      intensity: 2.1,
+      position: { x: 6, y: 9, z: 5 },
+      castShadow: true,
+      follow: "view",
+      shadowMapSize: 2048
+    },
+    { type: "point", color: "#6366f1", intensity: 3.5, distance: 12, position: { x: -3.2, y: 2.4, z: -2.2 } }
+  ]
+  let scene3dObjects = []
+
+  function initShowcase3D() {
+    scene3dObjects = [
+      {
+        id: "plinth-floor",
+        type: "plane",
+        width: 24,
+        height: 24,
+        position: { x: 0, y: 0, z: 0 },
+        rotation: { x: -Math.PI / 2, y: 0, z: 0 },
+        color: "#1e293b",
+        roughness: 0.78,
+        metalness: 0.12,
+        receiveShadow: true,
+        pickable: false
+      },
+      {
+        id: "plinth-base",
+        type: "cylinder",
+        radius: 1.65,
+        height: 0.28,
+        position: { x: 0, y: 0.14, z: 0 },
+        color: "#334155",
+        roughness: 0.35,
+        metalness: 0.85,
+        castShadow: true,
+        receiveShadow: true,
+        interactive: true,
+        cursor: "pointer"
+      },
+      {
+        id: "chrono-orrery",
+        type: "model",
+        modelUrl: "assets/models/chrono-orrery.glb",
+        position: { x: 0, y: 0.28, z: 0 },
+        fit: 2.6,
+        parts: {
+          Ring_Outer: { rotation: { x: 0, y: 0, z: 0 } },
+          Ring_Mid: { rotation: { x: 0, y: 0, z: 0 } },
+          Ring_Inner: { rotation: { x: 0, y: 0, z: 0 } }
+        },
+        castShadow: true,
+        receiveShadow: true,
+        interactive: true,
+        cursor: "pointer"
+      },
+      {
+        id: "amber-beacon",
+        type: "sphere",
+        radius: 0.36,
+        position: { x: -2.6, y: 0.85, z: 1.1 },
+        color: "#f59e0b",
+        emissive: "#f59e0b",
+        emissiveIntensity: 1.35,
+        roughness: 0.2,
+        metalness: 0.7,
+        castShadow: true,
+        interactive: true,
+        cursor: "pointer",
+        animate: { floatAmplitude: 0.12 }
+      },
+      {
+        id: "emerald-prism",
+        type: "octahedron",
+        radius: 0.42,
+        position: { x: 2.6, y: 0.9, z: -0.9 },
+        color: "#10b981",
+        roughness: 0.18,
+        metalness: 0.82,
+        castShadow: true,
+        interactive: true,
+        cursor: "pointer",
+        animate: { rotateY: 0.7, floatAmplitude: 0.1 }
+      }
+    ]
+  }
+
+  function getScene3DEffects() {
+    let fx = {}
+    if (scene3dBloom) {
+      fx.bloom = { strength: 0.36, radius: 0.32, threshold: 0.85 }
+    }
+    if (scene3dGtao) {
+      fx.ambientOcclusion = { radius: 0.55, intensity: 0.75 }
+    }
+    return fx
+  }
+
+  function getScene3DSelectedLabel() {
+    if (scene3dSelected === "chrono-orrery") return "Chrono Orrery (GLB + Parts)"
+    if (scene3dSelected === "plinth-base") return "Machined Basalt Plinth"
+    if (scene3dSelected === "amber-beacon") return "Emissive Amber Beacon"
+    if (scene3dSelected === "emerald-prism") return "Metallic Emerald Octahedron"
+    return "Chrono Orrery (GLB + Parts)"
+  }
+
+  function toggleScene3DAnimate() {
+    scene3dAnimate = !scene3dAnimate
+  }
+
+  function toggleScene3DBloom() {
+    scene3dBloom = !scene3dBloom
+  }
+
+  function toggleScene3DGtao() {
+    scene3dGtao = !scene3dGtao
+  }
+
+  function setScene3DCameraHero() {
+    scene3dCamera = { position: { x: 4.4, y: 2.8, z: 5.6 }, lookAt: { x: 0, y: 1.0, z: 0 }, fov: 44 }
+  }
+
+  function setScene3DCameraTop() {
+    scene3dCamera = { position: { x: 0.1, y: 7.4, z: 2.2 }, lookAt: { x: 0, y: 0.8, z: 0 }, fov: 46 }
+  }
+
+  function setScene3DCameraLow() {
+    scene3dCamera = { position: { x: -4.2, y: 1.25, z: 4.4 }, lookAt: { x: 0, y: 1.15, z: 0 }, fov: 42 }
+  }
+
+  function onScene3DClick(info) {
+    if (!info) return
+    let id = info.rootObjectId || info.objectId
+    if (id && id !== "plinth-floor") {
+      scene3dSelected = id
+    }
+  }
+
+  function showcase3DStep(dt) {
+    let step = typeof dt === "number" && dt > 0 ? Math.min(dt, 0.2) : 0.016
+    scene3dElapsed += step
+    scene3dRingDeg = Math.round(((scene3dElapsed * 0.45 * 180) / Math.PI) % 360)
+    let next = []
+    let i = 0
+    while (i < scene3dObjects.length) {
+      let obj = scene3dObjects[i]
+      if (obj.id === "chrono-orrery") {
+        let updated = {
+          id: obj.id,
+          type: obj.type,
+          modelUrl: obj.modelUrl,
+          position: obj.position,
+          fit: obj.fit,
+          castShadow: obj.castShadow,
+          receiveShadow: obj.receiveShadow,
+          interactive: obj.interactive,
+          cursor: obj.cursor,
+          parts: {
+            Ring_Outer: { rotation: { x: Math.sin(scene3dElapsed * 0.45) * 0.16, y: scene3dElapsed * 0.45, z: 0 } },
+            Ring_Mid: { rotation: { x: scene3dElapsed * 0.65, y: -scene3dElapsed * 0.32, z: 0.18 } },
+            Ring_Inner: { rotation: { x: 0, y: scene3dElapsed * 1.05, z: Math.cos(scene3dElapsed * 0.7) * 0.35 } }
+          }
+        }
+        next.push(updated)
+      } else {
+        next.push(obj)
+      }
+      i += 1
+    }
+    scene3dObjects = next
+  }
+
+  function _init() {
+    counterValue = 8742
+    revenueValue = 48210
+    usersValue = 12604
+    conversionValue = 4.6
+    latencyValue = 128
+    initShowcase3D()
+  }

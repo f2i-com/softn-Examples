@@ -1,0 +1,61 @@
+// An authored trailer built from game assets. Never creates or advances a colony.
+let openingVisible=true;
+let openingStarted=false;
+let openingElapsed=0;
+let narrationEnabled=true;
+let narrationHandle="";
+let narrationRevision=0;
+let openingStage=0;
+let openingHeading="A small light in a very old world.";
+let openingLine="Five glimpses of life on Hollow-7. Built from the world you will play.";
+let openingShotViews=[];
+let openingScenes=[];
+const OPENING_TIMES=[0,0,6,11,16,21];
+const OPENING_HEADINGS=["A small light in a very old world.","Arrive with almost nothing.","Build something worth staying for.","Keep four lives together.","When the weather turns, hold on.","The stone remembers you."];
+const OPENING_LINES=["Five glimpses of life on Hollow-7. Built from the world you will play.","Four survivors. A lifeboat. A world that has forgotten us.","Build shelter. Bring power. Make a home.","Share a meal. Keep each other going.","When the storm comes, hold the light.","And beneath the stone... something remembers."];
+function trailerPiece(kind,x,y){let d=BUILDINGS[kind],size=kind.indexOf("ruin")===0?3:1;return {id:kind+":"+x+":"+y,sprite:spritePath(kind),style:{left:(x*32)+"px",top:(y*32)+"px",width:((d?d.w:size)*32)+"px",height:((d?d.h:size)*32)+"px"}};}
+function trailerActor(id,sprite,x,y,motion){return {id:id,sprite:spritePath(sprite),motion:motion,style:{left:x+"px",top:y+"px"}};}
+function initialiseOpeningShots(){
+ let ground=[],deck=[],trees=[];
+ for(let y=0;y<18;y++){let a=[],b=[],c=[];for(let x=0;x<24;x++){a.push(x<2?6:(x*7+y*11)%4);b.push(x>=7&&x<=17&&y>=6&&y<=12?12+(x+y)%2:-1);c.push((x<5||x>20||y<3||y>15)&&(x+y*3)%4===0?16+(x+y)%3:-1);}ground.push(a);deck.push(b);trees.push(c);}
+ let wild=[ground,trees],home=[ground,deck,trees];
+ openingScenes=[
+  {id:0,home:true,pieces:[],actors:[],layers:[]},
+  {id:1,home:false,layers:wild,pieces:[trailerPiece("lander",9,6),trailerPiece("stockpile",6,8),trailerPiece("cookfire",15,8),trailerPiece("bedroll",9,11),trailerPiece("bedroll",10,11),trailerPiece("bedroll",11,11),trailerPiece("bedroll",12,11)],actors:[trailerActor("mina","colonist0",270,308,"breathe"),trailerActor("jin","colonist1-west-walk1",420,300,"unload"),trailerActor("mara","colonist2-east",344,308,"breathe"),trailerActor("sol","colonist3",450,342,"breathe")]},
+  {id:2,home:true,layers:[],pieces:[],actors:[]},
+  {id:3,home:false,layers:home,pieces:[trailerPiece("table",11,8),trailerPiece("kitchen",8,8),trailerPiece("recreation",15,8),trailerPiece("lamp",10,10),trailerPiece("farm",16,11)],actors:[trailerActor("mina","colonist0-east-sit",348,251,"eat"),trailerActor("jin","colonist1-east-sit",348,276,"eat"),trailerActor("mara","colonist2-west-sit",388,251,"breathe"),trailerActor("sol","colonist3-west-sit",388,276,"breathe")]},
+  {id:4,home:false,layers:home,pieces:[trailerPiece("generator",10,8),trailerPiece("battery",13,8),trailerPiece("solar",7,5),trailerPiece("wind",16,6),trailerPiece("lamp",14,11),trailerPiece("conduit",12,9)],actors:[trailerActor("jin","colonist1-east",288,290,"repair"),trailerActor("mara","colonist2-west",466,348,"breathe")]},
+  {id:5,home:false,layers:wild,pieces:[trailerPiece("ruin0",12,7),trailerPiece("ruin2",16,5)],actors:[trailerActor("mara","colonist2-east-walk1",320,300,"explore"),trailerActor("mina","colonist0-east",332,350,"breathe")]}
+ ];setOpeningShot(0);
+}
+function setOpeningShot(stage){openingStage=stage;openingHeading=OPENING_HEADINGS[stage];openingLine=OPENING_LINES[stage];openingShotViews=openingScenes[stage]?[openingScenes[stage]]:[];playOpeningNarration();syncWeatherAudio();}
+function replayOpening(){if(screen!=="title")return;openingVisible=true;openingStarted=false;openingElapsed=0;setOpeningShot(0);}
+function startOpening(){
+ if(screen!=="title"||!openingVisible||openingStarted)return;
+ openingStarted=true;openingElapsed=0;setOpeningShot(1);
+ if(!soundEnabled||!musicEnabled){musicEnabled=true;soundEnabled=true;audioResumePending=false;ambienceText="Sound on";restartBackgroundAudio();savePresentationPreferences();}
+}
+function finishOpening(){openingVisible=false;openingStarted=false;openingElapsed=0;stopOpeningNarration();syncWeatherAudio();}
+function tickOpening(dt){
+ if(!openingVisible||!openingStarted||screen!=="title"||dialog)return;
+ openingElapsed+=dt;if(openingElapsed>=27){finishOpening();return;}
+ let stage=openingElapsed>=21?5:openingElapsed>=16?4:openingElapsed>=11?3:openingElapsed>=6?2:1;
+ if(stage!==openingStage)setOpeningShot(stage);
+}
+
+function stopOpeningNarration(){
+ narrationRevision++;
+ try{if(narrationHandle&&typeof softn!=="undefined"&&softn.audio)softn.audio.stop(narrationHandle,function(){});}catch(error){}
+ narrationHandle="";
+}
+function playOpeningNarration(){
+ stopOpeningNarration();
+ if(!openingVisible||!openingStarted||!soundEnabled||!narrationEnabled||screen!=="title"||openingStage<1)return;
+ let revision=narrationRevision;
+ try{if(typeof softn!=="undefined"&&softn.audio)softn.audio.play("assets/audio/trailer-"+openingStage+".mp3",{volume:0.9,loop:false},function(result){
+  if(!result||!result.handle)return;
+  if(revision!==narrationRevision||!openingVisible||!openingStarted||!soundEnabled||!narrationEnabled)softn.audio.stop(result.handle,function(){});
+  else narrationHandle=result.handle;
+ });}catch(error){/* Captions keep the trailer complete without audio. */}
+}
+function toggleNarration(){narrationEnabled=!narrationEnabled;playOpeningNarration();savePresentationPreferences();}

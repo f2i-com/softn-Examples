@@ -1,0 +1,79 @@
+<import BrandLogo from="./brand-logo.ui" />
+<import ColonyScene from="./title-scene.ui" />
+<import EventSettings from="./event-settings.ui" />
+<div className="os-title">
+  <div className="os-title-showcase">
+    <div className="os-scene-eyebrow">A SMALL LIGHT IN A VERY OLD WORLD</div>
+    <div className="os-scene-frame">
+      <div className="os-title-colour" style={visualStyle}>
+        <ColonyScene />
+      </div>
+      <div className="os-scene-caption">
+        <span>THE FIRST HOMESTEAD</span>
+        <small>Terrain, buildings &amp; settlers from the game</small>
+      </div>
+    </div>
+    <div className="os-scene-notes">
+      <span>01 / BUILD A HOME</span>
+      <span>02 / CARE FOR FOUR LIVES</span>
+      <span>03 / FOLLOW THE SIGNAL</span>
+    </div>
+  </div>
+  <div className="os-title-pane">
+    <div className="os-title-heading">
+      <span className="os-label">HOLLOW-7 / FIRST LIGHT</span>
+      <div className="os-title-logo">
+        <BrandLogo />
+      </div>
+      <div className="os-title-tagline">Make a home at the edge of everything.</div>
+    </div>
+    <div className="os-title-desc">Four survivors. A forgotten world. Build a settlement, look after its people, and discover why the stone remembers you.</div>
+    <button className="os-btn os-setup-toggle" oson={String(titleSetupOpen)} @click={toggleTitleSetup}>{titleSetupOpen ? "Hide expedition settings −" : "Expedition settings +"}</button>
+    #if (titleSetupOpen)
+      <div className="os-title-form">
+        <label className="os-stack">
+          <span className="os-label">Colony</span>
+          <input className="os-field" placeholder="Name your settlement" :bind={colonyNameText} />
+        </label>
+        <label className="os-stack">
+          <span className="os-label">World seed</span>
+          <input className="os-field" placeholder="HOLLOW-7 or a crew code" :bind={seedText} />
+        </label>
+        <div className="os-row">
+          <button className="os-btn os-tab" oson={String(difficultyChoice === "frontier")} @click={() => setDifficulty("frontier")}>Frontier · survival</button>
+          <button className="os-btn os-tab" oson={String(difficultyChoice === "peaceful")} @click={() => setDifficulty("peaceful")}>Sanctuary · gentler</button>
+        </div>
+        <span className="os-label">Landing site</span>
+        <div className="os-row">
+          <button className="os-btn os-tab" oson={String(biomeChoice === "hills")} @click={() => setBiome("hills")}>Lantern Hills</button>
+          <button className="os-btn os-tab" oson={String(biomeChoice === "rust")} @click={() => setBiome("rust")}>Rust Flats</button>
+          <button className="os-btn os-tab" oson={String(biomeChoice === "verdant")} @click={() => setBiome("verdant")}>Verdant Basin</button>
+        </div>
+        <span className="os-tiny os-dim">{biomeChoice === "rust" ? "The hard site: ore-rich, timber-poor, hot days and glass on the wind. Wall the camp early." : biomeChoice === "verdant" ? "Thick timber and berries, little ore, wet and foggy." : "The original valley: balanced resources and mild seasons."}</span>
+        <span className="os-label">Country</span>
+        <div className="os-row">
+          <button className="os-btn os-tab" oson={String(mapSizeChoice === 96)} @click={() => setMapSizeChoice(96)}>Homestead · 96</button>
+          <button className="os-btn os-tab" oson={String(mapSizeChoice === 288)} @click={() => setMapSizeChoice(288)}>Country · 288</button>
+          <button className="os-btn os-tab" oson={String(mapSizeChoice === 480)} @click={() => setMapSizeChoice(480)}>Expanse · 480</button>
+        </div>
+        <span className="os-tiny os-dim">{mapSizeChoice === 96 ? "The classic map: one chunk, bounded, everything within a short walk. Lightest on phones." : mapSizeChoice === 288 ? "The world has no edge. Nine chunks are active at once; the window slides after your people, generating country as they reach it and drawing only what is on screen." : "Twenty-five chunks active at once on an edgeless world. For desktops with room to spare."}</span>
+        <EventSettings />
+      </div>
+    #end
+    <div className="os-title-actions">
+      <button className="os-btn os-primary os-title-action" @click={() => requestNew("landing")}>Begin expedition · four survivors</button>
+      <button className="os-btn os-title-action" @click={() => requestNew("established")}>Explore an established colony</button>
+      <div className="os-row">
+        <button className="os-btn os-tab" disabled={!saveAvailable} @click={resumeLatest}>Continue</button>
+        <button className="os-btn os-tab" @click={openSaves}>Load / import</button>
+        <button className="os-btn os-tab" @click={openHelp}>Field guide</button>
+      </div>
+    </div>
+    <button className="os-btn os-wide" @click={replayOpening}>Watch opening</button>
+    <button className="os-btn os-wide" @click={toggleSound}>{ambienceText}</button>
+    <button className="os-btn" @click={openPresentation}>Picture &amp; sound</button>
+    <button className="os-btn os-wide" @click={setMotion}>{reducedMotion ? "Animations: off" : "Animations: on"}</button>
+    <button className="os-btn os-wide" @click={openMods}>User mods</button>
+    <div className="os-title-footer">SINGLE PLAYER · LOCAL SAVES · BUILT FOR SOFTN<br />FIRST LIGHT 0.61.6 · A PLAYABLE FRONTIER PROTOTYPE<br /><a className="os-credit-link" href="https://www.formlogic.com" target="_blank" rel="noopener">Powered by FormLogic</a> · <a className="os-credit-link" href="https://www.lance.name" target="_blank" rel="noopener">Created by Lance</a></div>
+  </div>
+</div>

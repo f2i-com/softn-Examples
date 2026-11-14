@@ -1,0 +1,9 @@
+<div className="om-security-state"><span className="om-label">FACILITY STATUS</span><h3>{hud.alert}</h3><div className="om-row om-between"><span>Personal suspicion</span><strong>{hud.suspicion}%</strong></div><div className="om-meter om-meter-stress"><i style={{width:hud.suspicion+"%"}} /></div><div className="om-row om-between" style={{marginTop:"8px"}}><span>Facility heat</span><strong>{hud.heat}%</strong></div><div className="om-meter om-meter-stress"><i style={{width:hud.heat+"%"}} /></div></div>
+<p>Personal suspicion and facility heat are different. Evidence can keep your case warm after a quiet day. Guards pursue their last-seen position, not a secret copy of your location.</p>
+<div className="om-note">{hud.power}. Emergency cameras and searchlights stay powered during a fault.</div>
+<div className="om-row"><button className={"om-btn om-grow "+(showSecurity?"is-active":"")} @click={() => toggleSetting("security")}>{showSecurity ? "Cones visible" : "Cones hidden"}</button><button className="om-btn" @click={() => openDialog("settings")}>Assist options</button></div>
+<div className="om-section-title">CAMERAS AND SEARCHLIGHTS</div>
+#each (c in securityCards) key={c.id}<div className="om-card"><div className="om-row om-between"><h3>{c.known ? c.name : "Unstudied security fixture"}</h3><i className={c.on?"om-led":"om-led om-led-off"} /></div><p>{c.known ? c.description : "Find and study this fixture to add its coverage to your notebook."}</p><small>{c.known ? c.circuit : "Coverage unknown"}</small><button className="om-btn om-wide" @click={() => inspectSite(c.id)}>Inspect fixture</button></div>#end
+<div className="om-section-title">EVIDENCE LEDGER</div>
+#if (evidenceCards.length === 0)<div className="om-empty">No recorded evidence. Keep it that way.</div>#end
+#each (e in evidenceCards) key={e.id}<div className={"om-evidence "+(e.active?"active":"")}><strong>{e.title}</strong><small>{e.status} · strength {e.strength}</small></div>#end

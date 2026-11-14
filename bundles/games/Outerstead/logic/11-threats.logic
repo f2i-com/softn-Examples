@@ -1,0 +1,83 @@
+// Ambient danger, independent of the authored encounter director.
+// Waves are telegraphed through the event queue, respect the player's incident
+// settings, never stack on an active attack, and ease off while the colony is hurt.
+function threatDelay(){let f=eventConfig().frequency;return f==="off"?10000:f==="relaxed"?randomInt(3600,5400):f==="mayhem"?randomInt(300,600):randomInt(2200,3400);}
+function threatCooldown(){let f=eventConfig().frequency;return f==="mayhem"?300:f==="relaxed"?3200:1500;}
+function threatStartDay(){let f=eventConfig().frequency;return f==="mayhem"?3:f==="relaxed"?6:4;}
+function threatState(){if(!osGame.threats)osGame.threats={nextAt:osGame.minutes+2000,wildAt:osGame.minutes+1200,waves:0};return osGame.threats;}
+function hostilesPresent(){for(let i=0;i<osGame.animals.length;i++){let a=osGame.animals[i];if(a.hostile&&!a.dead)return true;}return false;}
+function attackQueued(){for(let i=0;i<osGame.eventQueue.length;i++)if(osGame.eventQueue[i].kind==="attack")return true;return false;}
+function animalTargeted(id){for(let i=0;i<osGame.people.length;i++)if(osGame.people[i].combatTarget===id)return true;return false;}
+// What lives where: the Basin teems, the Flats are sparse and their packs favour spitters.
+function wildlifeProfile(){let b=osGame.biome;return b==="verdant"?{mossback:0.55,herd:3,cap:12,spitter:0.25}:b==="rust"?{mossback:0.25,herd:1,cap:6,spitter:0.36}:{mossback:0.4,herd:2,cap:8,spitter:0.3};}
+function planThreatWave(){
+  let living=alivePeople(),day=dayNow(),severe=eventConfig().severity==="severe";
+  let count=clamp(1+Math.floor(Math.max(0,day-4)/7)+Math.floor(living.length/8)+(severe?1:0),1,severe?6:4),kinds=[];
+  if(day>=7&&colonyWealth()>=400&&randomUnit()<(osGame.ashwalkerPeace?0.1:0.22)){let n=clamp(2+Math.floor(day/8),2,severe?5:4);for(let i=0;i<n;i++)kinds.push("raider");return kinds;}
+  let mawReady=day>=12||(osGame.stats.oreMined||0)>=90;
+  if(mawReady&&randomUnit()<0.35)kinds.push("maw");
+  while(kinds.length<count)kinds.push(day>=6&&randomUnit()<wildlifeProfile().spitter?"spitter":"crawler");
+  return kinds;
+}
+function tickThreats(){
+  if(osGame.over||osGame.ending)return;
+  let t=threatState();
+  if(peacefulEvents()||eventConfig().frequency==="off"||osGame.difficulty==="peaceful")return;
+  if(osGame.minutes<t.nextAt)return;
+  if(dayNow()<threatStartDay()||hostilesPresent()||attackQueued()){t.nextAt=osGame.minutes+120;return;}
+  let living=alivePeople(),wounded=0;for(let i=0;i<living.length;i++)if(living[i].health<65||living[i].bleed>0)wounded++;
+  if(!living.length||wounded*2>living.length||osGame.minutes-osGame.lastCrisis<threatCooldown()||osGame.minutes-(osGame.lastDeathAt||-1e9)<1440||osGame.funeral){t.nextAt=osGame.minutes+180;return;}
+  let h=hourNow(),night=h<5||h>21;
+  if(!night&&randomUnit()<0.7){t.nextAt=osGame.minutes+90;return;}
+  let kinds=planThreatWave();
+  osGame.eventQueue.push({kind:"attack",due:osGame.minutes+45,count:kinds.length,kinds:kinds});
+  t.nextAt=osGame.minutes+threatDelay();t.waves++;osGame.lastCrisis=osGame.minutes;
+  let maw=kinds.indexOf("maw")>=0,raid=kinds.indexOf("raider")>=0;
+  chronicle(raid?"Dust on the road":"Something moves at the edge of the light",raid?"Ashwalkers are coming for the stores. They will reach the settlement within the hour; guard the racks and the lifeboat.":maw?"The ground near the diggings is shifting. Something large is coming up. Predators will reach the settlement within the hour.":"Distant movement beyond the lamps. Predators will reach the settlement within the hour. Collect weapons, draft defenders and keep the medical supplies close.","danger");
+  say(raid?"Raiders are coming for the stores. Prepare a defence.":maw?"The ground is shifting near the ore. Prepare a defence.":"Movement beyond the lights. Prepare a defence.");playCue("warning");viewDirty=true;
+}
+// Predators arrive from the map edge on a route that actually reaches camp.
+function threatSpawnPoint(){
+  let spots=[{x:CENTRE-22,y:centreY()+8},{x:CENTRE+20,y:centreY()+6},{x:CENTRE+5,y:centreY()+22},{x:CENTRE+3,y:centreY()-21}],o=chunkOf(CENTRE)*HOME_SIZE,oy=chunkOf(centreY())*HOME_SIZE;
+  for(let attempt=0;attempt<6;attempt++){
+    let side=randomInt(0,3),along=randomInt(o+3,o+HOME_SIZE-12),x,y;
+    let alongY=randomInt(oy+3,oy+HOME_SIZE-12);
+    if(side===0){x=along;y=oy+3;}else if(side===1){x=along;y=oy+HOME_SIZE-12;}else if(side===2){x=o+3;y=alongY;}else{x=o+HOME_SIZE-12;y=alongY;}
+    if(passable(x,y)&&passable(x+1,y+1)&&findPath(x,y,CENTRE-2,centreY()+6)!==null)return {x:x,y:y};
+  }
+  for(let i=0;i<spots.length;i++){let s=spots[(i+randomInt(0,3))%spots.length];if(passable(s.x,s.y))return s;}
+  return {x:CENTRE+16,y:centreY()+8};
+}
+// A marsh edge away from camp, for the herds that favour it.
+function marshSpawnPoint(){let cells=[];for(let i=0;i<MAP_SIZE*MAP_SIZE;i++){if(osGame.terrain[i]!==5)continue;let cx=i%MAP_SIZE+WX,cy=Math.floor(i/MAP_SIZE)+WY;if(cx>=WX+3&&cy>=WY+3&&cx<WX+MAP_SIZE-3&&cy<WY+MAP_SIZE-3&&sqDistance(cx,cy,CENTRE,centreY())>=400&&sqDistance(cx,cy,CENTRE,centreY())<=3600)cells.push(i);}
+  for(let attempt=0;attempt<12&&cells.length;attempt++){let i=cells[randomInt(0,cells.length-1)],x=i%MAP_SIZE+WX,y=Math.floor(i/MAP_SIZE)+WY;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){let cx=x+dx,cy=y+dy;if(osGame.terrain[tileId(cx,cy)]!==5&&passable(cx,cy)&&findPath(cx,cy,CENTRE,centreY())!==null)return {x:cx,y:cy};}}return null;}
+// A burrow maw surfaces beside explored ore, away from the camp itself.
+function mawSpawnPoint(){
+  let candidates=[];
+  for(let i=0;i<osGame.nodes.length;i++){let n=osGame.nodes[i];if(n.kind!=="ore"||!osGame.explored[tileId(n.x,n.y)]||sqDistance(n.x,n.y,CENTRE-2,centreY()+6)<64)continue;candidates.push(n);}
+  for(let attempt=0;attempt<4&&candidates.length;attempt++){
+    let n=pick(candidates);
+    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){let x=n.x+dx,y=n.y+dy;if((dx||dy)&&passable(x,y)&&findPath(x,y,CENTRE-2,centreY()+6)!==null)return {x:x,y:y};}
+  }
+  return null;
+}
+// Corpses fade after half a Sol; herbivores wander back so hunting stays possible.
+function tickWildlife(){
+  for(let i=osGame.animals.length-1;i>=0;i--){
+    let a=osGame.animals[i];if(!a.dead)continue;
+    if(typeof a.diedAt!=="number")a.diedAt=osGame.minutes;
+    else if(osGame.minutes-a.diedAt>720&&!animalTargeted(a.id)){osGame.animals.splice(i,1);viewDirty=true;}
+  }
+  let h=hourNow();
+  if((h<5||h>=21||osGame.weather==="Echo Rain")&&dayNow()>=2&&!creaturePresent("lanternwing")&&osGame.weather!=="Glass Wind"&&randomUnit()<(osGame.weather==="Echo Rain"?0.08:0.02)){if(spawnLanternwings()&&osGame.weather==="Echo Rain"&&!osGame.storySeen.lanternRain){osGame.storySeen.lanternRain=1;chronicle("Lights in the rain","The lanternwings are out in daylight, drifting through the Echo Rain as if it were dusk. Settlers stop to watch.","hollow");}}
+  let t=threatState();if(osGame.minutes<t.wildAt)return;
+  t.wildAt=osGame.minutes+randomInt(900,1500);
+  let wild=0;for(let i=0;i<osGame.animals.length;i++){let a=osGame.animals[i];if(!a.dead&&!a.hostile&&!a.tamed)wild++;}
+  let profile=wildlifeProfile();
+  if(wild>=profile.cap||osGame.animals.length>=140)return;
+  let s=threatSpawnPoint();if(!s)return;
+  if(osGame.biome==="verdant"){let m=marshSpawnPoint();if(m)s=m;}
+  let kind=randomUnit()<profile.mossback?"mossback":"needlehare",herd=kind==="needlehare"?randomInt(1,profile.herd):1;
+  for(let i=0;i<herd;i++)if(passable(s.x+i,s.y))spawnAnimal(kind,s.x+i,s.y,false);
+  if(dayNow()>=6&&!osGame.storySeen.pilgrim&&randomUnit()<0.08)spawnPilgrim();
+}

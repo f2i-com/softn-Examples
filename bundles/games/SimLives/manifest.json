@@ -1,0 +1,38 @@
+{
+  "name": "SimLives",
+  "version": "1.1.0",
+  "description": "Build a house with Blender PBR fountains & hearths, then live in it: design avatars, move a household in, and steer them to eat, sleep, wash, play and chat, or switch on free will and watch their day go by.",
+  "main": "ui/main.ui",
+  "icon": "assets/icon.svg",
+  "files": {
+    "ui": [
+      "ui/main.ui"
+    ],
+    "logic": [
+      "logic/builder.logic",
+      "logic/main.logic"
+    ],
+    "assets": [
+      "assets/icon.svg",
+      "assets/env/sunny-meadow.hdr",
+      "assets/models/garden-fountain.glb",
+      "assets/models/hearth-stove.glb",
+      "assets/sfx/chime.wav",
+      "assets/sfx/click.wav",
+      "assets/sfx/cook.wav",
+      "assets/sfx/sleep.wav"
+    ]
+  },
+  "config": {
+    "window": {
+      "title": "Sim Lives",
+      "width": 1280,
+      "height": 800
+    },
+    "theme": {
+      "primary": "#22c55e",
+      "mode": "dark"
+    }
+  },
+  "author": "SoftN"
+}
