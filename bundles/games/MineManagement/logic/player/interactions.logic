@@ -282,6 +282,10 @@ function recoverVehicle() {
     t.parkBrake = false;
     t.fuel = Math.max(20, t.fuel);
     t.fault = '';
+    S.alerts = S.alerts.filter(function (a) {
+      return a.eventId || a.key !== 'fuel-' + t.id;
+    });
+    syncIncidentEffects();
   }
   parkUte(S.ute);
   S.ute.fuel = Math.max(20, S.ute.fuel);

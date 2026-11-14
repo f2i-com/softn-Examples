@@ -41,6 +41,7 @@
     <div class="mm-report-actions">
       <button class="mm-primary" type="button" @click={nextShift}>Next shift →</button>
       <button class="mm-secondary" type="button" @click={showExport}>PIT JSON snapshot</button>
+      <button class="mm-secondary" type="button" @click={showSaveBackup}>Save backup</button>
       <button class="mm-text-button" type="button" @click={returnTitle}>Save and return to the title</button>
     </div>
     <p class="mm-small">{saveNote}</p>

@@ -31,32 +31,59 @@
       <div class="mm-inline mm-head-right">
         <span class="mm-connection" class:mm-offline={!hud.relay}>{hud.relay ? '● LOCAL TELEMETRY' : '● TELEMETRY OFFLINE'}</span>
         <span class="mm-sandbox-tag">OFFLINE SHIFT</span>
+        <button class="mm-close" type="button" @click={showSaveBackup}>Backup</button>
         <button class="mm-close" type="button" @click={toggleTablet}>Close ×</button>
       </div>
     </header>
 
     <div class="mm-tablet-main">
       <nav class="mm-nav" aria-label="Workspaces">
-        <span class="mm-label mm-nav-label">WORKSPACES</span>
-        <button class="mm-tab" class:mm-tab-active={tab === 'operations'} type="button" @click={openTab('operations')}>01 <span>Operations</span></button>
-        <button class="mm-tab" class:mm-tab-active={tab === 'fleet'} type="button" @click={openTab('fleet')}>02 <span>Fleet & dispatch</span></button>
-        <button class="mm-tab" class:mm-tab-active={tab === 'workforce'} type="button" @click={openTab('workforce')}>03 <span>Workforce</span></button>
-        <button class="mm-tab" class:mm-tab-active={tab === 'workshop'} type="button" @click={openTab('workshop')}>04 <span>Workshop</span></button>
-        <button class="mm-tab" class:mm-tab-active={tab === 'ledger'} type="button" @click={openTab('ledger')}>05 <span>Production</span></button>
-        <button class="mm-tab" class:mm-tab-active={tab === 'log'} type="button" @click={openTab('log')}>06 <span>Shift log</span></button>
+        <span class="mm-label mm-nav-label">WORKSPACES · KEYS 1–0</span>
+        <button class="mm-tab" class:mm-tab-active={tab === 'operations'} type="button" @click={openTab('operations')}>01 <span>Operations</span><em class="mm-tab-badge mm-tab-badge-warn" if={tabBadges.operations !== ''}>{tabBadges.operations}</em></button>
+        <button class="mm-tab" class:mm-tab-active={tab === 'fleet'} type="button" @click={openTab('fleet')}>02 <span>Fleet & dispatch</span><em class="mm-tab-badge" class:mm-tab-badge-warn={tabBadges.fleet === '!'} if={tabBadges.fleet !== ''}>{tabBadges.fleet}</em></button>
+        <button class="mm-tab" class:mm-tab-active={tab === 'workforce'} type="button" @click={openTab('workforce')}>03 <span>Workforce</span><em class="mm-tab-badge" class:mm-tab-badge-warn={tabBadges.workforce === 'LOW'} if={tabBadges.workforce !== ''}>{tabBadges.workforce}</em></button>
+        <button class="mm-tab" class:mm-tab-active={tab === 'workshop'} type="button" @click={openTab('workshop')}>04 <span>Workshop</span><em class="mm-tab-badge mm-tab-badge-good" if={tabBadges.workshop !== ''}>{tabBadges.workshop}</em></button>
+        <button class="mm-tab" class:mm-tab-active={tab === 'ledger'} type="button" @click={openTab('ledger')}>05 <span>Production</span><em class="mm-tab-badge" if={tabBadges.ledger !== ''}>{tabBadges.ledger}</em></button>
+        <button class="mm-tab" class:mm-tab-active={tab === 'log'} type="button" @click={openTab('log')}>06 <span>Shift log</span><em class="mm-tab-badge mm-tab-badge-warn" if={tabBadges.log !== ''}>{tabBadges.log}</em></button>
         <button class="mm-tab" class:mm-tab-active={tab === 'guide'} type="button" @click={openTab('guide')}>07 <span>Field guide</span></button>
-        <button class="mm-tab" class:mm-tab-active={tab === 'contracts'} type="button" @click={openTab('contracts')}>08 <span>Contracts & career</span></button>
-        <button class="mm-tab" class:mm-tab-active={tab === 'excavators'} type="button" @click={openTab('excavators')}>09 <span>Excavators</span></button>
-        <button class="mm-tab" class:mm-tab-active={tab === 'site'} type="button" @click={openTab('site')}>10 <span>Site journal</span></button>
+        <button class="mm-tab" class:mm-tab-active={tab === 'contracts'} type="button" @click={openTab('contracts')}>08 <span>Contracts & career</span><em class="mm-tab-badge mm-tab-badge-good" if={tabBadges.contracts !== ''}>{tabBadges.contracts}</em></button>
+        <button class="mm-tab" class:mm-tab-active={tab === 'excavators'} type="button" @click={openTab('excavators')}>09 <span>Excavators</span><em class="mm-tab-badge" if={tabBadges.excavators !== ''}>{tabBadges.excavators}</em></button>
+        <button class="mm-tab" class:mm-tab-active={tab === 'site'} type="button" @click={openTab('site')}>10 <span>Site journal</span><em class="mm-tab-badge" class:mm-tab-badge-good={tabBadges.site === 'PLAN'} if={tabBadges.site !== ''}>{tabBadges.site}</em></button>
         <div class="mm-nav-footer">
           <span class="mm-label">SHIFT {hud.shift}</span>
           <span class="mm-nav-clock">{hud.clock}</span>
           <span class="mm-small">The mine keeps running<br>while your tablet is open.</span>
-          <button class="mm-nav-save" type="button" @click={saveGame(false)}>Save shift</button>
+          <div class="mm-nav-actions">
+            <button class="mm-nav-save" type="button" @click={saveGame(false)}>Save shift</button>
+            <button class="mm-nav-save" type="button" @click={showSaveBackup}>Backup</button>
+          </div>
         </div>
       </nav>
 
       <div class="mm-workspace-column">
+        <!-- Live site telemetry strip visible across every PIT workspace. -->
+        <div class="mm-tablet-telemetry" aria-label="Live site status">
+          <div class="mm-telemetry-cell">
+            <span class="mm-label">DELIVERED</span>
+            <strong>{hud.tonnes} <small>/ {hud.target} t</small></strong>
+          </div>
+          <div class="mm-telemetry-cell">
+            <span class="mm-label">HOPPER</span>
+            <strong>{hud.hopper}</strong>
+          </div>
+          <div class="mm-telemetry-cell">
+            <span class="mm-label">CASH</span>
+            <strong>{hud.money}</strong>
+          </div>
+          <div class="mm-telemetry-cell mm-telemetry-hide-sm">
+            <span class="mm-label">PACE</span>
+            <strong>{hud.pace} · {hud.remaining}</strong>
+          </div>
+          <button class="mm-telemetry-alerts" class:mm-telemetry-alerts-hot={alertRows.length > 0} type="button" @click={openTab('operations')}>
+            {alertRows.length > 0 ? '▲ ' + alertRows.length + ' FIELD ALERT' + (alertRows.length === 1 ? '' : 'S') : '✓ ALL CLEAR'}
+          </button>
+        </div>
+
         <!-- A memo from Clive, with the same answers and countdown as the floating card. -->
         <aside class="mm-tablet-memo" if={memoView.visible} aria-live="assertive">
           <div>
@@ -188,36 +215,58 @@
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
-    width: 196px;
+    width: 210px;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 25px 15px 15px;
+    padding: 16px 12px 12px;
     background: #16232a;
     border-right: 1px solid #3c4a51;
   }
   .mm-nav .mm-nav-label {
-    margin-bottom: 14px;
-    padding-left: 12px;
+    margin-bottom: 8px;
+    padding-left: 10px;
     font-size: 8px;
   }
   .mm-tab {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 10px;
     width: 100%;
-    margin-bottom: 4px;
-    padding: 10px;
+    margin-bottom: 2px;
+    padding: 7px 10px;
     background: transparent;
     border: 1px solid transparent;
     border-radius: 6px;
     font-size: 10px;
-    line-height: 1.4;
+    line-height: 1.25;
     text-align: left;
     color: #a1b4bc;
   }
   .mm-tab span {
-    font-size: 12px;
+    flex: 1;
+    min-width: 0;
+    font-size: 11.5px;
     font-weight: 500;
+  }
+  .mm-tab-badge {
+    flex-shrink: 0;
+    padding: 2px 5px;
+    background: #273c46;
+    border: 1px solid #56707c;
+    border-radius: 9px;
+    font: 700 8px/1.1 monospace;
+    letter-spacing: 0.4px;
+    color: #c8dde0;
+  }
+  .mm-tab-badge-warn {
+    background: #4d3020;
+    border-color: #df8d55;
+    color: #ffd3b3;
+  }
+  .mm-tab-badge-good {
+    background: #203d34;
+    border-color: #6dc8a7;
+    color: #bff5de;
   }
   .mm-tab:hover {
     background: #233640;
@@ -230,12 +279,12 @@
   }
   .mm-nav-footer {
     margin-top: auto;
-    padding: 14px 11px 0;
+    padding: 10px 8px 0;
   }
   .mm-nav-clock {
     display: block;
-    margin: 4px 0 7px;
-    font-size: 29px;
+    margin: 2px 0 4px;
+    font-size: 24px;
     font-weight: 350;
     letter-spacing: -1px;
     color: #d9dec9;
@@ -243,14 +292,67 @@
   .mm-nav-footer .mm-small {
     font-size: 9px;
   }
+  .mm-nav-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+  }
   .mm-nav-save {
-    margin-top: 15px;
-    padding: 7px 12px;
+    flex: 1;
+    padding: 7px 10px;
     background: transparent;
     border: 1px solid #43583f;
     border-radius: 4px;
     font-size: 10px;
     color: #e6bd78;
+  }
+
+  /* ---------- Live telemetry strip ---------- */
+  .mm-tablet-telemetry {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 18px;
+    padding: 8px 24px;
+    background: #15232a;
+    border-bottom: 1px solid #35474f;
+  }
+  .mm-telemetry-cell {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    white-space: nowrap;
+  }
+  .mm-telemetry-cell .mm-label {
+    font-size: 8px;
+    color: #93aab2;
+  }
+  .mm-telemetry-cell strong {
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: #ebeede;
+  }
+  .mm-telemetry-cell small {
+    font-size: 10px;
+    font-weight: 400;
+    color: #a8bcbf;
+  }
+  .mm-telemetry-alerts {
+    margin-left: auto;
+    padding: 4px 10px;
+    background: #1d3532;
+    border: 1px solid #4c7b70;
+    border-radius: 999px;
+    font: 700 9px/1.2 monospace;
+    letter-spacing: 0.7px;
+    color: #9ce0ca;
+    white-space: nowrap;
+  }
+  .mm-telemetry-alerts.mm-telemetry-alerts-hot {
+    background: #4c2d1e;
+    border-color: #e89b63;
+    color: #ffd7b5;
   }
 
   /* ---------- Workspace, memo strip and footer ---------- */
@@ -408,6 +510,14 @@
     }
   }
   @media (max-width: 700px) {
+    .mm-tablet-telemetry {
+      flex-wrap: wrap;
+      gap: 6px 12px;
+      padding: 6px 12px;
+    }
+    .mm-telemetry-hide-sm {
+      display: none;
+    }
     .mm-tablet-shade {
       inset: 68px 0 0;
       padding: 4px 4px max(4px, env(safe-area-inset-bottom));
@@ -456,7 +566,7 @@
     }
   }
   /* Short screens: the clock and Save are also in the HUD and the pause menu, so the nav drops them. */
-  @media (max-height: 1000px) {
+  @media (max-height: 760px) {
     .mm-nav-footer {
       display: none;
     }

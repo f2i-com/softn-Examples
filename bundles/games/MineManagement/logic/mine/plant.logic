@@ -89,6 +89,11 @@ function refreshOperations() {
   hud.pendingValue = money(p.value);
   excavatorRows = S.excavators.map(function (q) {
     var active = q.id === S.activeExcavator;
+    var baseSec = q.id === 2 ? 3.2 : 4;
+    var effSec =
+      (baseSec * (S.site ? S.site.profile.hardness : 1)) /
+      (1 + S.upgrade.loader * 0.24) /
+      Math.max(0.1, active ? incidentMods.loader : 1);
     return {
       id: q.id,
       name: q.name,
@@ -101,8 +106,8 @@ function refreshOperations() {
               ? 'ON HOLD'
               : 'BENCH 1 / LOADER'
             : 'SURFACE / STANDBY',
-      // The base pass times from loaderPassDuration (excavators.logic); keep them in step.
-      pass: q.id === 2 ? '20 t / 3.2 s base pass' : '20 t / 4.0 s base pass',
+      // Shows both live effective pass duration (with upgrades & ground hardness) and base spec.
+      pass: '20 t / ' + effSec.toFixed(1) + ' s effective pass (' + baseSec.toFixed(1) + ' s base)',
       tonnes: Math.round(q.tonnes) + ' t loaded',
       passes: q.passes,
       hold: q.paused ? 'Release loader' : 'Hold loader',
@@ -111,6 +116,7 @@ function refreshOperations() {
     };
   });
   hud.excavatorCount = S.excavators.length;
+  hud.manualBucket = Math.round(S.manualExcavator.bucket) + ' / 20 t';
   hud.excavatorTask = S.player.mode === 'excavator' ? excavatorInstruction() : '';
 }
 

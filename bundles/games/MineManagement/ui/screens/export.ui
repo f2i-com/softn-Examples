@@ -1,18 +1,43 @@
 <!--
-  The PIT snapshot: the shift's fleet, routes, loads and events as JSON, labelled as simulated game
-  data (logic/mine/pit-export.logic). Opened from the Production tab or the shift report.
+  PIT Data & Portable Career Save Backup (logic/mine/pit-export.logic).
+  Supports both read-only simulated fleet/telemetry JSON snapshots ('snapshot') and validated
+  schema v1 portable career save export & restore ('save').
 -->
 <div class="mm-modal-shade mm-export-shade" if={exportOpen}>
-  <section class="mm-export-modal" aria-label="PIT snapshot">
+  <section class="mm-export-modal" aria-label="PIT data and save backup">
     <div class="mm-page-head">
       <div>
-        <span class="mm-label">SIMULATED GAME DATA ONLY</span>
-        <h2>PIT snapshot</h2>
+        <span class="mm-label">{exportMode === 'save' ? 'PORTABLE LOCAL CAREER SAVE' : 'SIMULATED GAME DATA ONLY'}</span>
+        <h2>{exportMode === 'save' ? 'Career save backup & restore' : 'PIT telemetry snapshot'}</h2>
       </div>
       <button class="mm-close" type="button" @click={hideExport}>Close ×</button>
     </div>
-    <p class="mm-muted">Select and copy this JSON for analysis: fleet state, local-grid routes, completed loads and events. It is game data, not a live fleet system, and no tonnes were harmed in its making.</p>
-    <textarea class="mm-export-text" readonly rows="18" aria-label="Snapshot JSON">{exportText}</textarea>
+
+    <div class="mm-export-tabs">
+      <button class="mm-small-button" class:mm-export-tab-active={exportMode === 'snapshot'} type="button" @click={switchExportMode('snapshot')}>PIT telemetry snapshot</button>
+      <button class="mm-small-button" class:mm-export-tab-active={exportMode === 'save'} type="button" @click={switchExportMode('save')}>Career save backup & restore</button>
+      <button class="mm-primary mm-export-copy" type="button" @click={copyExportText}>Copy JSON</button>
+    </div>
+
+    <p class="mm-export-feedback" class:mm-export-warn={exportFeedbackKind === 'warning'} class:mm-export-ok={exportFeedbackKind === 'success'} if={exportFeedback !== ''} role="status">{exportFeedback}</p>
+
+    #if (exportMode === 'snapshot')
+      <p class="mm-muted">Simulated fleet telemetry, haul-road LineString geometry, weighbridge loads and radio events. Local game data only — no network requests are made, and no tonnes were harmed in its making.</p>
+      <textarea class="mm-export-text" readonly value={exportText} rows="16" aria-label="Snapshot JSON"></textarea>
+    #end
+
+    #if (exportMode === 'save')
+      <p class="mm-muted">Copy your current Red Dust career save JSON to back it up across browsers or devices, or paste a previously exported career save below to validate and restore it.</p>
+      <span class="mm-label mm-export-section-label">CURRENT CAREER SAVE JSON</span>
+      <textarea class="mm-export-text mm-export-save-box" readonly value={exportText} rows="7" placeholder="No active or saved career on this device yet. Start a shift first." aria-label="Current career save JSON"></textarea>
+
+      <span class="mm-label mm-export-section-label">RESTORE FROM SAVE JSON</span>
+      <textarea class="mm-export-text mm-export-import-box" :bind={importText} spellcheck={false} rows="5" placeholder="Paste a Mine Management schema v1 career save JSON string here..." aria-label="Paste career save JSON"></textarea>
+      <div class="mm-export-import-actions">
+        <button class="mm-primary" type="button" @click={importSaveData}>Validate & restore career save →</button>
+        <span class="mm-small">{saveNote}</span>
+      </div>
+    #end
   </section>
 </div>
 
@@ -29,22 +54,87 @@
     background: #1e3039;
     border: 1px solid #60727a;
     border-radius: 13px;
+    box-shadow: 0 24px 90px #000a;
+  }
+  .mm-export-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .mm-small-button.mm-export-tab-active {
+    background: #334b54;
+    border-color: var(--gold);
+    color: #f4d394;
+  }
+  .mm-primary.mm-export-copy {
+    margin-left: auto;
+    padding: 9px 15px;
+    font-size: 11px;
+  }
+  .mm-export-feedback {
+    margin: 0 0 12px;
+    padding: 10px 13px;
+    background: #172830;
+    border: 1px solid #59737c;
+    border-left: 3px solid #82cdc0;
+    border-radius: 6px;
+    font-size: 11px;
+    color: #dcebe7;
+  }
+  .mm-export-feedback.mm-export-warn {
+    border-color: #8b5b47;
+    border-left-color: #ef9a70;
+    color: #ffd7c2;
+  }
+  .mm-export-feedback.mm-export-ok {
+    border-color: #4f7b68;
+    border-left-color: #7ee0b8;
+    color: #d6faea;
+  }
+  .mm-export-section-label {
+    display: block;
+    margin-top: 16px;
+    font-size: 9px;
   }
   .mm-export-text {
     width: 100%;
-    min-height: 40vh;
-    margin-top: 20px;
+    min-height: 36vh;
+    margin-top: 12px;
     padding: 12px;
     resize: vertical;
     background: #10251c;
     border: 1px solid #496040;
-    border-radius: 4px;
-    font: 11px/1.65 monospace;
+    border-radius: 5px;
+    font: 11px/1.6 monospace;
     color: #b4d1a5;
+  }
+  .mm-export-save-box {
+    min-height: 120px;
+    margin-top: 7px;
+  }
+  .mm-export-import-box {
+    min-height: 105px;
+    margin-top: 7px;
+    background: #13222a;
+    border-color: #56707c;
+    color: #e2ecd9;
+  }
+  .mm-export-import-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 14px;
   }
   @media (max-width: 620px) {
     .mm-export-modal {
       padding: 18px;
+    }
+    .mm-primary.mm-export-copy {
+      margin-left: 0;
     }
   }
 </style>

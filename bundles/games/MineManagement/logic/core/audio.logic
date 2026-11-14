@@ -24,16 +24,16 @@ function sfx(name) {
   } catch (e) {}
 }
 
-// Starts the looping site ambience, once per session, and sets the master volume (0 when muted,
+// Starts the looping site ambience and sets the master volume (0 when muted,
 // as in toggleMute in core/settings.logic). Called when a game starts or continues.
 function startAudio() {
   try {
-    if (!ambientStarted && typeof softn !== 'undefined' && softn.audio) {
+    if (typeof softn !== 'undefined' && softn.audio) {
       softn.audio.setVolume(muted ? 0 : 0.65);
-      softn.audio.play('assets/audio/site-ambience.mp3', { loop: true, volume: 0.2 });
-      ambientStarted = true;
     }
   } catch (e) {}
+  refreshAmbience();
+  ambientStarted = ambienceLoop.handle !== null;
 }
 
 // ---------- Looping sounds ----------
@@ -41,6 +41,8 @@ function startAudio() {
 // A sound that loops for as long as it is wanted. setLoop() starts and stops it; the rest is its
 // bookkeeping. handle is null (silent), 'pending' (asked for; the host hasn't answered) or the
 // host's handle (playing).
+var ambienceLoop = { path: 'assets/audio/site-ambience.mp3', volume: 0.2, handle: null, generation: 0 };
+
 var musicLoop = { path: 'assets/audio/shift-score.mp3', volume: 0.12, handle: null, generation: 0 };
 
 var engineLoop = { path: 'assets/audio/diesel.wav', volume: 0.34, handle: null, generation: 0 };
@@ -93,6 +95,29 @@ function refreshWeatherAudio() {
 // The music plays while it is on, on every screen but the title and pause screens.
 function refreshMusic() {
   setLoop(musicLoop, musicEnabled && screen !== 'pause' && screen !== 'title');
+}
+
+// Site ambience runs whenever a shift session is open (play, pause or report), stopping on title.
+function refreshAmbience() {
+  setLoop(ambienceLoop, screen !== 'title');
+  ambientStarted = ambienceLoop.handle !== null;
+}
+
+// Stops every looping track and active voice cue (used on return to title or host hide/unmount).
+function stopAllAudio() {
+  setLoop(ambienceLoop, false);
+  setLoop(musicLoop, false);
+  setLoop(engineLoop, false);
+  setLoop(windLoop, false);
+  ambientStarted = false;
+  voiceGeneration++;
+  try {
+    if (typeof softn !== 'undefined' && softn.audio) {
+      if (voiceHandle !== null) softn.audio.stop(voiceHandle);
+      if (softn.audio.stopAll) softn.audio.stopAll();
+    }
+  } catch (e) {}
+  voiceHandle = null;
 }
 
 // ---------- Settings and the radio voice ----------

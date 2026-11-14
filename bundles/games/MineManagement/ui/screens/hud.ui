@@ -30,7 +30,11 @@
       <span class="mm-clock">{hud.clock}</span>
       <span class="mm-funds">{hud.money}</span>
     </div>
-    <button class="mm-hud-button" type="button" @click={toggleTablet}>PIT tablet <kbd>T</kbd></button>
+    <button class="mm-hud-button" class:mm-hud-alert-btn={hud.alertCount > 0} type="button" @click={toggleTablet}>
+      PIT tablet
+      <span class="mm-hud-alert-count" if={hud.alertCount > 0}>{hud.alertCount}</span>
+      <kbd>T</kbd>
+    </button>
     <button class="mm-hud-button mm-controls-toggle" type="button" @click={toggleScreenControls}>{controlsEnabled ? 'Hide pads' : 'Touch pads'}</button>
     <button class="mm-hud-button mm-pause-button" type="button" @click={pauseGame} aria-label="Pause">Ⅱ</button>
   </header>
@@ -90,7 +94,9 @@
     </aside>
 
     <p class="mm-control-strip">
-      <span>WASD move</span><span>E interact</span><span>T tablet</span><span>H horn</span><span>F lamp</span><span>Esc pause</span>
+      #each (hint in controlHints)
+        <span>{hint}</span>
+      #end
     </p>
 
     <TouchControls />
@@ -177,6 +183,10 @@
     color: #e5c791;
   }
   .mm-hud-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
     min-width: 44px;
     min-height: 44px;
     padding: 10px 13px;
@@ -187,9 +197,23 @@
     color: #eceddc;
     font-size: 11px;
   }
+  .mm-hud-button.mm-hud-alert-btn {
+    border-color: #e8aa65aa;
+  }
+  .mm-hud-alert-count {
+    display: inline-grid;
+    place-items: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    background: #df8d55;
+    border-radius: 9px;
+    font: 700 10px/1 monospace;
+    color: #16242a;
+  }
   .mm-hud-button kbd {
     display: inline-block;
-    margin-left: 10px;
+    margin-left: 3px;
     padding: 0 4px;
     border: 1px solid #ffffff4a;
     font: inherit;

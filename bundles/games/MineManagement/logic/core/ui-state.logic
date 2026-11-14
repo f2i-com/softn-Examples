@@ -79,7 +79,10 @@ function phaseColor(t) {
 // One truck's row for the Fleet page (ui/tablet/fleet.ui), as display strings. Speeds are stored in
 // m/s, hence the 3.6 for km/h; fill is the payload bar's width.
 function makeFleetRow(t) {
-  var b = botFor(t);
+  var b = botFor(t),
+    fuelPct = clamp(Math.round(t.fuel), 0, 100),
+    healthPct = clamp(Math.round(t.health), 0, 100),
+    batPct = b ? clamp(Math.round(b.battery), 0, 100) : 0;
   return {
     id: t.id,
     name: t.external_id,
@@ -87,9 +90,22 @@ function makeFleetRow(t) {
     phase: phaseLabel(t),
     crew: b ? b.name : 'Unassigned',
     payload: Math.round(t.payload) + ' / ' + t.capacity + ' t',
-    fuel: Math.round(t.fuel) + '%',
-    battery: b ? Math.round(b.battery) + '%' : 'N/A',
-    health: Math.round(t.health) + '%',
+    fuel: fuelPct + '%',
+    battery: b ? batPct + '%' : 'N/A',
+    health: healthPct + '%',
+    fuelFill: {
+      width: fuelPct + '%',
+      background: fuelPct < 25 ? '#ea8f6b' : fuelPct < 50 ? '#e3b868' : '#78cdb8'
+    },
+    healthFill: {
+      width: healthPct + '%',
+      background: healthPct < 35 ? '#ea8f6b' : healthPct < 65 ? '#e3b868' : '#8ec99f'
+    },
+    batteryFill: {
+      width: (b ? batPct : 0) + '%',
+      background: !b ? '#5b6c73' : batPct < 25 ? '#ea8f6b' : batPct < 50 ? '#e3b868' : '#8ac6d0'
+    },
+    lowWarning: fuelPct < 25 || healthPct < 35 || (!!b && batPct < 25),
     loads: t.loads,
     tonnes: Math.round(t.tonnes),
     speed: Math.round(t.speed * 3.6) + ' km/h',
@@ -97,12 +113,68 @@ function makeFleetRow(t) {
     action: t.active ? (t.stopped ? 'Release' : 'Hold') : 'Dispatch',
     policyLabel: 'Driving: ' + t.policy,
     color: phaseColor(t),
-    style: { borderColor: phaseColor(t) },
+    style: { borderColor: phaseColor(t), color: phaseColor(t) },
     fill: { width: (t.payload / t.capacity) * 100 + '%' },
     cycle: t.lastCycle ? Math.round(t.lastCycle) + ' s' : 'Awaiting first cycle',
     wait: Math.round(t.queueSeconds) + ' s',
     selected: selectedTruck === t.id
   };
+}
+
+// Category helper and filter toggle for the Shift log workspace ('all', 'alerts', 'ops', 'crew').
+function logCategoryFor(e) {
+  if (e.kind === 'warning' || e.speaker === 'PIT ALERT' || e.speaker === 'FIELD ALERT' || e.speaker === 'ESCALATION')
+    return 'alerts';
+  if (
+    e.speaker === 'WEIGHBRIDGE' ||
+    e.speaker === 'DISPATCH' ||
+    e.speaker === 'LOADING' ||
+    e.speaker === 'CRUSHER' ||
+    e.speaker === 'HYDRAULICS' ||
+    e.speaker === 'FIELD SERVICE' ||
+    e.speaker === 'SITE ROUNDS' ||
+    e.speaker === 'CONTRACTS' ||
+    e.speaker === 'EQUIPMENT' ||
+    e.speaker === 'WORKSHOP'
+  )
+    return 'ops';
+  return 'crew';
+}
+
+function setLogFilter(next) {
+  if (['all', 'alerts', 'ops', 'crew'].indexOf(next) < 0) return;
+  logFilter = next;
+  sfx('click');
+  refreshUI();
+}
+
+// Human-readable preview of an upgrade's current vs next performance effect for Workshop cards.
+function upgradeEffectLabel(id, level) {
+  if (id === 'loader') {
+    var curL = Math.round(level * 24),
+      nxtL = Math.round((level + 1) * 24);
+    return level >= 3 ? 'Loader speed +' + curL + '% (max)' : 'Loader speed +' + curL + '% → +' + nxtL + '%';
+  }
+  if (id === 'crusher') {
+    var curC = Math.round(12 * (1 + level * 0.25)),
+      nxtC = Math.round(12 * (1 + (level + 1) * 0.25));
+    return level >= 3 ? 'Base crusher ' + curC + ' t/s (max)' : 'Base crusher ' + curC + ' → ' + nxtC + ' t/s';
+  }
+  if (id === 'roads') {
+    var curW = Math.round(100 / (1 + level)),
+      nxtW = Math.round(100 / (1 + level + 1));
+    return level >= 3
+      ? 'Chassis wear ' + curW + '% · max rain grip'
+      : 'Chassis wear ' + curW + '% → ' + nxtW + '% · +8% rain speed';
+  }
+  if (id === 'battery') {
+    var curB = Math.round((1 - 1 / (1 + level * 0.3)) * 100),
+      nxtB = Math.round((1 - 1 / (1 + (level + 1) * 0.3)) * 100);
+    return level >= 3
+      ? 'Drain -' + curB + '% · fast charge (max)'
+      : 'Battery drain -' + curB + '% → -' + nxtB + '% · faster charge';
+  }
+  return level >= 1 ? 'Redundant link active (no relay faults)' : 'Eliminates telemetry repeater faults';
 }
 
 // ---------- refreshUI ----------
@@ -275,7 +347,17 @@ function refreshUI() {
     ? waypointBearing() + ' / ' + S.waypoint.label + ' / ' + Math.round(dist2(p, S.waypoint)) + ' m'
     : '';
   mapPlayer = positionStyle(p.x, p.z);
+  mapUte = positionStyle(S.ute.x, S.ute.z);
   waypointStyle = S.waypoint ? positionStyle(S.waypoint.x, S.waypoint.z) : { display: 'none' };
+  // Context-sensitive HUD control hints by player operating mode.
+  controlHints =
+    p.mode === 'truck'
+      ? ['WASD drive', 'Space brake', 'L load / tip', 'R fill tray', 'G guide', 'P park', 'C cam', 'E exit']
+      : p.mode === 'excavator'
+        ? ['A / D swing', 'W / S boom', 'Space dig', 'L discharge', 'C cam', 'T tablet', 'E exit']
+        : p.mode === 'ute'
+          ? ['WASD drive', 'Space brake', 'P park', 'H horn', 'C cam', 'F lamp', 'T tablet', 'E exit']
+          : ['WASD move', 'Shift run', 'Space jump', 'E interact', 'T tablet', 'H horn', 'F lamp', 'Esc pause'];
   // ---------- Driving readouts, and the bays for the Operations page ----------
   hud.payload =
     p.mode === 'truck' ? Math.round(vehicle.payload) + ' / ' + vehicle.capacity + ' t PAYLOAD' : '';
@@ -297,12 +379,26 @@ function refreshUI() {
   hud.exposedOre = Math.round(S.extraction) + ' t';
   // ---------- Fleet rows and truck markers ----------
   var fleet = [],
-    map = [];
+    map = [],
+    activeTruckCount = 0,
+    fleetNeedsAttention = false;
   for (var i = 0; i < S.trucks.length; i++) {
-    var t = S.trucks[i];
+    var t = S.trucks[i],
+      tc = phaseColor(t),
+      pos = positionStyle(t.x, t.z);
     fleet.push(makeFleetRow(t));
-    // A marker on the Operations map: the truck's name at its position.
-    map.push({ id: t.id, name: t.external_id, style: positionStyle(t.x, t.z) });
+    if (t.active && !t.stopped && !t.fault) activeTruckCount++;
+    if (t.fault || (t.operator_id > 0 && !t.active && t.phase !== 'manual')) fleetNeedsAttention = true;
+    // A marker on the Operations map: the truck's name and live status colour at its position.
+    map.push({
+      id: t.id,
+      name: t.external_id,
+      phase: phaseLabel(t),
+      payload: t.payload > 0 ? Math.round(t.payload) + 't' : '',
+      selected: selectedTruck === t.id,
+      faulted: !!t.fault,
+      style: { left: pos.left, top: pos.top, borderColor: tc, color: tc }
+    });
   }
   fleetRows = fleet;
   // With the repeater down the map keeps the last positions it had.
@@ -310,35 +406,189 @@ function refreshUI() {
   // ---------- Alerts, Kevin on the map, the radio log and past shifts ----------
   // An incident keeps its own age (mine/incidents.logic); other alerts count from when they opened.
   alertRows = S.alerts.map(function (a) {
+    var critical = !!(a.eventId && a.stage === 2);
     return {
       key: a.key,
       title: a.title,
       distance: Math.round(dist2(p, a)) + ' m',
       age: Math.max(0, Math.round(a.age === undefined ? S.time - a.at : a.age)) + ' s',
-      kind: a.kind
+      kind: a.kind,
+      critical: critical,
+      severity: a.kind === 'kevin' ? 'WILDLIFE' : critical ? 'CRITICAL HOLD' : a.eventId ? 'WARNING' : 'SERVICE'
     };
   });
+  mapAlerts = S.alerts
+    .filter(function (a) {
+      return a.kind !== 'kevin';
+    })
+    .map(function (a) {
+      var ap = positionStyle(a.x, a.z);
+      return {
+        key: a.key,
+        title: a.title,
+        critical: !!(a.eventId && a.stage === 2),
+        style: ap
+      };
+    });
   mapKevin = kevinOnRoad()
     ? { visible: true, style: positionStyle(S.kevin.x, S.kevin.z) }
     : { visible: false, style: {} };
-  logRows = S.events.slice(0, 18).map(function (e) {
-    return { id: e.id, clock: clockLabel(e.at), speaker: e.speaker, message: e.message, kind: e.kind };
+  var counts = { all: S.events.length, alerts: 0, ops: 0, crew: 0 };
+  var filteredEvents = [];
+  for (var ei = 0; ei < S.events.length; ei++) {
+    var ev = S.events[ei],
+      cat = logCategoryFor(ev);
+    counts[cat]++;
+    if (logFilter === 'all' || logFilter === cat) filteredEvents.push(ev);
+  }
+  logCounts = counts;
+  logRows = filteredEvents.slice(0, 45).map(function (e) {
+    return {
+      id: e.id,
+      clock: clockLabel(e.at),
+      speaker: e.speaker,
+      message: e.message,
+      kind: e.kind,
+      category: logCategoryFor(e)
+    };
   });
-  historyRows = S.history;
-  // ---------- Workshop upgrades ----------
+  historyRows = S.history.map(function (h) {
+    return {
+      shift: h.shift,
+      tonnes: h.tonnes,
+      target: h.target,
+      profit: h.profit,
+      profitText: money(h.profit),
+      positive: h.profit >= 0,
+      met: h.tonnes >= h.target,
+      rank: h.rank
+    };
+  });
+  // ---------- Weighbridge loads and unit economics ----------
+  var tonnePrice = 39 + S.oreGrade * 16;
+  loadRows = S.loads.slice(0, 15).map(function (l) {
+    var cycleSec = l.loaded_at > 0 && l.dumped_at >= l.loaded_at ? Math.round(l.dumped_at - l.loaded_at) : 0;
+    return {
+      id: l.id,
+      shift: l.shift,
+      truck: l.truck_code,
+      tonnes: l.tonnes + ' t',
+      dumpedClock: clockLabel(l.dumped_at),
+      haulTime: cycleSec > 0 ? cycleSec + ' s' : '—',
+      value: money(Math.round(l.tonnes * tonnePrice))
+    };
+  });
+  economicsRows = [
+    {
+      name: 'Ore grade value',
+      value: money(tonnePrice) + ' / t',
+      sub: Math.round(S.oreGrade * 100) + '% copper grade'
+    },
+    {
+      name: 'Crusher throughput',
+      value: (S.crusher ? Math.round(crusherRate() * 10) / 10 : 0) + ' t/s',
+      sub: S.crusher ? money(crusherRate() * tonnePrice) + '/s revenue cap' : 'Interlock offline'
+    },
+    {
+      name: 'Shift target bonus',
+      value: money(1500 + S.shift * 250),
+      sub: S.tonnes >= S.target ? 'Secured at reconciliation' : 'Paid when ' + S.target + ' t tipped'
+    },
+    {
+      name: 'Shift site overhead',
+      value: money(600 + S.robots.length * 70),
+      sub: '$600 base + $70 × ' + S.robots.length + ' crew'
+    }
+  ];
+  // ---------- Workshop upgrades and field service readiness ----------
   // Same price (70% more per level) and level cap (the relay stops at 1) as buyUpgrade in
   // mine/purchases.logic: change them together.
+  var affordableUpgrades = 0;
   upgradeRows = upgradeCatalog.map(function (u) {
-    var level = S.upgrade[u.id];
+    var level = S.upgrade[u.id],
+      cap = u.id === 'relay' ? 1 : 3,
+      rawCost = Math.round(u.cost * (1 + level * 0.7)),
+      isMax = level >= cap,
+      canAfford = !isMax && S.cash >= rawCost;
+    if (canAfford) affordableUpgrades++;
     return {
       id: u.id,
       name: u.name,
       detail: u.detail,
+      effect: upgradeEffectLabel(u.id, level),
       level: level,
-      cost: money(Math.round(u.cost * (1 + level * 0.7))),
-      max: level >= (u.id === 'relay' ? 1 : 3)
+      cap: cap,
+      levelPct: { width: Math.round((level / cap) * 100) + '%' },
+      cost: money(rawCost),
+      max: isMax,
+      canAfford: canAfford
     };
   });
+  var minFuel = Math.round(S.ute.fuel),
+    minHealth = Math.round(S.ute.health),
+    minBat = 100;
+  for (var si = 0; si < S.trucks.length; si++) {
+    minFuel = Math.min(minFuel, Math.round(S.trucks[si].fuel));
+    minHealth = Math.min(minHealth, Math.round(S.trucks[si].health));
+  }
+  for (var bi = 0; bi < S.robots.length; bi++) {
+    minBat = Math.min(minBat, Math.round(S.robots[bi].battery));
+  }
+  var repairFactor = S.memoFx ? S.memoFx.repair : 1;
+  serviceStatusRows = [
+    {
+      id: 'workshop',
+      name: 'Workshop overhaul',
+      cost: money(Math.round(450 * repairFactor)),
+      stat: 'Lowest condition: ' + minHealth + '%',
+      warn: minHealth < 55
+    },
+    {
+      id: 'fuel',
+      name: 'Fuel farm refill',
+      cost: money(Math.round(160 * repairFactor)),
+      stat: 'Lowest tank: ' + minFuel + '%',
+      warn: minFuel < 35
+    },
+    {
+      id: 'charger',
+      name: 'Charging bay service',
+      cost: money(Math.round(120 * repairFactor)),
+      stat: 'Lowest robot: ' + minBat + '%',
+      warn: minBat < 35
+    },
+    {
+      id: 'relay',
+      name: 'Spare kits & repeater',
+      cost: (S.site ? S.site.spares : 0) + ' kits (-$40/job)',
+      stat: S.relay ? 'Telemetry online' : 'Repeater offline',
+      warn: !S.relay
+    }
+  ];
+  // ---------- Workspace navigation badges ----------
+  var unassignedTrucks = S.trucks.some(function (tr) {
+    return tr.operator_id === 0;
+  });
+  var canRecruit = S.robots.length < 6 && S.cash >= recruitmentPrice();
+  var openContracts = contractCatalog.some(function (c) {
+    return S.contracts.finished.indexOf(c.id) < 0 && S.duration - S.time >= 30;
+  });
+  var sitePending =
+    (typeof chapterView !== 'undefined' && chapterView.canChoose) ||
+    (S.site && S.site.commission && !S.site.commission.accepted && !S.site.commission.done && S.time <= 660);
+  tabBadges = {
+    operations: alertRows.length > 0 ? String(alertRows.length) : '',
+    fleet: fleetNeedsAttention ? '!' : activeTruckCount + '/' + S.trucks.length,
+    workforce: minBat < 25 ? 'LOW' : unassignedTrucks && canRecruit ? 'HIRE' : '',
+    workshop: affordableUpgrades > 0 ? String(affordableUpgrades) : '',
+    ledger: S.loads.length > 0 ? String(S.loads.length) : '',
+    log: counts.alerts > 0 ? String(counts.alerts) : '',
+    guide: '',
+    contracts: S.contracts.active ? 'LIVE' : openContracts ? 'OPEN' : '',
+    excavators: S.deployment.remaining > 0 ? 'MOVE' : S.excavators.length < 2 && S.cash >= 14000 ? 'NEW' : '',
+    site: sitePending ? 'PLAN' : S.rounds && S.rounds.done.length < 3 ? 3 - S.rounds.done.length + ' CHK' : ''
+  };
+  hud.alertCount = alertRows.length;
   // ---------- The Production page's money ----------
   financialRows = [
     { name: 'Processed ore sales + bonuses', value: money(S.revenue) },
@@ -378,6 +628,7 @@ function refreshUI() {
   ];
   // ---------- Light and sound ----------
   refreshLighting();
+  refreshAmbience();
   refreshEngineAudio();
   refreshMusic();
   refreshWeatherAudio();

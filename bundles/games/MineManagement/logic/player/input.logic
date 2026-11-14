@@ -48,6 +48,24 @@ function keyDown(e) {
     toggleTablet();
     return;
   }
+  if (tablet && !exportOpen && !memoView.visible && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    var tabKeys = {
+      '1': 'operations',
+      '2': 'fleet',
+      '3': 'workforce',
+      '4': 'workshop',
+      '5': 'ledger',
+      '6': 'log',
+      '7': 'guide',
+      '8': 'contracts',
+      '9': 'excavators',
+      '0': 'site'
+    };
+    if (tabKeys[key]) {
+      openTab(tabKeys[key]);
+      return;
+    }
+  }
   if (tablet || exportOpen) return;
   if (key === 'e') {
     // During a field-kit job, E sends the step's own (right) action. A hold step reads E as held

@@ -79,14 +79,179 @@ function pitSnapshot() {
   };
 }
 
+// Helper to produce the current career save JSON string, either from the live shift or storage.
+function currentCareerSaveJson() {
+  if (S && screen !== 'title') {
+    S.settings = {
+      muted: muted,
+      quality: quality,
+      motion: motion,
+      music: musicEnabled,
+      radio: radioEnabled,
+      controls: controlsEnabled,
+      controlsChosen: controlsChosen,
+      lookSensitivity: lookSensitivity
+    };
+    return saveText();
+  }
+  try {
+    var stored = localStorage.getItem(KEY_SAVE) || localStorage.getItem(KEY_BACKUP) || '';
+    return stored;
+  } catch (e) {
+    return '';
+  }
+}
+
+// Switches between 'snapshot' (PIT telemetry export) and 'save' (portable career save backup/restore).
+function switchExportMode(mode) {
+  exportMode = mode === 'save' ? 'save' : 'snapshot';
+  exportFeedback = '';
+  exportFeedbackKind = 'info';
+  if (exportMode === 'save') {
+    exportText = currentCareerSaveJson();
+  } else {
+    exportText = S ? JSON.stringify(pitSnapshot(), null, 2) : '';
+  }
+  sfx('click');
+}
+
 // Opens the export screen with the snapshot as indented JSON, and frees the mouse so the text can
 // be selected.
 function showExport() {
+  exportMode = 'snapshot';
+  exportFeedback = '';
+  exportFeedbackKind = 'info';
   exportText = JSON.stringify(pitSnapshot(), null, 2);
   exportOpen = true;
   releaseMouse();
 }
 
+// Opens the export screen directly on the portable career save backup & restore tab.
+function showSaveBackup() {
+  exportMode = 'save';
+  exportFeedback = '';
+  exportFeedbackKind = 'info';
+  importText = '';
+  exportText = currentCareerSaveJson();
+  exportOpen = true;
+  releaseMouse();
+}
+
+// Copies exportText to the system clipboard when permitted, with clear fallback instructions.
+function copyExportText() {
+  if (!exportText) {
+    exportFeedback = 'Nothing to copy yet — start a shift first.';
+    exportFeedbackKind = 'warning';
+    return;
+  }
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+      var clipRes = navigator.clipboard.writeText(exportText);
+      if (clipRes && typeof clipRes.then === 'function') {
+        clipRes.then(
+          function () {
+            exportFeedback =
+              exportMode === 'save'
+                ? 'Career save JSON copied to clipboard.'
+                : 'PIT telemetry snapshot copied to clipboard.';
+            exportFeedbackKind = 'success';
+            if (S) refreshUI();
+          },
+          function () {
+            exportFeedback = 'Clipboard blocked here — click inside the JSON box and press Ctrl+C (or Cmd+C).';
+            exportFeedbackKind = 'info';
+            if (S) refreshUI();
+          }
+        );
+      }
+      exportFeedback =
+        exportMode === 'save'
+          ? 'Career save JSON copied to clipboard.'
+          : 'PIT telemetry snapshot copied to clipboard.';
+      exportFeedbackKind = 'success';
+      sfx('click');
+      return true;
+    }
+  } catch (e) {}
+  exportFeedback = 'Click inside the JSON box below and press Ctrl+C (or Cmd+C) to copy.';
+  exportFeedbackKind = 'info';
+  sfx('click');
+  return false;
+}
+
+// Validates and restores a pasted career save JSON string into localStorage and loads it.
+function importSaveData() {
+  var raw = String(importText || '').trim();
+  if (!raw) {
+    exportFeedback = 'Paste a Mine Management career save JSON string into the restore box first.';
+    exportFeedbackKind = 'warning';
+    return false;
+  }
+  if (raw.length > 30000) {
+    exportFeedback = 'Save JSON exceeds the 30,000-character storage limit (' + raw.length + ' chars).';
+    exportFeedbackKind = 'warning';
+    return false;
+  }
+  var parsed = null;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    exportFeedback = 'Invalid JSON syntax. Paste the complete career save JSON without truncation.';
+    exportFeedbackKind = 'warning';
+    return false;
+  }
+  if (parsed && parsed.schema === 'mine-management.pit-snapshot.v1') {
+    exportFeedback =
+      'That is a PIT telemetry snapshot, not a restorable career save. Export from Career Save Backup instead.';
+    exportFeedbackKind = 'warning';
+    return false;
+  }
+  if (!validState(parsed)) {
+    exportFeedback = 'Save rejected by schema validation. Only authentic schema v1 Red Dust saves can load.';
+    exportFeedbackKind = 'warning';
+    return false;
+  }
+  var normalized = JSON.stringify(
+    Object.assign({}, parsed, {
+      events: parsed.events.slice(0, 30),
+      loads: parsed.loads.slice(0, 25)
+    })
+  );
+  if (normalized.length > 30000) {
+    exportFeedback = 'Normalized save exceeds 30,000 characters.';
+    exportFeedbackKind = 'warning';
+    return false;
+  }
+  try {
+    var previous = localStorage.getItem(KEY_SAVE);
+    if (previous && previous.length < 1000000) {
+      try {
+        if (validState(JSON.parse(previous))) localStorage.setItem(KEY_BACKUP, previous);
+      } catch (e2) {}
+    }
+    localStorage.setItem(KEY_SAVE, normalized);
+  } catch (e) {
+    exportFeedback = 'Browser localStorage is unavailable in this environment.';
+    exportFeedbackKind = 'warning';
+    return false;
+  }
+  importText = '';
+  exportFeedback = 'Save validated and restored: Shift ' + parsed.shift + ' (' + money(parsed.cash) + ').';
+  exportFeedbackKind = 'success';
+  checkSave();
+  sfx('success');
+  if (ready || screen !== 'title') {
+    exportOpen = false;
+    continueGame();
+    toast('SAVE RESTORED · SHIFT ' + S.shift, 'good');
+  } else {
+    exportText = normalized;
+    refreshUI();
+  }
+  return true;
+}
+
 function hideExport() {
   exportOpen = false;
+  exportFeedback = '';
 }

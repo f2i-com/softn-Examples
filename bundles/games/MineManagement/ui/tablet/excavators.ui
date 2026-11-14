@@ -9,7 +9,13 @@
       <h2>Put the right bucket to work.</h2>
       <p class="mm-muted">There is one loading face. Mel runs whichever excavator is deployed there, and has feelings about all of them.</p>
     </div>
-    <button class="mm-primary" type="button" @click={buyExcavator} disabled={hud.excavatorCount >= 2}>Buy EXC-02 / $14,000</button>
+    <button class="mm-primary" type="button" @click={buyExcavator} disabled={hud.excavatorCount >= 2}>{hud.excavatorCount >= 2 ? 'EXC-02 owned (2 / 2)' : 'Buy EXC-02 / $14,000'}</button>
+  </div>
+
+  <div class="mm-process-strip">
+    <div><span class="mm-label">BENCH 1 LOADING BAY</span><span>{hud.loadBay}</span></div>
+    <div><span class="mm-label">MANUAL BUCKET</span><span>{hud.manualBucket}</span></div>
+    <div><span class="mm-label">EXPOSED ORE AT FACE</span><span>{hud.exposedOre}</span></div>
   </div>
 
   <div class="mm-exc-grid">

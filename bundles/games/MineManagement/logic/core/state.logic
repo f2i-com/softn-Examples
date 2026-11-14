@@ -94,10 +94,18 @@ var cameraMode = 'chase';
 // so do newGame, continueGame and pauseGame, so a press armed on one screen never confirms on another.
 var resetConfirm = false;
 
-// The PIT JSON export overlay (mine/pit-export.logic, ui/screens/export.ui).
+// The PIT JSON export & portable save backup overlay (mine/pit-export.logic, ui/screens/export.ui).
 var exportText = '';
 
 var exportOpen = false;
+
+var exportMode = 'snapshot';
+
+var importText = '';
+
+var exportFeedback = '';
+
+var exportFeedbackKind = 'info';
 
 // ---------- Game loop and input ----------
 
@@ -211,8 +219,42 @@ var waypointStyle = { display: 'none' };
 // The truck picked on the map or the Fleet page (selectTruck in mine/fleet.logic).
 var selectedTruck = 1;
 
-// The Production page's money lines.
+// The Production page's money lines, weighbridge loads, and unit economics.
 var financialRows = [];
+
+var loadRows = [];
+
+var economicsRows = [];
+
+// Live fleet/crew readiness metrics for Workshop field services.
+var serviceStatusRows = [];
+
+// Clickable map pins for open field alerts and the site ute on Operations map.
+var mapAlerts = [];
+
+var mapUte = { left: '50%', top: '80%' };
+
+// Live status badges across the 10 PIT tablet workspace tabs.
+var tabBadges = {
+  operations: '',
+  fleet: '',
+  workforce: '',
+  workshop: '',
+  ledger: '',
+  log: '',
+  guide: '',
+  contracts: '',
+  excavators: '',
+  site: ''
+};
+
+// Category filter and counts for Shift log ('all', 'alerts', 'ops', 'crew').
+var logFilter = 'all';
+
+var logCounts = { all: 0, alerts: 0, ops: 0, crew: 0 };
+
+// Context-sensitive keyboard hint pills on the HUD.
+var controlHints = [];
 
 // Shift progress for the HUD's meter, 0 to 100 (per cent of the target).
 var totalProgress = 0;

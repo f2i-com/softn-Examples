@@ -8,7 +8,10 @@
     <h2>Tools down.</h2>
     <p class="mm-muted">The shift is paused. The robots are enjoying this more than they will admit.</p>
     <button class="mm-primary" type="button" @click={resumeGame}>Back to work →</button>
-    <button class="mm-secondary" type="button" @click={saveGame(false)}>Save shift</button>
+    <div class="mm-pause-save-row">
+      <button class="mm-secondary" type="button" @click={saveGame(false)}>Save shift</button>
+      <button class="mm-secondary" type="button" @click={showSaveBackup}>Backup / export</button>
+    </div>
 
     <div class="mm-setting-row" aria-label="Settings">
       <button type="button" @click={toggleMute}>{muted ? 'Sound off' : 'Sound on'}</button>
@@ -20,7 +23,10 @@
       <button type="button" @click={cycleSensitivity}>Look: {lookSensitivity < 1 ? 'gentle' : lookSensitivity > 1 ? 'fast' : 'standard'}</button>
     </div>
 
-    <button class="mm-secondary" type="button" @click={recoverVehicle}>{resetConfirm ? 'Confirm recovery / $250' : 'Stuck? Tow me to the compound / $250'}</button>
+    <div class="mm-pause-save-row">
+      <button class="mm-secondary" type="button" @click={recoverVehicle}>{resetConfirm ? 'Confirm recovery / $250' : 'Stuck? Tow me to the compound / $250'}</button>
+      <button class="mm-small-button" type="button" if={resetConfirm} @click={cancelResetConfirm}>Cancel</button>
+    </div>
     <button class="mm-text-button" type="button" @click={returnTitle}>Save and return to the title</button>
 
     <div class="mm-pause-help">
@@ -55,6 +61,13 @@
   }
   .mm-pause-modal > .mm-primary {
     margin-top: 6px;
+  }
+  .mm-pause-save-row {
+    display: flex;
+    gap: 8px;
+  }
+  .mm-pause-save-row > .mm-secondary {
+    flex: 1;
   }
   .mm-setting-row {
     display: flex;

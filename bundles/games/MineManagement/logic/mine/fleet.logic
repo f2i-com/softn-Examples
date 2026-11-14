@@ -160,6 +160,17 @@ function selectTruck(id) {
   refreshUI();
 }
 
+// Tracks the truck on the HUD and immediately lowers the tablet to navigate outside.
+function locateAndGoTruck(id) {
+  selectedTruck = id;
+  var t = getTruck(id);
+  if (!t) return;
+  trackUnit('truck', id, t.external_id);
+  tablet = false;
+  takeMouse();
+  refreshUI();
+}
+
 // ---------- Bays ----------
 
 // Hands each bay to the head of its queue. Runs once per simulation step, after the trucks have

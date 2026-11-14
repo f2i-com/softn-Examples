@@ -28,15 +28,26 @@
         <span class="mm-small">{unit.tonnes} t delivered / {unit.loads} loads</span>
       </div>
       <div class="mm-fleet-health">
-        <span class="mm-small">Fuel {unit.fuel} / condition {unit.health}</span>
-        <span class="mm-small">Operator battery {unit.battery}</span>
-        <span class="mm-small">Last cycle {unit.cycle} / queue {unit.wait}</span>
+        <div class="mm-stat-bar-row">
+          <span class="mm-small">Fuel {unit.fuel}</span>
+          <div class="mm-mini-bar"><div style={unit.fuelFill}></div></div>
+        </div>
+        <div class="mm-stat-bar-row">
+          <span class="mm-small">Condition {unit.health}</span>
+          <div class="mm-mini-bar"><div style={unit.healthFill}></div></div>
+        </div>
+        <div class="mm-stat-bar-row">
+          <span class="mm-small">Battery {unit.battery}</span>
+          <div class="mm-mini-bar"><div style={unit.batteryFill}></div></div>
+        </div>
+        <span class="mm-small mm-fleet-timing">{unit.speed} · cycle {unit.cycle} · queue {unit.wait}</span>
       </div>
       <div class="mm-fleet-actions">
         <button class="mm-primary" type="button" @click={pitDispatch(unit.id)}>{unit.action}</button>
         <button class="mm-small-button" type="button" @click={recallTruck(unit.id)}>Return & park</button>
         <button class="mm-small-button" type="button" @click={setPolicy(unit.id)} title="Cautious, balanced or urgent">{unit.policyLabel}</button>
-        <button class="mm-small-button" type="button" @click={selectTruck(unit.id)}>Locate</button>
+        <button class="mm-small-button" type="button" @click={selectTruck(unit.id)}>Track</button>
+        <button class="mm-small-button mm-fleet-go" type="button" @click={locateAndGoTruck(unit.id)}>Locate & head outside →</button>
       </div>
     </article>
   #end
@@ -48,10 +59,10 @@
 
   <div class="mm-purchase-row">
     <div>
-      <h3>Another Ironback 80</h3>
+      <h3>Another Ironback 80 ({fleetRows.length} / 4 owned)</h3>
       <p class="mm-muted">Delivered to the car park. Needs a free operator, and the site allows four trucks before the neighbours complain.</p>
     </div>
-    <button class="mm-secondary" type="button" @click={buyTruck}>Buy one / $18,000</button>
+    <button class="mm-secondary" type="button" @click={buyTruck} disabled={fleetRows.length >= 4}>{fleetRows.length >= 4 ? 'Site limit reached (4 / 4)' : 'Buy one / $18,000'}</button>
   </div>
 </div>
 
@@ -110,18 +121,46 @@
     font-size: 9px;
   }
   .mm-fleet-health {
-    flex: 1;
-    min-width: 145px;
+    flex: 1.15;
+    min-width: 170px;
   }
-  .mm-fleet-health .mm-small {
+  .mm-stat-bar-row {
+    display: grid;
+    grid-template-columns: 98px 1fr;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 5px;
+  }
+  .mm-stat-bar-row .mm-small {
     font-size: 10px;
-    line-height: 1.9;
+    line-height: 1.3;
+    white-space: nowrap;
+  }
+  .mm-mini-bar {
+    height: 5px;
+    overflow: hidden;
+    background: #17262d;
+    border-radius: 3px;
+  }
+  .mm-mini-bar > div {
+    height: 100%;
+    border-radius: 3px;
+  }
+  .mm-fleet-timing {
+    display: block;
+    margin-top: 6px;
+    font-size: 9px;
+    color: #9fb5ba;
   }
   .mm-fleet-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 6px;
-    min-width: 175px;
+    min-width: 195px;
+  }
+  .mm-fleet-actions .mm-fleet-go {
+    grid-column: 1 / -1;
+    color: #ecd198;
   }
   .mm-fleet-actions button {
     min-height: 34px;

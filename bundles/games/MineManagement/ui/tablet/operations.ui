@@ -48,14 +48,19 @@
         <div class="mm-map-pit mm-bench-c"></div>
         <div class="mm-route-line" each={mapSegments} as="segment" style={segment.style}></div>
         <span class="mm-map-label mm-map-bench">BENCH 01</span>
+        <span class="mm-map-label mm-map-workshop">WORKSHOP</span>
         <span class="mm-map-label mm-map-office">OPERATIONS</span>
+        <span class="mm-map-label mm-map-fuel">FUEL</span>
         <span class="mm-map-label mm-map-crusher">CRUSHER</span>
-        <button class="mm-map-truck" each={mapRows} as="unit" type="button" style={unit.style} @click={selectTruck(unit.id)}>{unit.name}</button>
+        <span class="mm-map-label mm-map-relay">RELAY</span>
+        <button class="mm-map-ute" type="button" style={mapUte} @click={markUte} title="Mark site ute">UTE</button>
+        <button class="mm-map-truck" class:mm-map-truck-selected={unit.selected} each={mapRows} as="unit" type="button" style={unit.style} @click={selectTruck(unit.id)} title={unit.name + ' · ' + unit.phase}>{unit.name}{unit.payload !== '' ? ' · ' + unit.payload : ''}</button>
+        <button class="mm-map-alert" class:mm-map-alert-crit={pin.critical} each={mapAlerts} as="pin" type="button" style={pin.style} @click={goAlert(pin.key)} title={pin.title}>! FAULT</button>
         <span class="mm-map-kevin" if={mapKevin.visible} style={mapKevin.style}>◐ KEVIN</span>
         <span class="mm-map-waypoint" style={waypointStyle}>◎</span>
         <span class="mm-map-player" style={mapPlayer}>◆<span>YOU</span></span>
         <p class="mm-map-stale" if={!hud.relay}>LAST KNOWN POSITIONS / REPAIR THE REPEATER</p>
-        <p class="mm-map-legend"><span>● FLEET</span><span>◆ YOU</span><span>◎ WAYPOINT</span></p>
+        <p class="mm-map-legend"><span>● FLEET</span><span>▲ FAULT</span><span>▪ UTE</span><span>◆ YOU</span><span>◎ WAYPOINT</span></p>
       </div>
       <div class="mm-map-tracking" if={hud.waypoint !== ''}>
         <span>{hud.waypoint}</span>
@@ -81,8 +86,11 @@
           <h3>All clear. For now.</h3>
           <p class="mm-muted">A good time to put another truck to work. Or to try Bazza's ramp. One of those.</p>
         </div>
-        <div class="mm-alert-row" each={alertRows} as="alert">
-          <span class="mm-alert-title">{alert.title}</span>
+        <div class="mm-alert-row" class:mm-alert-row-crit={alert.critical} each={alertRows} as="alert">
+          <div class="mm-alert-head">
+            <span class="mm-alert-title">{alert.title}</span>
+            <span class="mm-alert-badge" class:mm-alert-badge-crit={alert.critical}>{alert.severity}</span>
+          </div>
           <span class="mm-small">{alert.distance} away / opened {alert.age} ago</span>
           <button class="mm-warning-button" type="button" @click={goAlert(alert.key)}>{alert.kind === 'kevin' ? 'Go and shoo him →' : 'Mark it and head outside →'}</button>
         </div>
@@ -189,26 +197,72 @@
     top: 32%;
     left: 40%;
   }
+  .mm-map-workshop {
+    top: 82%;
+    left: 22%;
+  }
   .mm-map-office {
     top: 92%;
     left: 30%;
   }
+  .mm-map-fuel {
+    top: 91%;
+    left: 49%;
+  }
   .mm-map-crusher {
     top: 80%;
     left: 60%;
+  }
+  .mm-map-relay {
+    top: 75%;
+    left: 76%;
+  }
+  .mm-map-ute {
+    position: absolute;
+    z-index: 3;
+    padding: 2px 4px;
+    transform: translate(-50%, -50%);
+    background: #1c313a;
+    border: 1px solid #76a6b8;
+    border-radius: 3px;
+    font: 700 7px/1.2 monospace;
+    color: #b7e2ef;
+    white-space: nowrap;
   }
   .mm-map-truck {
     position: absolute;
     z-index: 4;
     padding: 3px 5px;
     transform: translate(-50%, -50%);
-    background: #233a2a;
+    background: #182b31;
     border: 1px solid #adbc6f;
     border-radius: 3px;
     box-shadow: 0 2px 5px #071a14aa;
-    font: 8px/1.2 monospace;
+    font: 700 8px/1.2 monospace;
     color: #f1edba;
     white-space: nowrap;
+  }
+  .mm-map-truck.mm-map-truck-selected {
+    box-shadow: 0 0 0 2px #efb55488, 0 2px 6px #000b;
+    z-index: 5;
+  }
+  .mm-map-alert {
+    position: absolute;
+    z-index: 5;
+    padding: 2px 5px;
+    transform: translate(-50%, -50%);
+    background: #492d19;
+    border: 1px solid #efa65b;
+    border-radius: 10px;
+    box-shadow: 0 0 10px #efa65b55;
+    font: 700 7px/1.2 monospace;
+    color: #ffe0b5;
+    white-space: nowrap;
+  }
+  .mm-map-alert.mm-map-alert-crit {
+    background: #56231c;
+    border-color: #f57d62;
+    color: #ffd0c4;
   }
   .mm-map-kevin {
     position: absolute;
@@ -327,10 +381,34 @@
     padding: 17px;
     border-bottom: 1px solid var(--line);
   }
+  .mm-alert-row.mm-alert-row-crit {
+    background: #2d2324;
+  }
+  .mm-alert-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
   .mm-alert-title {
     font-size: 13px;
     font-weight: 600;
     color: #efc294;
+  }
+  .mm-alert-badge {
+    flex-shrink: 0;
+    padding: 2px 6px;
+    background: #3d2f1f;
+    border: 1px solid #c99757;
+    border-radius: 3px;
+    font: 700 8px/1.2 monospace;
+    letter-spacing: 0.6px;
+    color: #f5d19b;
+  }
+  .mm-alert-badge.mm-alert-badge-crit {
+    background: #4e231e;
+    border-color: #eb7f67;
+    color: #ffcabd;
   }
   .mm-alert-row .mm-small {
     font-size: 10px;

@@ -10,7 +10,10 @@
       <h2>The tonnes that actually arrived.</h2>
       <p class="mm-muted">A loaded truck is a promise. Tipped ore is a fact. Processed ore is money. Ore still in the hopper at the end of a shift waits for the next one.</p>
     </div>
-    <button class="mm-secondary" type="button" @click={showExport}>Open the PIT JSON snapshot</button>
+    <div class="mm-ledger-actions">
+      <button class="mm-secondary" type="button" @click={showExport}>PIT JSON snapshot</button>
+      <button class="mm-small-button" type="button" @click={showSaveBackup}>Save backup / restore</button>
+    </div>
   </div>
 
   <div class="mm-metrics">
@@ -19,15 +22,48 @@
     #end
   </div>
 
-  <section class="mm-card">
-    <div class="mm-card-title"><span>Completed shifts</span><span class="mm-small">LOCAL RECORD</span></div>
-    <div class="mm-history-row mm-label"><span>SHIFT</span><span>DELIVERED / TARGET</span><span>NET CASH FLOW</span><span>GRADE</span></div>
-    #each (row in historyRows)
-      <div class="mm-history-row"><span>{row.shift}</span><span>{row.tonnes} / {row.target} t</span><span>{row.profit}</span><span>{row.rank}</span></div>
-    #empty
-      <p class="mm-empty">Your first shift report will appear here. Head Office is already excited.</p>
+  <div class="mm-econ-grid">
+    #each (ec in economicsRows)
+      <div class="mm-econ-card">
+        <span class="mm-label">{ec.name}</span>
+        <strong>{ec.value}</strong>
+        <span class="mm-small">{ec.sub}</span>
+      </div>
     #end
-  </section>
+  </div>
+
+  <div class="mm-ledger-split">
+    <section class="mm-card">
+      <div class="mm-card-title"><span>Recent weighbridge loads</span><span class="mm-small">LATEST 15 TIPS</span></div>
+      <div class="mm-load-row mm-label"><span>TIME</span><span>RIG</span><span>TONNES</span><span>CYCLE</span><span>VALUE</span></div>
+      #each (ld in loadRows) key={ld.id}
+        <div class="mm-load-row">
+          <span class="mm-mono">{ld.dumpedClock}</span>
+          <strong>{ld.truck}</strong>
+          <span>{ld.tonnes}</span>
+          <span class="mm-mono">{ld.haulTime}</span>
+          <span class="mm-profit-pos">{ld.value}</span>
+        </div>
+      #empty
+        <p class="mm-empty">No loads tipped at the crusher yet. Dispatch the fleet or drive a truck to Bench 1.</p>
+      #end
+    </section>
+
+    <section class="mm-card">
+      <div class="mm-card-title"><span>Completed shifts</span><span class="mm-small">LOCAL RECORD</span></div>
+      <div class="mm-history-row mm-label"><span>SHIFT</span><span>DELIVERED / TARGET</span><span>NET CASH FLOW</span><span>GRADE</span></div>
+      #each (row in historyRows)
+        <div class="mm-history-row">
+          <span>#{row.shift}</span>
+          <span>{row.tonnes} / {row.target} t</span>
+          <span class:mm-profit-pos={row.positive} class:mm-profit-neg={!row.positive}>{row.profitText}</span>
+          <span class="mm-rank-pill">{row.rank}</span>
+        </div>
+      #empty
+        <p class="mm-empty">Your first shift report will appear here. Head Office is already excited.</p>
+      #end
+    </section>
+  </div>
 
   <div class="mm-callout">
     <span class="mm-label">ISOLATED BY DESIGN</span>
@@ -36,11 +72,83 @@
 </div>
 
 <style>
+  .mm-ledger-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .mm-econ-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin: 0 0 20px;
+  }
+  .mm-econ-card {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 15px 17px;
+    background: #1f3138;
+    border: 1px solid #485d66;
+    border-radius: 8px;
+  }
+  .mm-econ-card .mm-label {
+    font-size: 8px;
+  }
+  .mm-econ-card strong {
+    font-size: 18px;
+    font-weight: 500;
+    color: #f0e8d0;
+  }
+  .mm-ledger-split {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    align-items: start;
+    gap: 18px;
+  }
+  .mm-load-row {
+    display: grid;
+    grid-template-columns: 0.7fr 0.75fr 0.75fr 0.65fr 0.8fr;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--line);
+    font-size: 12px;
+  }
+  .mm-load-row.mm-label {
+    background: #1d2c33;
+    font-size: 8px;
+  }
+  .mm-mono {
+    font: 11px monospace;
+    color: #9ecbc6;
+  }
+  .mm-profit-pos {
+    color: #93dfc2;
+    font-variant-numeric: tabular-nums;
+  }
+  .mm-profit-neg {
+    color: #f09e7d;
+    font-variant-numeric: tabular-nums;
+  }
+  .mm-rank-pill {
+    display: inline-grid;
+    place-items: center;
+    width: 24px;
+    height: 22px;
+    background: #33463a;
+    border: 1px solid #86a575;
+    border-radius: 4px;
+    font-weight: 700;
+    font-size: 11px;
+    color: #efe2b2;
+  }
   .mm-history-row {
     display: grid;
-    grid-template-columns: 0.6fr 1.4fr 1.2fr 0.5fr;
-    gap: 18px;
-    padding: 14px 19px;
+    grid-template-columns: 0.6fr 1.35fr 1.15fr 0.55fr;
+    align-items: center;
+    gap: 14px;
+    padding: 13px 16px;
     border-bottom: 1px solid var(--line);
     font-size: 12px;
   }
@@ -49,13 +157,26 @@
     background: #1d2c33;
     font-size: 8px;
   }
+  @media (max-width: 980px) {
+    .mm-econ-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .mm-ledger-split {
+      grid-template-columns: 1fr;
+    }
+  }
   @media (max-width: 620px) {
-    .mm-history-row {
-      gap: 10px;
-      padding: 12px 10px;
+    .mm-econ-grid {
+      grid-template-columns: 1fr;
+    }
+    .mm-history-row,
+    .mm-load-row {
+      gap: 8px;
+      padding: 11px 10px;
       font-size: 10px;
     }
-    .mm-history-row.mm-label {
+    .mm-history-row.mm-label,
+    .mm-load-row.mm-label {
       font-size: 7px;
       letter-spacing: 0.5px;
     }

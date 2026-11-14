@@ -31,7 +31,9 @@
       <button class="mm-primary mm-start" type="button" @click={newGame} disabled={!ready}>
         {!ready ? 'Preparing the site...' : resetConfirm ? 'Replace saved mine and start' : 'Open the gate  →'}
       </button>
-      <button class="mm-secondary" type="button" if={canContinue} @click={continueGame} disabled={!ready}>Continue shift</button>
+      <button class="mm-secondary" type="button" if={resetConfirm} @click={cancelResetConfirm}>Cancel</button>
+      <button class="mm-secondary" type="button" if={canContinue && !resetConfirm} @click={continueGame} disabled={!ready}>Continue shift</button>
+      <button class="mm-small-button mm-title-backup" type="button" @click={showSaveBackup}>Save backup / restore</button>
     </div>
     <p class="mm-small">{saveNote}</p>
 
@@ -161,8 +163,16 @@
   }
   .mm-title-actions {
     display: flex;
+    flex-wrap: wrap;
+    align-items: center;
     gap: 12px;
     margin: 18px 0 10px;
+  }
+  .mm-small-button.mm-title-backup {
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: 11px;
+    color: #c8dad8;
   }
   .mm-primary.mm-start {
     min-width: 215px;

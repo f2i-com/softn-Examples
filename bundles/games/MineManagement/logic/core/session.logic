@@ -112,6 +112,13 @@ function randomSeed() {
   sfx('click');
 }
 
+// Disarms a pending destructive confirmation on the title or pause screen.
+function cancelResetConfirm() {
+  resetConfirm = false;
+  sfx('click');
+  refreshUI();
+}
+
 // "Save and return to the title" (pause and report screens). Leaves only if the save worked: if it
 // failed, the game stays put (a running shift is paused) so nothing is lost. Returns true when it
 // went to the title.
@@ -124,9 +131,11 @@ function returnTitle() {
   }
   screen = 'title';
   tablet = false;
+  exportOpen = false;
   resetConfirm = false;
   cancelField();
   releaseMouse();
+  stopAllAudio();
   checkSave();
   refreshUI();
   return true;

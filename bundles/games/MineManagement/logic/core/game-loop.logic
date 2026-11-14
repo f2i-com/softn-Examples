@@ -20,6 +20,7 @@ function boot() {
   // Development builds only (dev/debug.logic); release builds don't have it.
   if (typeof debugInit === 'function') debugInit();
   try {
+    if (typeof window.__mmCleanup === 'function') window.__mmCleanup();
     // The flag Scene3D sets while it holds the pointer lock; checkPointerLock reads it
     // (player/camera-look.logic).
     window.__scene3dLocked = false;
@@ -30,10 +31,27 @@ function boot() {
     window.addEventListener('resize', resetInputs);
     window.addEventListener('blur', focusLost);
     window.addEventListener('touchstart', touchInput);
+    window.__mmCleanup = function () {
+      try {
+        window.removeEventListener('keydown', keyDown);
+        window.removeEventListener('keyup', keyUp);
+        window.removeEventListener('resize', resetInputs);
+        window.removeEventListener('blur', focusLost);
+        window.removeEventListener('touchstart', touchInput);
+      } catch (e) {}
+      stopAllAudio();
+    };
     // Asks the host to keep the arrow keys, Space and Tab for the game.
     if (typeof softn !== 'undefined' && softn.input)
       softn.input.captureKeys(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'Tab']);
   } catch (e) {}
+}
+
+// Host lifecycle hook when switching away or closing the app inside SoftN.
+function _onHide() {
+  resetInputs();
+  if (screen === 'play') pauseGame();
+  stopAllAudio();
 }
 
 // One frame (see the header for what runs when).
