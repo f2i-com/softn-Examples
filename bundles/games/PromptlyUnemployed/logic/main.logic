@@ -103,6 +103,7 @@ let noteTicks = 0
 // Presentation. The scene fills the viewport; the mouse is captured while the
 // player is free to move and handed back whenever a panel needs clicking.
 let touchMode = false        // a touch has been seen: pad + Use button instead of a reticle
+let touchModeManual = false
 let uiRev = 0                // bumped on picks the template cannot see (see touchUi)
 let noteScene = ""           // the scene the current note belongs to
 let lockedNow = false        // mirror of window.__scene3dLocked, so templates re-render on it
@@ -229,7 +230,7 @@ function attachWindowListeners() {
   window.addEventListener("keydown", onKeyDown, true)
   window.addEventListener("keyup", onKeyUp, true)
   window.addEventListener("blur", onBlur)
-  window.addEventListener("touchstart", onTouch)
+  window.addEventListener("touchstart", onTouch, { passive: true })
   window.__puCleanup = function () {
     window.removeEventListener("keydown", onKeyDown, true)
     window.removeEventListener("keyup", onKeyUp, true)
@@ -242,6 +243,7 @@ function _init() {
   rngSeed = (Date.now() % 100000) + 7
   pageHidden = false
   window.__puKeys = { w: false, a: false, s: false, d: false, left: false, right: false, run: false }
+  touchModeManual = false
   touchMode = isLikelyTouch()
   window.__puTouch = touchMode
   // Named here so the runtime bridges them: a key the script never wrote is
@@ -315,7 +317,7 @@ function padRelease(dir) {
 // droppable and silently skips them when the async queue backs up (audio calls).
 function gameStep() {
   if (pageHidden) { return }
-  if (window.__puTouch) { touchMode = true }
+  if (!touchModeManual && window.__puTouch) { touchMode = true }
   lockedNow = !!window.__scene3dLocked
   if (scene !== noteScene) { noteScene = scene; noteText = ""; noteTicks = 0 }
   if (scene === "title") { titleTick(); return }
@@ -403,6 +405,7 @@ function lookHint() {
 }
 
 function toggleTouchMode() {
+  touchModeManual = true
   touchMode = !touchMode
   if (typeof window !== "undefined") {
     window.__puTouch = touchMode

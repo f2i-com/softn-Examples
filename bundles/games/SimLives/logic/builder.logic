@@ -60,6 +60,7 @@ let cameraFov = 45;
 let sceneFog = null;
 let walkPad = { up: false, down: false, left: false, right: false, sprint: false };
 let touchMode = false;
+let touchModeManual = false;
 let mobilePanel = "";           // "" | "tools" | "inspector"
 let muted = false;
 
@@ -77,8 +78,9 @@ function setMobilePanel(p) {
 }
 
 function toggleTouchMode() {
+  touchModeManual = true;
   touchMode = !touchMode;
-  if (touchMode) window.__scene3dWantLock = false;
+  if (touchMode) { window.__scene3dWantLock = false; window.__scene3dReleaseLock = true; }
   else if (viewMode === "walk") window.__scene3dWantLock = true;
 }
 
@@ -1702,6 +1704,7 @@ function isUiControl(e) {
 function builderInit() {
   if (window.__hbCleanup) window.__hbCleanup();
   keys = {};
+  touchModeManual = false;
   touchMode = isLikelyTouch();
   mobilePanel = "";
   window.__scene3dLocked = false;
@@ -1747,15 +1750,18 @@ function builderInit() {
   }
   function onKeyUp(e) { keys[e.key || ""] = false; }
   function onBlur() { keys = {}; }
+  function onTouchSeen() { if (!touchModeManual && !touchMode) touchMode = true; }
   window.addEventListener("keydown", onKeyDown, true);
   window.addEventListener("keyup", onKeyUp, true);
   window.addEventListener("blur", onBlur);
   window.addEventListener("wheel", onWheel);
+  window.addEventListener("touchstart", onTouchSeen, { passive: true });
   window.__hbCleanup = function () {
     window.removeEventListener("keydown", onKeyDown, true);
     window.removeEventListener("keyup", onKeyUp, true);
     window.removeEventListener("blur", onBlur);
     window.removeEventListener("wheel", onWheel);
+    window.removeEventListener("touchstart", onTouchSeen);
   };
 
   samples = [];

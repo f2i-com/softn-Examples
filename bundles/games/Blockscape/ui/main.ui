@@ -1,7 +1,7 @@
 <logic src="../logic/main.logic" />
 
 <style>
-.bs-root { position: relative; width: 100%; height: 100%; min-height: 0; overflow: hidden; background: #0b1220; font-family: "Segoe UI", system-ui, sans-serif; color: #f4f6fb; user-select: none; }
+.bs-root { position: relative; width: 100%; height: 100%; min-height: 0; overflow: hidden; background: #0b1220; font-family: "Segoe UI", system-ui, sans-serif; color: #f4f6fb; user-select: none; touch-action: none; -webkit-touch-callout: none; }
 .bs-scene { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
 .bs-ovl { position: absolute; pointer-events: none; }
 .bs-cross { top: 50%; left: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; }
@@ -23,7 +23,7 @@
 .bs-key { position: absolute; right: 4px; top: 2px; font-size: 10px; color: rgba(255,255,255,0.55); font-weight: 600; }
 .bs-slotname { bottom: 78px; left: 50%; transform: translateX(-50%); font-size: 13px; font-weight: 600; text-shadow: 0 1px 4px rgba(0,0,0,0.8); letter-spacing: 0.04em; z-index: 14; }
 .bs-title { top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; pointer-events: auto; background: linear-gradient(180deg, rgba(4,8,16,0.35) 0%, rgba(4,8,16,0.55) 100%); }
-.bs-card { width: min(560px, calc(100% - 32px)); padding: 34px 36px 30px; text-align: center; background: rgba(8,12,20,0.78); border: 1px solid rgba(255,255,255,0.1); border-radius: 18px; box-shadow: 0 30px 80px rgba(0,0,0,0.6); backdrop-filter: blur(10px); }
+.bs-card { width: min(560px, calc(100% - 32px)); padding: 34px 36px 30px; text-align: center; background: rgba(8,12,20,0.78); border: 1px solid rgba(255,255,255,0.1); border-radius: 18px; box-shadow: 0 30px 80px rgba(0,0,0,0.6); backdrop-filter: blur(10px); touch-action: pan-y; }
 .bs-logo { display: block; font-size: clamp(42px, 8vw, 68px); font-weight: 900; letter-spacing: -0.03em; line-height: 1; background: linear-gradient(180deg, #a8f0a0 0%, #5cae4a 45%, #7b5433 46%, #5b3d25 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 6px 0 rgba(0,0,0,0.35)); }
 .bs-tag { display: block; margin-top: 10px; font-size: 14px; color: #b8c4d6; }
 .bs-btn { display: inline-block; padding: 12px 26px; border-radius: 10px; font-weight: 700; font-size: 15px; cursor: pointer; border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.08); color: #fff; transition: transform 140ms ease, background 140ms ease; }
@@ -33,8 +33,8 @@
 .bs-keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 22px auto 0; text-align: left; font-size: 13px; max-width: 360px; color: #cfd8e6; }
 .bs-kbd { display: inline-block; min-width: 26px; padding: 2px 7px; border-radius: 6px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.18); font-family: ui-monospace, monospace; font-size: 11px; text-align: center; color: #fff; }
 .bs-pause { top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; pointer-events: auto; background: rgba(4,8,16,0.55); }
-.bs-touch { position: absolute; left: 10px; bottom: 70px; pointer-events: auto; z-index: 15; }
-.bs-touch-btns { position: absolute; right: 10px; bottom: 70px; display: grid; grid-template-columns: repeat(2, 54px); gap: 8px; pointer-events: auto; z-index: 15; }
+.bs-touch { position: absolute; left: 10px; bottom: 70px; pointer-events: auto; z-index: 15; touch-action: none; -webkit-touch-callout: none; }
+.bs-touch-btns { position: absolute; right: 10px; bottom: 70px; display: grid; grid-template-columns: repeat(2, 54px); gap: 8px; pointer-events: auto; z-index: 15; touch-action: none; -webkit-touch-callout: none; }
 .bs-round { width: 64px; height: 64px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.2); background: rgba(8,12,20,0.6); color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; }
 .bs-corner { top: 14px; right: 14px; display: flex; gap: 6px; pointer-events: auto; z-index: 16; flex-wrap: wrap; justify-content: flex-end; }
 .bs-mini { padding: 6px 12px; font-size: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12); background: rgba(8,12,20,0.6); color: #dbe4f3; cursor: pointer; min-height: 36px; }
@@ -111,11 +111,12 @@
       antialias={true}
       shadows={true}
       pointerLock={started && !paused && !showHelp && !touchMode}
+      mouseLook={started && !paused && !showHelp}
       crosshair={false}
       cameraSmoothing={0.4}
       maxPixelRatio={1.5}
       pitchLimit={1.5}
-      mouseLookSensitivity={0.0024}
+      mouseLookSensitivity={touchMode ? 0.0056 : 0.0024}
       fog={sceneFog}
       background={skyColor}
       environment={{ url: "assets/env/sunny-meadow.hdr", background: false }}
@@ -175,9 +176,9 @@
     <Button if={nearChest} variant="ghost" style={{ width: "116px", height: "42px", borderRadius: "999px", background: "rgba(245,158,11,0.9)", border: "2px solid #fde68a", color: "#111827", fontSize: "11px", fontWeight: 800, gridColumn: "span 2" }} @click={touchOpenChest}>Open Chest!</Button>
     <Button variant="ghost" style={{ width: "54px", height: "54px", borderRadius: "999px", background: "rgba(8,12,20,0.68)", border: "1px solid rgba(255,255,255,0.22)", color: "#fff", fontSize: "11px", fontWeight: 700 }} @click={touchBreak}>Mine</Button>
     <Button variant="ghost" style={{ width: "54px", height: "54px", borderRadius: "999px", background: "rgba(16,185,129,0.52)", border: "1px solid rgba(110,231,183,0.45)", color: "#fff", fontSize: "11px", fontWeight: 700 }} @click={touchPlace}>Build</Button>
-    <Button variant="ghost" style={{ width: "54px", height: "54px", borderRadius: "999px", background: "rgba(8,12,20,0.68)", border: "1px solid rgba(255,255,255,0.22)", color: "#fff", fontSize: "11px", fontWeight: 700 }} @pointerdown={touchJumpDown} @pointerup={touchJumpUp} @pointercancel={touchJumpUp} @mousedown={touchJumpDown} @mouseup={touchJumpUp} @touchstart={touchJumpDown} @touchend={touchJumpUp}>{flying ? "Rise" : "Jump"}</Button>
+    <Button variant="ghost" style={{ width: "54px", height: "54px", borderRadius: "999px", background: "rgba(8,12,20,0.68)", border: "1px solid rgba(255,255,255,0.22)", color: "#fff", fontSize: "11px", fontWeight: 700 }} @pointerdown={touchJumpDown} @pointerup={touchJumpUp} @pointerleave={touchJumpUp} @pointercancel={touchJumpUp} @mousedown={touchJumpDown} @mouseup={touchJumpUp} @touchstart={touchJumpDown} @touchend={touchJumpUp}>{flying ? "Rise" : "Jump"}</Button>
     <Button variant="ghost" style={{ width: "54px", height: "54px", borderRadius: "999px", background: flying ? "rgba(56,189,248,0.55)" : "rgba(8,12,20,0.68)", border: "1px solid rgba(255,255,255,0.22)", color: "#fff", fontSize: "11px", fontWeight: 700 }} @click={touchFly}>{flying ? "Walk" : "Fly"}</Button>
-    <Button if={flying} variant="ghost" style={{ width: "116px", height: "38px", borderRadius: "999px", background: "rgba(14,116,144,0.68)", border: "1px solid rgba(103,232,249,0.45)", color: "#fff", fontSize: "11px", fontWeight: 700, gridColumn: "span 2" }} @pointerdown={touchSinkDown} @pointerup={touchSinkUp} @pointercancel={touchSinkUp} @mousedown={touchSinkDown} @mouseup={touchSinkUp} @touchstart={touchSinkDown} @touchend={touchSinkUp}>Sink Down</Button>
+    <Button if={flying} variant="ghost" style={{ width: "116px", height: "38px", borderRadius: "999px", background: "rgba(14,116,144,0.68)", border: "1px solid rgba(103,232,249,0.45)", color: "#fff", fontSize: "11px", fontWeight: 700, gridColumn: "span 2" }} @pointerdown={touchSinkDown} @pointerup={touchSinkUp} @pointerleave={touchSinkUp} @pointercancel={touchSinkUp} @mousedown={touchSinkDown} @mouseup={touchSinkUp} @touchstart={touchSinkDown} @touchend={touchSinkUp}>Sink Down</Button>
     <Button variant="ghost" style={{ width: "116px", height: "36px", borderRadius: "999px", background: touchSprint ? "rgba(250,204,21,0.35)" : "rgba(8,12,20,0.68)", border: "1px solid rgba(255,255,255,0.22)", color: "#fff", fontSize: "11px", fontWeight: 700, gridColumn: "span 2" }} @click={toggleTouchSprint}>{touchSprint ? "Sprint: ON" : "Sprint: OFF"}</Button>
   </Box>
 
@@ -205,7 +206,7 @@
   <Box if={started && paused && !showHelp} className="bs-ovl bs-pause">
     <Box className="bs-card">
       <Text style={{ display: "block", fontSize: "26px", fontWeight: 800, color: "#ffffff" }}>Paused</Text>
-      <Text style={{ display: "block", marginTop: "10px", fontSize: "14px", color: "#c7d2e2" }}>Click the world to take the cursor back.</Text>
+      <Text style={{ display: "block", marginTop: "10px", fontSize: "14px", color: "#c7d2e2" }}>{touchMode ? "Tap Resume to return to the island." : "Click the world to take the cursor back."}</Text>
       <Stack direction="horizontal" gap={10} style={{ justifyContent: "center", marginTop: "20px", flexWrap: "wrap" }}>
         <Button variant="ghost" style={{ padding: "12px 26px", borderRadius: "10px", fontWeight: 700, fontSize: "15px", background: "#5cae4a", color: "#0b1a08", border: "1px solid #5cae4a", boxShadow: "0 10px 30px rgba(92,174,74,0.35)" }} @click={resumeGame}>Resume</Button>
         <Button variant="ghost" style={{ padding: "12px 26px", borderRadius: "10px", fontWeight: 700, fontSize: "15px", background: "rgba(255,255,255,0.1)", color: "#ffffff", border: "1px solid rgba(255,255,255,0.2)" }} @click={saveNow}>Save</Button>

@@ -4,7 +4,7 @@
 /* The scene is the page. Everything else floats over it. */
 .pu-root, .pu-root * { box-sizing: border-box; }
 .pu-root { position: relative; width: 100%; height: 100%; min-height: 0; overflow: hidden; background: #0b0f17; font-family: "Segoe UI", system-ui, sans-serif; color: #e6e9f4; user-select: none; }
-.pu-scene { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+.pu-scene { position: absolute; top: 0; left: 0; right: 0; bottom: 0; touch-action: none; }
 .pu-ovl { position: absolute; pointer-events: none; }
 .pu-live { pointer-events: auto; }
 .pu-vig { top: 0; left: 0; right: 0; bottom: 0; background: radial-gradient(120% 95% at 50% 45%, rgba(0,0,0,0) 40%, rgba(0,0,0,0.42) 78%, rgba(0,0,0,0.8) 100%); }
@@ -27,7 +27,7 @@
 .pu-cap { width: min(820px, 100%); border-left: 3px solid #f59e0b; padding: 12px 18px; transition: opacity 240ms ease; }
 .pu-cap-off { opacity: 0; pointer-events: none !important; }
 .pu-choices { width: min(720px, 100%); border-color: rgba(56,189,248,0.6); padding: 12px 14px; max-height: 44vh; overflow-y: auto; animation: pu-in 220ms ease both; }
-.pu-controls { position: absolute; left: 16px; bottom: 18px; display: flex; align-items: center; gap: 12px; pointer-events: auto; }
+.pu-controls { position: absolute; left: 16px; bottom: 18px; display: flex; align-items: center; gap: 12px; pointer-events: auto; touch-action: none; -webkit-touch-callout: none; }
 .pu-controls-dim { opacity: 0.34; transition: opacity 220ms ease; }
 .pu-bar { left: 0; right: 0; height: 9vh; background: #000; }
 .pu-bar-top { top: 0; } .pu-bar-bot { bottom: 0; }
@@ -186,10 +186,11 @@
         bloom: { strength: 0.16, radius: 0.25, threshold: 0.9 }
       }}
       pointerLock={!touchMode && !interactionLocked()}
+      mouseLook={!interactionLocked()}
       pitchLimit={0.85}
       cameraSmoothing={0.35}
       maxPixelRatio={1.5}
-      mouseLookSensitivity={0.0022}
+      mouseLookSensitivity={touchMode ? 0.0055 : 0.0022}
       fog={sceneFog}
       background={sceneBg}
       @click={onSceneClick}

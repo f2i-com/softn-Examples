@@ -62,7 +62,7 @@
         maxPixelRatio={quality === 'high' ? 1.5 : 1}
         pointerLock={!controlsEnabled && !pointerLockBlocked}
         mouseLook={true}
-        mouseLookSensitivity={0.003 * lookSensitivity}
+        mouseLookSensitivity={(controlsEnabled ? 0.0055 : 0.003) * lookSensitivity}
         pitchLimit={1.35}
         cameraSmoothing={0}
         gameControls={false}

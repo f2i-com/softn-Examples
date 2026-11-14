@@ -26,6 +26,7 @@ let started = false
 let paused = false
 let won = false
 let touchMode = false
+let touchModeManual = false
 let touchSprint = false
 let timeText = "0:00"
 let bestText = "—"
@@ -131,6 +132,7 @@ function _init() {
   rngSeed = (Date.now() % 100000) + 29
   pad = { presses: {} }
   touchSprint = false
+  touchModeManual = false
   touchMode = isLikelyTouch()
   mapCollapsed = false
   if (typeof window !== "undefined") {
@@ -138,7 +140,16 @@ function _init() {
     window.__scene3dLocked = false
     window.__scene3dWantLock = false
     window.__scene3dReleaseLock = false
-    window.__mzCleanup = null
+    function onTouchSeen() {
+      if (!touchModeManual && !touchMode) {
+        touchMode = true
+        window.__mzTouch = true
+      }
+    }
+    window.addEventListener("touchstart", onTouchSeen, { passive: true })
+    window.__mzCleanup = function () {
+      window.removeEventListener("touchstart", onTouchSeen)
+    }
   }
   loadBestForSize(mazeSize)
   try {
@@ -604,6 +615,7 @@ function toggleMap() {
 }
 
 function toggleTouchMode() {
+  touchModeManual = true
   touchMode = !touchMode
   if (typeof window !== "undefined") {
     window.__mzTouch = touchMode

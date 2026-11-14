@@ -33,7 +33,7 @@
 .hb-swatch[data-on="true"] { border-color: #ffffff; }
 .hb-status { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 12px; background: rgba(15, 23, 42, 0.98); border-top: 1px solid rgba(148, 163, 184, 0.16); font-size: 12px; color: #cbd5e1; flex-shrink: 0; width: 100%; max-width: 100%; overflow: hidden; }
 .hb-ovl { position: absolute; pointer-events: none; z-index: 5; }
-.hb-touch { position: absolute; left: 14px; bottom: 14px; pointer-events: auto; z-index: 30; }
+.hb-touch { position: absolute; left: 14px; bottom: 14px; pointer-events: auto; z-index: 30; touch-action: none; -webkit-touch-callout: none; }
 .hb-zoom { top: 12px; right: 12px; display: flex; flex-direction: column; gap: 5px; pointer-events: auto; }
 .hb-hint { left: 12px; top: 12px; max-width: 460px; padding: 7px 12px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; font-size: 12px; color: #f8fafc; backdrop-filter: blur(6px); }
 .hb-compass { left: 12px; bottom: 12px; padding: 6px 10px; background: rgba(15, 23, 42, 0.75); border-radius: 8px; font-size: 11px; color: #cbd5e1; }
@@ -421,9 +421,10 @@
         maxPixelRatio={1.5}
         @click={onSceneClick}
         pointerLock={!touchMode}
+        mouseLook={true}
         crosshair={false}
         pitchLimit={0.9}
-        mouseLookSensitivity={0.0022}
+        mouseLookSensitivity={touchMode ? 0.0055 : 0.0022}
         cameraSmoothing={0.35}
       />
       <Box if={appMode === "build" && viewMode === "walk"} className="hb-ovl hb-touch">

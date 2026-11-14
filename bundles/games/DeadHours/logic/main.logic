@@ -1209,7 +1209,7 @@ function onSceneClick(hit) {
   if (hit && hit.locked) {
     if (hit.button === 0) { fireCurrentWeapon(hit) }
     else if (hit.button === 2) { startReloadWeapon() }
-  } else if (touchMode && !sceneWasDragged && Date.now() - lastTouchFireDownAt > 320) {
+  } else if (touchMode && !sceneWasDragged && !(hit && hit.dragged) && Date.now() - lastTouchFireDownAt > 320) {
     if (!hit || hit.button === undefined || hit.button === 0) {
       fireCurrentWeapon(null)
     }
@@ -1298,43 +1298,33 @@ function _init() {
 
   if (typeof window !== "undefined") {
     if (window.__dhMouseCleanup) { window.__dhMouseCleanup() }
-    function isUiEventTarget(t) {
-      if (!t || !t.closest) { return false }
-      return !!t.closest("button, input, .dh-corner, .dh-slots, .dh-touch, .dh-touch-btns, .dh-modal-bg")
+    function eventTag(e) {
+      return String((e && e.targetTag) || (e && e.target && e.target.tagName) || "").toLowerCase()
     }
     function onDown(e) {
-      if (isUiEventTarget(e.target)) {
-        lastUiStamp = Date.now()
-        return
-      }
+      if (eventTag(e) !== "canvas") { return }
       if (e.button === 0 && window.__scene3dLocked && started && !paused && !armoryOpen && !gameOver) {
         mouseFireHeld = true
       }
     }
     function onUp(e) {
       if (e.button === 0) { mouseFireHeld = false }
-      touchFireHeld = false
     }
     function onPtrDown(e) {
-      if (isUiEventTarget(e.target)) {
-        lastUiStamp = Date.now()
-        return
-      }
+      if (eventTag(e) !== "canvas") { return }
       scenePointerDownX = e.clientX || 0
       scenePointerDownY = e.clientY || 0
       sceneWasDragged = false
     }
     function onPtrMove(e) {
-      if (e.buttons || e.pointerType === "touch") {
+      if (eventTag(e) !== "canvas") { return }
+      if (e.buttons) {
         let dx = (e.clientX || 0) - scenePointerDownX
         let dy = (e.clientY || 0) - scenePointerDownY
-        if (dx * dx + dy * dy > 81) {
+        if (dx * dx + dy * dy > 36) {
           sceneWasDragged = true
         }
       }
-    }
-    function onPtrEnd() {
-      touchFireHeld = false
     }
     function onBlurReset() {
       mouseFireHeld = false
@@ -1346,8 +1336,8 @@ function _init() {
     }
     function onGlobalKey(e) {
       if (!e || e.repeat) { return }
-      let tag = (e.target && e.target.tagName) ? String(e.target.tagName).toUpperCase() : ""
-      if (tag === "INPUT" || tag === "TEXTAREA") { return }
+      let tag = eventTag(e)
+      if (tag === "input" || tag === "textarea") { return }
       let k = String(e.key || "").toLowerCase()
       if (k === "m" && !started) {
         toggleMute()
@@ -1357,8 +1347,6 @@ function _init() {
     window.addEventListener("mouseup", onUp, true)
     window.addEventListener("pointerdown", onPtrDown, true)
     window.addEventListener("pointermove", onPtrMove, true)
-    window.addEventListener("pointerup", onPtrEnd, true)
-    window.addEventListener("pointercancel", onPtrEnd, true)
     window.addEventListener("blur", onBlurReset)
     window.addEventListener("touchstart", onTouchSeen, { passive: true })
     window.addEventListener("keydown", onGlobalKey)
@@ -1367,8 +1355,6 @@ function _init() {
       window.removeEventListener("mouseup", onUp, true)
       window.removeEventListener("pointerdown", onPtrDown, true)
       window.removeEventListener("pointermove", onPtrMove, true)
-      window.removeEventListener("pointerup", onPtrEnd, true)
-      window.removeEventListener("pointercancel", onPtrEnd, true)
       window.removeEventListener("blur", onBlurReset)
       window.removeEventListener("touchstart", onTouchSeen)
       window.removeEventListener("keydown", onGlobalKey)

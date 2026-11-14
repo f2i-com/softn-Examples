@@ -12,6 +12,8 @@
   font-family: "Segoe UI", system-ui, sans-serif;
   color: #f1f5f9;
   user-select: none;
+  touch-action: none;
+  -webkit-touch-callout: none;
   --dh-red: #dc2626;
   --dh-ember: #f97316;
   --dh-sky: #38bdf8;
@@ -147,6 +149,7 @@
 }
 .dh-card {
   position: relative; width: min(680px, 100%); max-height: calc(100% - 16px); overflow-y: auto;
+  touch-action: pan-y;
   padding: 28px 30px; text-align: center;
   background: linear-gradient(180deg, rgba(16,20,28,0.95), rgba(8,10,15,0.97));
   border: 1px solid rgba(255,255,255,0.12);
@@ -197,10 +200,11 @@
   padding: 4px 10px;
   min-width: 150px;
 }
-.dh-touch { position: absolute; left: 14px; bottom: 135px; pointer-events: auto; z-index: 20; }
+.dh-touch { position: absolute; left: 14px; bottom: 135px; pointer-events: auto; z-index: 20; touch-action: none; -webkit-touch-callout: none; }
 .dh-touch-btns {
   position: absolute; right: 14px; bottom: 135px;
   display: grid; grid-template-columns: repeat(2, 70px); gap: 8px; pointer-events: auto; z-index: 20;
+  touch-action: none; -webkit-touch-callout: none;
 }
 @media (max-width: 760px) {
   .dh-top { top: 8px; left: 8px; right: 184px; max-width: none; gap: 4px; }
@@ -299,11 +303,12 @@
       antialias={qualityPreset !== "low"}
       shadows={shadowsOn}
       pointerLock={started && !paused && !armoryOpen && !gameOver && !touchMode}
+      mouseLook={started && !paused && !armoryOpen && !gameOver}
       crosshair={false}
       cameraSmoothing={0.35}
       maxPixelRatio={qualityPreset === "low" ? 1.0 : 1.5}
       pitchLimit={1.25}
-      mouseLookSensitivity={0.0022}
+      mouseLookSensitivity={touchMode ? 0.0055 : 0.0022}
       fog={sceneFog}
       environment={{ url: "assets/env/night-moon.hdr", background: true, backgroundIntensity: 0.85 }}
       environmentIntensity={0.78}
@@ -448,7 +453,7 @@
       </Text>
     </Text>
     <Text className="dh-ammo-hint" style={{ display: "block", fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>
-      {touchMode ? "Hold FIRE / BASH / RELOAD / SWAP" : "V · Bash  |  R / RMB · Reload"}
+      {touchMode ? "Drag view to aim · Tap or hold FIRE" : "V · Bash  |  R / RMB · Reload"}
     </Text>
   </Box>
 
@@ -457,7 +462,7 @@
     <DPad :bind={pad} buttonSize={46} />
   </Box>
   <Box if={started && touchMode && !paused && !armoryOpen && !gameOver} className="dh-touch-btns">
-    <Button @pointerdown={onTouchFireDown} @pointerup={onTouchFireUp} @pointerleave={onTouchFireUp} @pointercancel={onTouchFireUp} @click={triggerTouchFire} style={{ padding: "11px 14px", fontWeight: 800, background: "#dc2626", color: "#fff", borderRadius: "999px", minHeight: "46px", gridColumn: "span 2" }}>FIRE</Button>
+    <Button className="dh-fire-btn" @pointerdown={onTouchFireDown} @pointerup={onTouchFireUp} @pointerleave={onTouchFireUp} @pointercancel={onTouchFireUp} @click={triggerTouchFire} style={{ padding: "11px 14px", fontWeight: 800, background: "#dc2626", color: "#fff", borderRadius: "999px", minHeight: "46px", gridColumn: "span 2" }}>FIRE</Button>
     <Button @click={triggerTouchReload} variant="ghost" style={{ padding: "6px 8px", minHeight: "38px", fontSize: "11px", background: "rgba(15,23,42,0.88)", color: "#e2e8f0", border: "1px solid #475569" }}>RELOAD</Button>
     <Button @click={triggerTouchMelee} variant="ghost" style={{ padding: "6px 8px", minHeight: "38px", fontSize: "11px", background: "rgba(15,23,42,0.88)", color: "#e2e8f0", border: "1px solid #475569" }}>BASH</Button>
     <Button @click={triggerTouchGrenade} variant="ghost" style={{ padding: "6px 8px", minHeight: "38px", fontSize: "11px", background: "rgba(15,23,42,0.88)", color: "#fca5a5", border: "1px solid #7f1d1d" }}>{"FRAG " + grenadesLeft}</Button>
@@ -485,7 +490,7 @@
         </Button>
       </Stack>
 
-      <Stack direction="horizontal" gap={14} style={{ justifyContent: "center", marginTop: "18px", flexWrap: "wrap" }}>
+      <Stack if={!touchMode} direction="horizontal" gap={14} style={{ justifyContent: "center", marginTop: "18px", flexWrap: "wrap" }}>
         <Text style={{ fontSize: "12px", color: "#cbd5e1" }}><Text className="dh-kbd">WASD</Text> Move</Text>
         <Text style={{ fontSize: "12px", color: "#cbd5e1" }}><Text className="dh-kbd">Shift</Text> Sprint</Text>
         <Text style={{ fontSize: "12px", color: "#cbd5e1" }}><Text className="dh-kbd">LMB</Text> Fire</Text>
@@ -494,6 +499,12 @@
         <Text style={{ fontSize: "12px", color: "#cbd5e1" }}><Text className="dh-kbd">V</Text> Bash</Text>
         <Text style={{ fontSize: "12px", color: "#cbd5e1" }}><Text className="dh-kbd">E</Text> Armory</Text>
         <Text style={{ fontSize: "12px", color: "#cbd5e1" }}><Text className="dh-kbd">M</Text> Mute</Text>
+      </Stack>
+      <Stack if={touchMode} direction="horizontal" gap={14} style={{ justifyContent: "center", marginTop: "18px", flexWrap: "wrap" }}>
+        <Text style={{ fontSize: "12px", color: "#cbd5e1" }}><Text className="dh-kbd">D-Pad</Text> Move</Text>
+        <Text style={{ fontSize: "12px", color: "#cbd5e1" }}><Text className="dh-kbd">Drag View</Text> Turn &amp; Look</Text>
+        <Text style={{ fontSize: "12px", color: "#cbd5e1" }}><Text className="dh-kbd">FIRE / Tap</Text> Shoot</Text>
+        <Text style={{ fontSize: "12px", color: "#cbd5e1" }}><Text className="dh-kbd">SHOP</Text> Armory</Text>
       </Stack>
 
       <Box className="dh-board">
