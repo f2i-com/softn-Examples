@@ -1,0 +1,60 @@
+{
+  "name": "PotatoPeeler",
+  "version": "2.1.0",
+  "description": "Mobile-ready Soviet 3D commissary potato-peeling game with 17 Blender PBR kitchen models, tactile touch & mouse 16-patch 3D potato shaving, Canteen Borscht & Banquet dish orders, Podstakannik Tea Overdrive, Colorado Saboteur Beetles, Boss Tsar-Kartoshka events, 6 upgradable peelers up to the Kosmos-9 ruby laser-lathe, Radio Mayak polka, and a Hall of Labour leaderboard.",
+  "author": "SoftN",
+  "main": "ui/main.ui",
+  "icon": "assets/icon.svg",
+  "files": {
+    "ui": ["ui/main.ui"],
+    "logic": [
+      "logic/data.logic",
+      "logic/audio.logic",
+      "logic/storage.logic",
+      "logic/scene.logic",
+      "logic/main.logic"
+    ],
+    "assets": [
+      "assets/icon.svg",
+      "assets/env/commissary-lamp.hdr",
+      "assets/models/beetle-pest.glb",
+      "assets/models/burlap-sack.glb",
+      "assets/models/commissar-bell.glb",
+      "assets/models/enamel-pot.glb",
+      "assets/models/kitchen-station.glb",
+      "assets/models/peel-curl.glb",
+      "assets/models/peeler-crank.glb",
+      "assets/models/peeler-double.glb",
+      "assets/models/peeler-knife.glb",
+      "assets/models/peeler-laser.glb",
+      "assets/models/peeler-rotary.glb",
+      "assets/models/peeler-swivel.glb",
+      "assets/models/potato-whole.glb",
+      "assets/models/quota-scale.glb",
+      "assets/models/samovar-prop.glb",
+      "assets/models/tea-glass.glb",
+      "assets/models/tsar-crown.glb",
+      "assets/sfx/bell.wav",
+      "assets/sfx/boss_thud.wav",
+      "assets/sfx/buzz.wav",
+      "assets/sfx/click.wav",
+      "assets/sfx/laser.wav",
+      "assets/sfx/order_done.wav",
+      "assets/sfx/overdrive.wav",
+      "assets/sfx/plop.wav",
+      "assets/sfx/quota.wav",
+      "assets/sfx/radio_polka.wav",
+      "assets/sfx/sack.wav",
+      "assets/sfx/scrape1.wav",
+      "assets/sfx/scrape2.wav",
+      "assets/sfx/scrape3.wav",
+      "assets/sfx/squish.wav",
+      "assets/sfx/stamp.wav",
+      "assets/sfx/upgrade.wav"
+    ]
+  },
+  "config": {
+    "window": { "title": "Potato Peeler", "width": 1200, "height": 760 },
+    "theme": { "primary": "#dc2626", "mode": "dark" }
+  }
+}

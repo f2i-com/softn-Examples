@@ -1,0 +1,725 @@
+// Voice Simulator — Simplified Pure-Code Human Vocal-Tract Speech Studio
+// Direct Text-to-Speech + Male/Female & Curated Human Presets + Always-Visible Full Voice Lab + 60fps 3D Mouth Sync.
+
+import "./phonetics.logic"
+import "./vocal_tract.logic"
+import "./storage.logic"
+import "./conversation.logic"
+import "./scene.logic"
+
+// Core Viewport & Audio State
+let cameraPreset = "front"
+let orbitEnabled = false
+let mobileStageCompact = false
+let muted = false
+let masterVolume = 0.92
+let audioStreamRate = 24000
+let statusBanner = ""
+let statusTimer = 0.0
+
+// Voice Profile State (persisted — all 15 human vocal-tract controls)
+let gender = "male"
+let pitchHz = 108
+let tractLengthCm = 17.6
+let speed = 1.0
+let warmth = 0.62
+let chestResonance = 0.56
+let breathiness = 0.06
+let nasality = 0.04
+let roughness = 0.03
+let crispness = 1.02
+let expressiveness = 1.0
+let vibrato = 0.10
+let whisper = false
+let presetId = "natural_male"
+let lipTint = "#ffffff"
+let currentMood = "warm"
+
+// Direct Numeric Entry Input Text Buffers (so multi-digit typing never snaps mid-keystroke)
+let pitchInputText = "108"
+let tractInputText = "17.6"
+let speedInputText = "1.0"
+
+// Direct Text-to-Speech Input
+let directSpeakInput = "Hello, welcome to the human voice simulator. Type anything here and watch my mouth speak it naturally."
+
+// Active Utterance Real-Time Streaming & Sample-Locked Lip-Sync State
+let isSpeaking = false
+let playbackElapsedSec = 0.0
+let playbackDurationSec = 0.0
+let activeFrames = []
+let lastWavBase64 = ""
+let lastWavDataUrl = ""
+let lastSpokenText = ""
+let lastIpa = ""
+let lastSynthMs = 0
+let waveformBars = buildWaveformBars(null, 36)
+
+let _speechStream = null
+let _speechStreamPulled = false
+let _speechStreamRenderedSec = 0.0
+let _speechLeadSec = 0.065
+let _timeSinceLastPullSec = 0.0
+
+// 3D Scene State (sculpted human mouth only — zero skeleton/X-Ray/microphone clutter)
+let mouthAnim = createInitialMouthAnimState()
+let cameraConfig = getCameraConfigForPreset("front")
+let sceneLights = getStudioLights()
+let sceneObjects = []
+let sceneEffects = {
+  ambientOcclusion: { radius: 0.35, intensity: 0.65 },
+  bloom: { strength: 0.20, radius: 0.24, threshold: 0.92 },
+  vignette: 0.26
+}
+
+let LIP_TINT_SWATCHES = [
+  { id: "#ffffff", label: "Natural" },
+  { id: "#ffd9e2", label: "Soft Rose" },
+  { id: "#ffc4b8", label: "Warm Coral" },
+  { id: "#f2b6cc", label: "Berry Satin" },
+  { id: "#ecc8be", label: "Terracotta" }
+]
+
+function showStatus(msg) {
+  statusBanner = String(msg || "")
+  statusTimer = 2.6
+}
+
+function syncNumericTextBuffers() {
+  pitchInputText = String(pitchHz)
+  tractInputText = String(tractLengthCm)
+  speedInputText = String(speed)
+}
+
+function _readEventString(e) {
+  if (e && typeof e === "object" && e.target !== undefined && e.target !== null) {
+    return String(e.target.value !== undefined ? e.target.value : "")
+  }
+  if (typeof e === "string" || typeof e === "number") {
+    return String(e)
+  }
+  if (e && typeof e === "object" && e.value !== undefined) {
+    return String(e.value)
+  }
+  return ""
+}
+
+function _readEventNumber(e) {
+  let s = _readEventString(e).trim()
+  if (!s) { return NaN }
+  return Number(s)
+}
+
+function getCurrentProfileObject() {
+  return {
+    gender: gender,
+    pitchHz: pitchHz,
+    tractLengthCm: tractLengthCm,
+    speed: speed,
+    warmth: warmth,
+    chestResonance: chestResonance,
+    breathiness: breathiness,
+    nasality: nasality,
+    roughness: roughness,
+    crispness: crispness,
+    expressiveness: expressiveness,
+    vibrato: vibrato,
+    whisper: whisper,
+    presetId: presetId,
+    lipTint: lipTint
+  }
+}
+
+function persistCurrentProfile() {
+  saveVoiceProfile(getCurrentProfileObject())
+}
+
+function refreshSceneState() {
+  sceneObjects = buildScene3DObjects(
+    mouthAnim,
+    getCurrentProfileObject(),
+    "assets/models/mouth-avatar.glb"
+  )
+}
+
+function stopCurrentPlayback() {
+  isSpeaking = false
+  playbackElapsedSec = 0.0
+  _speechStream = null
+  _speechStreamPulled = false
+  _speechStreamRenderedSec = 0.0
+  _timeSinceLastPullSec = 0.0
+}
+
+// Instant (< 1 ms) utterance planning + real-time gapless <AudioStream> synthesis!
+function synthesizeAndSpeak(text, customProfile, moodOverride) {
+  let clean = String(text || "").trim()
+  if (!clean) {
+    return null
+  }
+
+  stopCurrentPlayback()
+
+  let cfg = customProfile || getCurrentProfileObject()
+  if (moodOverride) {
+    currentMood = moodOverride
+  }
+
+  let t0 = (typeof Date !== "undefined" && Date.now) ? Date.now() : 0
+  let fullPlan = textToUtterancePlan(clean)
+  if (!fullPlan || !fullPlan.words || fullPlan.words.length === 0) {
+    showStatus("Please enter pronounceable words or numbers.")
+    return null
+  }
+
+  let synthCfg = {
+    gender: cfg.gender || gender,
+    pitchHz: Number(cfg.pitchHz) || pitchHz,
+    tractLengthCm: Number(cfg.tractLengthCm) || tractLengthCm,
+    speed: Number(cfg.speed) || speed,
+    warmth: cfg.warmth !== undefined ? Number(cfg.warmth) : warmth,
+    chestResonance: cfg.chestResonance !== undefined ? Number(cfg.chestResonance) : chestResonance,
+    breathiness: cfg.breathiness !== undefined ? Number(cfg.breathiness) : breathiness,
+    nasality: cfg.nasality !== undefined ? Number(cfg.nasality) : nasality,
+    roughness: cfg.roughness !== undefined ? Number(cfg.roughness) : roughness,
+    crispness: cfg.crispness !== undefined ? Number(cfg.crispness) : crispness,
+    expressiveness: cfg.expressiveness !== undefined ? Number(cfg.expressiveness) : expressiveness,
+    vibrato: cfg.vibrato !== undefined ? Number(cfg.vibrato) : vibrato,
+    whisper: cfg.whisper !== undefined ? !!cfg.whisper : whisper
+  }
+
+  let segments = buildAcousticTimeline(fullPlan, synthCfg)
+  let frames = rasterizeVocalFrames(segments, synthCfg)
+  if (!frames || frames.length === 0) {
+    showStatus("Please enter pronounceable words or numbers.")
+    return null
+  }
+
+  let t1 = (typeof Date !== "undefined" && Date.now) ? Date.now() : t0
+  lastSynthMs = Math.max(1, t1 - t0)
+
+  lastSpokenText = clean
+  lastIpa = fullPlan.ipaString || ""
+  lastWavBase64 = ""
+  lastWavDataUrl = ""
+  activeFrames = frames
+  playbackDurationSec = (frames.length * VS_FRAME_MS) / 1000.0
+  playbackElapsedSec = 0.0
+  _speechStream = createSpeechStreamRenderer(frames, synthCfg)
+  _speechStreamPulled = false
+  _speechStreamRenderedSec = 0.0
+  _timeSinceLastPullSec = 0.0
+  isSpeaking = true
+  waveformBars = buildWaveformBarsFromFrames(frames, 36)
+
+  return {
+    ok: true,
+    sampleRate: VS_SAMPLE_RATE,
+    durationSec: playbackDurationSec,
+    frames: frames,
+    ipa: lastIpa,
+    normalized: fullPlan.normalized
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Direct Speak & Sample Actions
+// ---------------------------------------------------------------------------
+
+function onDirectSpeakInputChange(e) {
+  directSpeakInput = _readEventString(e)
+}
+
+function onDirectSpeakKeyDown(e) {
+  if (e && e.key === "Enter" && !e.shiftKey) {
+    triggerDirectSpeak()
+  }
+}
+
+function clearDirectSpeakInput() {
+  directSpeakInput = ""
+}
+
+function triggerDirectSpeak() {
+  commitNumericVoiceInputs()
+  let raw = String(directSpeakInput || "").trim()
+  if (!raw) {
+    showStatus("Type words or numbers above to hear the voice speak.")
+    return
+  }
+  synthesizeAndSpeak(raw, getCurrentProfileObject(), "warm")
+}
+
+function speakQuickPhrase(phraseText) {
+  let clean = String(phraseText || "").trim()
+  if (!clean) { return }
+  directSpeakInput = clean
+  commitNumericVoiceInputs()
+  synthesizeAndSpeak(clean, getCurrentProfileObject(), "warm")
+}
+
+function replayLastUtterance() {
+  commitNumericVoiceInputs()
+  let target = lastSpokenText || String(directSpeakInput || "").trim() || "Hello, welcome to the human voice simulator."
+  synthesizeAndSpeak(target, getCurrentProfileObject(), currentMood)
+}
+
+function exportLastWav() {
+  if (!lastWavBase64) {
+    let srcText = lastSpokenText || String(directSpeakInput || "").trim() || "Hello from the SoftN human voice simulator."
+    let cfg = getCurrentProfileObject()
+    let plan = textToUtterancePlan(srcText)
+    if (plan && plan.words && plan.words.length > 0) {
+      let segs = buildAcousticTimeline(plan, cfg)
+      let frs = rasterizeVocalFrames(segs, cfg)
+      // Cap synchronous offline WAV export at 920 frames (~4.6s) to stay safely inside Zipp's 50M budget
+      if (frs.length > 920) {
+        frs = frs.slice(0, 920)
+      }
+      let pcm = renderVocalTractPcm(frs, cfg)
+      if (pcm.length > 0) {
+        let wavBytes = pcmFloatToWavBytes(pcm, VS_SAMPLE_RATE)
+        lastWavBase64 = bytesToBase64Compat(wavBytes)
+        lastWavDataUrl = "data:audio/wav;base64," + lastWavBase64
+      }
+    }
+  }
+  if (!lastWavBase64) { return }
+  let fname = "voice-simulator-" + gender + "-" + pitchHz + "hz.wav"
+  try {
+    if (typeof softn !== "undefined" && softn.files && softn.files.saveFile) {
+      softn.files.saveFile(fname, lastWavBase64, { base64: true, mime: "audio/wav" }, function() {
+        showStatus("Exported " + fname)
+      })
+    } else {
+      showStatus("WAV ready (" + Math.round(playbackDurationSec * 10) / 10 + "s)")
+    }
+  } catch (e) {
+    showStatus("Could not save WAV in this environment.")
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Voice Gender, Human Presets & Full Voice Lab Controls
+// ---------------------------------------------------------------------------
+
+function applyVoicePatch(patch) {
+  if (!patch) { return }
+  if (patch.gender === "male" || patch.gender === "female") {
+    gender = patch.gender
+  }
+  if (patch.pitchHz !== undefined) {
+    pitchHz = Math.max(70, Math.min(310, Math.round(Number(patch.pitchHz) || 108)))
+  }
+  if (patch.tractLengthCm !== undefined) {
+    tractLengthCm = Math.max(12.5, Math.min(21.0, Math.round(Number(patch.tractLengthCm) * 10) / 10))
+  }
+  if (patch.speed !== undefined) {
+    speed = Math.max(0.60, Math.min(1.60, Math.round(Number(patch.speed) * 100) / 100))
+  }
+  if (patch.warmth !== undefined) {
+    warmth = Math.max(0.0, Math.min(1.0, Math.round(Number(patch.warmth) * 100) / 100))
+  }
+  if (patch.chestResonance !== undefined) {
+    chestResonance = Math.max(0.0, Math.min(1.0, Math.round(Number(patch.chestResonance) * 100) / 100))
+  }
+  if (patch.breathiness !== undefined) {
+    breathiness = Math.max(0.0, Math.min(0.80, Math.round(Number(patch.breathiness) * 100) / 100))
+  }
+  if (patch.nasality !== undefined) {
+    nasality = Math.max(0.0, Math.min(0.75, Math.round(Number(patch.nasality) * 100) / 100))
+  }
+  if (patch.roughness !== undefined) {
+    roughness = Math.max(0.0, Math.min(0.70, Math.round(Number(patch.roughness) * 100) / 100))
+  }
+  if (patch.crispness !== undefined) {
+    crispness = Math.max(0.50, Math.min(1.50, Math.round(Number(patch.crispness) * 100) / 100))
+  }
+  if (patch.expressiveness !== undefined) {
+    expressiveness = Math.max(0.0, Math.min(1.70, Math.round(Number(patch.expressiveness) * 100) / 100))
+  }
+  if (patch.vibrato !== undefined) {
+    vibrato = Math.max(0.0, Math.min(0.85, Math.round(Number(patch.vibrato) * 100) / 100))
+  }
+  if (patch.whisper !== undefined) {
+    whisper = !!patch.whisper
+  }
+  if (patch.presetId) {
+    presetId = String(patch.presetId)
+  }
+  if (patch.lipTint) {
+    lipTint = String(patch.lipTint)
+  }
+  syncNumericTextBuffers()
+  persistCurrentProfile()
+  refreshSceneState()
+}
+
+function setVoiceGender(nextGender) {
+  let g = nextGender === "female" ? "female" : "male"
+  selectVoicePreset(g === "female" ? "natural_female" : "natural_male")
+}
+
+function selectVoicePreset(pId) {
+  let found = null
+  for (let i = 0; i < VOICE_PRESETS.length; i = i + 1) {
+    if (VOICE_PRESETS[i].id === pId) {
+      found = VOICE_PRESETS[i]
+      break
+    }
+  }
+  if (!found) { return }
+  gender = found.gender
+  pitchHz = found.pitchHz
+  tractLengthCm = found.tractLengthCm
+  speed = found.speed
+  warmth = found.warmth !== undefined ? found.warmth : (found.gender === "female" ? 0.66 : 0.62)
+  chestResonance = found.chestResonance !== undefined ? found.chestResonance : (found.gender === "female" ? 0.50 : 0.56)
+  breathiness = found.breathiness !== undefined ? found.breathiness : 0.08
+  nasality = found.nasality !== undefined ? found.nasality : 0.04
+  roughness = found.roughness !== undefined ? found.roughness : 0.03
+  crispness = found.crispness !== undefined ? found.crispness : 1.02
+  expressiveness = found.expressiveness !== undefined ? found.expressiveness : 1.0
+  vibrato = found.vibrato !== undefined ? found.vibrato : 0.12
+  whisper = !!found.whisper
+  presetId = found.id
+  lipTint = found.lipTint || "#ffffff"
+  syncNumericTextBuffers()
+  persistCurrentProfile()
+  refreshSceneState()
+
+  let sample = String(directSpeakInput || "").trim()
+  if (!sample) {
+    sample = found.label + " voice active."
+  }
+  synthesizeAndSpeak(sample, getCurrentProfileObject(), "warm")
+}
+
+function resetVoiceToDefaults() {
+  if (gender === "female") {
+    selectVoicePreset("natural_female")
+    showStatus("Reset to Natural Female defaults")
+    return
+  }
+  applyVoicePatch(getDefaultVoiceProfile())
+  showStatus("Reset to Natural Male defaults")
+}
+
+function adjustPitchBy(delta) {
+  pitchHz = Math.max(70, Math.min(310, Math.round(pitchHz + delta)))
+  pitchInputText = String(pitchHz)
+  presetId = "custom"
+  persistCurrentProfile()
+}
+
+function onPitchSliderChange(e) {
+  let val = _readEventNumber(e)
+  if (!isNaN(val) && val >= 70 && val <= 310) {
+    pitchHz = Math.round(val)
+    pitchInputText = String(pitchHz)
+    presetId = "custom"
+    persistCurrentProfile()
+  }
+}
+
+function onPitchTextInput(e) {
+  let raw = _readEventString(e)
+  pitchInputText = raw
+  let val = Number(raw.trim())
+  if (raw.trim() !== "" && !isNaN(val) && val >= 70 && val <= 310) {
+    pitchHz = Math.round(val)
+    presetId = "custom"
+    persistCurrentProfile()
+  }
+}
+
+function onTractSliderChange(e) {
+  let val = _readEventNumber(e)
+  if (!isNaN(val) && val >= 12.5 && val <= 21.0) {
+    tractLengthCm = Math.round(val * 10) / 10
+    tractInputText = String(tractLengthCm)
+    presetId = "custom"
+    persistCurrentProfile()
+    refreshSceneState()
+  }
+}
+
+function onTractTextInput(e) {
+  let raw = _readEventString(e)
+  tractInputText = raw
+  let val = Number(raw.trim())
+  if (raw.trim() !== "" && !isNaN(val) && val >= 12.5 && val <= 21.0) {
+    tractLengthCm = Math.round(val * 10) / 10
+    presetId = "custom"
+    persistCurrentProfile()
+    refreshSceneState()
+  }
+}
+
+function onSpeedSliderChange(e) {
+  let val = _readEventNumber(e)
+  if (!isNaN(val) && val >= 0.60 && val <= 1.60) {
+    speed = Math.round(val * 100) / 100
+    speedInputText = String(speed)
+    persistCurrentProfile()
+  }
+}
+
+function onSpeedTextInput(e) {
+  let raw = _readEventString(e)
+  speedInputText = raw
+  let val = Number(raw.trim())
+  if (raw.trim() !== "" && !isNaN(val) && val >= 0.60 && val <= 1.60) {
+    speed = Math.round(val * 100) / 100
+    persistCurrentProfile()
+  }
+}
+
+function commitNumericVoiceInputs() {
+  let pVal = Number(String(pitchInputText).trim())
+  if (!isNaN(pVal) && String(pitchInputText).trim() !== "") {
+    pitchHz = Math.max(70, Math.min(310, Math.round(pVal)))
+  }
+  let tVal = Number(String(tractInputText).trim())
+  if (!isNaN(tVal) && String(tractInputText).trim() !== "") {
+    tractLengthCm = Math.max(12.5, Math.min(21.0, Math.round(tVal * 10) / 10))
+  }
+  let sVal = Number(String(speedInputText).trim())
+  if (!isNaN(sVal) && String(speedInputText).trim() !== "") {
+    speed = Math.max(0.60, Math.min(1.60, Math.round(sVal * 100) / 100))
+  }
+  syncNumericTextBuffers()
+  persistCurrentProfile()
+  refreshSceneState()
+}
+
+function onVoiceNumKeyDown(e) {
+  if (e && e.key === "Enter") {
+    commitNumericVoiceInputs()
+    triggerDirectSpeak()
+  }
+}
+
+function onWarmthSliderChange(e) {
+  let val = _readEventNumber(e)
+  if (!isNaN(val) && val >= 0.0 && val <= 1.0) {
+    warmth = Math.round(val * 100) / 100
+    presetId = "custom"
+    persistCurrentProfile()
+  }
+}
+
+function onChestSliderChange(e) {
+  let val = _readEventNumber(e)
+  if (!isNaN(val) && val >= 0.0 && val <= 1.0) {
+    chestResonance = Math.round(val * 100) / 100
+    presetId = "custom"
+    persistCurrentProfile()
+  }
+}
+
+function onBreathSliderChange(e) {
+  let val = _readEventNumber(e)
+  if (!isNaN(val) && val >= 0.0 && val <= 0.80) {
+    breathiness = Math.round(val * 100) / 100
+    presetId = "custom"
+    persistCurrentProfile()
+  }
+}
+
+function onNasalitySliderChange(e) {
+  let val = _readEventNumber(e)
+  if (!isNaN(val) && val >= 0.0 && val <= 0.75) {
+    nasality = Math.round(val * 100) / 100
+    presetId = "custom"
+    persistCurrentProfile()
+  }
+}
+
+function onRoughnessSliderChange(e) {
+  let val = _readEventNumber(e)
+  if (!isNaN(val) && val >= 0.0 && val <= 0.70) {
+    roughness = Math.round(val * 100) / 100
+    presetId = "custom"
+    persistCurrentProfile()
+  }
+}
+
+function onCrispnessSliderChange(e) {
+  let val = _readEventNumber(e)
+  if (!isNaN(val) && val >= 0.50 && val <= 1.50) {
+    crispness = Math.round(val * 100) / 100
+    presetId = "custom"
+    persistCurrentProfile()
+  }
+}
+
+function onExpressSliderChange(e) {
+  let val = _readEventNumber(e)
+  if (!isNaN(val) && val >= 0.0 && val <= 1.70) {
+    expressiveness = Math.round(val * 100) / 100
+    presetId = "custom"
+    persistCurrentProfile()
+  }
+}
+
+function onVibratoSliderChange(e) {
+  let val = _readEventNumber(e)
+  if (!isNaN(val) && val >= 0.0 && val <= 0.85) {
+    vibrato = Math.round(val * 100) / 100
+    presetId = "custom"
+    persistCurrentProfile()
+  }
+}
+
+function onMasterVolumeChange(e) {
+  let val = _readEventNumber(e)
+  if (!isNaN(val) && val >= 0.0 && val <= 1.0) {
+    masterVolume = Math.round(val * 100) / 100
+    if (masterVolume > 0.02 && muted) {
+      muted = false
+    }
+  }
+}
+
+function toggleWhisperMode() {
+  whisper = !whisper
+  if (whisper && breathiness < 0.35) {
+    breathiness = 0.52
+  }
+  presetId = "custom"
+  persistCurrentProfile()
+  showStatus(whisper ? "Whisper turbulence mode enabled" : "Voiced vocal-fold oscillation enabled")
+}
+
+function setLipTintColor(hex) {
+  lipTint = String(hex || "#ffffff")
+  persistCurrentProfile()
+  refreshSceneState()
+}
+
+function toggleMute() {
+  muted = !muted
+  if (muted) {
+    stopCurrentPlayback()
+  }
+}
+
+function setCameraView(viewId) {
+  cameraPreset = viewId
+  cameraConfig = getCameraConfigForPreset(viewId)
+  refreshSceneState()
+}
+
+function toggleOrbitControls() {
+  orbitEnabled = !orbitEnabled
+}
+
+function toggleMobileStageSize() {
+  mobileStageCompact = !mobileStageCompact
+}
+
+// ---------------------------------------------------------------------------
+// Real-Time Audio Producer (<AudioStream getSamples={sampleSource}>)
+// ---------------------------------------------------------------------------
+
+function onAudioStreamReady(rate) {
+  if (rate && typeof rate === "number" && rate >= 8000 && rate <= 96000) {
+    audioStreamRate = rate
+  }
+}
+
+// Pulled by <AudioStream getSamples={sampleSource}> — never named tick/update/animate/render!
+function sampleSource(wantFrames) {
+  if (muted) {
+    return null
+  }
+  _timeSinceLastPullSec = 0.0
+  let nReq = Math.max(240, Math.min(2048, Math.floor(Number(wantFrames) || 640)))
+
+  if (isSpeaking && _speechStream && !_speechStream.done) {
+    if (!_speechStreamPulled && playbackElapsedSec > 0.12 && _speechStream.frames) {
+      _speechStream.frameIdx = Math.min(_speechStream.frames.length, Math.floor((playbackElapsedSec * 1000.0) / VS_FRAME_MS))
+    }
+    _speechStreamPulled = true
+    let block = renderSpeechStreamBlock(_speechStream, nReq, audioStreamRate)
+    _speechStreamRenderedSec = (_speechStream.frameIdx * VS_FRAME_MS) / 1000.0
+    if (block) {
+      return block
+    }
+  }
+
+  return getIdleAudioStreamBlock()
+}
+
+// ---------------------------------------------------------------------------
+// 60fps Simulation & Sample-Locked 3D Mouth Articulation Loop
+// ---------------------------------------------------------------------------
+
+function stepSimulation(rawDt) {
+  let dt = (typeof rawDt === "number" && rawDt > 0) ? Math.min(rawDt, 0.08) : 0.016
+
+  if (statusTimer > 0.0) {
+    statusTimer = Math.max(0.0, statusTimer - dt)
+    if (statusTimer <= 0.0) {
+      statusBanner = ""
+    }
+  }
+
+  if (isSpeaking) {
+    _timeSinceLastPullSec = _timeSinceLastPullSec + dt
+    if (_speechStreamPulled && !muted && _speechStream && !_speechStream.done && _timeSinceLastPullSec < 0.25) {
+      // Phase-lock 3D mouth playhead to exact hardware-rendered WebAudio sample position!
+      let audibleSec = Math.max(0.0, _speechStreamRenderedSec - _speechLeadSec)
+      let predSec = playbackElapsedSec + dt
+      let errSec = audibleSec - predSec
+      if (errSec > 0.040 || errSec < -0.040) {
+        playbackElapsedSec = audibleSec
+      } else {
+        playbackElapsedSec = Math.max(0.0, predSec + errSec * 0.28)
+      }
+    } else {
+      // Smoothly finishes final buffered tail (~65ms) once _speechStream.done is true
+      playbackElapsedSec = playbackElapsedSec + dt
+      if (playbackElapsedSec >= playbackDurationSec + 0.015) {
+        stopCurrentPlayback()
+      }
+    }
+  }
+
+  mouthAnim = stepMouthArticulation(mouthAnim, dt, {
+    gender: gender,
+    pitchHz: pitchHz,
+    mood: currentMood,
+    isPlayingUtterance: isSpeaking,
+    playbackTimeSec: playbackElapsedSec,
+    frames: activeFrames
+  })
+
+  refreshSceneState()
+}
+
+function initVoiceSimulator() {
+  let saved = loadVoiceProfile()
+  gender = saved.gender
+  pitchHz = saved.pitchHz
+  tractLengthCm = saved.tractLengthCm
+  speed = saved.speed
+  warmth = saved.warmth
+  chestResonance = saved.chestResonance
+  breathiness = saved.breathiness
+  nasality = saved.nasality
+  roughness = saved.roughness
+  crispness = saved.crispness
+  expressiveness = saved.expressiveness
+  vibrato = saved.vibrato
+  whisper = saved.whisper
+  presetId = saved.presetId
+  lipTint = saved.lipTint
+  syncNumericTextBuffers()
+
+  cameraConfig = getCameraConfigForPreset(cameraPreset)
+  refreshSceneState()
+}
+
+initVoiceSimulator()

@@ -1,0 +1,93 @@
+// Potato Peeler — Safe SoftN WAV audio, Radio Mayak polka loop & throttled scrape cadence
+
+let muted = false
+let radioOn = true
+let _radioHandle = null
+let _lastScrapeMs = 0
+let _lastHapticMs = 0
+let _scrapeCycle = 0
+
+function triggerHaptic(ms) {
+  if (muted || !isTouchDevice) { return }
+  let now = (typeof Date !== "undefined" && Date.now) ? Date.now() : Math.floor(elapsed * 1000)
+  if (now - _lastHapticMs < 60 && now >= _lastHapticMs) { return }
+  _lastHapticMs = now
+  try {
+    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      navigator.vibrate(ms || 12)
+    }
+  } catch (err) {}
+}
+
+function playSfx(name, vol) {
+  if (muted) { return }
+  try {
+    if (typeof softn !== "undefined" && softn.audio && softn.audio.play) {
+      softn.audio.play("assets/sfx/" + name + ".wav", { volume: vol || 0.42, loop: false }, function () {})
+    }
+  } catch (err) {}
+}
+
+function playScrapeSfx(isLaser) {
+  if (muted) { return }
+  let now = (typeof Date !== "undefined" && Date.now) ? Date.now() : Math.floor(elapsed * 1000)
+  if (now - _lastScrapeMs < 68 && now >= _lastScrapeMs) { return }
+  _lastScrapeMs = now
+  if (isLaser) {
+    playSfx("laser", 0.28)
+    return
+  }
+  _scrapeCycle = (_scrapeCycle + 1) % 3
+  if (_scrapeCycle === 0) {
+    playSfx("scrape1", 0.36)
+  } else if (_scrapeCycle === 1) {
+    playSfx("scrape2", 0.34)
+  } else {
+    playSfx("scrape3", 0.36)
+  }
+}
+
+function startRadioLoop() {
+  if (muted || !radioOn || _radioHandle !== null) { return }
+  try {
+    if (typeof softn !== "undefined" && softn.audio && softn.audio.play) {
+      softn.audio.play("assets/sfx/radio_polka.wav", { volume: 0.14, loop: true }, function (res) {
+        if (res && res.handle) {
+          if (!muted && radioOn && started) {
+            _radioHandle = res.handle
+          } else {
+            try { softn.audio.stop(res.handle) } catch (e1) {}
+          }
+        }
+      })
+    }
+  } catch (err) {}
+}
+
+function stopRadioLoop() {
+  if (_radioHandle !== null) {
+    try {
+      if (typeof softn !== "undefined" && softn.audio && softn.audio.stop) {
+        softn.audio.stop(_radioHandle)
+      }
+    } catch (err) {}
+    _radioHandle = null
+  }
+}
+
+function syncRadioLoop() {
+  if (started && !muted && radioOn) {
+    startRadioLoop()
+  } else {
+    stopRadioLoop()
+  }
+}
+
+function stopAllSfx() {
+  _radioHandle = null
+  try {
+    if (typeof softn !== "undefined" && softn.audio && softn.audio.stopAll) {
+      softn.audio.stopAll()
+    }
+  } catch (err) {}
+}

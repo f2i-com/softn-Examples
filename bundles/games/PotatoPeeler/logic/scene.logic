@@ -1,0 +1,669 @@
+// Potato Peeler — 3D Scene composition, lighting, 17 PBR GLB models, trails & particle systems
+
+let sceneStatic = []
+let sceneObjects = []
+let sceneLights = []
+let sceneEffects = {
+  ambientOcclusion: { radius: 0.55, intensity: 0.85 },
+  bloom: { strength: 0.34, radius: 0.28, threshold: 0.90 },
+  vignette: 0.34
+}
+let cameraPreset = "station"
+let cameraOrbitMode = false
+let viewportWidth = 1200
+let viewportHeight = 760
+let isTouchDevice = false
+let isMobileLayout = false
+let isPortrait = false
+let _measuredCanvas = false
+let cameraConfig = {
+  position: { x: 0.0, y: 1.76, z: 2.82 },
+  lookAt: { x: 0.0, y: 0.34, z: -0.26 },
+  fov: 47
+}
+
+function buildStaticKitchen() {
+  sceneStatic = [
+    {
+      id: "kitchen-station",
+      type: "model",
+      modelUrl: "assets/models/kitchen-station.glb",
+      position: { x: 0.0, y: 0.0, z: 0.0 },
+      scale: 1.0,
+      castShadow: true,
+      receiveShadow: true,
+      pickable: true
+    },
+    {
+      id: "samovar-prop",
+      type: "model",
+      modelUrl: "assets/models/samovar-prop.glb",
+      position: { x: 1.28, y: 1.395, z: -1.28 },
+      scale: 0.95,
+      castShadow: true,
+      receiveShadow: true,
+      interactive: true,
+      cursor: "pointer"
+    }
+  ]
+}
+
+function buildKitchenLights() {
+  let cast = qualityPreset !== "low"
+  let mapSz = qualityPreset === "high" ? 2048 : 1024
+  let overdriveOn = teaOverdriveTimer > 0.0
+  sceneLights = [
+    {
+      id: "amb",
+      type: "ambient",
+      color: overdriveOn ? "#7c6b4e" : "#6e6559",
+      intensity: overdriveOn ? 0.62 : 0.52
+    },
+    {
+      id: "hemi",
+      type: "hemisphere",
+      color: "#fff1d6",
+      groundColor: "#2a241e",
+      intensity: 0.62
+    },
+    {
+      id: "pendant-key",
+      type: "directional",
+      color: overdriveOn ? "#ffd88a" : "#ffe4b5",
+      intensity: overdriveOn ? 1.95 : 1.65,
+      position: { x: 1.8, y: 4.8, z: 2.6 },
+      castShadow: cast,
+      shadowMapSize: mapSz,
+      shadowCameraSize: 4.8,
+      shadowBias: -0.0004,
+      shadowNormalBias: 0.015
+    },
+    {
+      id: "window-rim",
+      type: "directional",
+      color: upgZapper >= 2 ? "#7dd3fc" : "#bcd8ff",
+      intensity: upgZapper >= 2 ? 0.72 : 0.58,
+      position: { x: -3.8, y: 2.6, z: 1.4 },
+      castShadow: false
+    },
+    {
+      id: "samovar-warm",
+      type: "point",
+      color: overdriveOn ? "#fbbf24" : "#ffb454",
+      intensity: overdriveOn ? 3.4 : (equippedPeeler === 5 ? 2.6 : 1.9),
+      distance: 6.8,
+      decay: 1.8,
+      position: { x: 1.15, y: 1.75, z: -0.95 }
+    }
+  ]
+}
+
+function applyQuality(mode) {
+  qualityPreset = mode
+  if (mode === "low") {
+    sceneEffects = { vignette: 0.28 }
+  } else if (mode === "balanced") {
+    sceneEffects = {
+      bloom: { strength: 0.28, radius: 0.24, threshold: 0.94 },
+      vignette: 0.32
+    }
+  } else {
+    sceneEffects = {
+      ambientOcclusion: { radius: 0.55, intensity: 0.85 },
+      bloom: { strength: 0.36, radius: 0.28, threshold: 0.88 },
+      vignette: 0.34
+    }
+  }
+  buildKitchenLights()
+}
+
+function getSceneMaxPixelRatio() {
+  if (qualityPreset === "low") { return 1.0 }
+  if (isTouchDevice || isMobileLayout) { return 1.25 }
+  return 1.5
+}
+
+function computeResponsiveCamera(preset) {
+  let basePos = { x: 0.0, y: 1.76, z: 2.82 }
+  let baseLook = { x: 0.0, y: 0.34, z: -0.26 }
+  let baseFov = 47
+
+  if (preset === "closeup") {
+    basePos = { x: 0.0, y: 1.18, z: 1.48 }
+    baseLook = { x: 0.0, y: 0.16, z: 0.02 }
+    baseFov = 42
+  } else if (preset === "commissary") {
+    basePos = { x: -0.18, y: 2.15, z: 3.55 }
+    baseLook = { x: 0.0, y: 0.56, z: -0.42 }
+    baseFov = 49
+  }
+
+  let w = viewportWidth > 0 ? viewportWidth : 1200
+  let h = viewportHeight > 0 ? viewportHeight : 760
+  let aspect = w / h
+
+  // Portrait & narrow-tablet pull-back so all 5 cutting-board slots + Service Bell (-1.68) + Tea Glass (+1.24) fit!
+  if (aspect < 1.25) {
+    let clampedAspect = Math.max(0.42, aspect)
+    let narrowFactor = (1.25 - clampedAspect) / 0.80
+    let distMult = 1.0 + narrowFactor * 1.26
+    let heightMult = 1.0 + narrowFactor * 0.78
+    let fovBoost = Math.round(narrowFactor * 18)
+    let lookYShift = -narrowFactor * 0.10
+    return {
+      position: {
+        x: basePos.x,
+        y: Math.round((basePos.y * heightMult) * 1000) / 1000,
+        z: Math.round((basePos.z * distMult) * 1000) / 1000
+      },
+      lookAt: {
+        x: baseLook.x,
+        y: Math.round((baseLook.y + lookYShift) * 1000) / 1000,
+        z: baseLook.z
+      },
+      fov: Math.min(66, baseFov + fovBoost)
+    }
+  }
+
+  // Short landscape phone viewport (e.g. 844x390): keep cutting board centered above bottom dock
+  if (h <= 520) {
+    return {
+      position: { x: basePos.x, y: basePos.y + 0.14, z: basePos.z + 0.24 },
+      lookAt: { x: baseLook.x, y: baseLook.y - 0.07, z: baseLook.z },
+      fov: baseFov + 2
+    }
+  }
+
+  return {
+    position: basePos,
+    lookAt: baseLook,
+    fov: baseFov
+  }
+}
+
+function applyViewportSize(w, h) {
+  let nw = Math.round(Number(w) || 0)
+  let nh = Math.round(Number(h) || 0)
+  if (nw < 160 || nh < 160) { return }
+  let changed = (Math.abs(nw - viewportWidth) >= 4 || Math.abs(nh - viewportHeight) >= 4)
+  viewportWidth = nw
+  viewportHeight = nh
+  isPortrait = nh > nw * 1.04
+  isMobileLayout = isTouchDevice || nw <= 820 || nh <= 540
+  if (changed && started && !cameraOrbitMode) {
+    cameraConfig = computeResponsiveCamera(cameraPreset)
+  }
+}
+
+function setCameraView(preset) {
+  cameraPreset = preset
+  cameraOrbitMode = false
+  cameraConfig = computeResponsiveCamera(preset)
+}
+
+function buildPotatoParts(pot) {
+  let parts = {}
+  let i = 0
+  while (i < 16) {
+    parts[SKIN_NAMES[i]] = { visible: pot.skin[i] > 0.001 }
+    i = i + 1
+  }
+  parts.Sprout_0 = { visible: pot.skin[4] > 0.001 || pot.skin[5] > 0.001 }
+  parts.Sprout_1 = { visible: pot.skin[9] > 0.001 || pot.skin[10] > 0.001 }
+  parts.Sprout_2 = { visible: pot.skin[13] > 0.001 || pot.skin[14] > 0.001 }
+  return parts
+}
+
+function buildPeelerParts() {
+  if (equippedPeeler === 1) {
+    return {
+      Blade_Swivel: { rotation: { x: Math.sin(toolAnimPhase * 11.0) * 0.28, y: 0, z: 0 } }
+    }
+  }
+  if (equippedPeeler === 2) {
+    return {
+      Blade_Twin: { rotation: { x: Math.sin(toolAnimPhase * 12.0) * 0.20, y: 0, z: 0 } }
+    }
+  }
+  if (equippedPeeler === 3) {
+    return {
+      Crank_Handle: { rotation: { x: 0, y: crankAngle, z: 0 } },
+      Cutter_Head: { rotation: { x: 0, y: -crankAngle * 2.4, z: 0 } }
+    }
+  }
+  if (equippedPeeler === 4) {
+    return {
+      Rotor_Drum: { rotation: { x: 0, y: rotorAngle, z: 0 } }
+    }
+  }
+  if (equippedPeeler === 5) {
+    let pulse = 1.0 + 0.16 * Math.sin(elapsed * 14.0)
+    return {
+      Emitter_Ring: { rotation: { x: 0, y: rotorAngle * 1.5, z: 0 } },
+      Ruby_Crystal: { scale: pulse }
+    }
+  }
+  return {}
+}
+
+function composeSceneFrame() {
+  if (!started && !cameraOrbitMode) {
+    let baseIdle = computeResponsiveCamera("station")
+    cameraConfig = {
+      position: {
+        x: Math.sin(elapsed * 0.36) * (isPortrait ? 0.34 : 0.56),
+        y: baseIdle.position.y + 0.12 + Math.sin(elapsed * 0.62) * 0.06,
+        z: baseIdle.position.z + 0.04
+      },
+      lookAt: { x: 0.0, y: baseIdle.lookAt.y, z: -0.22 },
+      fov: baseIdle.fov
+    }
+  }
+
+  let objs = []
+  let curOrder = CANTEEN_ORDERS[orderIdx] || CANTEEN_ORDERS[0]
+
+  // 1. Kolkhoz Burlap Potato Sack (bounces on dispense)
+  let sackSq = 1.0 + sackBounce * 0.14
+  objs.push({
+    id: "burlap-sack",
+    type: "model",
+    modelUrl: "assets/models/burlap-sack.glb",
+    position: { x: -1.94, y: -0.12, z: -0.28 },
+    rotation: { x: 0, y: 0.34, z: 0 },
+    scale: { x: 0.96 * sackSq, y: 0.96 / sackSq, z: 0.96 * sackSq },
+    castShadow: true,
+    receiveShadow: true,
+    interactive: true,
+    cursor: "pointer"
+  })
+
+  // 2. Enamel Soup Stockpot & Galvanized Scrap Pail (broth matches active Canteen Order!)
+  let potPulse = 1.0 + potBounce * 0.08
+  objs.push({
+    id: "enamel-pot",
+    type: "model",
+    modelUrl: "assets/models/enamel-pot.glb",
+    position: { x: 1.94, y: -0.12, z: -0.22 },
+    rotation: { x: 0, y: -0.25, z: 0 },
+    scale: { x: 0.95 * potPulse, y: 0.95, z: 0.95 * potPulse },
+    appearance: {
+      colors: {
+        Mat_StarchWater: curOrder.brothHex
+      }
+    },
+    parts: {
+      Water_Surface: {
+        position: { x: 0, y: Math.sin(elapsed * 3.4) * 0.008 + potBounce * 0.02, z: 0 }
+      }
+    },
+    castShadow: true,
+    receiveShadow: true,
+    pickable: false
+  })
+
+  // Stack up to 6 gleaming peeled golden potatoes bobbing in the enamel soup pot!
+  let shownInPot = Math.min(6, potatoesPeeled)
+  let pi = 0
+  while (pi < shownInPot) {
+    let ang = pi * 1.15 + 0.4
+    let rad = pi === 0 ? 0.0 : 0.17 + (pi % 2) * 0.07
+    objs.push({
+      id: "pot-tuber-" + pi,
+      type: "sphere",
+      radius: 0.105,
+      position: {
+        x: 1.94 + Math.cos(ang) * rad,
+        y: 0.34 + (pi > 3 ? 0.09 : 0.0) + Math.sin(elapsed * 2.6 + pi) * 0.01,
+        z: -0.22 + Math.sin(ang) * rad
+      },
+      scale: { x: 1.32, y: 0.85, z: 0.95 },
+      rotation: { x: 0.2 * pi, y: ang, z: 0 },
+      color: "#f6df82",
+      roughness: 0.34,
+      metalness: 0.02,
+      castShadow: false,
+      pickable: false
+    })
+    pi = pi + 1
+  }
+
+  // 3. GOST Mechanical Quota Scale with articulated dial needle!
+  let qProg = getQuotaProgressRatio()
+  let needleAng = 1.85 - qProg * 3.70
+  objs.push({
+    id: "quota-scale",
+    type: "model",
+    modelUrl: "assets/models/quota-scale.glb",
+    position: { x: -1.18, y: -0.12, z: -0.88 },
+    rotation: { x: 0, y: 0.22, z: 0 },
+    scale: 0.95,
+    parts: {
+      Scale_Needle: { rotation: { x: 0, y: 0, z: needleAng } },
+      Scale_Pan: { position: { x: 0, y: -qProg * 0.022, z: 0 } }
+    },
+    castShadow: true,
+    receiveShadow: true,
+    pickable: false
+  })
+
+  // 4. Interactive Podstakannik Hot Tea Glass (`tea-glass.glb`) on right-back counter!
+  let teaFrac = teaOverdriveTimer > 0.0 ? (teaOverdriveTimer / 10.0) : Math.min(1.0, teaCharge / 100.0)
+  let teaReadyPulse = (teaCharge >= 100.0 && teaOverdriveTimer <= 0.0) ? (1.0 + 0.06 * Math.sin(elapsed * 7.5)) : 1.0
+  objs.push({
+    id: "tea-glass",
+    type: "model",
+    modelUrl: "assets/models/tea-glass.glb",
+    position: { x: 1.24, y: -0.12, z: -0.92 },
+    rotation: { x: 0, y: -0.45, z: 0 },
+    scale: 0.95 * teaReadyPulse,
+    appearance: {
+      colors: {
+        Mat_TeaLiquid: teaOverdriveTimer > 0.0 ? "#f59e0b" : "#b43c08"
+      }
+    },
+    parts: {
+      Tea_Liquid: {
+        visible: teaFrac > 0.03,
+        scale: { x: 1.0, y: Math.max(0.12, teaFrac), z: 1.0 }
+      },
+      Tea_Spoon: {
+        rotation: {
+          x: 0,
+          y: (teaOverdriveTimer > 0.0 || teaCharge >= 100.0) ? (elapsed * 4.5) : 0.2,
+          z: 0
+        }
+      }
+    },
+    castShadow: true,
+    receiveShadow: true,
+    interactive: true,
+    cursor: "pointer"
+  })
+
+  // 5. Interactive Brass Commissary Service Bell (`commissar-bell.glb`) on front-left counter!
+  let bellReady = bellCooldown <= 0.0 && !hasActiveBoss()
+  let bellPulse = bellReady ? (1.0 + 0.05 * Math.sin(elapsed * 6.0)) : 1.0
+  objs.push({
+    id: "commissar-bell",
+    type: "model",
+    modelUrl: "assets/models/commissar-bell.glb",
+    position: { x: -1.68, y: -0.12, z: 0.38 },
+    rotation: { x: 0, y: 0.32, z: 0 },
+    scale: 0.95 * bellPulse,
+    parts: {
+      Bell_Plunger: {
+        position: { x: 0, y: -bellRingAnim * 0.026, z: 0 }
+      },
+      Bell_Dome: {
+        rotation: { x: Math.sin(elapsed * 45.0) * bellRingAnim * 0.14, y: 0, z: 0 }
+      }
+    },
+    castShadow: true,
+    receiveShadow: true,
+    interactive: true,
+    cursor: "pointer"
+  })
+
+  // 6. Active Peelable 3D Potatoes (plus Boss Tsar-Kartoshka + VDNKh Gold Crown!)
+  let slotBaseScale = getSlotPotatoScale()
+  let i = 0
+  while (i < activePotatoes.length) {
+    let p = activePotatoes[i]
+    let v = VARIETIES[p.varietyIdx] || VARIETIES[0]
+    let popScale = p.spawnAnim < 1.0 ? (0.35 + 0.65 * p.spawnAnim) : 1.0
+    let hitJolt = p.hitFlash * 0.035
+    let baseSc = p.isBoss ? 1.24 : (v.scale * slotBaseScale)
+    let sc = baseSc * popScale * (1.0 + hitJolt)
+    objs.push({
+      id: p.id,
+      type: "model",
+      modelUrl: "assets/models/potato-whole.glb",
+      position: {
+        x: p.x,
+        y: p.y + hitJolt * 0.4,
+        z: p.z
+      },
+      rotation: {
+        x: p.rollAngle,
+        y: p.yawAngle,
+        z: Math.sin(p.wobble) * p.hitFlash * 0.12
+      },
+      scale: sc,
+      appearance: {
+        colors: {
+          Mat_Skin: p.isBoss ? "#b45309" : v.skinColor,
+          Mat_Flesh: p.isBoss ? "#fef08a" : v.fleshColor
+        }
+      },
+      parts: buildPotatoParts(p),
+      castShadow: true,
+      receiveShadow: true,
+      interactive: true,
+      cursor: "crosshair"
+    })
+
+    if (p.isBoss) {
+      objs.push({
+        id: p.id + "-crown",
+        type: "model",
+        modelUrl: "assets/models/tsar-crown.glb",
+        position: {
+          x: p.x,
+          y: p.y + 0.23 * sc + Math.sin(elapsed * 5.0) * 0.015,
+          z: p.z
+        },
+        rotation: { x: 0.08, y: elapsed * 2.2, z: 0 },
+        scale: 0.95 * popScale,
+        castShadow: true,
+        pickable: false
+      })
+    }
+    i = i + 1
+  }
+
+  // 7. Scuttling & Swatted 3D Colorado Saboteur Beetles (`beetle-pest.glb`)!
+  let bti = 0
+  while (bti < beetles.length) {
+    let bt = beetles[bti]
+    let legWiggle = bt.swatted ? 0.5 : Math.sin(elapsed * 32.0 + bt.phase) * 0.36
+    objs.push({
+      id: bt.id,
+      type: "model",
+      modelUrl: "assets/models/beetle-pest.glb",
+      position: { x: bt.x, y: bt.y, z: bt.z },
+      rotation: { x: bt.rx, y: bt.yaw, z: bt.rz },
+      scale: 0.88,
+      parts: {
+        Legs_Left: { rotation: { x: legWiggle, y: 0, z: 0 } },
+        Legs_Right: { rotation: { x: -legWiggle, y: 0, z: 0 } }
+      },
+      castShadow: true,
+      receiveShadow: false,
+      interactive: !bt.swatted,
+      cursor: "pointer"
+    })
+    bti = bti + 1
+  }
+
+  // 8. Flying Completed Potatoes arcing into the Enamel Soup Pot!
+  let fi = 0
+  while (fi < flyingTubers.length) {
+    let ft = flyingTubers[fi]
+    let u = ft.t / ft.duration
+    let arcY = (1.0 - u) * ft.startY + u * 0.42 + Math.sin(u * Math.PI) * 0.78
+    let rSc = ft.isBoss ? 1.5 : 1.0
+    objs.push({
+      id: ft.id,
+      type: "sphere",
+      radius: 0.15 * rSc,
+      position: {
+        x: ft.startX + (1.94 - ft.startX) * u,
+        y: arcY,
+        z: ft.startZ + (-0.22 - ft.startZ) * u
+      },
+      scale: { x: 1.38, y: 0.88, z: 0.94 },
+      rotation: { x: u * 5.0, y: u * 3.5, z: u * 2.2 },
+      color: ft.fleshColor,
+      roughness: 0.34,
+      metalness: 0.04,
+      castShadow: true,
+      pickable: false
+    })
+    fi = fi + 1
+  }
+
+  // 9. Flying 3D Curled Potato Peel Ribbons (`peel-curl.glb`)!
+  let ci = 0
+  while (ci < peelCurls.length) {
+    let pc = peelCurls[ci]
+    objs.push({
+      id: pc.id,
+      type: "model",
+      modelUrl: "assets/models/peel-curl.glb",
+      position: { x: pc.x, y: pc.y, z: pc.z },
+      rotation: { x: pc.rx, y: pc.ry, z: pc.rz },
+      scale: 0.95,
+      appearance: {
+        colors: {
+          Mat_Skin: pc.skinColor
+        }
+      },
+      castShadow: false,
+      pickable: false
+    })
+    ci = ci + 1
+  }
+
+  // 10. Active 3D Equipped Peeler gliding over the workstation!
+  let toolDef = PEELERS[equippedPeeler] || PEELERS[0]
+  let chopTilt = strokeImpulse * 0.34
+  objs.push({
+    id: "active-peeler",
+    type: "model",
+    modelUrl: toolDef.modelUrl,
+    position: {
+      x: toolPos.x,
+      y: toolPos.y + 0.24 - strokeImpulse * 0.05,
+      z: toolPos.z + 0.16
+    },
+    rotation: {
+      x: -0.52 - chopTilt,
+      y: Math.PI + toolTiltY,
+      z: Math.sin(toolAnimPhase * 9.0) * strokeImpulse * 0.18
+    },
+    scale: teaOverdriveTimer > 0.0 ? 1.24 : 1.15,
+    parts: buildPeelerParts(),
+    castShadow: true,
+    receiveShadow: false,
+    pickable: false
+  })
+
+  // 11. 3D Blade Sweep Motion Trail Ribbons!
+  let trCol = teaOverdriveTimer > 0.0 ? "#facc15" : (toolDef.trailColor || "#e2e8f0")
+  let tri = 0
+  while (tri < bladeTrail.length) {
+    let seg = bladeTrail[tri]
+    let sdx = seg.x2 - seg.x1
+    let sdy = seg.y2 - seg.y1
+    let sdz = seg.z2 - seg.z1
+    let slen = Math.sqrt(sdx * sdx + sdy * sdy + sdz * sdz)
+    if (slen > 0.02) {
+      objs.push({
+        id: "blade-trail-" + tri,
+        type: "cylinder",
+        radius: 0.011 * (seg.life / 0.18),
+        height: slen,
+        position: {
+          x: (seg.x1 + seg.x2) * 0.5,
+          y: (seg.y1 + seg.y2) * 0.5,
+          z: (seg.z1 + seg.z2) * 0.5
+        },
+        align: { x: sdx, y: sdy, z: sdz },
+        color: trCol,
+        emissive: trCol,
+        emissiveIntensity: teaOverdriveTimer > 0.0 || equippedPeeler >= 4 ? 2.4 : 1.2,
+        opacity: Math.min(0.85, seg.life * 4.5),
+        pickable: false
+      })
+    }
+    tri = tri + 1
+  }
+
+  // 12. Kosmos-9 Ruby Laser & Pioneer Bug-Zapper Beams!
+  let bi = 0
+  while (bi < laserBeams.length) {
+    let bm = laserBeams[bi]
+    let dx = bm.tx - bm.sx
+    let dy = bm.ty - bm.sy
+    let dz = bm.tz - bm.sz
+    let len = Math.sqrt(dx * dx + dy * dy + dz * dz)
+    if (len > 0.04) {
+      let beamHex = bm.color || "#ff2a3c"
+      objs.push({
+        id: "laser-beam-" + bi,
+        type: "cylinder",
+        radius: bm.radius || 0.016,
+        height: len,
+        position: {
+          x: (bm.sx + bm.tx) * 0.5,
+          y: (bm.sy + bm.ty) * 0.5,
+          z: (bm.sz + bm.tz) * 0.5
+        },
+        align: { x: dx, y: dy, z: dz },
+        color: beamHex,
+        emissive: beamHex,
+        emissiveIntensity: 3.4,
+        opacity: Math.min(1.0, bm.life * 7.0),
+        pickable: false
+      })
+    }
+    bi = bi + 1
+  }
+
+  // 13. Soft 3D Starch / Soil / Water Splash Particles!
+  if (starchParticles.length > 0) {
+    let pPos = []
+    let pCol = []
+    let k = 0
+    while (k < starchParticles.length) {
+      let sp = starchParticles[k]
+      pPos.push(sp.x, sp.y, sp.z)
+      pCol.push(sp.r, sp.g, sp.b)
+      k = k + 1
+    }
+    objs.push({
+      id: "starch-cloud",
+      type: "particles",
+      particlePositions: pPos,
+      particleColors: pCol,
+      particleSize: 0.065,
+      particleShape: "soft",
+      opacity: 0.85,
+      pickable: false
+    })
+  }
+
+  // 14. Gentle Samovar & Hot Tea Glass Steam Plume!
+  if (steamParticles.length > 0) {
+    let sPos = []
+    let sk = 0
+    while (sk < steamParticles.length) {
+      let st = steamParticles[sk]
+      sPos.push(st.x, st.y, st.z)
+      sk = sk + 1
+    }
+    objs.push({
+      id: "samovar-steam",
+      type: "particles",
+      particlePositions: sPos,
+      color: teaOverdriveTimer > 0.0 ? "#fef08a" : "#fff8eb",
+      particleSize: 0.085,
+      particleShape: "soft",
+      opacity: 0.26,
+      pickable: false
+    })
+  }
+
+  sceneObjects = objs
+}

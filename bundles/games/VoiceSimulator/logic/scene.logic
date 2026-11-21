@@ -1,0 +1,334 @@
+// 3D Mouth & Articulatory Rig scene state and 60fps animation controller for <Scene3D>.
+
+function clamp01(v) {
+  if (v < 0.0) { return 0.0 }
+  if (v > 1.0) { return 1.0 }
+  return v
+}
+
+function lerpNum(a, b, t) {
+  return a + (b - a) * t
+}
+
+function createInitialMouthAnimState() {
+  return {
+    timeSec: 0.0,
+    jawOpen: 0.04,
+    lipClose: 0.0,
+    lipRound: 0.0,
+    lipSpread: 0.0,
+    lipDental: 0.0,
+    upperRaise: 0.0,
+    lowerDepress: 0.0,
+    cornerUp: 0.18,
+    cornerDown: 0.0,
+    cheekPuff: 0.0,
+    feminine: 0.0,
+    asymmetry: 0.08,
+    tongueTipUp: 0.0,
+    tongueInterdental: 0.0,
+    tongueHighFront: 0.10,
+    tongueHighBack: 0.10,
+    tongueRetroflex: 0.0,
+    velumOpen: 0.0,
+    rms: 0.0,
+    f0: 112,
+    f1: 500,
+    f2: 1500,
+    f3: 2500,
+    activePhone: "SIL",
+    activeWord: "",
+    pitchTiltX: 0.0,
+    pitchYawY: 0.0,
+    pitchRollZ: 0.0
+  }
+}
+
+function getCameraConfigForPreset(presetId) {
+  if (presetId === "three_quarter") {
+    return {
+      position: { x: 0.56, y: 0.05, z: 1.34 },
+      lookAt: { x: 0.0, y: -0.015, z: -0.02 },
+      fov: 32,
+      near: 0.08,
+      far: 30
+    }
+  }
+  if (presetId === "closeup") {
+    return {
+      position: { x: 0.0, y: -0.01, z: 1.04 },
+      lookAt: { x: 0.0, y: -0.02, z: 0.02 },
+      fov: 30,
+      near: 0.06,
+      far: 30
+    }
+  }
+  if (presetId === "side") {
+    return {
+      position: { x: 0.94, y: 0.01, z: 0.88 },
+      lookAt: { x: 0.0, y: -0.015, z: 0.02 },
+      fov: 31,
+      near: 0.08,
+      far: 30
+    }
+  }
+  // Default: Front Studio Macro focused purely on the 3D mouth
+  return {
+    position: { x: 0.0, y: 0.015, z: 1.46 },
+    lookAt: { x: 0.0, y: -0.015, z: 0.0 },
+    fov: 32,
+    near: 0.08,
+    far: 30
+  }
+}
+
+function getStudioLights() {
+  return [
+    {
+      id: "ambient_fill",
+      type: "hemisphere",
+      color: "#dbeafe",
+      groundColor: "#1e1b2e",
+      intensity: 0.68
+    },
+    {
+      id: "warm_key",
+      type: "directional",
+      color: "#fff4eb",
+      intensity: 1.55,
+      position: { x: -1.1, y: 0.85, z: 1.65 },
+      castShadow: true
+    },
+    {
+      id: "cyan_rim",
+      type: "directional",
+      color: "#7dd3fc",
+      intensity: 0.92,
+      position: { x: 1.35, y: 0.65, z: 0.95 },
+      castShadow: false
+    },
+    {
+      id: "oral_cavity_fill",
+      type: "point",
+      color: "#ffe8ee",
+      intensity: 0.85,
+      distance: 3.5,
+      position: { x: 0.0, y: -0.10, z: 1.15 }
+    }
+  ]
+}
+
+function stepMouthArticulation(prevAnim, dtSec, ctx) {
+  let dt = Math.max(0.001, Math.min(0.08, Number(dtSec) || 0.016))
+  let t = prevAnim.timeSec + dt
+
+  let gender = (ctx && ctx.gender === "female") ? "female" : "male"
+  let basePitch = ctx && ctx.pitchHz ? Number(ctx.pitchHz) : (gender === "female" ? 196 : 112)
+  let mood = (ctx && ctx.mood) ? ctx.mood : "warm"
+
+  // Target articulatory parameters
+  let tgtJaw = 0.03 + 0.014 * Math.sin(t * 1.65)
+  let tgtLipClose = 0.0
+  let tgtLipRound = 0.0
+  let tgtLipSpread = 0.0
+  let tgtLipDental = 0.0
+  let tgtUpperRaise = 0.0
+  let tgtLowerDepress = 0.0
+  let tgtCheekPuff = 0.0
+  let tgtTipUp = 0.0
+  let tgtInterdental = 0.0
+  let tgtHighFront = 0.12
+  let tgtHighBack = 0.10
+  let tgtRetroflex = 0.0
+  let tgtVelum = 0.0
+  let tgtRms = 0.0
+  let curF0 = basePitch
+  let curF1 = 500
+  let curF2 = 1500
+  let curF3 = 2500
+  let activePhone = "SIL"
+  let activeWord = ""
+
+  // Mode 1: Utterance frame playback sync
+  if (ctx && ctx.isPlayingUtterance && ctx.frames && ctx.frames.length > 0) {
+    let playSec = Number(ctx.playbackTimeSec) || 0.0
+    let fIdx = Math.floor((playSec * 1000.0) / 5.0)
+    if (fIdx >= 0 && fIdx < ctx.frames.length) {
+      let fr = ctx.frames[fIdx]
+      let ph = fr.phone || "SIL"
+      activePhone = ph
+      activeWord = fr.word || ""
+      curF0 = Math.round(fr.f0 || basePitch)
+      curF1 = Math.round(fr.f1 || 500)
+      curF2 = Math.round(fr.f2 || 1500)
+      curF3 = Math.round(fr.f3 || 2500)
+      tgtRms = clamp01(fr.rms || 0.0)
+
+      let isLabiodental = (ph === "F" || ph === "V")
+      let isBilabial = (ph === "P" || ph === "B" || ph === "M")
+      let isInterdental = (ph === "TH" || ph === "DH")
+      let isRhotic = (ph === "R" || ph === "ER")
+      let isSibilant = (ph === "S" || ph === "Z" || ph === "SH" || ph === "ZH" || ph === "CH" || ph === "JH")
+      let isAlveolar = (ph === "T" || ph === "D" || ph === "N" || ph === "L" || ph === "S" || ph === "Z")
+
+      tgtLipClose = clamp01(fr.lipC * 1.15)
+      tgtLipDental = isLabiodental ? 0.92 : 0.0
+      tgtCheekPuff = (ph === "P" || ph === "B") && fr.lipC > 0.38 ? 0.65 : 0.0
+
+      // Scale jaw opening naturally and suppress jaw drop when lips seal or tuck
+      let sealSuppress = Math.max(tgtLipClose * 0.92, tgtLipDental * 0.78)
+      tgtJaw = clamp01(fr.jaw * 1.16 * (1.0 - sealSuppress) + (tgtRms * 0.08 * (1.0 - sealSuppress)))
+
+      tgtLipRound = clamp01(fr.lipR * 1.12)
+      tgtLipSpread = clamp01(fr.lipS * 1.08 * (1.0 - tgtLipRound * 0.7))
+
+      tgtUpperRaise = clamp01((isSibilant ? 0.34 : 0.0) + tgtRms * 0.22)
+      tgtLowerDepress = clamp01((isInterdental ? 0.36 : 0.0) + (fr.jaw > 0.55 ? 0.25 : 0.0) + (ph === "S" || ph === "Z" ? 0.22 : 0.0))
+
+      // 5 Sculpted Tongue Morph Targets
+      tgtInterdental = isInterdental ? 0.94 : 0.0
+      tgtRetroflex = isRhotic ? 0.88 : 0.0
+      tgtTipUp = (!isInterdental && !isRhotic) ? clamp01(fr.tTip * (isAlveolar ? 1.12 : 0.85)) : 0.0
+      tgtHighFront = clamp01(fr.tH * fr.tF * 1.15 * (1.0 - tgtInterdental * 0.5))
+      tgtHighBack = clamp01(fr.tH * (1.0 - fr.tF) * 1.18)
+
+      tgtVelum = clamp01(fr.velum || fr.nasal || 0.0)
+    }
+  }
+
+  // Expressive conversational corner pose
+  let tgtCornerUp = mood === "happy" ? 0.30 : (mood === "warm" ? 0.18 : 0.06)
+  if (tgtLipRound > 0.35) {
+    tgtCornerUp = tgtCornerUp * (1.0 - tgtLipRound * 0.75)
+  }
+  let tgtCornerDown = mood === "serious" ? 0.22 : 0.0
+  let tgtFeminine = gender === "female" ? 1.0 : 0.0
+  let tgtAsym = 0.07 + 0.04 * Math.sin(t * 0.95) + (mood === "curious" ? 0.10 : 0.0)
+
+  // Fast biomechanical response for crispy consonant closures (~26-38 ms), smooth release
+  let fastRate = 1.0 - Math.exp(-dt * 34.0)
+  let medRate = 1.0 - Math.exp(-dt * 22.0)
+  let slowRate = 1.0 - Math.exp(-dt * 7.5)
+
+  let nextJaw = lerpNum(prevAnim.jawOpen, tgtJaw, fastRate)
+  let nextClose = lerpNum(prevAnim.lipClose, tgtLipClose, fastRate)
+  let nextRound = lerpNum(prevAnim.lipRound, tgtLipRound, medRate)
+  let nextSpread = lerpNum(prevAnim.lipSpread, tgtLipSpread, medRate)
+  let nextDental = lerpNum(prevAnim.lipDental, tgtLipDental, fastRate)
+  let nextUpRaise = lerpNum(prevAnim.upperRaise, tgtUpperRaise, medRate)
+  let nextLoDep = lerpNum(prevAnim.lowerDepress, tgtLowerDepress, medRate)
+  let nextPuff = lerpNum(prevAnim.cheekPuff, tgtCheekPuff, fastRate)
+  let nextTip = lerpNum(prevAnim.tongueTipUp, tgtTipUp, fastRate)
+  let nextInter = lerpNum(prevAnim.tongueInterdental, tgtInterdental, fastRate)
+  let nextHF = lerpNum(prevAnim.tongueHighFront, tgtHighFront, medRate)
+  let nextHB = lerpNum(prevAnim.tongueHighBack, tgtHighBack, medRate)
+  let nextRetro = lerpNum(prevAnim.tongueRetroflex, tgtRetroflex, medRate)
+  let nextVelum = lerpNum(prevAnim.velumOpen, tgtVelum, medRate)
+  let nextRms = lerpNum(prevAnim.rms, tgtRms, fastRate)
+
+  // Subtle lifelike 3D prosodic posture motion on Mouth_Pivot (gentle pitch lift + natural micro-sway)
+  let pitchDeltaNorm = clamp01((curF0 - basePitch + 40.0) / 90.0) - 0.44
+  let tgtTiltX = -0.045 * pitchDeltaNorm * nextRms + 0.012 * Math.sin(t * 1.15)
+  let tgtYawY = 0.025 * Math.sin(t * 0.72) + 0.018 * Math.sin(t * 2.1) * nextRms
+  let tgtRollZ = 0.014 * Math.cos(t * 0.88)
+
+  return {
+    timeSec: t,
+    jawOpen: nextJaw,
+    lipClose: nextClose,
+    lipRound: nextRound,
+    lipSpread: nextSpread,
+    lipDental: nextDental,
+    upperRaise: nextUpRaise,
+    lowerDepress: nextLoDep,
+    cornerUp: lerpNum(prevAnim.cornerUp, tgtCornerUp, slowRate),
+    cornerDown: lerpNum(prevAnim.cornerDown, tgtCornerDown, slowRate),
+    cheekPuff: nextPuff,
+    feminine: lerpNum(prevAnim.feminine, tgtFeminine, slowRate),
+    asymmetry: lerpNum(prevAnim.asymmetry, tgtAsym, slowRate),
+    tongueTipUp: nextTip,
+    tongueInterdental: nextInter,
+    tongueHighFront: nextHF,
+    tongueHighBack: nextHB,
+    tongueRetroflex: nextRetro,
+    velumOpen: nextVelum,
+    rms: nextRms,
+    f0: curF0,
+    f1: curF1,
+    f2: curF2,
+    f3: curF3,
+    activePhone: activePhone,
+    activeWord: activeWord,
+    pitchTiltX: lerpNum(prevAnim.pitchTiltX, tgtTiltX, slowRate),
+    pitchYawY: lerpNum(prevAnim.pitchYawY, tgtYawY, slowRate),
+    pitchRollZ: lerpNum(prevAnim.pitchRollZ, tgtRollZ, slowRate)
+  }
+}
+
+function buildScene3DObjects(anim, profile, mouthModelUrl) {
+  let tractCm = (profile && profile.tractLengthCm) ? Number(profile.tractLengthCm) : 17.5
+  let tractVisualScale = 0.92 + (19.5 - Math.max(13.5, Math.min(20.0, tractCm))) * 0.022
+  let lipTint = (profile && profile.lipTint) ? String(profile.lipTint) : "#ffffff"
+
+  // Subtle uvula flutter on loud open oral vowels
+  let uvulaFlutter = anim.rms * (1.0 - anim.velumOpen) * 0.004 * Math.sin(anim.timeSec * 42.0)
+
+  let mouthObj = {
+    id: "hero_mouth",
+    type: "model",
+    modelUrl: mouthModelUrl,
+    position: { x: 0.0, y: 0.0, z: 0.0 },
+    scale: tractVisualScale,
+    castShadow: true,
+    receiveShadow: true,
+    appearance: {
+      colors: {
+        Mat_Lips: lipTint
+      },
+      morphs: {
+        Jaw_Open: anim.jawOpen,
+        Lip_Close: anim.lipClose,
+        Lip_Round: anim.lipRound,
+        Lip_Spread: anim.lipSpread,
+        Lip_Dental: anim.lipDental,
+        Upper_Lip_Raise: anim.upperRaise,
+        Lower_Lip_Depress: anim.lowerDepress,
+        Corner_Up: anim.cornerUp,
+        Corner_Down: anim.cornerDown,
+        Cheek_Puff: anim.cheekPuff,
+        Feminine_Mouth: anim.feminine,
+        Asymmetry_Natural: anim.asymmetry,
+        Tongue_Tip_Up: anim.tongueTipUp,
+        Tongue_Interdental: anim.tongueInterdental,
+        Tongue_High_Front: anim.tongueHighFront,
+        Tongue_High_Back: anim.tongueHighBack,
+        Tongue_Retroflex: anim.tongueRetroflex
+      }
+    },
+    parts: {
+      Mouth_Pivot: {
+        rotation: {
+          x: anim.pitchTiltX,
+          y: anim.pitchYawY,
+          z: anim.pitchRollZ
+        }
+      },
+      Jaw_Pivot: {
+        rotation: {
+          x: 0.42 * anim.jawOpen,
+          y: 0.0,
+          z: 0.0
+        }
+      },
+      Velum_Uvula: {
+        position: {
+          x: 0.0,
+          y: (0.012 * (1.0 - anim.velumOpen) - 0.018 * anim.velumOpen) + uvulaFlutter,
+          z: 0.0
+        }
+      }
+    }
+  }
+
+  return [mouthObj]
+}

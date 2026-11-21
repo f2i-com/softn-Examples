@@ -1,0 +1,335 @@
+// Potato Peeler — Career persistence, State Medals & Stakhanovite Hall of Labour Leaderboard
+
+let KEY_CAREER = "potatopeeler:save:v1"
+let KEY_CAREER_BAK = "potatopeeler:backup:v1"
+let KEY_SCORES = "potatopeeler:scores:v1"
+
+let remoteScoresCache = []
+let leaderboard = []
+let playerRank = 7
+let nextRivalLabel = "Apprentice Mitya (6)"
+let boardStatusMsg = ""
+
+function validCareerSave(s) {
+  if (!s || typeof s !== "object" || (s.schema !== 1 && s.schema !== 2)) { return false }
+  if (typeof s.points !== "number" || !isFinite(s.points) || s.points < 0) { return false }
+  if (typeof s.lifetimePoints !== "number" || !isFinite(s.lifetimePoints) || s.lifetimePoints < 0) { return false }
+  if (typeof s.potatoesPeeled !== "number" || !isFinite(s.potatoesPeeled) || s.potatoesPeeled < 0) { return false }
+  if (!Array.isArray(s.unlockedPeelers) || s.unlockedPeelers.length !== 6) { return false }
+  if (!Array.isArray(s.toolLevels) || s.toolLevels.length !== 6) { return false }
+  let i = 0
+  while (i < 6) {
+    if (typeof s.unlockedPeelers[i] !== "boolean") { return false }
+    if (typeof s.toolLevels[i] !== "number" || s.toolLevels[i] < 1 || s.toolLevels[i] > 5) { return false }
+    i = i + 1
+  }
+  if (!s.unlockedPeelers[0]) { return false }
+  if (typeof s.equippedPeeler !== "number" || s.equippedPeeler < 0 || s.equippedPeeler > 5) { return false }
+  return true
+}
+
+function buildCareerSnapshot() {
+  return {
+    schema: 2,
+    points: Math.floor(points),
+    lifetimePoints: Math.floor(lifetimePoints),
+    potatoesPeeled: Math.floor(potatoesPeeled),
+    bestBlitzPotatoes: Math.floor(bestBlitzPotatoes),
+    equippedPeeler: equippedPeeler,
+    unlockedPeelers: unlockedPeelers.slice(0, 6),
+    toolLevels: toolLevels.slice(0, 6),
+    upgSpindle: upgSpindle,
+    upgChute: upgChute,
+    upgStamp: upgStamp,
+    upgBoard: upgBoard,
+    upgZapper: upgZapper,
+    quotaIdx: quotaIdx,
+    orderIdx: orderIdx,
+    orderProgress: orderProgress,
+    orderTier: orderTier,
+    cleanPeelsTotal: cleanPeelsTotal,
+    beetlesSwatted: beetlesSwatted,
+    tsarsPeeled: tsarsPeeled,
+    ordersCompleted: ordersCompleted,
+    teaUsedCount: teaUsedCount,
+    medalsUnlocked: medalsUnlocked.slice(0, 8),
+    playerName: String(playerName || "Comrade Alexei").slice(0, 22),
+    hoverPeel: hoverPeel,
+    muted: muted,
+    radioOn: radioOn,
+    qualityPreset: qualityPreset
+  }
+}
+
+function saveCareer() {
+  try {
+    if (typeof localStorage === "undefined") { return false }
+    let prev = localStorage.getItem(KEY_CAREER)
+    if (prev && prev.length < 25000) {
+      try {
+        if (validCareerSave(JSON.parse(prev))) {
+          localStorage.setItem(KEY_CAREER_BAK, prev)
+        }
+      } catch (e1) {}
+    }
+    let snap = JSON.stringify(buildCareerSnapshot())
+    if (snap.length < 25000) {
+      localStorage.setItem(KEY_CAREER, snap)
+      return true
+    }
+  } catch (err) {}
+  return false
+}
+
+function readCareerSlot(key) {
+  try {
+    if (typeof localStorage === "undefined") { return null }
+    let raw = localStorage.getItem(key)
+    if (!raw || raw.length > 25000) { return null }
+    let parsed = JSON.parse(raw)
+    return validCareerSave(parsed) ? parsed : null
+  } catch (err) {
+    return null
+  }
+}
+
+function loadCareer() {
+  let s = readCareerSlot(KEY_CAREER)
+  if (!s) { s = readCareerSlot(KEY_CAREER_BAK) }
+  if (!s) { return false }
+  points = Math.floor(s.points)
+  lifetimePoints = Math.max(points, Math.floor(s.lifetimePoints))
+  potatoesPeeled = Math.floor(s.potatoesPeeled)
+  bestBlitzPotatoes = Math.max(0, Math.floor(s.bestBlitzPotatoes || 0))
+  unlockedPeelers = s.unlockedPeelers.slice(0, 6)
+  toolLevels = s.toolLevels.slice(0, 6)
+  equippedPeeler = s.unlockedPeelers[s.equippedPeeler] ? s.equippedPeeler : 0
+  upgSpindle = Math.max(0, Math.min(5, Math.floor(s.upgSpindle || 0)))
+  upgChute = Math.max(0, Math.min(4, Math.floor(s.upgChute || 0)))
+  upgStamp = Math.max(0, Math.min(5, Math.floor(s.upgStamp || 0)))
+  upgBoard = Math.max(0, Math.min(2, Math.floor(s.upgBoard || 0)))
+  upgZapper = Math.max(0, Math.min(3, Math.floor(s.upgZapper || 0)))
+  quotaIdx = Math.max(0, Math.min(QUOTA_RANKS.length, Math.floor(s.quotaIdx || 0)))
+  orderIdx = Math.max(0, Math.min(CANTEEN_ORDERS.length - 1, Math.floor(s.orderIdx || 0)))
+  orderProgress = Math.max(0, Math.floor(s.orderProgress || 0))
+  orderTier = Math.max(0, Math.floor(s.orderTier || 0))
+  cleanPeelsTotal = Math.max(0, Math.floor(s.cleanPeelsTotal || 0))
+  beetlesSwatted = Math.max(0, Math.floor(s.beetlesSwatted || 0))
+  tsarsPeeled = Math.max(0, Math.floor(s.tsarsPeeled || 0))
+  ordersCompleted = Math.max(0, Math.floor(s.ordersCompleted || 0))
+  teaUsedCount = Math.max(0, Math.floor(s.teaUsedCount || 0))
+  if (Array.isArray(s.medalsUnlocked) && s.medalsUnlocked.length === 8) {
+    let mArr = []
+    let mi = 0
+    while (mi < 8) {
+      mArr.push(Boolean(s.medalsUnlocked[mi]))
+      mi = mi + 1
+    }
+    medalsUnlocked = mArr
+  }
+  if (typeof s.playerName === "string" && s.playerName.trim().length > 0) {
+    playerName = s.playerName.trim().slice(0, 22)
+  }
+  if (typeof s.hoverPeel === "boolean") { hoverPeel = s.hoverPeel }
+  if (typeof s.muted === "boolean") { muted = s.muted }
+  if (typeof s.radioOn === "boolean") { radioOn = s.radioOn }
+  if (s.qualityPreset === "low" || s.qualityPreset === "balanced" || s.qualityPreset === "high") {
+    qualityPreset = s.qualityPreset
+  }
+  return true
+}
+
+function readLocalScores() {
+  try {
+    if (typeof localStorage !== "undefined") {
+      let raw = localStorage.getItem(KEY_SCORES)
+      if (raw && raw.length < 30000) {
+        let arr = JSON.parse(raw)
+        if (Array.isArray(arr)) { return arr }
+      }
+    }
+  } catch (err) {}
+  return []
+}
+
+function writeLocalScore(entry) {
+  try {
+    if (typeof localStorage === "undefined") { return }
+    let list = readLocalScores()
+    let updated = false
+    let cleanKey = String(entry.name || "").toLowerCase()
+    let i = 0
+    while (i < list.length) {
+      let row = list[i]
+      if (row && String(row.name || "").toLowerCase() === cleanKey) {
+        if (entry.potatoes >= (row.potatoes || 0)) {
+          list[i] = entry
+        }
+        updated = true
+        break
+      }
+      i = i + 1
+    }
+    if (!updated) {
+      list.push(entry)
+    }
+    list.sort(function (a, b) {
+      let dp = (b.potatoes || 0) - (a.potatoes || 0)
+      if (dp !== 0) { return dp }
+      return (b.points || 0) - (a.points || 0)
+    })
+    if (list.length > 20) { list = list.slice(0, 20) }
+    localStorage.setItem(KEY_SCORES, JSON.stringify(list))
+  } catch (err) {}
+}
+
+function rebuildLeaderboard() {
+  let byName = {}
+  let orderKeys = []
+
+  let ingest = function (arr, isPlayerFlag) {
+    if (!Array.isArray(arr)) { return }
+    let i = 0
+    while (i < arr.length) {
+      let r = arr[i]
+      if (r && typeof r === "object") {
+        let nm = String(r.name || "Comrade").trim().slice(0, 22)
+        if (nm.length === 0) { nm = "Comrade" }
+        let pot = Math.max(0, Math.floor(Number(r.potatoes || 0)))
+        let pts = Math.max(0, Math.floor(Number(r.points || 0)))
+        let tl = String(r.tool || "M-54").slice(0, 16)
+        if (pot > 0 || isPlayerFlag) {
+          let key = nm.toLowerCase()
+          let prev = byName[key]
+          if (!prev) {
+            byName[key] = {
+              name: nm,
+              potatoes: pot,
+              points: pts,
+              tool: tl,
+              isPlayer: Boolean(isPlayerFlag || r.isPlayer),
+              seeded: Boolean(r.seeded)
+            }
+            orderKeys.push(key)
+          } else {
+            if (pot > prev.potatoes || (pot === prev.potatoes && pts > prev.points)) {
+              prev.potatoes = pot
+              prev.points = pts
+              prev.tool = tl
+            }
+            if (isPlayerFlag || r.isPlayer) {
+              prev.isPlayer = true
+              prev.seeded = false
+              prev.name = nm
+            }
+          }
+        }
+      }
+      i = i + 1
+    }
+  }
+
+  ingest(RIVAL_COMRADES, false)
+  ingest(remoteScoresCache, false)
+  ingest(readLocalScores(), false)
+
+  let cleanPlayer = String(playerName || "Comrade Alexei").trim().slice(0, 22)
+  if (cleanPlayer.length === 0) { cleanPlayer = "Comrade Alexei" }
+  ingest([{
+    name: cleanPlayer,
+    potatoes: potatoesPeeled,
+    points: lifetimePoints,
+    tool: PEELERS[equippedPeeler] ? PEELERS[equippedPeeler].code : "M-54",
+    isPlayer: true
+  }], true)
+
+  let merged = []
+  let k = 0
+  while (k < orderKeys.length) {
+    merged.push(byName[orderKeys[k]])
+    k = k + 1
+  }
+  merged.sort(function (a, b) {
+    let dp = (b.potatoes || 0) - (a.potatoes || 0)
+    if (dp !== 0) { return dp }
+    return (b.points || 0) - (a.points || 0)
+  })
+
+  playerRank = merged.length
+  nextRivalLabel = "Supreme #1 Hero of Tubers!"
+  let m = 0
+  while (m < merged.length) {
+    if (merged[m].isPlayer) {
+      playerRank = m + 1
+      if (m > 0) {
+        let above = merged[m - 1]
+        nextRivalLabel = above.name + " (" + above.potatoes + " spuds)"
+      } else {
+        nextRivalLabel = "Rank #1 Stakhanovite Leader!"
+      }
+      break
+    }
+    m = m + 1
+  }
+
+  if (merged.length > 10) {
+    merged = merged.slice(0, 10)
+  }
+  leaderboard = merged
+}
+
+function fetchRemoteLeaderboard() {
+  rebuildLeaderboard()
+  try {
+    if (typeof softn !== "undefined" && softn.storage && softn.storage.query) {
+      softn.storage.query("scores", { orderBy: ["potatoes", "desc"], limit: 15 }, function (rows) {
+        if (Array.isArray(rows)) {
+          remoteScoresCache = rows
+          rebuildLeaderboard()
+        }
+      })
+    }
+  } catch (err) {}
+}
+
+function submitLeaderboardRecord() {
+  if (potatoesPeeled <= 0) {
+    playSfx("buzz", 0.35)
+    boardStatusMsg = "Peel at least 1 potato before stamping the State Ledger, Comrade!"
+    return
+  }
+  let clean = String(playerName || "Comrade Alexei").trim().slice(0, 22)
+  if (clean.length === 0) { clean = "Comrade Alexei" }
+  playerName = clean
+
+  let entry = {
+    name: clean,
+    potatoes: Math.floor(potatoesPeeled),
+    points: Math.floor(lifetimePoints),
+    tool: PEELERS[equippedPeeler] ? PEELERS[equippedPeeler].code : "M-54",
+    isPlayer: true
+  }
+
+  writeLocalScore(entry)
+  saveCareer()
+  rebuildLeaderboard()
+  playSfx("stamp", 0.50)
+  boardStatusMsg = "ГОСТ STAMPED: " + entry.potatoes + " potatoes recorded for " + clean + "!"
+  showToast("Stamped " + entry.potatoes + " potatoes to Hall of Labour!")
+
+  try {
+    if (typeof softn !== "undefined" && softn.storage && softn.storage.insert) {
+      softn.storage.insert("scores", {
+        name: entry.name,
+        potatoes: entry.potatoes,
+        points: entry.points,
+        tool: entry.tool
+      }, function (res) {
+        if (res && !res.error) {
+          boardStatusMsg = "ГОСТ VERIFIED: Synced " + entry.potatoes + " spuds to Ministry Ledger!"
+          fetchRemoteLeaderboard()
+        }
+      })
+    }
+  } catch (err) {}
+}

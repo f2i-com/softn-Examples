@@ -1,6 +1,6 @@
 {
   "name": "softn-examples",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "private": true,
   "description": "The SoftN example applications: every demo in the softn.com directory as source, with the scripts that pack, test and release them.",
   "license": "Apache-2.0",
@@ -14,9 +14,12 @@
   "scripts": {
     "bundle": "node scripts/build/build-bundle.cjs",
     "build": "node scripts/build/build-release.cjs",
-    "test": "npm run test:logic && npm run test:minemanagement && npm run test:validators && npm run test:promptly && npm run test:bundles",
+    "test": "npm run test:logic && npm run test:minemanagement && npm run test:potatopeeler && npm run test:voicesimulator && npm run test:solarsimulator && npm run test:validators && npm run test:promptly && npm run test:bundles",
     "test:logic": "node scripts/test/texasholdem/test-gameplay.cjs && node scripts/test/texasholdem/test-authority.cjs && node scripts/test/texasholdem/test-authority-client.cjs && node scripts/test/texasholdem/test-authority-http.cjs && node scripts/test/test-warblewire-protocol.cjs",
     "test:minemanagement": "node scripts/test/minemanagement/test-minemanagement.cjs",
+    "test:potatopeeler": "node scripts/test/potatopeeler/test-potatopeeler.cjs",
+    "test:voicesimulator": "node scripts/test/voicesimulator/test-voicesimulator.cjs",
+    "test:solarsimulator": "node scripts/test/solarsimulator/test-solarsimulator.cjs",
     "test:validators": "node scripts/test/test-bundle-validator.cjs && node scripts/test/test-promptly-audio-validator.cjs",
     "test:promptly": "node scripts/test/promptly/check-geometry.cjs && node scripts/test/promptly/check-spawns.cjs && node scripts/test/promptly/check-audio.cjs",
     "test:bundles": "node scripts/test/test-all-bundles.cjs",

@@ -1,0 +1,1626 @@
+<logic src="../logic/main.logic" />
+
+<style>
+.pp-root, .pp-root * { box-sizing: border-box; }
+.pp-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: #121512;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  color: #f4ebd0;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  --pp-crimson: #b91c1c;
+  --pp-red: #dc2626;
+  --pp-gold: #facc15;
+  --pp-brass: #d97706;
+  --pp-cream: #f4ebd0;
+  --pp-olive: #181e18;
+}
+.pp-scene { position: absolute; inset: 0; }
+.pp-scene, .pp-scene *, .pp-scene canvas {
+  touch-action: none !important;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.pp-root button {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.pp-root input {
+  font-size: 16px !important;
+  touch-action: manipulation;
+}
+.pp-ovl { position: absolute; pointer-events: none; }
+.pp-display {
+  font-family: "Impact", "Haettenschweiler", "Arial Narrow Bold", "Franklin Gothic Demi Cond", sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.pp-overdrive-aura {
+  inset: 0;
+  border: 3px solid rgba(250, 204, 21, 0.55);
+  box-shadow: inset 0 0 54px rgba(245, 158, 11, 0.28);
+  z-index: 10;
+}
+.pp-panel {
+  position: relative;
+  background: linear-gradient(180deg, rgba(24, 30, 24, 0.90), rgba(14, 17, 14, 0.94));
+  border: 1px solid rgba(250, 204, 21, 0.28);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.62), inset 0 0 0 1px rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(7px);
+}
+.pp-panel-red { border-left: 4px solid #dc2626; }
+.pp-panel-gold { border-left: 4px solid #facc15; }
+.pp-panel-order { border-left: 4px solid #fb923c; }
+
+/* Top HUD Layout */
+.pp-top-left {
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  left: calc(14px + env(safe-area-inset-left, 0px));
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: stretch;
+  z-index: 15;
+  max-width: calc(100vw - 410px);
+}
+.pp-stat-card {
+  padding: 6px 12px;
+  border-radius: 4px;
+}
+.pp-top-right {
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  right: calc(14px + env(safe-area-inset-right, 0px));
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  justify-content: flex-end;
+  align-items: center;
+  pointer-events: auto;
+  z-index: 16;
+  max-width: 395px;
+}
+.pp-mobile-top { display: none; }
+.pp-mob-bar {
+  display: flex;
+  align-items: stretch;
+  gap: 5px;
+  pointer-events: auto;
+}
+.pp-mob-telemetry {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 5px;
+}
+.pp-mob-btn {
+  min-height: 38px !important;
+  padding: 6px 10px !important;
+  font-size: 11.5px !important;
+  font-weight: 800 !important;
+  border-radius: 5px !important;
+  flex-shrink: 0;
+}
+.pp-mob-subbar {
+  display: flex;
+  gap: 5px;
+  align-items: stretch;
+}
+.pp-mob-pill {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+.pp-mob-drawer {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 6px;
+  padding: 8px;
+  border-radius: 6px;
+  pointer-events: auto;
+  background: rgba(14, 18, 14, 0.96);
+  border: 1px solid rgba(250, 204, 21, 0.45);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.78);
+}
+.pp-mob-drawer-btn {
+  min-height: 40px !important;
+  padding: 6px 8px !important;
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  border-radius: 4px !important;
+}
+.pp-hud-btn {
+  padding: 6px 9px !important;
+  min-height: 31px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  border-radius: 4px !important;
+  letter-spacing: 0.03em !important;
+}
+.pp-quota-bar {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(0, 0, 0, 0.65);
+  margin-top: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+}
+.pp-quota-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #b91c1c, #ef4444 55%, #facc15);
+  transition: width 140ms ease;
+}
+
+/* Banners & Toasts */
+.pp-banner {
+  top: 90px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 9px 24px;
+  z-index: 18;
+  text-align: center;
+  background: linear-gradient(90deg, rgba(127, 29, 29, 0.95), rgba(185, 28, 28, 0.96), rgba(127, 29, 29, 0.95));
+  border: 2px solid #facc15;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.72);
+  border-radius: 4px;
+}
+.pp-toast {
+  bottom: 136px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 16px;
+  border-radius: 999px;
+  background: rgba(18, 23, 18, 0.92);
+  border: 1px solid rgba(250, 204, 21, 0.55);
+  z-index: 18;
+  text-align: center;
+}
+
+/* Bottom Workstation Dock */
+.pp-bottom-dock {
+  left: calc(14px + env(safe-area-inset-left, 0px));
+  right: calc(14px + env(safe-area-inset-right, 0px));
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 15;
+}
+.pp-decree-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  background: rgba(15, 19, 15, 0.84);
+  border: 1px solid rgba(250, 204, 21, 0.22);
+}
+.pp-belt-row {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+  justify-content: space-between;
+  pointer-events: auto;
+  flex-wrap: wrap;
+}
+.pp-tool-grid {
+  display: flex;
+  gap: 5px;
+  flex: 1 1 480px;
+  flex-wrap: wrap;
+}
+.pp-tool-slot {
+  flex: 1 1 74px;
+  min-width: 72px;
+  padding: 5px 7px !important;
+  background: rgba(20, 25, 20, 0.90) !important;
+  border: 1px solid rgba(244, 235, 208, 0.18) !important;
+  border-radius: 4px !important;
+  color: #d6d3c4 !important;
+  text-align: left !important;
+  cursor: pointer;
+}
+.pp-tool-active {
+  background: linear-gradient(180deg, rgba(153, 27, 27, 0.88), rgba(95, 18, 18, 0.92)) !important;
+  border: 1px solid #facc15 !important;
+  color: #fef9c3 !important;
+  box-shadow: 0 0 14px rgba(220, 38, 38, 0.45);
+}
+.pp-tool-buyable {
+  border-color: rgba(250, 204, 21, 0.68) !important;
+  background: rgba(54, 43, 14, 0.85) !important;
+}
+.pp-action-cluster {
+  display: flex;
+  gap: 5px;
+  align-items: stretch;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+/* Scene3D Anchors */
+.pp-scale-anchor {
+  background: rgba(18, 22, 18, 0.88);
+  border: 1px solid rgba(250, 204, 21, 0.55);
+  border-radius: 4px;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+.pp-tea-anchor {
+  background: linear-gradient(90deg, rgba(146, 64, 14, 0.95), rgba(180, 83, 9, 0.95));
+  border: 1px solid #fef08a;
+  border-radius: 999px;
+  padding: 3px 10px;
+  white-space: nowrap;
+  box-shadow: 0 0 12px rgba(250, 204, 21, 0.55);
+}
+.pp-bell-anchor {
+  background: rgba(28, 25, 23, 0.90);
+  border: 1px solid #facc15;
+  border-radius: 999px;
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+.pp-boss-anchor {
+  background: linear-gradient(90deg, rgba(127, 29, 29, 0.95), rgba(153, 27, 27, 0.95));
+  border: 2px solid #facc15;
+  border-radius: 6px;
+  padding: 4px 12px;
+  min-width: 190px;
+  box-shadow: 0 0 18px rgba(250, 204, 21, 0.55);
+}
+.pp-beetle-anchor {
+  background: rgba(127, 29, 29, 0.92);
+  border: 1px solid #fde047;
+  border-radius: 999px;
+  padding: 2px 9px;
+  white-space: nowrap;
+}
+.pp-golden-anchor {
+  background: linear-gradient(90deg, rgba(146, 64, 14, 0.95), rgba(180, 83, 9, 0.95));
+  border: 1px solid #fef08a;
+  border-radius: 999px;
+  padding: 3px 10px;
+  white-space: nowrap;
+  box-shadow: 0 0 14px rgba(250, 204, 21, 0.55);
+}
+.pp-pot-anchor {
+  background: rgba(20, 83, 45, 0.92);
+  border: 1px solid #fde047;
+  border-radius: 999px;
+  padding: 4px 12px;
+  white-space: nowrap;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6);
+}
+
+/* Modals & Constructivist Cards */
+.pp-modal-bg {
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(14px + env(safe-area-inset-top, 0px)) calc(14px + env(safe-area-inset-right, 0px)) calc(14px + env(safe-area-inset-bottom, 0px)) calc(14px + env(safe-area-inset-left, 0px));
+  pointer-events: auto;
+  z-index: 40;
+  background: radial-gradient(120% 95% at 50% 20%, rgba(153, 27, 27, 0.28), rgba(10, 12, 10, 0.86) 74%);
+  backdrop-filter: blur(5px);
+}
+.pp-card {
+  position: relative;
+  width: min(840px, 100%);
+  max-height: calc(100% - 8px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  padding: 24px 26px;
+  background: linear-gradient(180deg, rgba(24, 29, 24, 0.97), rgba(14, 17, 14, 0.99));
+  border: 2px solid rgba(250, 204, 21, 0.45);
+  box-shadow: 0 32px 84px rgba(0, 0, 0, 0.88);
+  border-radius: 6px;
+}
+.pp-modal-btn {
+  min-height: 40px !important;
+}
+.pp-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 5px;
+  background: repeating-linear-gradient(90deg, #dc2626 0px, #dc2626 28px, #facc15 28px, #facc15 36px);
+}
+.pp-logo {
+  font-size: 58px !important;
+  line-height: 0.95 !important;
+  color: #f4ebd0;
+  text-shadow: 0 4px 0 #7f1d1d, 0 10px 28px rgba(0, 0, 0, 0.85);
+}
+.pp-shop-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(225px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+  text-align: left;
+}
+.pp-shop-card {
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(244, 235, 208, 0.14);
+  border-radius: 5px;
+  padding: 11px 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.pp-shop-card-eq {
+  border-color: #facc15;
+  background: rgba(127, 29, 29, 0.28);
+}
+.pp-medal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+  gap: 7px;
+  margin-top: 10px;
+  text-align: left;
+}
+.pp-medal-item {
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+}
+.pp-medal-on {
+  background: rgba(146, 64, 14, 0.34);
+  border-color: #facc15;
+}
+.pp-board-box {
+  margin-top: 14px;
+  text-align: left;
+  background: rgba(0, 0, 0, 0.42);
+  border: 1px solid rgba(250, 204, 21, 0.24);
+  padding: 10px 14px;
+  border-radius: 5px;
+}
+.pp-board-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+}
+.pp-board-me {
+  background: rgba(185, 28, 28, 0.34);
+  border: 1px solid rgba(250, 204, 21, 0.45);
+}
+.pp-kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(250, 204, 21, 0.32);
+  border-radius: 3px;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  color: #fef08a;
+}
+
+@media (max-width: 820px), (max-height: 540px) {
+  .pp-top-left, .pp-top-right { display: none !important; }
+  .pp-mobile-top {
+    top: calc(8px + env(safe-area-inset-top, 0px));
+    left: calc(8px + env(safe-area-inset-left, 0px));
+    right: calc(8px + env(safe-area-inset-right, 0px));
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    z-index: 19;
+  }
+  .pp-banner {
+    top: calc(88px + env(safe-area-inset-top, 0px));
+    width: calc(100% - 24px);
+    max-width: 460px;
+    padding: 7px 14px;
+  }
+  .pp-toast {
+    bottom: calc(114px + env(safe-area-inset-bottom, 0px));
+    width: max-content;
+    max-width: calc(100% - 20px);
+    padding: 6px 12px;
+  }
+  .pp-bottom-dock {
+    left: calc(8px + env(safe-area-inset-left, 0px));
+    right: calc(8px + env(safe-area-inset-right, 0px));
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    gap: 5px;
+  }
+  .pp-decree-row { display: none; }
+  .pp-belt-row {
+    flex-direction: column;
+    gap: 5px;
+  }
+  .pp-tool-grid {
+    flex: 0 0 auto;
+    width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    touch-action: pan-x !important;
+    gap: 5px;
+  }
+  .pp-tool-grid::-webkit-scrollbar { display: none; }
+  .pp-tool-slot {
+    flex: 0 0 102px;
+    min-width: 102px;
+    min-height: 42px !important;
+    padding: 5px 8px !important;
+    touch-action: pan-x !important;
+  }
+  .pp-action-cluster {
+    width: 100%;
+    flex-wrap: nowrap;
+    gap: 5px;
+  }
+  .pp-act-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 44px !important;
+    padding: 6px 6px !important;
+    font-size: 11.5px !important;
+    white-space: nowrap;
+  }
+  .pp-act-peel {
+    flex: 1.18 1 0;
+    font-size: 14px !important;
+  }
+  .pp-logo { font-size: 38px !important; }
+  .pp-card { padding: 15px 14px; }
+  .pp-shop-grid { grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); }
+}
+
+@media (max-height: 520px) and (min-width: 560px) {
+  .pp-belt-row {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: stretch;
+  }
+  .pp-tool-grid {
+    flex: 1 1 0;
+    min-width: 0;
+    width: auto;
+  }
+  .pp-action-cluster {
+    width: auto;
+    flex: 0 0 auto;
+  }
+  .pp-act-btn {
+    flex: 0 0 auto;
+    min-height: 40px !important;
+    padding: 6px 10px !important;
+  }
+  .pp-toast {
+    bottom: calc(62px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (max-height: 430px) {
+  .pp-mob-subbar { display: none; }
+  .pp-banner { top: calc(54px + env(safe-area-inset-top, 0px)); }
+}
+</style>
+
+<Box className="pp-root">
+  <Loop frame={true} running={true} @tick={gameTick} />
+
+  <Controls
+    :bind={pad}
+    enabled={true}
+    keys={{
+      peel: "Space",
+      tea: "q",
+      bell: "r",
+      shop: "e",
+      board: "l",
+      cam: "v",
+      orbit: "o",
+      radio: "n",
+      mute: "m",
+      t1: "1",
+      t2: "2",
+      t3: "3",
+      t4: "4",
+      t5: "5",
+      t6: "6"
+    }}
+    @press={onControlPress}
+  />
+
+  <Box className="pp-scene">
+    <Scene3D
+      fill={true}
+      staticObjects={sceneStatic}
+      objects={sceneObjects}
+      lights={sceneLights}
+      camera={cameraConfig}
+      orbitControls={cameraOrbitMode}
+      orbit={{ minPolar: 0.25, maxPolar: 1.48, minDistance: 1.35, maxDistance: 9.0 }}
+      antialias={qualityPreset !== "low"}
+      shadows={qualityPreset !== "low"}
+      maxPixelRatio={getSceneMaxPixelRatio()}
+      environment={{ url: "assets/env/commissary-lamp.hdr", background: false }}
+      environmentIntensity={0.88}
+      sky={{ top: "#1c2420", middle: "#2d352e", bottom: "#121512" }}
+      toneMapping="agx"
+      toneMappingExposure={1.12}
+      effects={sceneEffects}
+      @pointerdown={onScenePointerDown}
+      @pointermove={onScenePointerMove}
+      @pointerup={onScenePointerUp}
+      @hover={onSceneHover}
+      @stats={onSceneStats}
+    >
+      <SceneAnchor
+        if={started && !isPortrait && !shopOpen && !boardOpen && !blitzSummaryOpen}
+        object="quota-scale"
+        offset={{ y: 0.68 }}
+        place="above"
+        clickThrough={true}
+      >
+        <Box className="pp-scale-anchor">
+          <Text style={{ fontSize: "10px", fontWeight: 700, color: "#fde047", letterSpacing: "0.06em" }}>
+            {"ГОСТ QUOTA: " + potatoesPeeled + " / " + getNextQuotaTarget()}
+          </Text>
+        </Box>
+      </SceneAnchor>
+
+      <SceneAnchor
+        if={started && !shopOpen && !boardOpen && !blitzSummaryOpen && (teaCharge >= 100 || teaOverdriveTimer > 0)}
+        object="tea-glass"
+        offset={{ y: 0.42 }}
+        place="above"
+        clickThrough={true}
+      >
+        <Box className="pp-tea-anchor">
+          <Text style={{ fontSize: "10px", fontWeight: 800, color: "#fef9c3", letterSpacing: "0.05em" }}>
+            {teaOverdriveTimer > 0
+              ? ("☕ 2x OVERDRIVE " + Math.ceil(teaOverdriveTimer) + "s")
+              : ((isTouchDevice || isMobileLayout) ? "☕ TAP TEA (2x)" : "☕ DRINK TEA [Q]")}
+          </Text>
+        </Box>
+      </SceneAnchor>
+
+      <SceneAnchor
+        if={started && !shopOpen && !boardOpen && !blitzSummaryOpen && bellCooldown <= 0 && !hasActiveBoss()}
+        object="commissar-bell"
+        offset={{ y: 0.34 }}
+        place="above"
+        clickThrough={true}
+      >
+        <Box className="pp-bell-anchor">
+          <Text style={{ fontSize: "10px", fontWeight: 800, color: "#fde047", letterSpacing: "0.05em" }}>
+            {(isTouchDevice || isMobileLayout) ? "🔔 TAP BELL (TSAR)" : "🔔 SUMMON TSAR [R]"}
+          </Text>
+        </Box>
+      </SceneAnchor>
+
+      <SceneAnchor
+        if={started && bossAnchorId !== "" && !shopOpen && !boardOpen && !blitzSummaryOpen}
+        object={bossAnchorId}
+        offset={{ y: 0.56 }}
+        place="above"
+        clickThrough={true}
+      >
+        <Box className="pp-boss-anchor">
+          <Text style={{ display: "block", fontSize: "10.5px", fontWeight: 800, color: "#fef08a", textAlign: "center" }}>
+            {"★★ TSAR-KARTOSHKA · " + getActiveBossPct() + "% (" + Math.ceil(getActiveBossTimer()) + "s)"}
+          </Text>
+          <Box style={{ height: "5px", background: "rgba(255,255,255,0.16)", marginTop: "3px", borderRadius: "2px", overflow: "hidden" }}>
+            <Box style={{ height: "100%", width: getActiveBossPct() + "%", background: "#facc15" }} />
+          </Box>
+        </Box>
+      </SceneAnchor>
+
+      <SceneAnchor
+        if={started && activeBeetleAnchorId !== "" && !shopOpen && !boardOpen && !blitzSummaryOpen}
+        object={activeBeetleAnchorId}
+        offset={{ y: 0.24 }}
+        place="above"
+        clickThrough={true}
+      >
+        <Box className="pp-beetle-anchor">
+          <Text style={{ fontSize: "9.5px", fontWeight: 800, color: "#fef08a" }}>
+            ⚠ SWAT SABOTEUR!
+          </Text>
+        </Box>
+      </SceneAnchor>
+
+      <SceneAnchor
+        if={started && goldenAnchorId !== "" && bossAnchorId === "" && !shopOpen && !boardOpen && !blitzSummaryOpen}
+        object={goldenAnchorId}
+        offset={{ y: 0.36 }}
+        place="above"
+        clickThrough={true}
+      >
+        <Box className="pp-golden-anchor">
+          <Text style={{ fontSize: "10.5px", fontWeight: 800, color: "#fef9c3", letterSpacing: "0.05em" }}>
+            ★ GOLDEN STAKHANOVITE ★
+          </Text>
+        </Box>
+      </SceneAnchor>
+
+      <SceneAnchor
+        if={started && potCalloutMsg !== "" && !shopOpen && !boardOpen && !blitzSummaryOpen}
+        object="enamel-pot"
+        offset={{ y: 0.72 }}
+        place="above"
+        clickThrough={true}
+      >
+        <Box className="pp-pot-anchor">
+          <Text style={{ fontSize: "11px", fontWeight: 800, color: "#fef08a", letterSpacing: "0.04em" }}>
+            {potCalloutMsg}
+          </Text>
+        </Box>
+      </SceneAnchor>
+    </Scene3D>
+  </Box>
+
+  <!-- Tea Overdrive Screen Glow -->
+  <Box if={started && teaOverdriveTimer > 0} className="pp-ovl pp-overdrive-aura" />
+
+  <!-- Top-Left Production Telemetry -->
+  <Box if={started} className="pp-ovl pp-top-left">
+    <Box className="pp-panel pp-panel-red pp-stat-card">
+      <Text style={{ display: "block", fontSize: "10px", color: "#fca5a5", fontWeight: 700, letterSpacing: "0.08em" }}>
+        POTATOES PEELED · КЛУБНИ
+      </Text>
+      <Stack direction="horizontal" gap={8} style={{ alignItems: "baseline", marginTop: "1px" }}>
+        <Text className="pp-display" style={{ fontSize: "25px", color: "#fef3c7", lineHeight: 1 }}>
+          {potatoesPeeled}
+        </Text>
+        <Text style={{ fontSize: "11px", color: "#cbd5e1" }}>
+          {getBoardSlotCount() + " slots" + (getEffectiveAutoRate() > 0 ? (" · +" + fmt1(getEffectiveAutoRate()) + "/s") : "")}
+        </Text>
+      </Stack>
+    </Box>
+
+    <Box className="pp-panel pp-panel-gold pp-stat-card">
+      <Text style={{ display: "block", fontSize: "10px", color: "#fde047", fontWeight: 700, letterSpacing: "0.08em" }}>
+        LABOUR POINTS · РУБЛИ
+      </Text>
+      <Stack direction="horizontal" gap={8} style={{ alignItems: "baseline", marginTop: "1px" }}>
+        <Text className="pp-display" style={{ fontSize: "25px", color: "#facc15", lineHeight: 1 }}>
+          {points + " ₽"}
+        </Text>
+        <Text style={{ fontSize: "11px", color: "#d6d3c4" }}>
+          {fmt2(getEffectivePointMult()) + "x"}
+        </Text>
+      </Stack>
+    </Box>
+
+    <!-- Live Canteen Dish Order Card -->
+    <Box className="pp-panel pp-panel-order pp-stat-card" style={{ minWidth: "205px" }}>
+      <Stack direction="horizontal" gap={8} style={{ justifyContent: "space-between", alignItems: "baseline" }}>
+        <Text style={{ fontSize: "10px", color: "#fdba74", fontWeight: 800, letterSpacing: "0.06em" }}>
+          {"🍲 " + getCurrentOrder().name.toUpperCase()}
+        </Text>
+        <Text style={{ fontSize: "10.5px", color: "#fde047", fontWeight: 800 }}>
+          {orderProgress + "/" + getOrderTarget() + " (+" + getOrderReward() + " ₽)"}
+        </Text>
+      </Stack>
+      <Text style={{ display: "block", fontSize: "9.5px", color: "#cbd5e1", marginTop: "1px" }}>
+        {getCurrentOrder().hint}
+      </Text>
+      <Box className="pp-quota-bar">
+        <Box
+          style={{
+            height: "100%",
+            width: Math.min(100, Math.round((orderProgress / getOrderTarget()) * 100)) + "%",
+            background: getCurrentOrder().brothHex,
+            transition: "width 140ms ease"
+          }}
+        />
+      </Box>
+    </Box>
+
+    #if (blitzActive)
+      <Box className="pp-panel pp-stat-card" style={{ borderColor: "#ef4444", background: "rgba(127, 29, 29, 0.88)", minWidth: "175px" }}>
+        <Text style={{ display: "block", fontSize: "10px", color: "#fde047", fontWeight: 800, letterSpacing: "0.08em" }}>
+          ★ 60s QUOTA TRIAL ★
+        </Text>
+        <Stack direction="horizontal" gap={10} style={{ alignItems: "baseline", justifyContent: "space-between", marginTop: "2px" }}>
+          <Text className="pp-display" style={{ fontSize: "23px", color: "#ffffff", lineHeight: 1 }}>
+            {Math.ceil(blitzTimeLeft) + "s"}
+          </Text>
+          <Text className="pp-display" style={{ fontSize: "16px", color: "#fde047" }}>
+            {blitzPotatoes + " SPUDS"}
+          </Text>
+        </Stack>
+      </Box>
+    #else
+      <Box className="pp-panel pp-stat-card" style={{ minWidth: "185px" }}>
+        <Stack direction="horizontal" gap={8} style={{ justifyContent: "space-between", alignItems: "baseline" }}>
+          <Text style={{ fontSize: "10px", color: "#cbd5e1", fontWeight: 700 }}>
+            {getCurrentRankTitle()}
+          </Text>
+          <Text style={{ fontSize: "10px", color: "#fde047", fontWeight: 700 }}>
+            {potatoesPeeled + "/" + getNextQuotaTarget()}
+          </Text>
+        </Stack>
+        <Box className="pp-quota-bar">
+          <Box className="pp-quota-fill" style={{ width: Math.round(getQuotaProgressRatio() * 100) + "%" }} />
+        </Box>
+      </Box>
+    #end
+
+    <Box
+      className="pp-panel pp-stat-card"
+      style={{ pointerEvents: "auto", cursor: "pointer" }}
+      @click={toggleBoard}
+    >
+      <Text style={{ display: "block", fontSize: "10px", color: "#94a3b8", fontWeight: 700, letterSpacing: "0.06em" }}>
+        {"RANK #" + playerRank + " · MEDALS " + getMedalCount() + "/8"}
+      </Text>
+      <Text style={{ display: "block", fontSize: "11px", color: "#fef08a", fontWeight: 700, marginTop: "1px" }}>
+        {"Next: " + nextRivalLabel}
+      </Text>
+    </Box>
+
+    <Box if={comboCount >= 3} className="pp-panel pp-stat-card" style={{ borderColor: "#facc15", background: "rgba(120, 53, 15, 0.82)" }}>
+      <Text className="pp-display" style={{ fontSize: "15px", color: "#fef08a" }}>
+        {"★ " + fmt2(comboMult) + "x TEMPO (" + comboCount + ")"}
+      </Text>
+    </Box>
+  </Box>
+
+  <!-- Top-Right Commissary Action Strip -->
+  <Box if={started} className="pp-ovl pp-top-right">
+    <Box className="pp-panel pp-fps-pill" style={{ padding: "5px 8px", borderRadius: "4px" }}>
+      <Text style={{ fontSize: "10px", color: "#a8a29e", fontFamily: "ui-monospace, monospace" }}>
+        {liveFps + " FPS · " + qualityPreset.toUpperCase()}
+      </Text>
+    </Box>
+
+    <Button
+      variant="ghost"
+      className="pp-hud-btn"
+      @click={toggleShop}
+      style={{
+        background: canAffordAnyUpgrade() ? "linear-gradient(180deg, #d97706, #92400e)" : "rgba(153, 27, 27, 0.88)",
+        color: "#fef9c3",
+        border: canAffordAnyUpgrade() ? "1px solid #fef08a" : "1px solid #f87171"
+      }}
+    >
+      {canAffordAnyUpgrade() ? "★ Upgrades [E]" : "Upgrades [E]"}
+    </Button>
+
+    <Button
+      variant="ghost"
+      className="pp-hud-btn"
+      @click={toggleBoard}
+      style={{ background: "rgba(24, 30, 24, 0.90)", color: "#fde047", border: "1px solid rgba(250, 204, 21, 0.5)" }}
+    >
+      Leaders [L]
+    </Button>
+
+    <Button
+      if={!blitzActive}
+      variant="ghost"
+      className="pp-hud-btn"
+      @click={startBlitzShift}
+      style={{ background: "rgba(127, 29, 29, 0.78)", color: "#fecaca", border: "1px solid rgba(248, 113, 113, 0.45)" }}
+    >
+      60s Blitz
+    </Button>
+
+    <Button
+      variant="ghost"
+      className="pp-hud-btn"
+      @click={toggleHoverPeel}
+      style={{
+        background: hoverPeel ? "rgba(22, 101, 52, 0.78)" : "rgba(24, 30, 24, 0.90)",
+        color: hoverPeel ? "#bbf7d0" : "#cbd5e1",
+        border: "1px solid rgba(255,255,255,0.2)"
+      }}
+    >
+      {hoverPeel ? "Sweep: ON" : "Sweep: Hold"}
+    </Button>
+
+    <Button
+      variant="ghost"
+      className="pp-hud-btn"
+      @click={cycleCameraPreset}
+      style={{ background: "rgba(24, 30, 24, 0.90)", color: "#e7e5e4", border: "1px solid rgba(255,255,255,0.2)" }}
+    >
+      Cam [V]
+    </Button>
+
+    <Button
+      variant="ghost"
+      className="pp-hud-btn"
+      @click={toggleCameraOrbit}
+      style={{
+        background: cameraOrbitMode ? "rgba(3, 105, 161, 0.85)" : "rgba(24, 30, 24, 0.90)",
+        color: cameraOrbitMode ? "#e0f2fe" : "#e7e5e4",
+        border: cameraOrbitMode ? "1px solid #38bdf8" : "1px solid rgba(255,255,255,0.2)"
+      }}
+    >
+      {cameraOrbitMode ? "Orbit: ON" : "Orbit [O]"}
+    </Button>
+
+    <Button
+      variant="ghost"
+      className="pp-hud-btn"
+      @click={toggleRadioMusic}
+      style={{
+        background: radioOn && !muted ? "rgba(120, 53, 15, 0.82)" : "rgba(24, 30, 24, 0.90)",
+        color: radioOn && !muted ? "#fde047" : "#9ca3af",
+        border: "1px solid rgba(255,255,255,0.2)"
+      }}
+    >
+      {radioOn ? "Polka [N]" : "Radio Off"}
+    </Button>
+
+    <Button
+      variant="ghost"
+      className="pp-hud-btn"
+      @click={toggleAudioMute}
+      style={{
+        background: muted ? "rgba(127, 29, 29, 0.72)" : "rgba(24, 30, 24, 0.90)",
+        color: muted ? "#fca5a5" : "#e7e5e4",
+        border: "1px solid rgba(255,255,255,0.2)"
+      }}
+    >
+      {muted ? "Muted" : "SFX [M]"}
+    </Button>
+
+    <Button
+      variant="ghost"
+      className="pp-hud-btn"
+      @click={returnToTitle}
+      style={{ background: "rgba(24, 30, 24, 0.90)", color: "#f4ebd0", border: "1px solid rgba(255,255,255,0.2)" }}
+    >
+      Menu
+    </Button>
+  </Box>
+
+  <!-- Dedicated Zero-Flash Mobile & Compact Landscape Top Bar -->
+  <Box if={started && !shopOpen && !boardOpen && !blitzSummaryOpen} className="pp-ovl pp-mobile-top">
+    <Box className="pp-mob-bar">
+      <Box className="pp-panel pp-panel-red pp-mob-telemetry">
+        <Stack direction="horizontal" gap={7} style={{ alignItems: "baseline", minWidth: 0, overflow: "hidden" }}>
+          <Text className="pp-display" style={{ fontSize: "18px", color: "#fef3c7", lineHeight: 1, whiteSpace: "nowrap" }}>
+            {"🥔 " + potatoesPeeled}
+          </Text>
+          <Text className="pp-display" style={{ fontSize: "17px", color: "#facc15", lineHeight: 1, whiteSpace: "nowrap" }}>
+            {points + " ₽"}
+          </Text>
+        </Stack>
+        <Text style={{ fontSize: "10px", color: "#cbd5e1", fontWeight: 700, whiteSpace: "nowrap" }}>
+          {fmt2(getEffectivePointMult()) + "x"}
+        </Text>
+      </Box>
+
+      <Button
+        variant="ghost"
+        className="pp-mob-btn"
+        @click={toggleShop}
+        style={{
+          background: canAffordAnyUpgrade() ? "linear-gradient(180deg, #d97706, #92400e)" : "rgba(153, 27, 27, 0.90)",
+          color: "#fef9c3",
+          border: canAffordAnyUpgrade() ? "1px solid #fef08a" : "1px solid #f87171"
+        }}
+      >
+        {canAffordAnyUpgrade() ? "★ Shop" : "Shop"}
+      </Button>
+
+      <Button
+        variant="ghost"
+        className="pp-mob-btn"
+        @click={toggleBoard}
+        style={{ background: "rgba(24, 30, 24, 0.92)", color: "#fde047", border: "1px solid rgba(250, 204, 21, 0.50)" }}
+      >
+        {"🏆 #" + playerRank}
+      </Button>
+
+      <Button
+        variant="ghost"
+        className="pp-mob-btn"
+        @click={toggleMobileDrawer}
+        style={{
+          minWidth: "38px",
+          background: mobileDrawerOpen ? "rgba(180, 83, 9, 0.92)" : "rgba(24, 30, 24, 0.92)",
+          color: "#fef3c7",
+          border: mobileDrawerOpen ? "1px solid #facc15" : "1px solid rgba(255,255,255,0.22)"
+        }}
+      >
+        {mobileDrawerOpen ? "✕" : "⚙"}
+      </Button>
+    </Box>
+
+    <Box className="pp-mob-subbar">
+      <Box className="pp-panel pp-panel-order pp-mob-pill">
+        <Stack direction="horizontal" gap={4} style={{ justifyContent: "space-between", alignItems: "baseline" }}>
+          <Text style={{ fontSize: "9.5px", color: "#fdba74", fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {"🍲 " + getCurrentOrder().name}
+          </Text>
+          <Text style={{ fontSize: "9.5px", color: "#fde047", fontWeight: 800, whiteSpace: "nowrap" }}>
+            {orderProgress + "/" + getOrderTarget()}
+          </Text>
+        </Stack>
+        <Box className="pp-quota-bar" style={{ height: "4px", marginTop: "3px" }}>
+          <Box
+            style={{
+              height: "100%",
+              width: Math.min(100, Math.round((orderProgress / getOrderTarget()) * 100)) + "%",
+              background: getCurrentOrder().brothHex
+            }}
+          />
+        </Box>
+      </Box>
+
+      #if (blitzActive)
+        <Box className="pp-panel pp-mob-pill" style={{ borderColor: "#ef4444", background: "rgba(127, 29, 29, 0.90)" }}>
+          <Stack direction="horizontal" gap={6} style={{ justifyContent: "space-between", alignItems: "baseline" }}>
+            <Text className="pp-display" style={{ fontSize: "13px", color: "#ffffff", lineHeight: 1 }}>
+              {"★ " + Math.ceil(blitzTimeLeft) + "s"}
+            </Text>
+            <Text className="pp-display" style={{ fontSize: "12px", color: "#fde047", lineHeight: 1 }}>
+              {blitzPotatoes + " SPUDS"}
+            </Text>
+          </Stack>
+        </Box>
+      #else
+        <Box className="pp-panel pp-mob-pill">
+          <Stack direction="horizontal" gap={4} style={{ justifyContent: "space-between", alignItems: "baseline" }}>
+            <Text style={{ fontSize: "9.5px", color: "#cbd5e1", fontWeight: 700, whiteSpace: "nowrap" }}>
+              {"ГОСТ #" + (quotaIdx + 1)}
+            </Text>
+            <Text style={{ fontSize: "9.5px", color: "#fde047", fontWeight: 800, whiteSpace: "nowrap" }}>
+              {potatoesPeeled + "/" + getNextQuotaTarget()}
+            </Text>
+          </Stack>
+          <Box className="pp-quota-bar" style={{ height: "4px", marginTop: "3px" }}>
+            <Box className="pp-quota-fill" style={{ width: Math.round(getQuotaProgressRatio() * 100) + "%" }} />
+          </Box>
+        </Box>
+      #end
+
+      <Box if={comboCount >= 3} className="pp-panel pp-mob-pill" style={{ flex: "0 0 auto", borderColor: "#facc15", background: "rgba(120, 53, 15, 0.88)", display: "flex", alignItems: "center" }}>
+        <Text className="pp-display" style={{ fontSize: "12.5px", color: "#fef08a", whiteSpace: "nowrap" }}>
+          {"★ " + fmt2(comboMult) + "x"}
+        </Text>
+      </Box>
+    </Box>
+
+    <!-- Collapsible Mobile Quick Settings & Shift Controls Drawer -->
+    <Box if={mobileDrawerOpen} className="pp-mob-drawer">
+      <Button
+        if={!blitzActive}
+        variant="ghost"
+        className="pp-mob-drawer-btn"
+        @click={startBlitzShift}
+        style={{ background: "rgba(153, 27, 27, 0.88)", color: "#fef08a", border: "1px solid #facc15" }}
+      >
+        ⏱ 60s Blitz
+      </Button>
+
+      <Button
+        variant="ghost"
+        className="pp-mob-drawer-btn"
+        @click={cycleCameraPreset}
+        style={{ background: "rgba(30, 38, 30, 0.94)", color: "#f4ebd0", border: "1px solid rgba(255,255,255,0.22)" }}
+      >
+        {"🎥 Cam: " + cameraPreset.toUpperCase()}
+      </Button>
+
+      <Button
+        variant="ghost"
+        className="pp-mob-drawer-btn"
+        @click={toggleCameraOrbit}
+        style={{
+          background: cameraOrbitMode ? "rgba(3, 105, 161, 0.90)" : "rgba(30, 38, 30, 0.94)",
+          color: cameraOrbitMode ? "#e0f2fe" : "#f4ebd0",
+          border: cameraOrbitMode ? "1px solid #38bdf8" : "1px solid rgba(255,255,255,0.22)"
+        }}
+      >
+        {cameraOrbitMode ? "🔄 Orbit: ON" : "🔄 3D Orbit"}
+      </Button>
+
+      <Button
+        variant="ghost"
+        className="pp-mob-drawer-btn"
+        @click={cycleQuality}
+        style={{ background: "rgba(30, 38, 30, 0.94)", color: "#fde047", border: "1px solid rgba(255,255,255,0.22)" }}
+      >
+        {"✨ GFX: " + qualityPreset.toUpperCase()}
+      </Button>
+
+      <Button
+        variant="ghost"
+        className="pp-mob-drawer-btn"
+        @click={toggleRadioMusic}
+        style={{
+          background: radioOn && !muted ? "rgba(120, 53, 15, 0.88)" : "rgba(30, 38, 30, 0.94)",
+          color: radioOn && !muted ? "#fde047" : "#9ca3af",
+          border: "1px solid rgba(255,255,255,0.22)"
+        }}
+      >
+        {radioOn ? "📻 Polka: ON" : "📻 Polka: OFF"}
+      </Button>
+
+      <Button
+        variant="ghost"
+        className="pp-mob-drawer-btn"
+        @click={toggleAudioMute}
+        style={{
+          background: muted ? "rgba(127, 29, 29, 0.82)" : "rgba(30, 38, 30, 0.94)",
+          color: muted ? "#fca5a5" : "#f4ebd0",
+          border: "1px solid rgba(255,255,255,0.22)"
+        }}
+      >
+        {muted ? "🔇 Muted" : "🔊 SFX: ON"}
+      </Button>
+
+      <Button
+        variant="ghost"
+        className="pp-mob-drawer-btn"
+        @click={returnToTitle}
+        style={{ background: "rgba(30, 38, 30, 0.94)", color: "#f4ebd0", border: "1px solid rgba(255,255,255,0.22)" }}
+      >
+        🏠 Title Menu
+      </Button>
+    </Box>
+  </Box>
+
+  <!-- Quota Promotion Banner & Feedback Toast -->
+  <Box if={started && bannerMsg !== ""} className="pp-ovl pp-banner">
+    <Text className="pp-display" style={{ fontSize: "18px", color: "#fef9c3", letterSpacing: "0.10em" }}>
+      {bannerMsg}
+    </Text>
+  </Box>
+
+  <Box if={started && toastMsg !== ""} className="pp-ovl pp-toast">
+    <Text style={{ fontSize: "12px", fontWeight: 700, color: "#fef08a" }}>{toastMsg}</Text>
+  </Box>
+
+  <!-- Bottom Workstation Peeler Dock -->
+  <Box if={started && !shopOpen && !boardOpen && !blitzSummaryOpen} className="pp-ovl pp-bottom-dock">
+    <Box className="pp-decree-row">
+      <Text style={{ fontSize: "11px", color: "#d6d3c4", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {"📻 " + currentDecree}
+      </Text>
+      <Text style={{ fontSize: "11px", color: "#fde047", fontWeight: 700, whiteSpace: "nowrap" }}>
+        {activePotatoes.length > 0
+          ? ((activePotatoes[0].isBoss ? "TSAR-KARTOSHKA" : VARIETIES[activePotatoes[0].varietyIdx].name) + " · " + activePotatoes[0].peelPct + "% peeled")
+          : "Dispensing fresh Sovkhoz tubers..."}
+      </Text>
+    </Box>
+
+    <Box className="pp-belt-row">
+      <Box className="pp-tool-grid">
+        #each (tool, idx in PEELERS)
+          <Button
+            variant="ghost"
+            @click={selectOrUnlockPeeler(idx)}
+            className={
+              equippedPeeler === idx
+                ? "pp-tool-slot pp-tool-active"
+                : (!unlockedPeelers[idx] && points >= tool.unlockCost ? "pp-tool-slot pp-tool-buyable" : "pp-tool-slot")
+            }
+          >
+            <Box>
+              <Text style={{ display: "block", fontSize: "10.5px", fontWeight: 800, letterSpacing: "0.04em", color: equippedPeeler === idx ? "#fef08a" : "#f4ebd0" }}>
+                {(idx + 1) + " · " + tool.code}
+              </Text>
+              <Text style={{ display: "block", fontSize: "10px", marginTop: "1px", color: unlockedPeelers[idx] ? "#cbd5e1" : (points >= tool.unlockCost ? "#fde047" : "#9ca3af") }}>
+                {unlockedPeelers[idx]
+                  ? ("Lv " + toolLevels[idx] + " · " + tool.baseSlots + " slot" + (tool.baseSlots > 1 ? "s" : ""))
+                  : ("Unlock " + tool.unlockCost + " ₽")}
+              </Text>
+            </Box>
+          </Button>
+        #end
+      </Box>
+
+      <Box className="pp-action-cluster">
+        <Button
+          variant="ghost"
+          className="pp-act-btn"
+          @click={activateTeaOverdrive}
+          style={{
+            padding: "6px 10px",
+            fontSize: "11px",
+            fontWeight: 800,
+            background: teaOverdriveTimer > 0
+              ? "linear-gradient(180deg, #f59e0b, #b45309)"
+              : (teaCharge >= 100 ? "linear-gradient(180deg, #d97706, #92400e)" : "rgba(28, 34, 28, 0.92)"),
+            color: "#fef9c3",
+            border: teaCharge >= 100 || teaOverdriveTimer > 0 ? "1px solid #fef08a" : "1px solid rgba(250, 204, 21, 0.32)",
+            borderRadius: "4px"
+          }}
+        >
+          {teaOverdriveTimer > 0
+            ? ("☕ 2x (" + Math.ceil(teaOverdriveTimer) + "s)")
+            : (teaCharge >= 100
+                ? ((isTouchDevice || isMobileLayout) ? "☕ TEA!" : "☕ TEA READY [Q]")
+                : ("☕ " + ((isTouchDevice || isMobileLayout) ? "" : "Tea ") + Math.floor(teaCharge) + "%"))}
+        </Button>
+
+        <Button
+          variant="ghost"
+          className="pp-act-btn"
+          @click={ringCommissarBell}
+          style={{
+            padding: "6px 10px",
+            fontSize: "11px",
+            fontWeight: 800,
+            background: bellCooldown <= 0 && !hasActiveBoss() ? "rgba(146, 64, 14, 0.90)" : "rgba(28, 34, 28, 0.92)",
+            color: bellCooldown <= 0 && !hasActiveBoss() ? "#fef08a" : "#cbd5e1",
+            border: "1px solid rgba(250, 204, 21, 0.40)",
+            borderRadius: "4px"
+          }}
+        >
+          {hasActiveBoss()
+            ? ((isTouchDevice || isMobileLayout) ? "🔔 LIVE" : "🔔 TSAR LIVE")
+            : (bellCooldown <= 0
+                ? ((isTouchDevice || isMobileLayout) ? "🔔 TSAR" : "🔔 TSAR [R]")
+                : ("🔔 " + Math.ceil(bellCooldown) + "s"))}
+        </Button>
+
+        <Button
+          variant="ghost"
+          className="pp-act-btn"
+          @click={sharpenEquipped}
+          disabled={toolLevels[equippedPeeler] >= 5}
+          style={{
+            padding: "6px 10px",
+            fontSize: "11px",
+            fontWeight: 800,
+            background: toolLevels[equippedPeeler] < 5 && points >= getToolSharpenCost(equippedPeeler) ? "#b45309" : "rgba(28, 34, 28, 0.92)",
+            color: "#fef3c7",
+            border: "1px solid rgba(250, 204, 21, 0.45)",
+            borderRadius: "4px"
+          }}
+        >
+          {toolLevels[equippedPeeler] >= 5
+            ? ((isTouchDevice || isMobileLayout) ? "Lv5 MAX" : "BLADE Lv5")
+            : ((isTouchDevice || isMobileLayout)
+                ? ("▲ " + getToolSharpenCost(equippedPeeler) + " ₽")
+                : ("SHARPEN (" + getToolSharpenCost(equippedPeeler) + " ₽)"))}
+        </Button>
+
+        <Button
+          @click={manualPeelAction}
+          className="pp-display pp-act-btn pp-act-peel"
+          style={{
+            padding: "8px 16px",
+            fontSize: "15px",
+            background: "linear-gradient(180deg, #dc2626, #991b1b)",
+            color: "#fef9c3",
+            border: "1px solid #facc15",
+            borderRadius: "4px"
+          }}
+        >
+          {(isTouchDevice || isMobileLayout) ? "PEEL!" : "PEEL [SPACE]"}
+        </Button>
+      </Box>
+    </Box>
+  </Box>
+
+  <!-- Title Screen Overlay -->
+  <Box if={!started} className="pp-ovl pp-modal-bg">
+    <Box className="pp-card" style={{ maxWidth: "760px", textAlign: "center" }}>
+      <Text style={{ display: "block", fontSize: "11px", letterSpacing: "0.28em", color: "#facc15", fontWeight: 800 }}>
+        ★ НАРКОМКАРТОФЕЛЬ СССР · MINISTRY OF TUBERS ★
+      </Text>
+      <Text className="pp-display pp-logo" style={{ display: "block", marginTop: "6px" }}>
+        POTATO PEELER
+      </Text>
+      <Text style={{ display: "block", marginTop: "8px", fontSize: "13.5px", color: "#d6d3c4", lineHeight: 1.48 }}>
+        Sweep across 3D potatoes at Collective Kitchen Station No. 7! Fulfill Canteen Borscht &amp; Banquet orders, drink steaming Podstakannik Tea for 2x Stakhanovite Overdrive, swat sneaky Colorado Saboteur Beetles, ring the brass service bell to conquer giant Boss Tsar-Kartoshkas, upgrade 6 peelers up to the Kosmos-9 Ruby Laser-Lathe, and climb the Hall of Labour Leaderboard.
+      </Text>
+
+      <Box if={potatoesPeeled > 0} style={{ marginTop: "11px", padding: "7px 14px", background: "rgba(185, 28, 28, 0.24)", border: "1px solid rgba(250, 204, 21, 0.35)", borderRadius: "4px", display: "inline-block" }}>
+        <Text style={{ fontSize: "12px", color: "#fef08a", fontWeight: 700 }}>
+          {"Saved Shift: " + potatoesPeeled + " Potatoes · " + points + " ₽ · Medals: " + getMedalCount() + "/8 · Tool: " + PEELERS[equippedPeeler].name}
+        </Text>
+      </Box>
+
+      <Stack direction="horizontal" gap={10} style={{ justifyContent: "center", marginTop: "15px", flexWrap: "wrap" }}>
+        <Button
+          @click={enterStation}
+          className="pp-display"
+          style={{
+            padding: "12px 30px",
+            fontSize: "18px",
+            background: "linear-gradient(180deg, #dc2626, #991b1b)",
+            color: "#fef9c3",
+            border: "2px solid #facc15"
+          }}
+        >
+          {potatoesPeeled > 0 ? "RESUME KITCHEN SHIFT" : "REPORT FOR KITCHEN DUTY"}
+        </Button>
+
+        <Button
+          @click={startBlitzShift}
+          className="pp-display"
+          style={{
+            padding: "12px 22px",
+            fontSize: "16px",
+            background: "linear-gradient(180deg, #b45309, #78350f)",
+            color: "#fef9c3",
+            border: "1px solid #fde047"
+          }}
+        >
+          60s QUOTA TRIAL
+        </Button>
+
+        <Button
+          variant="ghost"
+          @click={cycleQuality}
+          style={{ padding: "11px 14px", background: "rgba(255,255,255,0.06)", color: "#e7e5e4", border: "1px solid rgba(255,255,255,0.2)" }}
+        >
+          {"Graphics: " + qualityPreset.toUpperCase()}
+        </Button>
+
+        <Button
+          variant="ghost"
+          @click={toggleRadioMusic}
+          style={{ padding: "11px 14px", background: radioOn ? "rgba(146,64,14,0.45)" : "rgba(255,255,255,0.06)", color: radioOn ? "#fde047" : "#9ca3af", border: "1px solid rgba(255,255,255,0.2)" }}
+        >
+          {radioOn ? "Polka: On" : "Polka: Off"}
+        </Button>
+
+        <Button
+          variant="ghost"
+          @click={toggleAudioMute}
+          style={{ padding: "11px 14px", background: muted ? "rgba(127,29,29,0.55)" : "rgba(255,255,255,0.06)", color: muted ? "#fca5a5" : "#e7e5e4", border: "1px solid rgba(255,255,255,0.2)" }}
+        >
+          {muted ? "SFX: Muted" : "SFX: On"}
+        </Button>
+      </Stack>
+
+      #if (isTouchDevice || isMobileLayout)
+        <Stack direction="horizontal" gap={9} style={{ justifyContent: "center", marginTop: "12px", flexWrap: "wrap" }}>
+          <Text style={{ fontSize: "11.5px", color: "#cbd5e1" }}><Text className="pp-kbd">Drag Finger</Text> Peel &amp; Swat</Text>
+          <Text style={{ fontSize: "11.5px", color: "#cbd5e1" }}><Text className="pp-kbd">Tap Tea</Text> 2x Overdrive</Text>
+          <Text style={{ fontSize: "11.5px", color: "#cbd5e1" }}><Text className="pp-kbd">Tap Bell</Text> Tsar-Spud</Text>
+          <Text style={{ fontSize: "11.5px", color: "#cbd5e1" }}><Text className="pp-kbd">Swipe Belt</Text> 6 Peelers</Text>
+        </Stack>
+      #else
+        <Stack direction="horizontal" gap={11} style={{ justifyContent: "center", marginTop: "13px", flexWrap: "wrap" }}>
+          <Text style={{ fontSize: "11.5px", color: "#cbd5e1" }}><Text className="pp-kbd">Sweep / Space</Text> Peel &amp; Swat</Text>
+          <Text style={{ fontSize: "11.5px", color: "#cbd5e1" }}><Text className="pp-kbd">Q</Text> Drink Tea (2x)</Text>
+          <Text style={{ fontSize: "11.5px", color: "#cbd5e1" }}><Text className="pp-kbd">R</Text> Summon Tsar-Spud</Text>
+          <Text style={{ fontSize: "11.5px", color: "#cbd5e1" }}><Text className="pp-kbd">1-6</Text> Peelers</Text>
+          <Text style={{ fontSize: "11.5px", color: "#cbd5e1" }}><Text className="pp-kbd">E</Text> Workshop</Text>
+        </Stack>
+      #end
+
+      <!-- Hall of Labour Leaderboard Preview on Title Card -->
+      <Box className="pp-board-box">
+        <Stack direction="horizontal" gap={8} style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", marginBottom: "8px" }}>
+          <Text className="pp-display" style={{ fontSize: "15px", color: "#facc15" }}>
+            ★ ДОСКА ПОЧЁТА · HALL OF LABOUR (POTATOES PEELED)
+          </Text>
+          <Text style={{ fontSize: "11.5px", color: "#fde047", fontWeight: 700 }}>
+            {"Rank #" + playerRank + (bestBlitzPotatoes > 0 ? (" · Best 60s Blitz: " + bestBlitzPotatoes) : "")}
+          </Text>
+        </Stack>
+
+        <Stack direction="horizontal" gap={8} style={{ marginBottom: "8px", flexWrap: "wrap" }}>
+          <Input
+            value={playerName}
+            @change={setPlayerNameInput}
+            placeholder="Comrade Name"
+            style={{ width: "min(230px, 100%)" }}
+          />
+          <Button
+            if={potatoesPeeled > 0}
+            @click={submitLeaderboardRecord}
+            style={{ background: "#b91c1c", color: "#fef9c3", border: "1px solid #facc15", fontWeight: 700 }}
+          >
+            Stamp Record to State Ledger
+          </Button>
+        </Stack>
+
+        #each (row, idx in leaderboard)
+          <Box className={row.isPlayer ? "pp-board-row pp-board-me" : "pp-board-row"}>
+            <Text style={{ fontSize: "12px", color: idx === 0 ? "#fde047" : (row.isPlayer ? "#fef9c3" : "#e5e7eb"), fontWeight: idx < 3 || row.isPlayer ? 700 : 500 }}>
+              {"#" + (idx + 1) + "  " + row.name + (row.isPlayer ? " (YOU)" : "")}
+            </Text>
+            <Text style={{ fontSize: "12px", color: "#cbd5e1" }}>
+              <Text style={{ color: "#94a3b8", fontSize: "11px" }}>{"[" + row.tool + "]  "}</Text>
+              <Text style={{ color: "#fde047", fontWeight: 800 }}>{row.potatoes + " potatoes"}</Text>
+              <Text style={{ color: "#9ca3af" }}>{" · " + row.points + " ₽"}</Text>
+            </Text>
+          </Box>
+        #end
+      </Box>
+    </Box>
+  </Box>
+
+  <!-- Commissary Requisition & Upgrade Workshop Modal -->
+  <Box if={started && shopOpen} className="pp-ovl pp-modal-bg">
+    <Box className="pp-card" style={{ maxWidth: "890px" }}>
+      <Stack direction="horizontal" gap={10} style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
+        <Box style={{ textAlign: "left" }}>
+          <Text className="pp-display" style={{ display: "block", fontSize: "26px", color: "#facc15" }}>
+            COMMISSARY REQUISITION WORKSHOP · СКЛАД ИНСТРУМЕНТОВ
+          </Text>
+          <Text style={{ display: "block", fontSize: "12px", color: "#cbd5e1" }}>
+            {"Board Slots: " + getBoardSlotCount() + "/5 · Auto-Peel: " + fmt1(getEffectiveAutoRate()) + " patches/s · Mult: " + fmt2(getEffectivePointMult()) + "x"}
+          </Text>
+        </Box>
+        <Stack direction="horizontal" gap={8} style={{ alignItems: "center" }}>
+          <Box style={{ padding: "7px 14px", background: "rgba(180, 83, 9, 0.35)", border: "1px solid #facc15", borderRadius: "4px" }}>
+            <Text className="pp-display" style={{ fontSize: "20px", color: "#fef08a" }}>{points + " ₽"}</Text>
+          </Box>
+          <Button @click={toggleShop} className="pp-display" style={{ padding: "9px 18px", background: "#dc2626", color: "#fff", border: "1px solid #facc15" }}>
+            BACK TO BOARD
+          </Button>
+        </Stack>
+      </Stack>
+
+      <Text className="pp-display" style={{ display: "block", marginTop: "14px", fontSize: "15px", color: "#fca5a5", textAlign: "left" }}>
+        1. STATE PEELER ARSENAL (UNLOCK &amp; SHARPEN 3D TOOLS)
+      </Text>
+
+      <Box className="pp-shop-grid">
+        #each (tool, idx in PEELERS)
+          <Box className={equippedPeeler === idx ? "pp-shop-card pp-shop-card-eq" : "pp-shop-card"}>
+            <Box>
+              <Stack direction="horizontal" gap={6} style={{ justifyContent: "space-between", alignItems: "baseline" }}>
+                <Text style={{ fontWeight: 800, fontSize: "13.5px", color: "#fef3c7" }}>{tool.name}</Text>
+                <Text style={{ fontSize: "10.5px", fontWeight: 700, color: "#facc15" }}>{"Lv " + toolLevels[idx] + "/5"}</Text>
+              </Stack>
+              <Text style={{ display: "block", fontSize: "10.5px", color: "#fca5a5", marginTop: "1px" }}>{tool.ruName}</Text>
+              <Text style={{ display: "block", fontSize: "11.5px", color: "#cbd5e1", marginTop: "5px", lineHeight: 1.38 }}>
+                {tool.tagline}
+              </Text>
+              <Text style={{ display: "block", fontSize: "10.5px", color: "#fde047", marginTop: "6px", fontFamily: "ui-monospace, monospace" }}>
+                {"Slots: " + tool.baseSlots + " · Mult: " + tool.pointMult + "x · Auto: " + tool.autoRate + "/s"}
+              </Text>
+            </Box>
+
+            <Stack direction="horizontal" gap={6} style={{ marginTop: "9px" }}>
+              <Button
+                className="pp-modal-btn"
+                @click={selectOrUnlockPeeler(idx)}
+                style={{
+                  flex: 1,
+                  padding: "7px 8px",
+                  fontSize: "11.5px",
+                  fontWeight: 800,
+                  background: equippedPeeler === idx
+                    ? "#15803d"
+                    : (unlockedPeelers[idx] ? "#334155" : (points >= tool.unlockCost ? "#dc2626" : "#27272a")),
+                  color: "#ffffff",
+                  border: "1px solid rgba(255,255,255,0.22)"
+                }}
+              >
+                {equippedPeeler === idx
+                  ? "EQUIPPED"
+                  : (unlockedPeelers[idx] ? "EQUIP" : ("UNLOCK (" + tool.unlockCost + " ₽)"))}
+              </Button>
+
+              <Button
+                if={unlockedPeelers[idx]}
+                className="pp-modal-btn"
+                @click={sharpenPeeler(idx)}
+                disabled={toolLevels[idx] >= 5}
+                style={{
+                  padding: "7px 10px",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  background: toolLevels[idx] >= 5 ? "#1f2937" : (points >= getToolSharpenCost(idx) ? "#b45309" : "#292524"),
+                  color: "#fef3c7",
+                  border: "1px solid rgba(250, 204, 21, 0.35)"
+                }}
+              >
+                {toolLevels[idx] >= 5 ? "MAX" : ("+" + getToolSharpenCost(idx) + " ₽")}
+              </Button>
+            </Stack>
+          </Box>
+        #end
+      </Box>
+
+      <Text className="pp-display" style={{ display: "block", marginTop: "16px", fontSize: "15px", color: "#fde047", textAlign: "left" }}>
+        2. KITCHEN STATION MECHANIZATION (EASIER MULTI-POTATO PEELING &amp; DEFENCE)
+      </Text>
+
+      <Box className="pp-shop-grid">
+        <Box className="pp-shop-card">
+          <Box>
+            <Text style={{ display: "block", fontWeight: 800, color: "#fef3c7" }}>{"Brigade Auto-Spindle · Lv " + upgSpindle + "/5"}</Text>
+            <Text style={{ display: "block", fontSize: "11.5px", color: "#cbd5e1", marginTop: "4px" }}>
+              Motorized board rollers spin potatoes faster and automatically shave +1.65 skin patches/sec per level.
+            </Text>
+          </Box>
+          <Button className="pp-modal-btn" @click={buySpindleUpgrade} style={{ marginTop: "9px", width: "100%", background: upgSpindle >= 5 ? "#1f2937" : (points >= getSpindleCost() ? "#b91c1c" : "#374151"), color: "#fff", fontWeight: 700 }}>
+            {upgSpindle >= 5 ? "MAXED (Lv 5)" : ("Upgrade Spindle (" + getSpindleCost() + " ₽)")}
+          </Button>
+        </Box>
+
+        <Box className="pp-shop-card">
+          <Box>
+            <Text style={{ display: "block", fontWeight: 800, color: "#fef3c7" }}>{"Expanded Butcher Block · Lv " + upgBoard + "/2"}</Text>
+            <Text style={{ display: "block", fontSize: "11.5px", color: "#cbd5e1", marginTop: "4px" }}>
+              Adds +1 simultaneous 3D potato slot on the cutting board (up to 5 tubers peeled in one wide sweep!).
+            </Text>
+          </Box>
+          <Button className="pp-modal-btn" @click={buyBoardUpgrade} style={{ marginTop: "9px", width: "100%", background: upgBoard >= 2 ? "#1f2937" : (points >= getBoardCost() ? "#b45309" : "#374151"), color: "#fff", fontWeight: 700 }}>
+            {upgBoard >= 2 ? "MAXED (+2 Slots)" : ("Expand Board (" + getBoardCost() + " ₽)")}
+          </Button>
+        </Box>
+
+        <Box className="pp-shop-card">
+          <Box>
+            <Text style={{ display: "block", fontWeight: 800, color: "#fef3c7" }}>{"Kolkhoz Conveyor Chute · Lv " + upgChute + "/4"}</Text>
+            <Text style={{ display: "block", fontSize: "11.5px", color: "#cbd5e1", marginTop: "4px" }}>
+              Rapidly feeds fresh potatoes from the burlap sack and boosts rare Golden Stakhanovite tuber odds!
+            </Text>
+          </Box>
+          <Button className="pp-modal-btn" @click={buyChuteUpgrade} style={{ marginTop: "9px", width: "100%", background: upgChute >= 4 ? "#1f2937" : (points >= getChuteCost() ? "#0f766e" : "#374151"), color: "#fff", fontWeight: 700 }}>
+            {upgChute >= 4 ? "MAXED (Lv 4)" : ("Upgrade Chute (" + getChuteCost() + " ₽)")}
+          </Button>
+        </Box>
+
+        <Box className="pp-shop-card">
+          <Box>
+            <Text style={{ display: "block", fontWeight: 800, color: "#fef3c7" }}>{"GOST Quality Stamp · Lv " + upgStamp + "/5"}</Text>
+            <Text style={{ display: "block", fontSize: "11.5px", color: "#cbd5e1", marginTop: "4px" }}>
+              Awards +25% Labour Rubles per peeled tuber and extends Stakhanovite Tempo streak duration.
+            </Text>
+          </Box>
+          <Button className="pp-modal-btn" @click={buyStampUpgrade} style={{ marginTop: "9px", width: "100%", background: upgStamp >= 5 ? "#1f2937" : (points >= getStampCost() ? "#1d4ed8" : "#374151"), color: "#fff", fontWeight: 700 }}>
+            {upgStamp >= 5 ? "MAXED (Lv 5)" : ("Upgrade Stamp (" + getStampCost() + " ₽)")}
+          </Button>
+        </Box>
+
+        <Box className="pp-shop-card">
+          <Box>
+            <Text style={{ display: "block", fontWeight: 800, color: "#fef3c7" }}>{"Pioneer Bug-Zapper · Lv " + upgZapper + "/3"}</Text>
+            <Text style={{ display: "block", fontSize: "11.5px", color: "#cbd5e1", marginTop: "4px" }}>
+              Lv1 slows Colorado Beetles; Lv2 auto-zaps them with lightning; Lv3 instant-zaps for 2x Ruble bounty!
+            </Text>
+          </Box>
+          <Button className="pp-modal-btn" @click={buyZapperUpgrade} style={{ marginTop: "9px", width: "100%", background: upgZapper >= 3 ? "#1f2937" : (points >= getZapperCost() ? "#0284c7" : "#374151"), color: "#fff", fontWeight: 700 }}>
+            {upgZapper >= 3 ? "MAXED (Lv 3)" : ("Upgrade Zapper (" + getZapperCost() + " ₽)")}
+          </Button>
+        </Box>
+      </Box>
+    </Box>
+  </Box>
+
+  <!-- Hall of Labour Leaderboard & State Medals Modal -->
+  <Box if={started && boardOpen} className="pp-ovl pp-modal-bg">
+    <Box className="pp-card" style={{ maxWidth: "740px" }}>
+      <Stack direction="horizontal" gap={10} style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
+        <Box style={{ textAlign: "left" }}>
+          <Text className="pp-display" style={{ display: "block", fontSize: "26px", color: "#facc15" }}>
+            ★ ДОСКА ПОЧЁТА · HALL OF LABOUR &amp; STATE MEDALS
+          </Text>
+          <Text style={{ display: "block", fontSize: "12px", color: "#cbd5e1" }}>
+            {"Official Ministry ranking by total potatoes peeled · Tsar-Spuds Conquered: " + tsarsPeeled + " · Orders Served: " + ordersCompleted}
+          </Text>
+        </Box>
+        <Button @click={toggleBoard} className="pp-display" style={{ padding: "8px 16px", background: "#dc2626", color: "#fff", border: "1px solid #facc15" }}>
+          CLOSE
+        </Button>
+      </Stack>
+
+      <Box style={{ marginTop: "12px", padding: "10px 14px", background: "rgba(153, 27, 27, 0.28)", border: "1px solid rgba(250, 204, 21, 0.4)", borderRadius: "5px", textAlign: "left" }}>
+        <Stack direction="horizontal" gap={12} style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
+          <Text style={{ fontSize: "13px", color: "#fef3c7", fontWeight: 700 }}>
+            {"Your Tally: " + potatoesPeeled + " Potatoes Peeled (" + cleanPeelsTotal + " Clean Peels)"}
+          </Text>
+          <Text style={{ fontSize: "13px", color: "#fde047", fontWeight: 700 }}>
+            {"Rank #" + playerRank + " · Lifetime: " + lifetimePoints + " ₽"}
+          </Text>
+        </Stack>
+
+        <Stack direction="horizontal" gap={8} style={{ marginTop: "10px", flexWrap: "wrap" }}>
+          <Input
+            value={playerName}
+            @change={setPlayerNameInput}
+            placeholder="Comrade Name for Ledger"
+            style={{ width: "min(250px, 100%)" }}
+          />
+          <Button
+            @click={submitLeaderboardRecord}
+            className="pp-display"
+            style={{ padding: "8px 18px", background: "linear-gradient(180deg, #dc2626, #991b1b)", color: "#fef9c3", border: "1px solid #facc15" }}
+          >
+            STAMP OFFICIAL RECORD
+          </Button>
+        </Stack>
+        <Text if={boardStatusMsg !== ""} style={{ display: "block", marginTop: "7px", fontSize: "12px", color: "#fde047", fontWeight: 700 }}>
+          {boardStatusMsg}
+        </Text>
+      </Box>
+
+      <Box className="pp-board-box">
+        #each (row, idx in leaderboard)
+          <Box className={row.isPlayer ? "pp-board-row pp-board-me" : "pp-board-row"}>
+            <Text style={{ fontSize: "13px", color: idx === 0 ? "#fde047" : (row.isPlayer ? "#fef9c3" : "#f3f4f6"), fontWeight: idx < 3 || row.isPlayer ? 800 : 500 }}>
+              {"#" + (idx + 1) + "  " + row.name + (row.isPlayer ? " (YOU)" : "")}
+            </Text>
+            <Text style={{ fontSize: "12.5px", color: "#cbd5e1" }}>
+              <Text style={{ color: "#9ca3af", fontSize: "11px" }}>{"[" + row.tool + "]  "}</Text>
+              <Text style={{ color: "#fde047", fontWeight: 800 }}>{row.potatoes + " spuds"}</Text>
+              <Text style={{ color: "#9ca3af" }}>{" · " + row.points + " ₽"}</Text>
+            </Text>
+          </Box>
+        #end
+      </Box>
+
+      <Text className="pp-display" style={{ display: "block", marginTop: "14px", fontSize: "14px", color: "#fde047", textAlign: "left" }}>
+        {"★ STATE LABOUR MEDALS (" + getMedalCount() + "/8 UNLOCKED · +" + (getMedalCount() * 5) + "% PERMANENT RUBLE BONUS)"}
+      </Text>
+      <Box className="pp-medal-grid">
+        #each (md, mIdx in STATE_MEDALS)
+          <Box className={medalsUnlocked[mIdx] ? "pp-medal-item pp-medal-on" : "pp-medal-item"}>
+            <Text style={{ display: "block", fontSize: "11.5px", fontWeight: 800, color: medalsUnlocked[mIdx] ? "#fef08a" : "#9ca3af" }}>
+              {(medalsUnlocked[mIdx] ? "★ " : "○ ") + md.title}
+            </Text>
+            <Text style={{ display: "block", fontSize: "10px", color: medalsUnlocked[mIdx] ? "#fde68a" : "#6b7280", marginTop: "2px" }}>
+              {md.desc}
+            </Text>
+          </Box>
+        #end
+      </Box>
+    </Box>
+  </Box>
+
+  <!-- 60-Second Stakhanovite Blitz Summary Modal -->
+  <Box if={started && blitzSummaryOpen} className="pp-ovl pp-modal-bg">
+    <Box className="pp-card" style={{ maxWidth: "520px", textAlign: "center" }}>
+      <Text style={{ display: "block", fontSize: "11px", letterSpacing: "0.28em", color: "#fde047", fontWeight: 800 }}>
+        ★ GOSPLAN TIMEKEEPER WHISTLE ★
+      </Text>
+      <Text className="pp-display" style={{ display: "block", marginTop: "6px", fontSize: "44px", color: "#fef3c7", lineHeight: 1 }}>
+        {blitzPotatoes + " POTATOES"}
+      </Text>
+      <Text style={{ display: "block", marginTop: "8px", fontSize: "14px", color: "#d6d3c4" }}>
+        {"60s Shift Earnings: +" + blitzPoints + " ₽ · Personal Best 60s Trial: " + bestBlitzPotatoes + " spuds"}
+      </Text>
+      <Text style={{ display: "block", marginTop: "4px", fontSize: "12.5px", color: "#fde047", fontWeight: 700 }}>
+        {"Career Total: " + potatoesPeeled + " potatoes peeled (Rank #" + playerRank + ")"}
+      </Text>
+
+      <Stack direction="horizontal" gap={8} style={{ justifyContent: "center", marginTop: "16px", flexWrap: "wrap" }}>
+        <Button @click={submitLeaderboardRecord} style={{ background: "#b45309", color: "#fef9c3", border: "1px solid #fde047", fontWeight: 700 }}>
+          Stamp Career Total to Leaderboard
+        </Button>
+      </Stack>
+
+      <Stack direction="horizontal" gap={10} style={{ justifyContent: "center", marginTop: "16px", flexWrap: "wrap" }}>
+        <Button @click={startBlitzShift} className="pp-display" style={{ padding: "11px 22px", fontSize: "15px", background: "#dc2626", color: "#fff", border: "1px solid #facc15" }}>
+          RUN 60s TRIAL AGAIN
+        </Button>
+        <Button @click={closeBlitzSummary} className="pp-display" style={{ padding: "11px 22px", fontSize: "15px", background: "#15803d", color: "#fff", border: "1px solid #86efac" }}>
+          CONTINUE ENDLESS SHIFT
+        </Button>
+      </Stack>
+    </Box>
+  </Box>
+</Box>

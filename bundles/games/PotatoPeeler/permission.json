@@ -1,0 +1,9 @@
+{
+  "app": { "id": "com.softn.potatopeeler", "name": "PotatoPeeler", "version": "2.1.0" },
+  "permissions": {
+    "storage": {
+      "enabled": true,
+      "collections": { "scores": "append-only" }
+    }
+  }
+}

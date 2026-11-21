@@ -1,0 +1,73 @@
+// Solar Simulator — Persistent Preferences & Custom Sandbox Snapshot Storage
+
+let STORAGE_PREFS_KEY = "softn.solarsimulator.prefs.v1"
+let STORAGE_SNAPSHOT_KEY = "softn.solarsimulator.snapshot.v1"
+let hasSavedSnapshot = false
+let savedSnapshotLabel = ""
+
+function saveUserPrefs(prefsObj) {
+  if (typeof localStorage === "undefined" || !localStorage) { return }
+  try {
+    localStorage.setItem(STORAGE_PREFS_KEY, JSON.stringify(prefsObj))
+  } catch (_e) {}
+}
+
+function loadUserPrefs() {
+  if (typeof localStorage === "undefined" || !localStorage) { return null }
+  try {
+    let raw = localStorage.getItem(STORAGE_PREFS_KEY)
+    if (!raw) { return null }
+    let parsed = JSON.parse(raw)
+    if (parsed && typeof parsed === "object") { return parsed }
+  } catch (_e) {}
+  return null
+}
+
+function checkSavedSnapshotMeta() {
+  if (typeof localStorage === "undefined" || !localStorage) {
+    hasSavedSnapshot = false
+    savedSnapshotLabel = ""
+    return
+  }
+  try {
+    let raw = localStorage.getItem(STORAGE_SNAPSHOT_KEY)
+    if (!raw) {
+      hasSavedSnapshot = false
+      savedSnapshotLabel = ""
+      return
+    }
+    let parsed = JSON.parse(raw)
+    if (parsed && Array.isArray(parsed.bodies) && parsed.bodies.length > 0) {
+      hasSavedSnapshot = true
+      savedSnapshotLabel = String(parsed.label || "Saved Sandbox")
+      return
+    }
+  } catch (_e) {}
+  hasSavedSnapshot = false
+  savedSnapshotLabel = ""
+}
+
+function writeSandboxSnapshot(snapObj) {
+  if (typeof localStorage === "undefined" || !localStorage) { return false }
+  try {
+    localStorage.setItem(STORAGE_SNAPSHOT_KEY, JSON.stringify(snapObj))
+    hasSavedSnapshot = true
+    savedSnapshotLabel = String(snapObj.label || "Saved Sandbox")
+    return true
+  } catch (_e) {
+    return false
+  }
+}
+
+function readSandboxSnapshot() {
+  if (typeof localStorage === "undefined" || !localStorage) { return null }
+  try {
+    let raw = localStorage.getItem(STORAGE_SNAPSHOT_KEY)
+    if (!raw) { return null }
+    let parsed = JSON.parse(raw)
+    if (parsed && Array.isArray(parsed.bodies) && parsed.bodies.length > 0) {
+      return parsed
+    }
+  } catch (_e) {}
+  return null
+}

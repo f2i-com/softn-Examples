@@ -1,0 +1,1346 @@
+<logic src="../logic/main.logic" />
+
+<style>
+.ss-root, .ss-root * { box-sizing: border-box; }
+.ss-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: #040711;
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  color: #e2e8f0;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.ss-scene { position: absolute; inset: 0; }
+.ss-scene, .ss-scene *, .ss-scene canvas {
+  touch-action: none !important;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.ss-root button {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+}
+
+.ss-root input {
+  font-size: 16px !important;
+  touch-action: manipulation;
+}
+
+.ss-glass {
+  background: linear-gradient(180deg, rgba(10, 15, 29, 0.88), rgba(6, 10, 20, 0.92));
+  border: 1px solid rgba(56, 189, 248, 0.24);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(10px);
+}
+
+/* Floating 3D Planet Anchor Pills */
+.ss-anchor-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(6, 10, 22, 0.82);
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.65);
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation !important;
+}
+.ss-anchor-pill-sel {
+  background: rgba(8, 28, 52, 0.92);
+  border: 1px solid #38bdf8;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.45);
+}
+.ss-anchor-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* Desktop Top HUD */
+.ss-top-left {
+  position: absolute;
+  top: calc(10px + env(safe-area-inset-top, 0px));
+  left: calc(12px + env(safe-area-inset-left, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 20;
+  pointer-events: none;
+  max-width: calc(100vw - 410px);
+}
+.ss-top-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  pointer-events: auto;
+}
+.ss-brand-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border-left: 3px solid #f59e0b;
+}
+.ss-pill-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 8px;
+}
+.ss-hud-btn {
+  padding: 5px 9px !important;
+  min-height: 29px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  border-radius: 5px !important;
+  color: #cbd5e1 !important;
+  background: rgba(15, 23, 42, 0.65) !important;
+  border: 1px solid rgba(148, 163, 184, 0.18) !important;
+}
+.ss-hud-btn-on {
+  color: #fef3c7 !important;
+  background: linear-gradient(180deg, rgba(217, 119, 6, 0.85), rgba(180, 83, 9, 0.90)) !important;
+  border-color: #fbbf24 !important;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.35);
+}
+.ss-hud-btn-cyan {
+  color: #e0f2fe !important;
+  background: linear-gradient(180deg, rgba(2, 132, 199, 0.85), rgba(3, 105, 161, 0.90)) !important;
+  border-color: #38bdf8 !important;
+}
+.ss-hud-btn-danger {
+  color: #ffe4e6 !important;
+  background: linear-gradient(180deg, rgba(225, 29, 72, 0.88), rgba(159, 18, 57, 0.92)) !important;
+  border-color: #fb7185 !important;
+  box-shadow: 0 0 12px rgba(244, 63, 94, 0.45);
+}
+
+/* Desktop Top-Right Camera & Layer Bar */
+.ss-top-right {
+  position: absolute;
+  top: calc(10px + env(safe-area-inset-top, 0px));
+  right: calc(12px + env(safe-area-inset-right, 0px));
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+  z-index: 22;
+  pointer-events: auto;
+}
+
+/* Right Dock — Astrophysics Sandbox Lab */
+.ss-lab-dock {
+  position: absolute;
+  top: calc(52px + env(safe-area-inset-top, 0px));
+  right: calc(12px + env(safe-area-inset-right, 0px));
+  bottom: calc(68px + env(safe-area-inset-bottom, 0px));
+  width: 368px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  overflow: hidden;
+  z-index: 21;
+  pointer-events: auto;
+}
+.ss-tab-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding: 6px;
+  background: rgba(4, 8, 18, 0.92);
+  border-bottom: 1px solid rgba(56, 189, 248, 0.20);
+  flex-shrink: 0;
+}
+.ss-tab-btn {
+  padding: 7px 4px !important;
+  min-height: 34px !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  border-radius: 6px !important;
+  color: #94a3b8 !important;
+  background: rgba(15, 23, 42, 0.55) !important;
+  border: 1px solid transparent !important;
+  text-align: center !important;
+}
+.ss-tab-btn-on {
+  color: #fef3c7 !important;
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.98)) !important;
+  border-color: #f59e0b !important;
+  box-shadow: inset 0 -2px 0 #f59e0b;
+}
+
+.ss-lab-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  touch-action: pan-y !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ss-card {
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.62);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.ss-card-amber { border-left: 3px solid #f59e0b; }
+.ss-card-cyan { border-left: 3px solid #38bdf8; }
+.ss-card-rose { border-left: 3px solid #f43f5e; }
+.ss-card-emerald { border-left: 3px solid #10b981; }
+
+.ss-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 5px;
+}
+.ss-stat-cell {
+  padding: 5px 7px;
+  border-radius: 5px;
+  background: rgba(2, 6, 23, 0.58);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.ss-slider-block {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ss-slider-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+}
+.ss-range {
+  width: 100%;
+  height: 22px;
+  accent-color: #f59e0b;
+  cursor: pointer;
+  touch-action: pan-x !important;
+}
+
+.ss-btn-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 5px;
+}
+.ss-btn-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+}
+.ss-action-btn {
+  padding: 7px 8px !important;
+  min-height: 34px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  border-radius: 6px !important;
+  background: rgba(30, 41, 59, 0.82) !important;
+  border: 1px solid rgba(148, 163, 184, 0.26) !important;
+  color: #e2e8f0 !important;
+}
+.ss-hero-btn {
+  padding: 9px 12px !important;
+  min-height: 38px !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  border-radius: 7px !important;
+  letter-spacing: 0.02em !important;
+}
+
+.ss-preset-item {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: flex-start !important;
+  width: 100% !important;
+  height: auto !important;
+  white-space: normal !important;
+  gap: 3px !important;
+  padding: 8px 10px !important;
+  border-radius: 6px !important;
+  background: rgba(15, 23, 42, 0.78) !important;
+  border: 1px solid rgba(148, 163, 184, 0.20) !important;
+  text-align: left !important;
+  color: #e2e8f0 !important;
+}
+.ss-preset-item > * {
+  width: 100%;
+}
+.ss-preset-item-on {
+  background: rgba(30, 41, 59, 0.95) !important;
+  border: 1px solid #f59e0b !important;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.25);
+}
+
+/* Bottom Planet Quick-Bar */
+.ss-bottom-bar {
+  position: absolute;
+  left: calc(12px + env(safe-area-inset-left, 0px));
+  right: calc(12px + env(safe-area-inset-right, 0px));
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 10px;
+  z-index: 20;
+  pointer-events: auto;
+}
+.ss-planet-strip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-bottom: 1px;
+  touch-action: pan-x !important;
+  -webkit-overflow-scrolling: touch;
+}
+.ss-planet-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px !important;
+  min-height: 34px !important;
+  border-radius: 7px !important;
+  background: rgba(15, 23, 42, 0.78) !important;
+  border: 1px solid rgba(148, 163, 184, 0.22) !important;
+  color: #e2e8f0 !important;
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  flex-shrink: 0;
+}
+.ss-planet-chip-sel {
+  background: rgba(12, 36, 68, 0.95) !important;
+  border: 1px solid #38bdf8 !important;
+  color: #f0f9ff !important;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.35);
+}
+.ss-planet-chip-dead {
+  opacity: 0.48;
+  text-decoration: line-through;
+}
+
+/* Floating Event Log Drawer & Toast & Help Modal */
+.ss-event-panel {
+  position: absolute;
+  left: calc(12px + env(safe-area-inset-left, 0px));
+  bottom: calc(68px + env(safe-area-inset-bottom, 0px));
+  width: 360px;
+  max-width: calc(100vw - 24px);
+  max-height: 230px;
+  border-radius: 9px;
+  padding: 9px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  z-index: 22;
+  pointer-events: auto;
+}
+.ss-event-list {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  touch-action: pan-y !important;
+}
+.ss-toast {
+  position: absolute;
+  bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 7px 16px;
+  border-radius: 999px;
+  background: rgba(8, 15, 32, 0.94);
+  border: 1px solid #fbbf24;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.72);
+  z-index: 28;
+  pointer-events: none;
+  max-width: 88vw;
+  text-align: center;
+}
+.ss-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 6, 18, 0.76);
+  backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 35;
+  pointer-events: auto;
+}
+.ss-modal-card {
+  width: 520px;
+  max-width: 100%;
+  max-height: 84vh;
+  overflow-y: auto;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  touch-action: pan-y !important;
+}
+
+/* Mobile Top Bar (hidden on Desktop) */
+.ss-mobile-top { display: none; }
+
+@media (max-width: 860px), (max-height: 540px) {
+  .ss-top-left, .ss-top-right { display: none !important; }
+  .ss-mobile-top {
+    position: absolute;
+    top: calc(8px + env(safe-area-inset-top, 0px));
+    left: calc(8px + env(safe-area-inset-left, 0px));
+    right: calc(8px + env(safe-area-inset-right, 0px));
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    z-index: 24;
+    pointer-events: none;
+  }
+  .ss-mob-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 5px;
+    pointer-events: auto;
+    overflow-x: auto;
+    touch-action: pan-x !important;
+  }
+  .ss-mob-btn {
+    min-height: 36px !important;
+    padding: 5px 9px !important;
+    font-size: 11px !important;
+    font-weight: 800 !important;
+    border-radius: 6px !important;
+    flex-shrink: 0;
+  }
+  .ss-lab-dock {
+    top: auto;
+    left: calc(8px + env(safe-area-inset-left, 0px));
+    right: calc(8px + env(safe-area-inset-right, 0px));
+    bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+    width: auto;
+    max-height: 46vh;
+    z-index: 25;
+  }
+  .ss-lab-dock-mob-closed {
+    display: none !important;
+  }
+  .ss-bottom-bar {
+    left: calc(8px + env(safe-area-inset-left, 0px));
+    right: calc(8px + env(safe-area-inset-right, 0px));
+    bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+    padding: 4px 6px;
+  }
+  .ss-toast {
+    bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+  }
+}
+</style>
+
+<Box className="ss-root">
+  <Loop frame={true} running={true} @tick={simTick} />
+
+  <Controls
+    :bind={pad}
+    enabled={true}
+    keys={{
+      pause: "Space",
+      focus: "f",
+      slower: "[",
+      faster: "]",
+      reset: "r",
+      mute: "m",
+      c1: "1",
+      c2: "2",
+      c3: "3",
+      c4: "4",
+      c5: "5",
+      c6: "6"
+    }}
+    @press={onControlPress}
+  />
+
+  <!-- Full-Viewport Interactive 3D Solar System Canvas -->
+  <Box className="ss-scene">
+    <Scene3D
+      fill={true}
+      staticObjects={sceneStatic}
+      objects={sceneObjects}
+      lights={sceneLights}
+      camera={cameraConfig}
+      orbitControls={true}
+      orbit={orbitLimits}
+      antialias={qualityPreset !== "low"}
+      shadows={false}
+      maxPixelRatio={getSceneMaxPixelRatio()}
+      environment={{ url: "assets/env/deep-space.hdr", background: true, backgroundIntensity: 0.20 }}
+      environmentIntensity={0.62}
+      background="#030612"
+      toneMapping="agx"
+      toneMappingExposure={1.12}
+      effects={sceneEffects}
+      @click={onSceneClick}
+      @stats={onSceneStats}
+    >
+      #each (anc in anchorItems)
+        <SceneAnchor
+          object={anc.sceneObjId}
+          offset={{ y: anc.offsetY }}
+          place="above"
+          clickThrough={false}
+        >
+          <Box
+            className={anc.isSelected ? "ss-anchor-pill ss-anchor-pill-sel" : "ss-anchor-pill"}
+            @click={selectBody(anc.bodyId, false)}
+          >
+            <Box className="ss-anchor-dot" style={{ background: anc.color }} />
+            <Text style={{ fontSize: "10.5px", fontWeight: 800, color: "#f8fafc" }}>
+              {anc.name}
+            </Text>
+            <Text style={{ fontSize: "9.5px", fontWeight: 600, color: "#94a3b8" }}>
+              {anc.badge}
+            </Text>
+          </Box>
+        </SceneAnchor>
+      #end
+    </Scene3D>
+  </Box>
+
+  <!-- Desktop Top-Left: Title, Simulation Clock, Time Warp & Physical Scale Modes -->
+  <Box className="ss-top-left">
+    <Box className="ss-top-row">
+      <Box className="ss-glass ss-brand-card">
+        <Box>
+          <Text style={{ display: "block", fontSize: "13px", fontWeight: 900, color: "#fbbf24", letterSpacing: "0.06em" }}>
+            ☀ SOLAR SIMULATOR
+          </Text>
+          <Text style={{ display: "block", fontSize: "10.5px", color: "#94a3b8" }}>
+            {getActiveScenarioName() + " · " + sunSummary.starCount + (sunSummary.starCount === 1 ? " Sun" : " Suns")}
+          </Text>
+        </Box>
+        <Box style={{ borderLeft: "1px solid rgba(148,163,184,0.22)", paddingLeft: "10px" }}>
+          <Text style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#f8fafc" }}>
+            {formatSimClock()}
+          </Text>
+          <Text style={{ display: "block", fontSize: "10px", color: chaosIndex >= 25 ? "#fb7185" : "#38bdf8", fontWeight: 700 }}>
+            {"Chaos " + Math.round(chaosIndex) + "% · " + formatTimeWarpLabel()}
+          </Text>
+        </Box>
+      </Box>
+
+      <!-- Time Warp Speed Strip -->
+      <Box className="ss-glass ss-pill-group">
+        #each (tw in TIME_WARP_PRESETS)
+          <Button
+            variant="ghost"
+            className={isTimeWarpActive(tw.yrPerSec) ? "ss-hud-btn ss-hud-btn-on" : "ss-hud-btn"}
+            @click={selectTimeWarp(tw.yrPerSec)}
+          >
+            {tw.label}
+          </Button>
+        #end
+        <Button variant="ghost" className="ss-hud-btn" @click={resetCurrentScenario}>
+          ↺ Reset
+        </Button>
+      </Box>
+    </Box>
+
+    <!-- Scale Mode, Camera Presets & Strike Quick-Toggle Row -->
+    <Box className="ss-top-row">
+      <Box className="ss-glass ss-pill-group">
+        #each (sm in SCALE_MODES)
+          <Button
+            variant="ghost"
+            className={scaleMode === sm.id ? "ss-hud-btn ss-hud-btn-cyan" : "ss-hud-btn"}
+            @click={changeScaleMode(sm.id)}
+          >
+            {sm.shortLabel}
+          </Button>
+        #end
+      </Box>
+
+      <Box className="ss-glass ss-pill-group">
+        <Button variant="ghost" className={cameraPreset === "inner" ? "ss-hud-btn ss-hud-btn-cyan" : "ss-hud-btn"} @click={setCameraPreset("inner")}>
+          Inner
+        </Button>
+        <Button variant="ghost" className={cameraPreset === "giants" ? "ss-hud-btn ss-hud-btn-cyan" : "ss-hud-btn"} @click={setCameraPreset("giants")}>
+          Giants
+        </Button>
+        <Button variant="ghost" className={cameraPreset === "full" ? "ss-hud-btn ss-hud-btn-cyan" : "ss-hud-btn"} @click={setCameraPreset("full")}>
+          40 AU
+        </Button>
+        <Button variant="ghost" className={cameraPreset === "top" ? "ss-hud-btn ss-hud-btn-cyan" : "ss-hud-btn"} @click={setCameraPreset("top")}>
+          Top
+        </Button>
+        <Button variant="ghost" className={cameraPreset === "focus" ? "ss-hud-btn ss-hud-btn-on" : "ss-hud-btn"} @click={toggleFocusSelected}>
+          {"🎯 Focus " + selectedSummary.name}
+        </Button>
+      </Box>
+
+      #if (clickStrikeMode)
+        <Button variant="ghost" className="ss-hud-btn ss-hud-btn-danger" @click={toggleClickStrikeMode}>
+          🎯 TAP-STRIKE ARMED · Cancel
+        </Button>
+      #end
+    </Box>
+  </Box>
+
+  <!-- Desktop Top-Right: Visual Overlays, Audio & Lab Toggle (aligned cleanly above 368px Right Dock) -->
+  <Box className="ss-top-right">
+    <Box className="ss-glass ss-pill-group">
+      <Button variant="ghost" className={showOrbits ? "ss-hud-btn ss-hud-btn-cyan" : "ss-hud-btn"} @click={toggleShowOrbits}>
+        Orbits
+      </Button>
+      <Button variant="ghost" className={showTrails ? "ss-hud-btn ss-hud-btn-cyan" : "ss-hud-btn"} @click={toggleShowTrails}>
+        Trails
+      </Button>
+      <Button variant="ghost" className={showBelt ? "ss-hud-btn ss-hud-btn-cyan" : "ss-hud-btn"} @click={toggleShowBelt}>
+        Belt
+      </Button>
+      <Button variant="ghost" className={showHabZone ? "ss-hud-btn ss-hud-btn-cyan" : "ss-hud-btn"} @click={toggleShowHabZone}>
+        HZ
+      </Button>
+      <Button variant="ghost" className={showLabels ? "ss-hud-btn ss-hud-btn-cyan" : "ss-hud-btn"} @click={toggleShowLabels}>
+        Tags
+      </Button>
+      <Button variant="ghost" className={eventLogOpen ? "ss-hud-btn ss-hud-btn-on" : "ss-hud-btn"} @click={toggleEventLog}>
+        📜
+      </Button>
+      <Button variant="ghost" className="ss-hud-btn" @click={toggleMuteAudio}>
+        {muted ? "🔇" : "🔊"}
+      </Button>
+      <Button variant="ghost" className="ss-hud-btn" @click={toggleHelpModal}>
+        ?
+      </Button>
+      <Button variant="ghost" className="ss-hud-btn ss-hud-btn-on" @click={toggleDesktopLab}>
+        {labCollapsed ? "◀ Lab" : "▶ Hide"}
+      </Button>
+    </Box>
+  </Box>
+
+  <!-- Compact Mobile Top Bar (Portrait & Short Landscape Phones) -->
+  <Box className="ss-mobile-top">
+    <Box className="ss-glass ss-mob-row" style={{ padding: "5px 8px", borderRadius: "8px" }}>
+      <Box style={{ minWidth: 0 }}>
+        <Text style={{ display: "block", fontSize: "11.5px", fontWeight: 900, color: "#fbbf24" }}>
+          {"☀ " + formatSimClock()}
+        </Text>
+        <Text style={{ display: "block", fontSize: "9.5px", color: "#94a3b8" }}>
+          {sunSummary.starCount + " Sun(s) · Chaos " + Math.round(chaosIndex) + "%"}
+        </Text>
+      </Box>
+
+      <Box style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+        <Button variant="ghost" className="ss-hud-btn ss-mob-btn" @click={togglePauseSim}>
+          {paused ? "▶" : "⏸"}
+        </Button>
+        <Button variant="ghost" className="ss-hud-btn ss-mob-btn" @click={stepTimeWarpFaster(1)}>
+          ⏩
+        </Button>
+        <Button variant="ghost" className={cameraPreset === "focus" ? "ss-hud-btn ss-hud-btn-on ss-mob-btn" : "ss-hud-btn ss-mob-btn"} @click={toggleFocusSelected}>
+          🎯
+        </Button>
+        <Button variant="ghost" className="ss-hud-btn ss-mob-btn" @click={resetCurrentScenario}>
+          ↺
+        </Button>
+        <Button variant="ghost" className={mobileLabOpen ? "ss-hud-btn ss-hud-btn-on ss-mob-btn" : "ss-hud-btn ss-hud-btn-cyan ss-mob-btn"} @click={toggleMobileLab}>
+          {mobileLabOpen ? "✕ Close" : "🧪 Lab"}
+        </Button>
+      </Box>
+    </Box>
+
+    <Box className="ss-mob-row">
+      <Button variant="ghost" className={scaleMode === "proportional" ? "ss-hud-btn ss-hud-btn-cyan ss-mob-btn" : "ss-hud-btn ss-mob-btn"} @click={changeScaleMode("proportional")}>
+        True AU
+      </Button>
+      <Button variant="ghost" className={scaleMode === "true_1to1" ? "ss-hud-btn ss-hud-btn-cyan ss-mob-btn" : "ss-hud-btn ss-mob-btn"} @click={changeScaleMode("true_1to1")}>
+        1:1 Exact
+      </Button>
+      <Button variant="ghost" className={scaleMode === "lineup" ? "ss-hud-btn ss-hud-btn-cyan ss-mob-btn" : "ss-hud-btn ss-mob-btn"} @click={changeScaleMode("lineup")}>
+        Size Lineup
+      </Button>
+      <Button variant="ghost" className={clickStrikeMode ? "ss-hud-btn ss-hud-btn-danger ss-mob-btn" : "ss-hud-btn ss-mob-btn"} @click={toggleClickStrikeMode}>
+        {clickStrikeMode ? "🎯 Armed!" : "☄ Strike"}
+      </Button>
+      <Button variant="ghost" className="ss-hud-btn ss-mob-btn" @click={setCameraPreset("full")}>
+        40 AU
+      </Button>
+    </Box>
+  </Box>
+
+  <!-- Right Astrophysics Sandbox Dock (Desktop Panel + Mobile Bottom Sheet) -->
+  #if (!labCollapsed)
+    <Box className={mobileLabOpen ? "ss-glass ss-lab-dock" : "ss-glass ss-lab-dock ss-lab-dock-mob-closed"}>
+      <!-- 4 Sandbox Experiment Tabs -->
+      <Box className="ss-tab-bar">
+        <Button
+          variant="ghost"
+          className={activeTab === "orbit" ? "ss-tab-btn ss-tab-btn-on" : "ss-tab-btn"}
+          @click={setLabTab("orbit")}
+        >
+          🪐 Orbits
+        </Button>
+        <Button
+          variant="ghost"
+          className={activeTab === "sun" ? "ss-tab-btn ss-tab-btn-on" : "ss-tab-btn"}
+          @click={setLabTab("sun")}
+        >
+          ☀ Sun
+        </Button>
+        <Button
+          variant="ghost"
+          className={activeTab === "asteroid" ? "ss-tab-btn ss-tab-btn-on" : "ss-tab-btn"}
+          @click={setLabTab("asteroid")}
+        >
+          ☄ Impact
+        </Button>
+        <Button
+          variant="ghost"
+          className={activeTab === "suns" ? "ss-tab-btn ss-tab-btn-on" : "ss-tab-btn"}
+          @click={setLabTab("suns")}
+        >
+          ✨ 2–3 Suns
+        </Button>
+      </Box>
+
+      <Box className="ss-lab-scroll">
+        <!-- TAB 1: ORBIT PERTURBATION & CHAOS LAB -->
+        #if (activeTab === "orbit")
+          <Box className="ss-card ss-card-cyan">
+            <Stack direction="horizontal" gap={8} style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <Box style={{ display: "flex", alignItems: "center", gap: "7px" }}>
+                <Box style={{ width: "10px", height: "10px", borderRadius: "999px", background: selectedSummary.color }} />
+                <Text style={{ fontSize: "13px", fontWeight: 900, color: "#f8fafc" }}>
+                  {selectedSummary.name}
+                </Text>
+                <Text style={{ fontSize: "10px", fontWeight: 700, color: selectedSummary.alive ? "#34d399" : "#fb7185" }}>
+                  {selectedSummary.alive ? ("● " + selectedSummary.refName) : ("✕ " + selectedSummary.status)}
+                </Text>
+              </Box>
+              <Button variant="ghost" className="ss-hud-btn ss-hud-btn-cyan" @click={toggleFocusSelected}>
+                {cameraPreset === "focus" && focusedBodyId === selectedSummary.id ? "Unfocus" : "🎯 Focus"}
+              </Button>
+            </Stack>
+
+            <Box className="ss-stat-grid">
+              <Box className="ss-stat-cell">
+                <Text style={{ display: "block", fontSize: "9.5px", color: "#94a3b8" }}>Distance (r) / Semi-Major (a)</Text>
+                <Text style={{ display: "block", fontSize: "11.5px", fontWeight: 800, color: "#f1f5f9" }}>
+                  {selectedSummary.rText + " · " + selectedSummary.aText}
+                </Text>
+              </Box>
+              <Box className="ss-stat-cell">
+                <Text style={{ display: "block", fontSize: "9.5px", color: "#94a3b8" }}>Eccentricity (e) & Tilt (i)</Text>
+                <Text style={{ display: "block", fontSize: "11.5px", fontWeight: 800, color: "#f1f5f9" }}>
+                  {"e = " + selectedSummary.eText + " · " + selectedSummary.iText}
+                </Text>
+              </Box>
+              <Box className="ss-stat-cell">
+                <Text style={{ display: "block", fontSize: "9.5px", color: "#94a3b8" }}>Orbital Speed & Period</Text>
+                <Text style={{ display: "block", fontSize: "11.5px", fontWeight: 800, color: "#38bdf8" }}>
+                  {selectedSummary.speedText + " · " + selectedSummary.periodText}
+                </Text>
+              </Box>
+              <Box className="ss-stat-cell">
+                <Text style={{ display: "block", fontSize: "9.5px", color: "#94a3b8" }}>Surface Temp & Mass</Text>
+                <Text style={{ display: "block", fontSize: "11.5px", fontWeight: 800, color: "#fbbf24" }}>
+                  {selectedSummary.tempText + " · " + selectedSummary.massText}
+                </Text>
+              </Box>
+            </Box>
+          </Box>
+
+          #if (!selectedSummary.isStar && selectedSummary.alive)
+            <Box className="ss-card ss-card-amber">
+              <Text style={{ fontSize: "11px", fontWeight: 800, color: "#fbbf24", letterSpacing: "0.05em" }}>
+                PERTURB ORBITAL ELEMENTS (LIVE KEPLER → N-BODY)
+              </Text>
+
+              <Box className="ss-slider-block">
+                <Box className="ss-slider-head">
+                  <Text style={{ color: "#cbd5e1" }}>Semi-Major Axis (a)</Text>
+                  <Text style={{ fontWeight: 800, color: "#fde047" }}>{editSemiMajorAU + " AU"}</Text>
+                </Box>
+                <input
+                  type="range"
+                  className="ss-range"
+                  min="0.12"
+                  max="42.0"
+                  step="0.02"
+                  value={editSemiMajorAU}
+                  @input={onOrbitASlider}
+                  @change={onOrbitASlider}
+                />
+              </Box>
+
+              <Box className="ss-slider-block">
+                <Box className="ss-slider-head">
+                  <Text style={{ color: "#cbd5e1" }}>Eccentricity (e · Stretch Orbit)</Text>
+                  <Text style={{ fontWeight: 800, color: "#fde047" }}>{editEcc}</Text>
+                </Box>
+                <input
+                  type="range"
+                  className="ss-range"
+                  min="0.000"
+                  max="0.900"
+                  step="0.005"
+                  value={editEcc}
+                  @input={onOrbitESlider}
+                  @change={onOrbitESlider}
+                />
+              </Box>
+
+              <Box className="ss-slider-block">
+                <Box className="ss-slider-head">
+                  <Text style={{ color: "#cbd5e1" }}>3D Inclination (i · Tilt Plane)</Text>
+                  <Text style={{ fontWeight: 800, color: "#fde047" }}>{editIncDeg + "°"}</Text>
+                </Box>
+                <input
+                  type="range"
+                  className="ss-range"
+                  min="0.0"
+                  max="90.0"
+                  step="0.5"
+                  value={editIncDeg}
+                  @input={onOrbitISlider}
+                  @change={onOrbitISlider}
+                />
+              </Box>
+
+              <Box className="ss-slider-block">
+                <Box className="ss-slider-head">
+                  <Text style={{ color: "#cbd5e1" }}>Gravity Mass Multiplier</Text>
+                  <Text style={{ fontWeight: 800, color: "#38bdf8" }}>{editMassMult + "× M₀"}</Text>
+                </Box>
+                <input
+                  type="range"
+                  className="ss-range"
+                  min="0.1"
+                  max="50.0"
+                  step="0.5"
+                  value={editMassMult}
+                  @input={onPlanetMassMultSlider}
+                  @change={onPlanetMassMultSlider}
+                />
+              </Box>
+            </Box>
+
+            <Box className="ss-card ss-card-rose">
+              <Text style={{ fontSize: "11px", fontWeight: 800, color: "#fb7185", letterSpacing: "0.05em" }}>
+                INSTANT Δv BURNS & GRAVITATIONAL CHAOS
+              </Text>
+              <Box className="ss-btn-grid-2">
+                <Button variant="ghost" className="ss-action-btn" @click={nudgeSelectedOrbit(-0.12)}>
+                  ⏪ -12% Retrograde Δv
+                </Button>
+                <Button variant="ghost" className="ss-action-btn" @click={nudgeSelectedOrbit(0.12)}>
+                  ⏩ +12% Prograde Δv
+                </Button>
+                <Button variant="ghost" className="ss-action-btn" @click={pumpSelectedEccentricity(0.28)}>
+                  〰 +0.28 Eccentric Kick
+                </Button>
+                <Button variant="ghost" className="ss-action-btn" @click={flipSelectedRetrograde}>
+                  ⇄ Flip Orbit Retrograde
+                </Button>
+              </Box>
+              <Button variant="ghost" className="ss-action-btn" @click={boostSelectedMass10x}>
+                {"⚖ Multiply " + selectedSummary.name + " Mass 10× (Perturb Neighbours)"}
+              </Button>
+              <Button variant="ghost" className="ss-hud-btn ss-hud-btn-danger ss-hero-btn" @click={chaosScrambleInnerOrbits}>
+                🎲 Scramble Inner Orbits (Unleash Crossing Chaos!)
+              </Button>
+            </Box>
+          #else
+            <Box className="ss-card ss-card-amber">
+              <Text style={{ fontSize: "11.5px", color: "#fde68a", lineHeight: "1.45" }}>
+                Select any planet in the bottom strip (e.g. Earth, Mars, Jupiter) to tweak its semi-major axis, eccentricity, inclination, velocity, or mass — or open the ☀ Sun tab to evolve this star!
+              </Text>
+              <Button variant="ghost" className="ss-hud-btn ss-hud-btn-danger ss-hero-btn" @click={chaosScrambleInnerOrbits}>
+                🎲 Scramble Inner Planet Orbits Into Chaos!
+              </Button>
+            </Box>
+          #end
+        #end
+
+        <!-- TAB 2: SUN & RED GIANT EVOLUTION SIMULATOR -->
+        #if (activeTab === "sun")
+          <Box className="ss-card ss-card-amber">
+            <Stack direction="horizontal" gap={8} style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={{ fontSize: "12px", fontWeight: 900, color: "#fbbf24" }}>
+                {"☀ " + sunSummary.name + " · " + sunSummary.spectral}
+              </Text>
+              <Text style={{ fontSize: "10.5px", fontWeight: 800, color: "#34d399" }}>
+                {"HZ: " + sunSummary.hzText}
+              </Text>
+            </Stack>
+
+            <Box className="ss-stat-grid">
+              <Box className="ss-stat-cell">
+                <Text style={{ display: "block", fontSize: "9.5px", color: "#94a3b8" }}>Stellar Mass</Text>
+                <Text style={{ display: "block", fontSize: "11.5px", fontWeight: 800, color: "#f8fafc" }}>{sunSummary.massText}</Text>
+              </Box>
+              <Box className="ss-stat-cell">
+                <Text style={{ display: "block", fontSize: "9.5px", color: "#94a3b8" }}>Photosphere Radius</Text>
+                <Text style={{ display: "block", fontSize: "11.5px", fontWeight: 800, color: "#fb923c" }}>{sunSummary.radiusText}</Text>
+              </Box>
+              <Box className="ss-stat-cell">
+                <Text style={{ display: "block", fontSize: "9.5px", color: "#94a3b8" }}>Luminosity</Text>
+                <Text style={{ display: "block", fontSize: "11.5px", fontWeight: 800, color: "#fde047" }}>{sunSummary.lumText}</Text>
+              </Box>
+              <Box className="ss-stat-cell">
+                <Text style={{ display: "block", fontSize: "9.5px", color: "#94a3b8" }}>Surface Temp</Text>
+                <Text style={{ display: "block", fontSize: "11.5px", fontWeight: 800, color: "#f8fafc" }}>{sunSummary.tempText}</Text>
+              </Box>
+            </Box>
+
+            <Button
+              variant="ghost"
+              className="ss-hud-btn ss-hud-btn-on ss-hero-btn"
+              @click={runRedGiantEvolution}
+            >
+              {stellarEvoActive ? ("🔥 Evolving Sun... " + sunSummary.evoPct + "%") : "▶ Animate Red Giant Life-Cycle (4.6 → 12.2 Gyr)"}
+            </Button>
+
+            <Text style={{ fontSize: "10.5px", color: "#94a3b8", lineHeight: "1.4" }}>
+              As the Sun swells past 170 R☉ (0.80 AU) and sheds 46% of its mass via stellar winds, Mercury & Venus spiral into chromospheric drag and vaporize while Earth, Mars & Jupiter spiral outward (a ∝ 1/M☉)!
+            </Text>
+          </Box>
+
+          <Box className="ss-card ss-card-rose">
+            <Text style={{ fontSize: "11px", fontWeight: 800, color: "#fda4af", letterSpacing: "0.05em" }}>
+              SOLAR EVOLUTIONARY EPOCHS (JUMP TO STAGE)
+            </Text>
+            #each (stg in STELLAR_STAGES)
+              <Button
+                variant="ghost"
+                className={stellarStageId === stg.id ? "ss-preset-item ss-preset-item-on" : "ss-preset-item"}
+                @click={chooseSolarStage(stg.id)}
+              >
+                <Box style={{ display: "flex", flexDirection: "column", width: "100%", gap: "3px", textAlign: "left" }}>
+                  <Box style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "6px", width: "100%" }}>
+                    <Text style={{ fontSize: "11.5px", fontWeight: 800, color: "#fef3c7" }}>{stg.label}</Text>
+                    <Text style={{ fontSize: "10px", fontWeight: 700, color: "#fb923c", flexShrink: 0 }}>{stg.radiusRsun + " R☉ · " + stg.massMsun + " M☉"}</Text>
+                  </Box>
+                  <Text style={{ display: "block", fontSize: "10px", color: "#94a3b8", lineHeight: "1.35", whiteSpace: "normal" }}>
+                    {stg.desc}
+                  </Text>
+                </Box>
+              </Button>
+            #end
+          </Box>
+
+          <Box className="ss-card ss-card-cyan">
+            <Text style={{ fontSize: "11px", fontWeight: 800, color: "#38bdf8", letterSpacing: "0.05em" }}>
+              MANUAL STELLAR SANDBOX OVERRIDES
+            </Text>
+
+            <Box className="ss-slider-block">
+              <Box className="ss-slider-head">
+                <Text style={{ color: "#cbd5e1" }}>Solar Radius (log₁₀ R☉)</Text>
+                <Text style={{ fontWeight: 800, color: "#fb923c" }}>{sunSummary.radiusText}</Text>
+              </Box>
+              <input
+                type="range"
+                className="ss-range"
+                min="-1.90"
+                max="2.40"
+                step="0.02"
+                value={editSunLogRadius}
+                @input={onSunRadiusSlider}
+                @change={onSunRadiusSlider}
+              />
+            </Box>
+
+            <Box className="ss-slider-block">
+              <Box className="ss-slider-head">
+                <Text style={{ color: "#cbd5e1" }}>Solar Mass (0.15 – 3.00 M☉)</Text>
+                <Text style={{ fontWeight: 800, color: "#fde047" }}>{editSunMassMsun + " M☉"}</Text>
+              </Box>
+              <input
+                type="range"
+                className="ss-range"
+                min="0.15"
+                max="3.00"
+                step="0.02"
+                value={editSunMassMsun}
+                @input={onSunMassSlider}
+                @change={onSunMassSlider}
+              />
+            </Box>
+
+            <Box className="ss-slider-block">
+              <Box className="ss-slider-head">
+                <Text style={{ color: "#cbd5e1" }}>Luminosity (log₁₀ L☉)</Text>
+                <Text style={{ fontWeight: 800, color: "#34d399" }}>{sunSummary.lumText}</Text>
+              </Box>
+              <input
+                type="range"
+                className="ss-range"
+                min="-1.80"
+                max="3.55"
+                step="0.05"
+                value={editSunLogLum}
+                @input={onSunLumSlider}
+                @change={onSunLumSlider}
+              />
+            </Box>
+
+            <Button variant="ghost" className="ss-hud-btn ss-hud-btn-danger ss-hero-btn" @click={triggerSupernovaAction}>
+              💥 Detonate What-If Core-Collapse Supernova!
+            </Button>
+          </Box>
+        #end
+
+        <!-- TAB 3: MASSIVE ASTEROID IMPACT SANDBOX -->
+        #if (activeTab === "asteroid")
+          <Box className="ss-card ss-card-rose">
+            <Stack direction="horizontal" gap={8} style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <Box>
+                <Text style={{ display: "block", fontSize: "11px", fontWeight: 800, color: "#fb7185", letterSpacing: "0.05em" }}>
+                  KINETIC ASTEROID STRIKE LAB
+                </Text>
+                <Text style={{ display: "block", fontSize: "11.5px", fontWeight: 800, color: "#f8fafc" }}>
+                  {"Target: " + (selectedSummary.isStar ? "Earth (Auto)" : selectedSummary.name)}
+                </Text>
+              </Box>
+              <Button
+                variant="ghost"
+                className={clickStrikeMode ? "ss-hud-btn ss-hud-btn-danger" : "ss-hud-btn ss-hud-btn-cyan"}
+                @click={toggleClickStrikeMode}
+              >
+                {clickStrikeMode ? "🎯 Tap-Strike ON" : "🎯 Tap-to-Strike"}
+              </Button>
+            </Stack>
+
+            <Button
+              variant="ghost"
+              className="ss-hud-btn ss-hud-btn-danger ss-hero-btn"
+              @click={fireAsteroidAtSelected}
+            >
+              {"☄ LAUNCH ASTEROID AT " + (selectedSummary.isStar ? "EARTH" : selectedSummary.name)}
+            </Button>
+
+            <Button variant="ghost" className="ss-action-btn" @click={triggerMeteorStorm}>
+              ☄ Heavy Bombardment (Strike Mercury, Venus, Earth & Mars!)
+            </Button>
+          </Box>
+
+          <Box className="ss-card ss-card-amber">
+            <Text style={{ fontSize: "11px", fontWeight: 800, color: "#fbbf24", letterSpacing: "0.05em" }}>
+              SELECT IMPACTOR MASS & VELOCITY
+            </Text>
+
+            #each (imp in IMPACTOR_PRESETS)
+              <Button
+                variant="ghost"
+                className={impactorPresetId === imp.id ? "ss-preset-item ss-preset-item-on" : "ss-preset-item"}
+                @click={selectImpactorPreset(imp.id)}
+              >
+                <Box style={{ display: "flex", justifyContent: "space-between", width: "100%" }}>
+                  <Text style={{ fontSize: "11.5px", fontWeight: 800, color: "#f8fafc" }}>{imp.name}</Text>
+                  <Text style={{ fontSize: "10px", fontWeight: 800, color: "#fb923c" }}>{imp.badge}</Text>
+                </Box>
+              </Button>
+            #end
+
+            <Text style={{ fontSize: "10.5px", color: "#cbd5e1", lineHeight: "1.4" }}>
+              {getSelectedImpactorDesc()}
+            </Text>
+
+            <Box className="ss-slider-block">
+              <Box className="ss-slider-head">
+                <Text style={{ color: "#cbd5e1" }}>Impact Speed (v_rel)</Text>
+                <Text style={{ fontWeight: 800, color: "#fb7185" }}>{impactorSpeedKms + " km/s"}</Text>
+              </Box>
+              <input
+                type="range"
+                className="ss-range"
+                min="10"
+                max="130"
+                step="2"
+                value={impactorSpeedKms}
+                @input={onImpactorSpeedSlider}
+                @change={onImpactorSpeedSlider}
+              />
+            </Box>
+
+            <Text style={{ fontSize: "10.5px", fontWeight: 700, color: "#94a3b8" }}>Approach Vector:</Text>
+            <Box className="ss-btn-grid-2">
+              <Button variant="ghost" className={impactorAngleMode === "head_on" ? "ss-hud-btn ss-hud-btn-on" : "ss-hud-btn"} @click={setImpactorAngle("head_on")}>
+                Head-On (Retrograde)
+              </Button>
+              <Button variant="ghost" className={impactorAngleMode === "prograde" ? "ss-hud-btn ss-hud-btn-on" : "ss-hud-btn"} @click={setImpactorAngle("prograde")}>
+                Rear (Prograde Boost)
+              </Button>
+              <Button variant="ghost" className={impactorAngleMode === "radial" ? "ss-hud-btn ss-hud-btn-on" : "ss-hud-btn"} @click={setImpactorAngle("radial")}>
+                Radial Inward
+              </Button>
+              <Button variant="ghost" className={impactorAngleMode === "inclined" ? "ss-hud-btn ss-hud-btn-on" : "ss-hud-btn"} @click={setImpactorAngle("inclined")}>
+                Inclined 48° (Plane Tilt)
+              </Button>
+            </Box>
+          </Box>
+
+          #if (lastImpactReport !== null)
+            <Box className="ss-card ss-card-cyan">
+              <Text style={{ fontSize: "11px", fontWeight: 800, color: "#38bdf8", letterSpacing: "0.05em" }}>
+                {"LAST IMPACT REPORT · " + lastImpactReport.targetName}
+              </Text>
+              <Box className="ss-stat-grid">
+                <Box className="ss-stat-cell">
+                  <Text style={{ display: "block", fontSize: "9.5px", color: "#94a3b8" }}>Kinetic Energy</Text>
+                  <Text style={{ display: "block", fontSize: "11px", fontWeight: 800, color: "#fde047" }}>
+                    {formatMegatons(lastImpactReport.energyMegatons)}
+                  </Text>
+                </Box>
+                <Box className="ss-stat-cell">
+                  <Text style={{ display: "block", fontSize: "9.5px", color: "#94a3b8" }}>Binding Energy (Ek / U)</Text>
+                  <Text style={{ display: "block", fontSize: "11px", fontWeight: 800, color: "#fb7185" }}>
+                    {lastImpactReport.bindRatioPct + "% U_bind"}
+                  </Text>
+                </Box>
+                <Box className="ss-stat-cell">
+                  <Text style={{ display: "block", fontSize: "9.5px", color: "#94a3b8" }}>Orbital Kick (Δv)</Text>
+                  <Text style={{ display: "block", fontSize: "11px", fontWeight: 800, color: "#38bdf8" }}>
+                    {lastImpactReport.deltaVKms + " km/s · Crater " + lastImpactReport.craterKm + " km"}
+                  </Text>
+                </Box>
+                <Box className="ss-stat-cell">
+                  <Text style={{ display: "block", fontSize: "9.5px", color: "#94a3b8" }}>Eccentricity Shift</Text>
+                  <Text style={{ display: "block", fontSize: "11px", fontWeight: 800, color: "#f8fafc" }}>
+                    {lastImpactReport.oldE + " → " + lastImpactReport.newE}
+                  </Text>
+                </Box>
+              </Box>
+              <Text style={{ fontSize: "10.5px", color: "#fde68a" }}>
+                {lastImpactReport.outcome}
+              </Text>
+            </Box>
+          #end
+        #end
+
+        <!-- TAB 4: MULTI-STAR (2 OR 3 SUNS) & SCENARIO PRESETS -->
+        #if (activeTab === "suns")
+          <Box className="ss-card ss-card-amber">
+            <Stack direction="horizontal" gap={8} style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={{ fontSize: "11px", fontWeight: 800, color: "#fbbf24", letterSpacing: "0.05em" }}>
+                LIVE SPAWN 2ND OR 3RD SUN
+              </Text>
+              <Text style={{ fontSize: "10.5px", fontWeight: 800, color: "#38bdf8" }}>
+                {sunSummary.starCount + " Active Sun(s)"}
+              </Text>
+            </Stack>
+
+            <Box className="ss-btn-grid-2">
+              #each (st in STAR_TEMPLATES)
+                <Button
+                  variant="ghost"
+                  className={companionTemplateId === st.id ? "ss-preset-item ss-preset-item-on" : "ss-preset-item"}
+                  @click={setCompanionTemplate(st.id)}
+                >
+                  <Box style={{ display: "flex", flexDirection: "column", width: "100%", gap: "2px", textAlign: "left" }}>
+                    <Text style={{ display: "block", fontSize: "11px", fontWeight: 800, color: st.photoHex }}>{st.name}</Text>
+                    <Text style={{ display: "block", fontSize: "9.5px", color: "#94a3b8" }}>{st.massMsun + " M☉ · " + st.luminosityLsun + " L☉"}</Text>
+                  </Box>
+                </Button>
+              #end
+            </Box>
+
+            <Box className="ss-slider-block">
+              <Box className="ss-slider-head">
+                <Text style={{ color: "#cbd5e1" }}>Companion Semi-Major Axis</Text>
+                <Text style={{ fontWeight: 800, color: "#fde047" }}>{companionDistAU + " AU"}</Text>
+              </Box>
+              <input
+                type="range"
+                className="ss-range"
+                min="0.25"
+                max="28.0"
+                step="0.25"
+                value={companionDistAU}
+                @input={onCompanionDistSlider}
+                @change={onCompanionDistSlider}
+              />
+            </Box>
+
+            <Box className="ss-slider-block">
+              <Box className="ss-slider-head">
+                <Text style={{ color: "#cbd5e1" }}>Companion Eccentricity & Tilt</Text>
+                <Text style={{ fontWeight: 800, color: "#fde047" }}>{"e = " + companionEcc + " · i = " + companionIncDeg + "°"}</Text>
+              </Box>
+              <input
+                type="range"
+                className="ss-range"
+                min="0.00"
+                max="0.72"
+                step="0.02"
+                value={companionEcc}
+                @input={onCompanionEccSlider}
+                @change={onCompanionEccSlider}
+              />
+              <input
+                type="range"
+                className="ss-range"
+                min="0"
+                max="75"
+                step="2"
+                value={companionIncDeg}
+                @input={onCompanionIncSlider}
+                @change={onCompanionIncSlider}
+              />
+            </Box>
+
+            <Button variant="ghost" className="ss-hud-btn ss-hud-btn-on ss-hero-btn" @click={addCompanionSunAction}>
+              ☀ + Spawn Companion Sun Into Active System!
+            </Button>
+          </Box>
+
+          <Box className="ss-card ss-card-cyan">
+            <Text style={{ fontSize: "11px", fontWeight: 800, color: "#38bdf8", letterSpacing: "0.05em" }}>
+              CURATED 1-SUN, 2-SUN & 3-SUN SCENARIOS
+            </Text>
+            #each (sc in SCENARIO_PRESETS)
+              <Button
+                variant="ghost"
+                className={activeScenarioId === sc.id ? "ss-preset-item ss-preset-item-on" : "ss-preset-item"}
+                @click={activateScenario(sc.id)}
+              >
+                <Box style={{ display: "flex", flexDirection: "column", width: "100%", gap: "3px", textAlign: "left" }}>
+                  <Text style={{ display: "block", fontSize: "11.5px", fontWeight: 800, color: "#f8fafc" }}>{sc.name}</Text>
+                  <Text style={{ display: "block", fontSize: "10px", color: "#94a3b8", lineHeight: "1.35", whiteSpace: "normal" }}>
+                    {sc.summary}
+                  </Text>
+                </Box>
+              </Button>
+            #end
+          </Box>
+
+          <Box className="ss-card ss-card-emerald">
+            <Text style={{ fontSize: "11px", fontWeight: 800, color: "#34d399", letterSpacing: "0.05em" }}>
+              SANDBOX SNAPSHOT & GRAPHICS
+            </Text>
+            <Box className="ss-btn-grid-2">
+              <Button variant="ghost" className="ss-action-btn" @click={saveCurrentSandbox}>
+                💾 Save Snapshot
+              </Button>
+              <Button variant="ghost" className="ss-action-btn" @click={loadSavedSandbox}>
+                {hasSavedSnapshot ? ("📂 Load (" + savedSnapshotLabel + ")") : "📂 Load Snapshot"}
+              </Button>
+            </Box>
+            <Button variant="ghost" className="ss-action-btn" @click={cycleGraphicsQuality}>
+              {"✨ Graphics Quality: " + qualityPreset.toUpperCase() + " (" + sceneFps + " FPS)"}
+            </Button>
+          </Box>
+        #end
+      </Box>
+    </Box>
+  #end
+
+  <!-- Floating Astrophysical Event Log Drawer -->
+  #if (eventLogOpen)
+    <Box className="ss-glass ss-event-panel">
+      <Stack direction="horizontal" gap={8} style={{ justifyContent: "space-between", alignItems: "center" }}>
+        <Text style={{ fontSize: "11px", fontWeight: 800, color: "#fbbf24", letterSpacing: "0.05em" }}>
+          📜 ASTROPHYSICAL EVENT CHRONICLE
+        </Text>
+        <Button variant="ghost" className="ss-hud-btn" @click={toggleEventLog}>✕</Button>
+      </Stack>
+      <Box className="ss-event-list">
+        #each (ev in eventLog)
+          <Box style={{ padding: "4px 6px", borderRadius: "4px", background: "rgba(15,23,42,0.65)", borderLeft: "2px solid #38bdf8" }}>
+            <Text style={{ fontSize: "9.5px", fontWeight: 800, color: "#38bdf8", marginRight: "6px" }}>{ev.timeLabel}</Text>
+            <Text style={{ fontSize: "10.5px", color: "#e2e8f0" }}>{ev.text}</Text>
+          </Box>
+        #end
+      </Box>
+    </Box>
+  #end
+
+  <!-- Bottom Planet & Star Selector Strip -->
+  <Box className="ss-glass ss-bottom-bar">
+    <Box className="ss-planet-strip">
+      #each (b in bodies)
+        #if (b.kind !== "impactor")
+          <Button
+            variant="ghost"
+            className={!b.alive ? "ss-planet-chip ss-planet-chip-dead" : (selectedBodyId === b.id ? "ss-planet-chip ss-planet-chip-sel" : "ss-planet-chip")}
+            @click={selectBody(b.id, false)}
+          >
+            <Box className="ss-anchor-dot" style={{ background: b.color }} />
+            <Text>{b.name}</Text>
+          </Button>
+        #end
+      #end
+    </Box>
+    <Button variant="ghost" className="ss-hud-btn ss-hud-btn-cyan" @click={toggleFocusSelected}>
+      🎯 Track
+    </Button>
+  </Box>
+
+  <!-- Toast Banner -->
+  #if (toastText !== "")
+    <Box className="ss-toast">
+      <Text style={{ fontSize: "11.5px", fontWeight: 800, color: "#fef3c7" }}>{toastText}</Text>
+    </Box>
+  #end
+
+  <!-- Astrophysics & Controls Quick Guide Modal -->
+  #if (helpOpen)
+    <Box className="ss-modal-backdrop" @click={toggleHelpModal}>
+      <Box className="ss-glass ss-modal-card">
+        <Stack direction="horizontal" gap={8} style={{ justifyContent: "space-between", alignItems: "center" }}>
+          <Text style={{ fontSize: "14px", fontWeight: 900, color: "#fbbf24" }}>
+            ☀ SOLAR SIMULATOR · ASTROPHYSICS GUIDE
+          </Text>
+          <Button variant="ghost" className="ss-hud-btn" @click={toggleHelpModal}>✕ Close</Button>
+        </Stack>
+
+        <Text style={{ fontSize: "11.5px", color: "#cbd5e1", lineHeight: "1.5" }}>
+          • Accurate NASA J2000 Scale: Uses a 4th-order Yoshida symplectic N-body integrator in exact Astronomical Units (1 AU = 149.6M km, G = 4π² AU³/(yr²·M☉)) with 1PN General Relativistic perihelion precession.
+        </Text>
+        <Text style={{ fontSize: "11.5px", color: "#cbd5e1", lineHeight: "1.5" }}>
+          • Physical Scale Modes: Switch between True Orbits (exact 1:1 AU orbits + visible globes), 1:1 Exact (literal zero-exaggeration km/AU radii — click 🎯 Track to fly right up to Earth & Moon!), and Size Lineup (true 109:10:1 Sun-Jupiter-Earth diameter comparison).
+        </Text>
+        <Text style={{ fontSize: "11.5px", color: "#cbd5e1", lineHeight: "1.5" }}>
+          • Orbit Chaos, Red Giant, Asteroid Strikes & 2–3 Suns: Perturb eccentricities into crossing orbits, evolve the Sun into a 232 R☉ Red Supergiant (shedding mass so outer orbits expand while inner worlds vaporize), hurl Chicxulub to Mars-mass Theia impactors, or spawn 2nd & 3rd companion suns!
+        </Text>
+        <Text style={{ fontSize: "11px", color: "#38bdf8", fontWeight: 700 }}>
+          Shortcuts: [Space] Pause · [F] Focus Planet · [ [ / ] ] Time Warp · [1–6] Camera Views · [R] Reset · Drag/Pinch to Orbit & Zoom.
+        </Text>
+      </Box>
+    </Box>
+  #end
+</Box>

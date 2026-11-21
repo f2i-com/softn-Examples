@@ -1,0 +1,28 @@
+{
+  "name": "VoiceSimulator",
+  "version": "1.0.0",
+  "description": "Physical 3D human vocal-tract speech synthesizer & mouth studio. Articulates natural human speech purely from code using LF mucosal vocal-fold oscillation, chest body warmth, velopharyngeal nasal resonance, 5-formant oral cascade + Piriform notch, Male/Female & curated human presets, an always-visible Full Voice Lab, and a sample-locked 17-morph 3D human mouth.",
+  "author": "SoftN",
+  "main": "ui/main.ui",
+  "icon": "assets/icon.svg",
+  "files": {
+    "ui": ["ui/main.ui"],
+    "logic": [
+      "logic/phonetics.logic",
+      "logic/vocal_tract.logic",
+      "logic/storage.logic",
+      "logic/conversation.logic",
+      "logic/scene.logic",
+      "logic/main.logic"
+    ],
+    "assets": [
+      "assets/icon.svg",
+      "assets/env/vocal-studio.hdr",
+      "assets/models/mouth-avatar.glb"
+    ]
+  },
+  "config": {
+    "window": { "title": "Voice Simulator", "width": 1240, "height": 780 },
+    "theme": { "primary": "#38bdf8", "mode": "dark" }
+  }
+}

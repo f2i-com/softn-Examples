@@ -1,0 +1,92 @@
+// Persistence helpers for Voice Simulator human voice profile and studio controls.
+
+let STORAGE_KEY_PROFILE = "softn.voicesimulator.profile.v3"
+
+function getDefaultVoiceProfile() {
+  return {
+    gender: "male",
+    pitchHz: 108,
+    tractLengthCm: 17.6,
+    speed: 1.0,
+    warmth: 0.62,
+    chestResonance: 0.56,
+    breathiness: 0.06,
+    nasality: 0.04,
+    roughness: 0.03,
+    crispness: 1.02,
+    expressiveness: 1.0,
+    vibrato: 0.10,
+    whisper: false,
+    presetId: "natural_male",
+    lipTint: "#ffffff"
+  }
+}
+
+function _clampProfileNum(rawVal, fallback, lo, hi, decimals) {
+  let n = rawVal !== undefined && rawVal !== null && rawVal !== "" ? Number(rawVal) : NaN
+  if (isNaN(n)) { return fallback }
+  if (n < lo) { n = lo }
+  if (n > hi) { n = hi }
+  if (decimals === 0) { return Math.round(n) }
+  let scale = decimals === 1 ? 10 : 100
+  return Math.round(n * scale) / scale
+}
+
+function loadVoiceProfile() {
+  let def = getDefaultVoiceProfile()
+  try {
+    if (typeof localStorage === "undefined" || !localStorage) {
+      return def
+    }
+    let raw = localStorage.getItem(STORAGE_KEY_PROFILE)
+    if (!raw) {
+      return def
+    }
+    let parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== "object") {
+      return def
+    }
+    let gender = parsed.gender === "female" ? "female" : "male"
+    let pitchHz = _clampProfileNum(parsed.pitchHz, gender === "female" ? 186 : 108, 70, 310, 0)
+    let tractLengthCm = _clampProfileNum(parsed.tractLengthCm, gender === "female" ? 16.0 : 17.6, 12.5, 21.0, 1)
+    let speed = _clampProfileNum(parsed.speed, 1.0, 0.60, 1.60, 2)
+    let warmth = _clampProfileNum(parsed.warmth, gender === "female" ? 0.66 : 0.62, 0.0, 1.0, 2)
+    let chestResonance = _clampProfileNum(parsed.chestResonance, gender === "female" ? 0.50 : 0.56, 0.0, 1.0, 2)
+    let breathiness = _clampProfileNum(parsed.breathiness, gender === "female" ? 0.09 : 0.06, 0.0, 0.80, 2)
+    let nasality = _clampProfileNum(parsed.nasality, 0.04, 0.0, 0.75, 2)
+    let roughness = _clampProfileNum(parsed.roughness, gender === "female" ? 0.02 : 0.03, 0.0, 0.70, 2)
+    let crispness = _clampProfileNum(parsed.crispness, 1.02, 0.50, 1.50, 2)
+    let expressiveness = _clampProfileNum(parsed.expressiveness, 1.0, 0.0, 1.70, 2)
+    let vibrato = _clampProfileNum(parsed.vibrato, gender === "female" ? 0.13 : 0.10, 0.0, 0.85, 2)
+
+    return {
+      gender: gender,
+      pitchHz: pitchHz,
+      tractLengthCm: tractLengthCm,
+      speed: speed,
+      warmth: warmth,
+      chestResonance: chestResonance,
+      breathiness: breathiness,
+      nasality: nasality,
+      roughness: roughness,
+      crispness: crispness,
+      expressiveness: expressiveness,
+      vibrato: vibrato,
+      whisper: !!parsed.whisper,
+      presetId: String(parsed.presetId || (gender === "female" ? "natural_female" : "natural_male")),
+      lipTint: String(parsed.lipTint || "#ffffff")
+    }
+  } catch (e) {
+    return def
+  }
+}
+
+function saveVoiceProfile(profile) {
+  try {
+    if (typeof localStorage !== "undefined" && localStorage && profile) {
+      localStorage.setItem(STORAGE_KEY_PROFILE, JSON.stringify(profile))
+    }
+  } catch (e) {
+    // Ignore storage quota or sandbox errors
+  }
+}

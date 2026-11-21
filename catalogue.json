@@ -257,5 +257,26 @@
     "name": "Mine Management",
     "description": "One human. One mine. Questionable automation. A comedic 3D mine-site game: run the robot fleet from your PIT tablet, drive trucks and excavators, fix faults in person, and keep the emu off the haul road.",
     "primary": "#eab65d"
+  },
+  {
+    "id": "potato-peeler",
+    "file": "PotatoPeeler.softn",
+    "name": "Potato Peeler",
+    "description": "Mobile-ready Soviet 3D commissary potato-peeling game with 17 Blender PBR kitchen models, tactile touch & mouse 16-patch 3D potato shaving, Canteen Borscht & Banquet dish orders, Podstakannik Tea Overdrive, Colorado Saboteur Beetles, Boss Tsar-Kartoshka events, 6 upgradable peelers up to the Kosmos-9 ruby laser-lathe, Radio Mayak polka, and a Hall of Labour leaderboard.",
+    "primary": "#dc2626"
+  },
+  {
+    "id": "voice-simulator",
+    "file": "VoiceSimulator.softn",
+    "name": "Voice Simulator",
+    "description": "Physical 3D human vocal-tract speech synthesizer and conversational mouth simulator. Generates lifelike Male & Female voices with adjustable pitch purely from code using LF glottal oscillation, velopharyngeal nasal coupling, 5-formant cascade resonance, and a 17-morph Blender PBR 3D mouth rig.",
+    "primary": "#38bdf8"
+  },
+  {
+    "id": "solar-simulator",
+    "file": "SolarSimulator.softn",
+    "name": "Solar Simulator",
+    "description": "True-scale 3D N-body Solar System simulator and astrophysics sandbox with 12 Blender PBR celestial models, NASA J2000 orbital mechanics, orbital perturbation chaos lab, Red Giant stellar evolution with mass-loss spiral & engulfment, kinetic asteroid impacts up to planet-shattering Theia collisions, and 2-sun & 3-sun multi-star scenarios.",
+    "primary": "#f59e0b"
   }
 ]

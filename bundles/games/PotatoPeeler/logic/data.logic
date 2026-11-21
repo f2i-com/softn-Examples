@@ -1,0 +1,324 @@
+// Potato Peeler — Ministry of Tubers static tables, 3D patch geometry, tools, orders, medals & decrees
+
+let SKIN_NAMES = [
+  "Skin_00", "Skin_01", "Skin_02", "Skin_03",
+  "Skin_04", "Skin_05", "Skin_06", "Skin_07",
+  "Skin_08", "Skin_09", "Skin_10", "Skin_11",
+  "Skin_12", "Skin_13", "Skin_14", "Skin_15"
+]
+
+// Precompute local glTF surface centers for the 16 sculpted skin patches (4 axial bands x 4 quadrants)
+// Blender (x, y, z) exports with export_yup=True to glTF (x, z, -y).
+let PATCH_COORDS = []
+function buildPatchCoords() {
+  if (PATCH_COORDS.length === 16) { return }
+  PATCH_COORDS = []
+  let bi = 0
+  while (bi < 4) {
+    let theta = ((bi + 0.5) / 4.0) * Math.PI
+    let ct = Math.cos(theta)
+    let st = Math.sin(theta)
+    let qi = 0
+    while (qi < 4) {
+      let phi = ((qi + 0.5) / 4.0) * Math.PI * 2.0
+      let bx = ct * 0.30
+      let by = st * Math.cos(phi) * 0.205
+      let bz = st * Math.sin(phi) * 0.225
+      PATCH_COORDS.push({
+        idx: bi * 4 + qi,
+        lx: bx,
+        ly0: bz,
+        lz0: -by
+      })
+      qi = qi + 1
+    }
+    bi = bi + 1
+  }
+}
+
+let PEELERS = [
+  {
+    id: "knife",
+    index: 0,
+    code: "M-54",
+    name: "M-54 Canteen Knife",
+    ruName: "Нож Столовый М-54",
+    tagline: "Bent tin-steel paring blade. Honest proletarian toil, one patch at a time.",
+    modelUrl: "assets/models/peeler-knife.glb",
+    unlockCost: 0,
+    sharpenBase: 20,
+    baseSlots: 1,
+    bladeRadius: 0.23,
+    peelPower: 1.15,
+    pointMult: 1.0,
+    autoRate: 0.0,
+    spinBoost: 1.8,
+    trailColor: "#e2e8f0"
+  },
+  {
+    id: "swivel",
+    index: 1,
+    code: "SPUTNIK-2",
+    name: "Sputnik-2 Y-Peeler",
+    ruName: "Овощечистка Спутник-2",
+    tagline: "Red Bakelite grip & twin-ear swivel blade. Sweeps wider and rolls 2 tubers.",
+    modelUrl: "assets/models/peeler-swivel.glb",
+    unlockCost: 45,
+    sharpenBase: 40,
+    baseSlots: 2,
+    bladeRadius: 0.36,
+    peelPower: 1.75,
+    pointMult: 1.25,
+    autoRate: 0.45,
+    spinBoost: 3.0,
+    trailColor: "#fca5a5"
+  },
+  {
+    id: "double",
+    index: 2,
+    code: "UROZHAI-2",
+    name: "Urozhai-2 Twin Planer",
+    ruName: "Двойной Рубанок Урожай",
+    tagline: "Olive-enamel brass twin cutter. Slices wide ribbons across 3 tubers on the board.",
+    modelUrl: "assets/models/peeler-double.glb",
+    unlockCost: 160,
+    sharpenBase: 95,
+    baseSlots: 3,
+    bladeRadius: 0.54,
+    peelPower: 2.55,
+    pointMult: 1.6,
+    autoRate: 1.6,
+    spinBoost: 4.2,
+    trailColor: "#fde047"
+  },
+  {
+    id: "crank",
+    index: 3,
+    code: "URAL-M",
+    name: "Ural-M Hand-Crank Lathe",
+    ruName: "Механический Токарь Урал-М",
+    tagline: "Cast-iron gear lathe with rotary cutter head. Cranks skins off automatically!",
+    modelUrl: "assets/models/peeler-crank.glb",
+    unlockCost: 440,
+    sharpenBase: 210,
+    baseSlots: 3,
+    bladeRadius: 0.76,
+    peelPower: 3.65,
+    pointMult: 2.15,
+    autoRate: 3.9,
+    spinBoost: 5.6,
+    trailColor: "#fdba74"
+  },
+  {
+    id: "rotary",
+    index: 4,
+    code: "BURAN-3000",
+    name: "Buran-3000 Centrifugal Drum",
+    ruName: "Центрифуга Буран-3000",
+    tagline: "Motorized seafoam turbine with amber vacuum pilot. Strips 4 tubers in seconds!",
+    modelUrl: "assets/models/peeler-rotary.glb",
+    unlockCost: 1150,
+    sharpenBase: 480,
+    baseSlots: 4,
+    bladeRadius: 1.08,
+    peelPower: 5.5,
+    pointMult: 2.9,
+    autoRate: 8.4,
+    spinBoost: 7.5,
+    trailColor: "#67e8f9"
+  },
+  {
+    id: "laser",
+    index: 5,
+    code: "KOSMOS-9",
+    name: "Kosmos-9 Ruby Laser-Lathe",
+    ruName: "Рубиновый Лазер КОСМОС-9",
+    tagline: "Classified Academy of Sciences thermal beam. Vaporizes 5 potato skins at once!",
+    modelUrl: "assets/models/peeler-laser.glb",
+    unlockCost: 2800,
+    sharpenBase: 950,
+    baseSlots: 5,
+    bladeRadius: 1.65,
+    peelPower: 9.2,
+    pointMult: 4.2,
+    autoRate: 16.8,
+    spinBoost: 10.0,
+    trailColor: "#ff2a3c"
+  }
+]
+
+let VARIETIES = [
+  {
+    id: "kolobok",
+    name: "Sovkhoz Standard",
+    ruLabel: "Совхозный ГОСТ",
+    skinColor: "#825432",
+    fleshColor: "#f3da7c",
+    durability: 1.0,
+    basePoints: 10,
+    scale: 1.0
+  },
+  {
+    id: "red_october",
+    name: "Red October",
+    ruLabel: "Красный Октябрь",
+    skinColor: "#9c2b27",
+    fleshColor: "#f8e185",
+    durability: 0.85,
+    basePoints: 18,
+    scale: 1.04
+  },
+  {
+    id: "siberian",
+    name: "Siberian Frost-Eye",
+    ruLabel: "Сибирский Мороз",
+    skinColor: "#a68e66",
+    fleshColor: "#faf0c8",
+    durability: 1.2,
+    basePoints: 26,
+    scale: 1.06
+  },
+  {
+    id: "ural_iron",
+    name: "Ural Mud-Crust",
+    ruLabel: "Уральский Бронеклубень",
+    skinColor: "#4b3421",
+    fleshColor: "#eed068",
+    durability: 1.55,
+    basePoints: 38,
+    scale: 1.12
+  },
+  {
+    id: "stakhanov_gold",
+    name: "Golden Stakhanovite",
+    ruLabel: "Золотой Стахановец ★",
+    skinColor: "#eab308",
+    fleshColor: "#fef08a",
+    durability: 1.15,
+    basePoints: 85,
+    scale: 1.15
+  }
+]
+
+let CANTEEN_ORDERS = [
+  {
+    id: "borscht",
+    name: "Red Army Borscht",
+    ruName: "Борщ Фронтовой",
+    hint: "Red October tubers count 2x!",
+    target: 6,
+    baseReward: 95,
+    teaBonus: 35,
+    brothHex: "#9f1d24"
+  },
+  {
+    id: "pyure",
+    name: "Shock-Brigade Mash",
+    ruName: "Пюре Ударное",
+    hint: "Fast Clean Peels (<2.8s) count 2x!",
+    target: 8,
+    baseReward: 140,
+    teaBonus: 40,
+    brothHex: "#ebd070"
+  },
+  {
+    id: "ukha",
+    name: "Arctic Kettle Stew",
+    ruName: "Северная Похлёбка",
+    hint: "Frost-Eye & Mud-Crust count 2x!",
+    target: 10,
+    baseReward: 195,
+    teaBonus: 45,
+    brothHex: "#4b9693"
+  },
+  {
+    id: "banquet",
+    name: "Kremlin State Banquet",
+    ruName: "Кремлёвский Банкет",
+    hint: "Golden = 3x · Tsar-Kartoshka = 6x!",
+    target: 12,
+    baseReward: 290,
+    teaBonus: 55,
+    brothHex: "#c97a16"
+  }
+]
+
+let STATE_MEDALS = [
+  {
+    id: "first_spud",
+    title: "First Tuber",
+    ruTitle: "Первый Клубень",
+    desc: "Peel 1 potato for the Collective Kettle (+5% ₽)"
+  },
+  {
+    id: "clean_10",
+    title: "GOST Precision",
+    ruTitle: "Чистая Чистка",
+    desc: "Score 10 fast Grade-A Clean Peels (+5% ₽)"
+  },
+  {
+    id: "beetle_5",
+    title: "Harvest Defender",
+    ruTitle: "Гроза Жуков",
+    desc: "Swat or zap 5 Colorado Saboteur Beetles (+5% ₽)"
+  },
+  {
+    id: "tea_3",
+    title: "Samovar Shock-Brew",
+    ruTitle: "Самоварный Пар",
+    desc: "Drink Podstakannik Tea Overdrive 3 times (+5% ₽)"
+  },
+  {
+    id: "tsar_1",
+    title: "Tsar-Slayer",
+    ruTitle: "Царь-Картошка",
+    desc: "Peel a giant Boss Tsar-Kartoshka (+5% ₽)"
+  },
+  {
+    id: "orders_5",
+    title: "Brigade Chef",
+    ruTitle: "Отличник Котла",
+    desc: "Fulfill 5 Canteen Dish Orders (+5% ₽)"
+  },
+  {
+    id: "slots_5",
+    title: "Five-Track Master",
+    ruTitle: "Пятистаночник",
+    desc: "Operate 5 simultaneous board slots (+5% ₽)"
+  },
+  {
+    id: "kosmos",
+    title: "Ruby Laureate",
+    ruTitle: "Лауреат КОСМОС-9",
+    desc: "Requisition the Kosmos-9 Ruby Laser-Lathe (+5% ₽)"
+  }
+]
+
+let QUOTA_RANKS = [
+  { target: 5, title: "Kitchen Probationer", ruTitle: "Стажёр Столовой", bonus: 25 },
+  { target: 15, title: "Junior Tuber Scrubber", ruTitle: "Чистильщик III Разряда", bonus: 60 },
+  { target: 35, title: "Canteen Shock-Worker", ruTitle: "Ударник Пищеблока", bonus: 140 },
+  { target: 75, title: "Brigadier of the Broth", ruTitle: "Бригадир Котла", bonus: 320 },
+  { target: 150, title: "Order of the Red Spud", ruTitle: "Кавалер Красного Клубня", bonus: 700 },
+  { target: 300, title: "Master of Gosplan Starch", ruTitle: "Мастер Госплана", bonus: 1500 },
+  { target: 600, title: "Hero of Socialist Tubers", ruTitle: "Герой Картофельного Труда ★", bonus: 3500 },
+  { target: 1200, title: "Supreme Commissar of Borscht", ruTitle: "Народный Комиссар Пюре ★★", bonus: 8000 }
+]
+
+let DECREES = [
+  "DIRECTIVE 77-B: Peel thickness must not exceed 1.4 millimetres per Gosplan Normative.",
+  "ALERT: Imperialist Colorado Potato Beetles spotted near burlap sack! Swat on sight!",
+  "COMMISSARY TIP: Click the glowing Brass Tea Glass [Q] at 100% for 2x Stakhanovite Overdrive!",
+  "SERVICE BELL: Ring the Brass Bell [R] on the left counter to summon a giant Tsar-Kartoshka!",
+  "KITCHEN BULLETIN: Fast <2.8s Clean Peels earn +35% GOST Grade-A Ruble bonuses!",
+  "ACADEMY REPORT: Kosmos-9 ruby beam tested 100% safe for mashed-potato preparation."
+]
+
+let RIVAL_COMRADES = [
+  { name: "Stakhanovite Olga", potatoes: 500, points: 18400, tool: "KOSMOS-9", seeded: true },
+  { name: "Babushka Zinaida", potatoes: 240, points: 7200, tool: "BURAN-3000", seeded: true },
+  { name: "Head Cook Grigory", potatoes: 110, points: 2950, tool: "URAL-M", seeded: true },
+  { name: "Brigadier Pavel", potatoes: 50, points: 1120, tool: "UROZHAI-2", seeded: true },
+  { name: "Corporal Anton", potatoes: 20, points: 340, tool: "SPUTNIK-2", seeded: true },
+  { name: "Apprentice Mitya", potatoes: 6, points: 65, tool: "M-54", seeded: true }
+]

@@ -1,0 +1,958 @@
+// Solar Simulator — Master Application Controller, UI State, Telemetry Formatters,
+// Interactive Sandbox Handlers (Orbit Chaos, Red Giant, Asteroid Strikes & Multi-Star).
+
+import "./data.logic"
+import "./audio.logic"
+import "./storage.logic"
+import "./physics.logic"
+import "./scene.logic"
+
+// UI Navigation & Responsive Drawer State
+let activeTab = "orbit"
+let selectedBodyId = "earth"
+let labCollapsed = false
+let mobileLabOpen = false
+let eventLogOpen = false
+let helpOpen = false
+let toastText = ""
+let toastTimer = 0.0
+let pad = {}
+let sceneFps = 60
+let _uiRefreshAccum = 0.0
+
+// Tab 1: Orbit Perturbation Slider State
+let editSemiMajorAU = 1.000
+let editEcc = 0.017
+let editIncDeg = 0.0
+let editMassMult = 1.0
+
+// Tab 2: Manual Sun Override Sliders
+let editSunLogRadius = 0.0
+let editSunMassMsun = 1.00
+let editSunLogLum = 0.0
+
+// Tab 3: Kinetic Asteroid Impactor Controls
+let impactorPresetId = "theia_proto"
+let impactorSpeedKms = 24
+let impactorAngleMode = "head_on"
+let clickStrikeMode = false
+
+// Tab 4: Live Companion Sun Spawner Controls
+let companionTemplateId = "k_orange"
+let companionDistAU = 3.8
+let companionEcc = 0.24
+let companionIncDeg = 18
+
+// Preformatted Reactive Telemetry Summaries for `.ui` (keeps template expressions lightweight!)
+let selectedSummary = {
+  id: "earth",
+  name: "Earth",
+  kind: "rocky",
+  alive: true,
+  isStar: false,
+  status: "stable",
+  color: "#38bdf8",
+  refName: "Sun",
+  bound: true,
+  rText: "1.000 AU",
+  aText: "1.000 AU",
+  eText: "0.0167",
+  iText: "0.00°",
+  periodText: "1.00 yr (365 d)",
+  speedText: "29.78 km/s",
+  periApheText: "0.983 – 1.017 AU",
+  tempText: "+15°C (288 K)",
+  massText: "1.00 M⊕",
+  radiusText: "6,371 km (1.00 R⊕)"
+}
+
+let sunSummary = {
+  alive: true,
+  name: "Sun",
+  spectral: "G2V",
+  stageLabel: "Main Sequence",
+  massText: "1.000 M☉",
+  radiusText: "1.00 R☉ (0.005 AU)",
+  lumText: "1.00 L☉",
+  tempText: "5,778 K",
+  hzText: "0.95 – 1.67 AU",
+  evoPct: 0,
+  starCount: 1
+}
+
+function showToast(msg) {
+  toastText = String(msg || "")
+  toastTimer = 3.2
+}
+
+function readEventNum(e, fallback) {
+  if (typeof e === "number" && !isNaN(e)) { return e }
+  if (typeof e === "string" && e.trim() !== "") {
+    let v = Number(e)
+    if (!isNaN(v)) { return v }
+  }
+  if (e && typeof e === "object") {
+    if (e.target && e.target.value !== undefined) {
+      let tv = Number(e.target.value)
+      if (!isNaN(tv)) { return tv }
+    }
+    if (e.value !== undefined) {
+      let ev = Number(e.value)
+      if (!isNaN(ev)) { return ev }
+    }
+  }
+  return fallback
+}
+
+function fmtFixed(n, digits) {
+  let num = Number(n) || 0.0
+  let p = Math.pow(10, digits)
+  let r = Math.round(num * p) / p
+  return String(r)
+}
+
+function formatSimClock() {
+  if (simTimeYears < 2.0) {
+    let days = Math.round(simTimeYears * YEAR_DAYS)
+    return "Day " + days + " (" + fmtFixed(simTimeYears, 2) + " yr)"
+  }
+  return "Year " + fmtFixed(simTimeYears, 1)
+}
+
+function formatTimeWarpLabel() {
+  if (paused || timeWarpYrPerSec <= 0.0) { return "PAUSED" }
+  if (timeWarpYrPerSec < 0.01) {
+    return Math.round(timeWarpYrPerSec * YEAR_DAYS) + " d/s"
+  }
+  if (timeWarpYrPerSec < 0.5) {
+    return Math.round(timeWarpYrPerSec * 12.0 * 10) / 10 + " mo/s"
+  }
+  return fmtFixed(timeWarpYrPerSec, 1) + " yr/s"
+}
+
+function formatMegatons(mt) {
+  let v = Number(mt) || 0.0
+  if (v >= 1e12) { return fmtFixed(v / 1e12, 2) + " Teratons×10⁶" }
+  if (v >= 1e9) { return fmtFixed(v / 1e9, 2) + " Billion MT" }
+  if (v >= 1e6) { return fmtFixed(v / 1e6, 1) + " Million MT" }
+  if (v >= 1e3) { return fmtFixed(v / 1e3, 1) + " Thousand MT" }
+  return Math.round(v) + " MT"
+}
+
+function syncOrbitSlidersFromBody(b) {
+  if (!b || !b.alive) { return }
+  if (b.kind !== "star") {
+    let el = computeOsculatingElements(b)
+    editSemiMajorAU = Math.round(clampVal(el.bound ? el.a : el.rAU, 0.08, 50.0) * 1000) / 1000
+    editEcc = Math.round(clampVal(el.e, 0.0, 0.92) * 1000) / 1000
+    editIncDeg = Math.round(clampVal(el.iDeg, 0.0, 175.0) * 10) / 10
+    let baseM = Math.max(1e-14, b.baseMassMsun || b.massMsun)
+    editMassMult = Math.round(clampVal(b.massMsun / baseM, 0.1, 100.0) * 10) / 10
+  }
+}
+
+function syncSunSlidersFromSol() {
+  let sol = getBodyById("sol")
+  if (!sol || !sol.alive) { return }
+  let rRsun = Math.max(0.01, sol.radiusKm / R_SUN_KM)
+  editSunLogRadius = Math.round((Math.log(rRsun) / Math.LN10) * 100) / 100
+  editSunMassMsun = Math.round(sol.massMsun * 100) / 100
+  editSunLogLum = Math.round((Math.log(Math.max(0.01, sol.luminosityLsun || 1.0)) / Math.LN10) * 100) / 100
+}
+
+function refreshTelemetrySummaries() {
+  let b = getBodyById(selectedBodyId)
+  if (!b) {
+    b = bodies.length > 0 ? bodies[0] : null
+    if (b) { selectedBodyId = b.id }
+  }
+
+  if (b) {
+    let isStar = b.kind === "star"
+    let el = computeOsculatingElements(b)
+    let cDeg = Math.round((b.tempK || 273) - 273.15)
+    let periodTxt = "Unbound / Escape"
+    if (isStar && countAliveStars() <= 1) {
+      periodTxt = "Central Primary"
+    } else if (el.bound && el.periodYr > 0.0) {
+      if (el.periodYr < 2.2) {
+        periodTxt = fmtFixed(el.periodYr, 3) + " yr (" + Math.round(el.periodYr * YEAR_DAYS) + " d)"
+      } else {
+        periodTxt = fmtFixed(el.periodYr, 2) + " yr"
+      }
+    }
+
+    let massTxt = isStar
+      ? (fmtFixed(b.massMsun, 3) + " M☉")
+      : (b.massMsun / M_EARTH_MSUN >= 0.05
+          ? (fmtFixed(b.massMsun / M_EARTH_MSUN, 2) + " M⊕")
+          : (fmtFixed((b.massMsun / M_EARTH_MSUN) * 1000.0, 2) + "×10⁻³ M⊕"))
+
+    let radTxt = isStar
+      ? (fmtFixed(b.radiusKm / R_SUN_KM, 2) + " R☉ (" + Math.round(b.radiusKm) + " km)")
+      : (Math.round(b.radiusKm) + " km (" + fmtFixed(b.radiusKm / R_EARTH_KM, 2) + " R⊕)")
+
+    selectedSummary = {
+      id: b.id,
+      name: b.name,
+      kind: b.kind,
+      alive: b.alive,
+      isStar: isStar,
+      status: b.alive ? b.status : (b.status || "destroyed"),
+      color: b.color || "#38bdf8",
+      refName: el.refName,
+      bound: el.bound,
+      rText: fmtFixed(el.rAU, 3) + " AU",
+      aText: el.bound ? (fmtFixed(el.a, 3) + " AU") : "Hyperbolic (e ≥ 1)",
+      eText: fmtFixed(el.e, 4),
+      iText: fmtFixed(el.iDeg, 2) + "°",
+      periodText: periodTxt,
+      speedText: fmtFixed(el.speedKms, 2) + " km/s",
+      periApheText: el.bound ? (fmtFixed(el.periAU, 2) + " – " + fmtFixed(el.apheAU, 2) + " AU") : ("r = " + fmtFixed(el.rAU, 2) + " AU"),
+      tempText: isStar ? (b.tempK + " K photosphere") : ((cDeg >= 0 ? "+" : "") + cDeg + "°C (" + b.tempK + " K)"),
+      massText: massTxt,
+      radiusText: radTxt
+    }
+  }
+
+  let sol = getBodyById("sol")
+  let bary = getStellarBarycenter()
+  let stgLabel = "Main Sequence"
+  let si = 0
+  while (si < STELLAR_STAGES.length) {
+    if (STELLAR_STAGES[si].id === stellarStageId) {
+      stgLabel = STELLAR_STAGES[si].shortLabel
+    }
+    si = si + 1
+  }
+  let sqrtL = Math.sqrt(Math.max(0.001, bary.lumLsun))
+  if (sol && sol.alive) {
+    let rRsun = sol.radiusKm / R_SUN_KM
+    sunSummary = {
+      alive: true,
+      name: sol.name,
+      spectral: sol.spectral || "G2V",
+      stageLabel: stgLabel,
+      massText: fmtFixed(sol.massMsun, 3) + " M☉",
+      radiusText: (rRsun >= 10.0 ? fmtFixed(rRsun, 1) : fmtFixed(rRsun, 2)) + " R☉ (" + fmtFixed(sol.radiusAU, 3) + " AU)",
+      lumText: (sol.luminosityLsun >= 10.0 ? Math.round(sol.luminosityLsun) : fmtFixed(sol.luminosityLsun, 2)) + " L☉",
+      tempText: sol.tempK + " K",
+      hzText: fmtFixed(0.95 * sqrtL, 2) + " – " + fmtFixed(1.67 * sqrtL, 2) + " AU",
+      evoPct: Math.round(stellarEvoProgress * 100),
+      starCount: bary.count
+    }
+  } else {
+    sunSummary = {
+      alive: false,
+      name: "No Primary Sun",
+      spectral: "—",
+      stageLabel: "Remnant",
+      massText: fmtFixed(bary.massMsun, 2) + " M☉",
+      radiusText: "—",
+      lumText: fmtFixed(bary.lumLsun, 2) + " L☉",
+      tempText: "—",
+      hzText: fmtFixed(0.95 * sqrtL, 2) + " – " + fmtFixed(1.67 * sqrtL, 2) + " AU",
+      evoPct: Math.round(stellarEvoProgress * 100),
+      starCount: bary.count
+    }
+  }
+}
+
+function persistPrefsNow() {
+  saveUserPrefs({
+    muted: muted,
+    ambientMusicOn: ambientMusicOn,
+    qualityPreset: qualityPreset,
+    scaleMode: scaleMode,
+    showOrbits: showOrbits,
+    showTrails: showTrails,
+    showBelt: showBelt,
+    showHabZone: showHabZone,
+    showLabels: showLabels
+  })
+}
+
+// Selection, Camera & 3D Picking Handlers
+function selectBody(bodyId, alsoFocus) {
+  let b = getBodyById(bodyId)
+  if (!b) { return }
+  if (clickStrikeMode && b.alive && b.kind !== "star" && b.kind !== "impactor") {
+    selectedBodyId = b.id
+    launchAsteroidStrike(b.id, impactorPresetId, impactorSpeedKms, impactorAngleMode, false)
+    showToast("☄ Fired asteroid strike at " + b.name + "!")
+    refreshTelemetrySummaries()
+    return
+  }
+  selectedBodyId = b.id
+  syncOrbitSlidersFromBody(b)
+  playSfx("click", 0.42)
+  if (alsoFocus && b.alive) {
+    focusOnBody(b.id)
+    showToast("Focused camera on " + b.name)
+  }
+  refreshTelemetrySummaries()
+}
+
+function toggleFocusSelected() {
+  if (focusedBodyId === selectedBodyId && cameraPreset === "focus") {
+    setCameraPreset("inner")
+    showToast("Returned to Solar System overview")
+  } else {
+    focusOnBody(selectedBodyId)
+    let b = getBodyById(selectedBodyId)
+    if (b) { showToast("Tracking " + b.name + " in co-moving frame") }
+  }
+}
+
+function onSceneClick(hit) {
+  startAmbientMusic()
+  if (!hit || !hit.objectId) { return }
+  let oid = String(hit.objectId)
+  if (oid.indexOf("body-") === 0) {
+    let rawId = oid.slice(5)
+    if (rawId.indexOf("-moon") > 0) {
+      rawId = rawId.replace("-moon", "")
+    }
+    selectBody(rawId, false)
+  }
+}
+
+// Time Warp, Play/Pause & Scale Bar Handlers
+function togglePauseSim() {
+  paused = !paused
+  playSfx("click", 0.45)
+}
+
+function selectTimeWarp(yrPerSec) {
+  if (yrPerSec <= 0.0) {
+    paused = true
+  } else {
+    paused = false
+    timeWarpYrPerSec = yrPerSec
+  }
+  playSfx("click", 0.42)
+}
+
+function stepTimeWarpFaster(dir) {
+  let bestIdx = 4
+  let minDiff = 1e9
+  let i = 1
+  while (i < TIME_WARP_PRESETS.length) {
+    let d = Math.abs(TIME_WARP_PRESETS[i].yrPerSec - timeWarpYrPerSec)
+    if (d < minDiff) {
+      minDiff = d
+      bestIdx = i
+    }
+    i = i + 1
+  }
+  let nextIdx = clampVal(bestIdx + dir, 1, TIME_WARP_PRESETS.length - 1)
+  paused = false
+  timeWarpYrPerSec = TIME_WARP_PRESETS[nextIdx].yrPerSec
+  showToast("Time Warp: " + TIME_WARP_PRESETS[nextIdx].title)
+}
+
+function changeScaleMode(modeId) {
+  setScaleModeView(modeId)
+  playSfx("click", 0.48)
+  persistPrefsNow()
+  if (modeId === "true_1to1") {
+    showToast("Literal 1:1 km/AU Scale active! Click 'Focus' on any planet to fly right up to it.")
+  } else if (modeId === "lineup") {
+    showToast("Size Lineup: True relative diameters (Earth = 1/109 Sun, Jupiter = 1/10 Sun)")
+  } else {
+    showToast("True 1:1 AU Orbits + Clear Planet Globes")
+  }
+}
+
+function setLabTab(tabId) {
+  activeTab = tabId
+  mobileLabOpen = true
+  if (tabId === "orbit") {
+    syncOrbitSlidersFromBody(getBodyById(selectedBodyId))
+  } else if (tabId === "sun") {
+    syncSunSlidersFromSol()
+  }
+  playSfx("click", 0.4)
+}
+
+function toggleMobileLab() {
+  mobileLabOpen = !mobileLabOpen
+  playSfx("click", 0.42)
+}
+
+function toggleMuteAudio() {
+  muted = !muted
+  syncAmbientState()
+  persistPrefsNow()
+}
+
+function cycleGraphicsQuality() {
+  let next = qualityPreset === "high" ? "balanced" : (qualityPreset === "balanced" ? "low" : "high")
+  applyQualityPreset(next)
+  persistPrefsNow()
+  showToast("Graphics quality: " + next.toUpperCase())
+}
+
+// Tab 1 Handlers: Orbit Perturbation & Chaos Sandbox
+function onOrbitASlider(e) {
+  let val = clampVal(readEventNum(e, editSemiMajorAU), 0.08, 50.0)
+  editSemiMajorAU = Math.round(val * 1000) / 1000
+  modifyBodyOrbitElements(selectedBodyId, editSemiMajorAU, editEcc, editIncDeg)
+  refreshTelemetrySummaries()
+}
+
+function onOrbitESlider(e) {
+  let val = clampVal(readEventNum(e, editEcc), 0.0, 0.92)
+  editEcc = Math.round(val * 1000) / 1000
+  modifyBodyOrbitElements(selectedBodyId, editSemiMajorAU, editEcc, editIncDeg)
+  refreshTelemetrySummaries()
+}
+
+function onOrbitISlider(e) {
+  let val = clampVal(readEventNum(e, editIncDeg), 0.0, 175.0)
+  editIncDeg = Math.round(val * 10) / 10
+  modifyBodyOrbitElements(selectedBodyId, editSemiMajorAU, editEcc, editIncDeg)
+  refreshTelemetrySummaries()
+}
+
+function onPlanetMassMultSlider(e) {
+  let val = clampVal(readEventNum(e, editMassMult), 0.1, 100.0)
+  editMassMult = Math.round(val * 10) / 10
+  let b = getBodyById(selectedBodyId)
+  if (b && b.alive && b.kind !== "star") {
+    b.massMsun = (b.baseMassMsun || b.massMsun) * editMassMult
+    initialSystemEnergy = computeSystemMechanicalEnergy()
+    refreshTelemetrySummaries()
+  }
+}
+
+function nudgeSelectedOrbit(pct) {
+  if (nudgeBodyVelocity(selectedBodyId, pct, 0.0)) {
+    syncOrbitSlidersFromBody(getBodyById(selectedBodyId))
+    refreshTelemetrySummaries()
+  }
+}
+
+function pumpSelectedEccentricity(deltaE) {
+  let b = getBodyById(selectedBodyId)
+  if (!b || !b.alive || b.kind === "star") { return }
+  let el = computeOsculatingElements(b)
+  let nextE = clampVal(el.e + deltaE, 0.0, 0.92)
+  modifyBodyOrbitElements(b.id, el.bound ? el.a : el.rAU, nextE, el.iDeg)
+  syncOrbitSlidersFromBody(b)
+  playSfx("click", 0.5)
+  pushSimEvent("orbit", b.name + " eccentricity perturbed to e = " + fmtFixed(nextE, 3) + "!")
+  refreshTelemetrySummaries()
+}
+
+function flipSelectedRetrograde() {
+  if (flipBodyRetrograde(selectedBodyId)) {
+    syncOrbitSlidersFromBody(getBodyById(selectedBodyId))
+    refreshTelemetrySummaries()
+    showToast("Flipped orbit retrograde! Watch crossing resonances unfold.")
+  }
+}
+
+function boostSelectedMass10x() {
+  let b = getBodyById(selectedBodyId)
+  if (!b || !b.alive || b.kind === "star") { return }
+  b.massMsun = b.massMsun * 10.0
+  let baseM = Math.max(1e-14, b.baseMassMsun || b.massMsun)
+  editMassMult = Math.round(clampVal(b.massMsun / baseM, 0.1, 1000.0) * 10) / 10
+  initialSystemEnergy = computeSystemMechanicalEnergy()
+  playSfx("spawn_star", 0.55)
+  pushSimEvent("warn", b.name + " mass multiplied 10x — neighbouring orbits will experience strong gravitational tugs!")
+  refreshTelemetrySummaries()
+  showToast(b.name + " mass boosted 10x!")
+}
+
+function chaosScrambleInnerOrbits() {
+  let ids = ["mercury", "venus", "earth", "mars"]
+  let k = 0
+  while (k < ids.length) {
+    let b = getBodyById(ids[k])
+    if (b && b.alive) {
+      let el = computeOsculatingElements(b)
+      let newE = clampVal(0.24 + simRand() * 0.28, 0.18, 0.58)
+      let newI = clampVal(el.iDeg + (simRand() - 0.5) * 14.0, 0.5, 35.0)
+      modifyBodyOrbitElements(b.id, el.a, newE, newI)
+    }
+    k = k + 1
+  }
+  paused = false
+  if (timeWarpYrPerSec < 2.0) { timeWarpYrPerSec = 5.0 }
+  syncOrbitSlidersFromBody(getBodyById(selectedBodyId))
+  playSfx("flyby_alert", 0.65)
+  pushSimEvent("warn", "🎲 Inner Solar System eccentricities scrambled into crossing orbits — N-body chaos unleashed!")
+  showToast("Crossing inner orbits activated! Watch close encounters & collisions.")
+  refreshTelemetrySummaries()
+}
+
+// Tab 2 Handlers: Sun & Red Giant Stellar Evolution
+function chooseSolarStage(stageId) {
+  if (setSolarEvolutionStage(stageId)) {
+    syncSunSlidersFromSol()
+    refreshTelemetrySummaries()
+  }
+}
+
+function runRedGiantEvolution() {
+  if (startAnimatedRedGiantEvolution()) {
+    if (scaleMode === "lineup") { setScaleModeView("proportional") }
+    setCameraPreset("inner")
+    showToast("Red Giant evolution running! Watch Mercury & Venus get engulfed while outer orbits expand.")
+  }
+}
+
+function onSunRadiusSlider(e) {
+  let logR = clampVal(readEventNum(e, editSunLogRadius), -2.0, 2.42)
+  editSunLogRadius = Math.round(logR * 100) / 100
+  let sol = getBodyById("sol")
+  if (sol && sol.alive) {
+    stellarEvoActive = false
+    let rRsun = Math.pow(10.0, editSunLogRadius)
+    sol.radiusKm = rRsun * R_SUN_KM
+    sol.radiusAU = sol.radiusKm / AU_KM
+    if (rRsun > 25.0) {
+      sol.photoHex = "#ef4444"
+      sol.chromoHex = "#b91c1c"
+      sol.color = "#ef4444"
+      sol.tempK = 3250
+      sol.luminosityLsun = Math.max(sol.luminosityLsun, rRsun * rRsun * 0.08)
+    } else if (rRsun < 0.08) {
+      sol.photoHex = "#e0f2fe"
+      sol.chromoHex = "#38bdf8"
+      sol.color = "#e0f2fe"
+      sol.tempK = 26000
+    } else {
+      sol.photoHex = "#fbbf24"
+      sol.chromoHex = "#f97316"
+      sol.color = "#fbbf24"
+      sol.tempK = 5778
+    }
+    updateBodyTemperatures(0.0)
+    refreshTelemetrySummaries()
+  }
+}
+
+function onSunMassSlider(e) {
+  let m = clampVal(readEventNum(e, editSunMassMsun), 0.12, 3.00)
+  editSunMassMsun = Math.round(m * 100) / 100
+  let sol = getBodyById("sol")
+  if (sol && sol.alive) {
+    stellarEvoActive = false
+    sol.massMsun = editSunMassMsun
+    initialSystemEnergy = computeSystemMechanicalEnergy()
+    refreshTelemetrySummaries()
+  }
+}
+
+function onSunLumSlider(e) {
+  let logL = clampVal(readEventNum(e, editSunLogLum), -2.0, 3.60)
+  editSunLogLum = Math.round(logL * 100) / 100
+  let sol = getBodyById("sol")
+  if (sol && sol.alive) {
+    stellarEvoActive = false
+    sol.luminosityLsun = Math.pow(10.0, editSunLogLum)
+    updateBodyTemperatures(0.0)
+    refreshTelemetrySummaries()
+  }
+}
+
+function triggerSupernovaAction() {
+  if (triggerSupernovaExplosion()) {
+    syncSunSlidersFromSol()
+    refreshTelemetrySummaries()
+    showToast("💥 SUPERNOVA! 86% solar mass lost — planets flung onto escape trajectories!")
+  }
+}
+
+// Tab 3 Handlers: Massive Asteroid Impact Sandbox
+function selectImpactorPreset(id) {
+  impactorPresetId = id
+  let i = 0
+  while (i < IMPACTOR_PRESETS.length) {
+    if (IMPACTOR_PRESETS[i].id === id) {
+      impactorSpeedKms = IMPACTOR_PRESETS[i].defaultSpeedKms
+    }
+    i = i + 1
+  }
+  playSfx("click", 0.42)
+}
+
+function onImpactorSpeedSlider(e) {
+  impactorSpeedKms = Math.round(clampVal(readEventNum(e, impactorSpeedKms), 10.0, 130.0))
+}
+
+function setImpactorAngle(mode) {
+  impactorAngleMode = mode
+  playSfx("click", 0.4)
+}
+
+function toggleClickStrikeMode() {
+  clickStrikeMode = !clickStrikeMode
+  playSfx("click", 0.48)
+  if (clickStrikeMode) {
+    showToast("🎯 Tap-Strike Armed! Click any planet in 3D or the bottom bar to hurl an asteroid at it.")
+  }
+}
+
+function fireAsteroidAtSelected() {
+  let targ = getBodyById(selectedBodyId)
+  if (!targ || !targ.alive || targ.kind === "star") {
+    // Pick Earth or first surviving planet if a star or dead planet is selected
+    let fallback = getBodyById("earth")
+    if (!fallback || !fallback.alive) {
+      let i = 0
+      while (i < bodies.length) {
+        if (bodies[i].alive && bodies[i].kind !== "star" && bodies[i].kind !== "impactor") {
+          fallback = bodies[i]
+          break
+        }
+        i = i + 1
+      }
+    }
+    if (!fallback) {
+      showToast("No surviving planets left to strike — reset scenario first!")
+      return
+    }
+    selectedBodyId = fallback.id
+    targ = fallback
+  }
+  if (scaleMode === "lineup") {
+    setScaleModeView("proportional")
+  }
+  launchAsteroidStrike(targ.id, impactorPresetId, impactorSpeedKms, impactorAngleMode, false)
+  showToast("☄ Incoming " + impactorSpeedKms + " km/s strike inbound on " + targ.name + "!")
+}
+
+function triggerMeteorStorm() {
+  if (scaleMode === "lineup") { setScaleModeView("proportional") }
+  let targets = ["mercury", "venus", "earth", "mars"]
+  let launched = 0
+  let i = 0
+  while (i < targets.length) {
+    let t = getBodyById(targets[i])
+    if (t && t.alive) {
+      launchAsteroidStrike(t.id, "ceres_dwarf", 38 + i * 8, i % 2 === 0 ? "head_on" : "inclined", false)
+      launched = launched + 1
+    }
+    i = i + 1
+  }
+  if (launched > 0) {
+    showToast("☄ Heavy Bombardment! " + launched + " dwarf-planet impactors streaking into the inner Solar System!")
+  }
+}
+
+// Tab 4 Handlers: 2–3 Suns & Curated Scenarios + Snapshot Persistence
+function activateScenario(scenId) {
+  loadScenarioPreset(scenId)
+  clickStrikeMode = false
+  if (scaleMode === "lineup") { scaleMode = "proportional" }
+
+  if (scenId === "binary_nemesis" || scenId === "triple_hierarchical") {
+    setCameraPreset("giants")
+    timeWarpYrPerSec = 5.0
+  } else if (scenId === "triple_trisolaris") {
+    setCameraPreset("inner")
+    timeWarpYrPerSec = 0.35
+  } else if (scenId === "chaos_heavy_jupiter") {
+    setCameraPreset("inner")
+    timeWarpYrPerSec = 5.0
+  } else {
+    setCameraPreset("inner")
+    timeWarpYrPerSec = 1.0
+  }
+  paused = false
+  selectedBodyId = "earth"
+  if (!getBodyById("earth")) {
+    selectedBodyId = bodies[0].id
+  }
+  syncOrbitSlidersFromBody(getBodyById(selectedBodyId))
+  syncSunSlidersFromSol()
+  refreshTelemetrySummaries()
+  composeSceneFrame(0.016, selectedBodyId)
+  playSfx("spawn_star", 0.58)
+}
+
+function resetCurrentScenario() {
+  activateScenario(activeScenarioId || "j2000_accurate")
+  showToast("Reset scenario to initial epoch (T+0.0 yr)")
+}
+
+function setCompanionTemplate(tplId) {
+  companionTemplateId = tplId
+  playSfx("click", 0.4)
+}
+
+function onCompanionDistSlider(e) {
+  companionDistAU = Math.round(clampVal(readEventNum(e, companionDistAU), 0.25, 30.0) * 100) / 100
+}
+
+function onCompanionEccSlider(e) {
+  companionEcc = Math.round(clampVal(readEventNum(e, companionEcc), 0.0, 0.75) * 100) / 100
+}
+
+function onCompanionIncSlider(e) {
+  companionIncDeg = Math.round(clampVal(readEventNum(e, companionIncDeg), 0.0, 80.0))
+}
+
+function addCompanionSunAction() {
+  if (countAliveStars() >= 5) {
+    showToast("Maximum of 5 active stars in one system reached!")
+    return
+  }
+  if (scaleMode === "lineup") { setScaleModeView("proportional") }
+  let newId = spawnCompanionStar(companionTemplateId, companionDistAU, companionEcc, companionIncDeg)
+  paused = false
+  selectedBodyId = newId
+  refreshTelemetrySummaries()
+  showToast("☀ Spawned new companion Sun (" + countAliveStars() + " suns active)!")
+}
+
+function saveCurrentSandbox() {
+  let serialized = []
+  let i = 0
+  while (i < bodies.length) {
+    let b = bodies[i]
+    if (b.kind !== "impactor") {
+      serialized.push({
+        id: b.id, name: b.name, kind: b.kind, spectral: b.spectral,
+        modelUrl: b.modelUrl, color: b.color, photoHex: b.photoHex,
+        chromoHex: b.chromoHex, flareHex: b.flareHex,
+        massMsun: b.massMsun, baseMassMsun: b.baseMassMsun,
+        radiusKm: b.radiusKm, radiusAU: b.radiusAU,
+        luminosityLsun: b.luminosityLsun, tempK: b.tempK, magmaTempK: b.magmaTempK,
+        obliquityDeg: b.obliquityDeg, rotPeriodDays: b.rotPeriodDays,
+        albedo: b.albedo, greenhouseK: b.greenhouseK,
+        hasMoon: b.hasMoon, hasDebrisRing: b.hasDebrisRing,
+        hasClouds: b.hasClouds, hasRings: b.hasRings,
+        initA: b.initA, initE: b.initE,
+        x: b.x, y: b.y, z: b.z,
+        vx: b.vx, vy: b.vy, vz: b.vz,
+        alive: b.alive, status: b.status
+      })
+    }
+    i = i + 1
+  }
+  let label = countAliveStars() + " Sun(s) · Yr " + fmtFixed(simTimeYears, 1)
+  let ok = writeSandboxSnapshot({
+    label: label,
+    simTimeYears: simTimeYears,
+    activeScenarioId: activeScenarioId,
+    stellarStageId: stellarStageId,
+    stellarEvoProgress: stellarEvoProgress,
+    bodies: serialized
+  })
+  playSfx("click", 0.5)
+  showToast(ok ? ("Saved sandbox snapshot (" + label + ")") : "Snapshot saved for session")
+}
+
+function loadSavedSandbox() {
+  let snap = readSandboxSnapshot()
+  if (!snap || !Array.isArray(snap.bodies)) {
+    showToast("No saved sandbox snapshot found")
+    return
+  }
+  simTimeYears = Number(snap.simTimeYears) || 0.0
+  activeScenarioId = String(snap.activeScenarioId || "j2000_accurate")
+  stellarStageId = String(snap.stellarStageId || "main_sequence")
+  stellarEvoProgress = Number(snap.stellarEvoProgress) || 0.0
+  stellarEvoActive = false
+  shockwaves = []
+  ejectaDebris = []
+  bodies = []
+  let i = 0
+  while (i < snap.bodies.length) {
+    let sb = snap.bodies[i]
+    let nb = makeBodyFromTemplate(sb)
+    nb.baseMassMsun = sb.baseMassMsun || sb.massMsun
+    nb.magmaTempK = sb.magmaTempK || 0.0
+    nb.hasDebrisRing = Boolean(sb.hasDebrisRing)
+    nb.x = sb.x; nb.y = sb.y; nb.z = sb.z
+    nb.vx = sb.vx; nb.vy = sb.vy; nb.vz = sb.vz
+    nb.alive = Boolean(sb.alive)
+    nb.status = sb.status || "stable"
+    bodies.push(nb)
+    i = i + 1
+  }
+  initAsteroidBelt(2.15, 3.25, 165, 55)
+  initialSystemEnergy = computeSystemMechanicalEnergy()
+  refreshTelemetrySummaries()
+  composeSceneFrame(0.016, selectedBodyId)
+  playSfx("spawn_star", 0.52)
+  showToast("Restored saved sandbox (" + savedSnapshotLabel + ")")
+}
+
+function toggleShowOrbits() {
+  showOrbits = !showOrbits
+  playSfx("click", 0.38)
+  persistPrefsNow()
+}
+
+function toggleShowTrails() {
+  showTrails = !showTrails
+  playSfx("click", 0.38)
+  persistPrefsNow()
+}
+
+function toggleShowBelt() {
+  showBelt = !showBelt
+  playSfx("click", 0.38)
+  persistPrefsNow()
+}
+
+function toggleShowHabZone() {
+  showHabZone = !showHabZone
+  playSfx("click", 0.38)
+  persistPrefsNow()
+}
+
+function toggleShowLabels() {
+  showLabels = !showLabels
+  playSfx("click", 0.38)
+  persistPrefsNow()
+}
+
+function toggleDesktopLab() {
+  labCollapsed = !labCollapsed
+  playSfx("click", 0.38)
+}
+
+function toggleEventLog() {
+  eventLogOpen = !eventLogOpen
+  playSfx("click", 0.38)
+}
+
+function toggleHelpModal() {
+  helpOpen = !helpOpen
+  playSfx("click", 0.42)
+}
+
+function getSelectedImpactorDesc() {
+  let i = 0
+  while (i < IMPACTOR_PRESETS.length) {
+    if (IMPACTOR_PRESETS[i].id === impactorPresetId) {
+      return IMPACTOR_PRESETS[i].desc
+    }
+    i = i + 1
+  }
+  return ""
+}
+
+function getActiveScenarioSummary() {
+  let i = 0
+  while (i < SCENARIO_PRESETS.length) {
+    if (SCENARIO_PRESETS[i].id === activeScenarioId) {
+      return SCENARIO_PRESETS[i].summary
+    }
+    i = i + 1
+  }
+  return ""
+}
+
+function getActiveScenarioName() {
+  let i = 0
+  while (i < SCENARIO_PRESETS.length) {
+    if (SCENARIO_PRESETS[i].id === activeScenarioId) {
+      return SCENARIO_PRESETS[i].shortName
+    }
+    i = i + 1
+  }
+  return "Solar Sandbox"
+}
+
+function isTimeWarpActive(yrPerSec) {
+  if (yrPerSec <= 0.0) { return paused }
+  return !paused && Math.abs(timeWarpYrPerSec - yrPerSec) < 0.001
+}
+
+// Keyboard Shortcuts (`<Controls>` handler)
+function onControlPress(name) {
+  startAmbientMusic()
+  if (name === "pause") { togglePauseSim() }
+  else if (name === "focus") { toggleFocusSelected() }
+  else if (name === "slower") { stepTimeWarpFaster(-1) }
+  else if (name === "faster") { stepTimeWarpFaster(1) }
+  else if (name === "reset") { resetCurrentScenario() }
+  else if (name === "mute") { toggleMuteAudio() }
+  else if (name === "c1") { setCameraPreset("inner") }
+  else if (name === "c2") { setCameraPreset("giants") }
+  else if (name === "c3") { setCameraPreset("full") }
+  else if (name === "c4") { setCameraPreset("top") }
+  else if (name === "c5") { changeScaleMode("true_1to1") }
+  else if (name === "c6") { changeScaleMode("lineup") }
+}
+
+function onSceneStats(st) {
+  if (st && typeof st.fps === "number") {
+    sceneFps = Math.round(st.fps)
+  }
+}
+
+function measureHostViewport() {
+  if (typeof window !== "undefined" && window) {
+    if (!isTouchDevice && window.navigator && Number(window.navigator.maxTouchPoints) > 0) {
+      isTouchDevice = true
+    }
+    let ww = Number(window.innerWidth) || 1280
+    let wh = Number(window.innerHeight) || 800
+    applyViewportSize(ww, wh)
+  }
+}
+
+function _init() {
+  let prefs = loadUserPrefs()
+  if (prefs) {
+    if (typeof prefs.muted === "boolean") { muted = prefs.muted }
+    if (typeof prefs.ambientMusicOn === "boolean") { ambientMusicOn = prefs.ambientMusicOn }
+    if (typeof prefs.qualityPreset === "string") { qualityPreset = prefs.qualityPreset }
+    if (typeof prefs.scaleMode === "string" && prefs.scaleMode !== "lineup") { scaleMode = prefs.scaleMode }
+    if (typeof prefs.showOrbits === "boolean") { showOrbits = prefs.showOrbits }
+    if (typeof prefs.showTrails === "boolean") { showTrails = prefs.showTrails }
+    if (typeof prefs.showBelt === "boolean") { showBelt = prefs.showBelt }
+    if (typeof prefs.showHabZone === "boolean") { showHabZone = prefs.showHabZone }
+    if (typeof prefs.showLabels === "boolean") { showLabels = prefs.showLabels }
+  }
+  checkSavedSnapshotMeta()
+  measureHostViewport()
+  buildStaticStarfield()
+  applyQualityPreset(qualityPreset)
+  loadScenarioPreset("j2000_accurate")
+  setCameraPreset("inner")
+  selectedBodyId = "earth"
+  syncOrbitSlidersFromBody(getBodyById("earth"))
+  syncSunSlidersFromSol()
+  refreshTelemetrySummaries()
+  composeSceneFrame(0.016, selectedBodyId)
+}
+
+function _onHide() {
+  stopAmbientMusic()
+}
+
+function _onShow() {
+  syncAmbientState()
+}
+
+// Master 60 FPS Simulation & 3D Scene Loop
+function simTick(dt) {
+  let rawDt = Number(dt) || 0.016
+  if (rawDt > 1.0) { rawDt = rawDt * 0.001 }
+  let stepSec = clampVal(rawDt, 0.001, 0.05)
+
+  measureHostViewport()
+  if (toastTimer > 0.0) {
+    toastTimer = Math.max(0.0, toastTimer - stepSec)
+    if (toastTimer <= 0.0) { toastText = "" }
+  }
+
+  stepPhysicsSimulation(stepSec)
+  composeSceneFrame(stepSec, selectedBodyId)
+
+  _uiRefreshAccum = _uiRefreshAccum + stepSec
+  if (_uiRefreshAccum >= 0.10) {
+    _uiRefreshAccum = 0.0
+    refreshTelemetrySummaries()
+  }
+}

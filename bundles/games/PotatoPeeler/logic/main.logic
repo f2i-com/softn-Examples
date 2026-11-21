@@ -1,0 +1,2018 @@
+// Potato Peeler — Ministry of Tubers core loop, 3D peeling, Tsar-Kartoshka boss, beetles, Tea Overdrive & orders
+
+import "./data.logic"
+import "./audio.logic"
+import "./storage.logic"
+import "./scene.logic"
+
+let _booted = false
+let rngState = 19171025
+
+let started = false
+let shopOpen = false
+let boardOpen = false
+let blitzSummaryOpen = false
+let mobileDrawerOpen = false
+let hoverPeel = true
+let qualityPreset = "high"
+let _hasSavedQuality = false
+let _cleanupWinListeners = null
+
+let points = 0
+let lifetimePoints = 0
+let potatoesPeeled = 0
+let equippedPeeler = 0
+let unlockedPeelers = [true, false, false, false, false, false]
+let toolLevels = [1, 1, 1, 1, 1, 1]
+
+// Commissary Station Upgrades (5 mechanization tracks)
+let upgSpindle = 0
+let upgChute = 0
+let upgStamp = 0
+let upgBoard = 0
+let upgZapper = 0
+
+// Five-Year Plan Quota & Combo Tempo
+let quotaIdx = 0
+let comboCount = 0
+let comboTimer = 0.0
+let comboMult = 1.0
+
+// Canteen Dish Orders & State Labour Medals
+let orderIdx = 0
+let orderProgress = 0
+let orderTier = 0
+let cleanPeelsTotal = 0
+let beetlesSwatted = 0
+let tsarsPeeled = 0
+let ordersCompleted = 0
+let teaUsedCount = 0
+let medalsUnlocked = [false, false, false, false, false, false, false, false]
+
+// Hot Samovar Tea Overdrive & Service Bell Boss Tsar-Kartoshka
+let teaCharge = 35.0
+let teaOverdriveTimer = 0.0
+let bellCooldown = 0.0
+let bellRingAnim = 0.0
+let bossCounter = 0
+
+// Optional 60s Stakhanovite Blitz Shift
+let blitzActive = false
+let blitzTimeLeft = 60.0
+let blitzPotatoes = 0
+let blitzPoints = 0
+let bestBlitzPotatoes = 0
+
+// Player & HUD state
+let playerName = "Comrade Alexei"
+let decreeIdx = 0
+let decreeTimer = 0.0
+let currentDecree = ""
+let toastMsg = ""
+let toastTimer = 0.0
+let bannerMsg = ""
+let bannerTimer = 0.0
+let potCalloutMsg = ""
+let potCalloutTimer = 0.0
+let liveFps = 60
+let pad = { presses: {} }
+
+// 3D World & Physics state
+let elapsed = 0.0
+let autosaveAccum = 0.0
+let autoPeelAccum = 0.0
+let spawnCooldown = 0.0
+let beetleSpawnTimer = 8.5
+let nextEntityId = 1
+
+let pointerScraping = false
+let lastScrapeWorldX = 0.0
+let lastScrapeWorldZ = 0.0
+let prevTrailPos = null
+let toolTargetPos = { x: 0.0, y: 0.22, z: 0.10 }
+let toolPos = { x: 0.0, y: 0.22, z: 0.10 }
+let toolTiltY = 0.0
+let toolAnimPhase = 0.0
+let strokeImpulse = 0.0
+let crankAngle = 0.0
+let rotorAngle = 0.0
+let sackBounce = 0.0
+let potBounce = 0.0
+
+let activePotatoes = []
+let beetles = []
+let flyingTubers = []
+let peelCurls = []
+let bladeTrail = []
+let laserBeams = []
+let starchParticles = []
+let steamParticles = []
+let steamAccum = 0.0
+let goldenAnchorId = ""
+let bossAnchorId = ""
+let activeBeetleAnchorId = ""
+
+function randFloat() {
+  rngState = (rngState * 48271) % 2147483647
+  return (rngState & 0x7fffffff) / 2147483647.0
+}
+
+function showToast(msg) {
+  toastMsg = msg
+  toastTimer = 2.7
+}
+
+function showBanner(msg) {
+  bannerMsg = msg
+  bannerTimer = 3.5
+}
+
+function showPotCallout(msg) {
+  potCalloutMsg = msg
+  potCalloutTimer = 2.1
+}
+
+function hexToRgb01(hex) {
+  if (!hex || hex.length < 7) { return [0.95, 0.86, 0.55] }
+  let r = parseInt(hex.slice(1, 3), 16) / 255.0
+  let g = parseInt(hex.slice(3, 5), 16) / 255.0
+  let b = parseInt(hex.slice(5, 7), 16) / 255.0
+  if (isNaN(r) || isNaN(g) || isNaN(b)) { return [0.95, 0.86, 0.55] }
+  return [r, g, b]
+}
+
+// ---------- Effective Tool, Medal & Upgrade Stats ----------
+
+function getMedalCount() {
+  let c = 0
+  let i = 0
+  while (i < medalsUnlocked.length) {
+    if (medalsUnlocked[i]) { c = c + 1 }
+    i = i + 1
+  }
+  return c
+}
+
+function getBoardSlotCount() {
+  let toolDef = PEELERS[equippedPeeler] || PEELERS[0]
+  let total = toolDef.baseSlots + upgBoard
+  if (total > 5) { total = 5 }
+  if (total < 1) { total = 1 }
+  return total
+}
+
+function getSlotPotatoScale() {
+  let c = getBoardSlotCount()
+  if (c <= 2) { return 0.82 }
+  if (c === 3) { return 0.72 }
+  return 0.62
+}
+
+function getSlotCoords(slotCount) {
+  if (slotCount <= 1) {
+    return [{ x: 0.0, z: 0.06 }]
+  }
+  if (slotCount === 2) {
+    return [{ x: -0.48, z: 0.06 }, { x: 0.48, z: 0.06 }]
+  }
+  if (slotCount === 3) {
+    return [{ x: -0.76, z: 0.09 }, { x: 0.0, z: 0.00 }, { x: 0.76, z: 0.09 }]
+  }
+  if (slotCount === 4) {
+    return [
+      { x: -0.92, z: 0.14 },
+      { x: -0.31, z: -0.09 },
+      { x: 0.31, z: 0.14 },
+      { x: 0.92, z: -0.09 }
+    ]
+  }
+  return [
+    { x: -1.04, z: 0.14 },
+    { x: -0.52, z: -0.10 },
+    { x: 0.0, z: 0.14 },
+    { x: 0.52, z: -0.10 },
+    { x: 1.04, z: 0.14 }
+  ]
+}
+
+function getEffectiveBladeRadius() {
+  let t = PEELERS[equippedPeeler] || PEELERS[0]
+  let lv = (toolLevels[equippedPeeler] || 1) - 1
+  let teaBoost = teaOverdriveTimer > 0.0 ? 1.30 : 1.0
+  let touchBoost = isTouchDevice ? 1.16 : 1.0
+  return (t.bladeRadius + lv * 0.045) * teaBoost * touchBoost
+}
+
+function getEffectivePeelPower() {
+  let t = PEELERS[equippedPeeler] || PEELERS[0]
+  let lv = (toolLevels[equippedPeeler] || 1) - 1
+  let teaBoost = teaOverdriveTimer > 0.0 ? 2.0 : 1.0
+  return t.peelPower * (1.0 + lv * 0.24) * teaBoost
+}
+
+function getEffectivePointMult() {
+  let t = PEELERS[equippedPeeler] || PEELERS[0]
+  let lv = (toolLevels[equippedPeeler] || 1) - 1
+  let medalMult = 1.0 + getMedalCount() * 0.05
+  let teaMult = teaOverdriveTimer > 0.0 ? 2.0 : 1.0
+  return t.pointMult * (1.0 + lv * 0.15) * (1.0 + upgStamp * 0.25) * medalMult * teaMult
+}
+
+function getEffectiveAutoRate() {
+  let t = PEELERS[equippedPeeler] || PEELERS[0]
+  let lv = (toolLevels[equippedPeeler] || 1) - 1
+  let base = t.autoRate * (1.0 + lv * 0.18) + upgSpindle * 1.65
+  return teaOverdriveTimer > 0.0 ? base * 2.0 : base
+}
+
+function getToolSharpenCost(idx) {
+  let t = PEELERS[idx] || PEELERS[0]
+  let lv = toolLevels[idx] || 1
+  if (lv >= 5) { return 0 }
+  return Math.round(t.sharpenBase * Math.pow(1.85, lv - 1))
+}
+
+function getSpindleCost() {
+  if (upgSpindle >= 5) { return 0 }
+  return Math.round(35 * Math.pow(2.15, upgSpindle))
+}
+
+function getChuteCost() {
+  if (upgChute >= 4) { return 0 }
+  return Math.round(50 * Math.pow(2.25, upgChute))
+}
+
+function getStampCost() {
+  if (upgStamp >= 5) { return 0 }
+  return Math.round(45 * Math.pow(2.2, upgStamp))
+}
+
+function getBoardCost() {
+  if (upgBoard >= 2) { return 0 }
+  return upgBoard === 0 ? 110 : 380
+}
+
+function getZapperCost() {
+  if (upgZapper >= 3) { return 0 }
+  if (upgZapper === 0) { return 75 }
+  if (upgZapper === 1) { return 220 }
+  return 560
+}
+
+function fmt1(n) {
+  return (Math.round((Number(n) || 0) * 10) / 10).toFixed(1)
+}
+
+function fmt2(n) {
+  return (Math.round((Number(n) || 0) * 100) / 100).toFixed(2)
+}
+
+function canAffordAnyUpgrade() {
+  let i = 0
+  while (i < PEELERS.length) {
+    if (!unlockedPeelers[i] && points >= PEELERS[i].unlockCost) { return true }
+    if (unlockedPeelers[i] && (toolLevels[i] || 1) < 5 && points >= getToolSharpenCost(i)) { return true }
+    i = i + 1
+  }
+  if (upgSpindle < 5 && points >= getSpindleCost()) { return true }
+  if (upgChute < 4 && points >= getChuteCost()) { return true }
+  if (upgStamp < 5 && points >= getStampCost()) { return true }
+  if (upgBoard < 2 && points >= getBoardCost()) { return true }
+  if (upgZapper < 3 && points >= getZapperCost()) { return true }
+  return false
+}
+
+function getCurrentRankTitle() {
+  if (quotaIdx <= 0) { return "Kitchen Recruit · Новобранец" }
+  let r = QUOTA_RANKS[Math.min(quotaIdx - 1, QUOTA_RANKS.length - 1)]
+  return r.title + " · " + r.ruTitle
+}
+
+function getNextQuotaTarget() {
+  if (quotaIdx >= QUOTA_RANKS.length) {
+    return Math.ceil((potatoesPeeled + 1) / 500) * 500
+  }
+  return QUOTA_RANKS[quotaIdx].target
+}
+
+function getQuotaProgressRatio() {
+  let prev = quotaIdx > 0 && quotaIdx <= QUOTA_RANKS.length ? QUOTA_RANKS[quotaIdx - 1].target : 0
+  let next = getNextQuotaTarget()
+  if (next <= prev) { return 1.0 }
+  let ratio = (potatoesPeeled - prev) / (next - prev)
+  return Math.max(0.0, Math.min(1.0, ratio))
+}
+
+function getCurrentOrder() {
+  return CANTEEN_ORDERS[orderIdx] || CANTEEN_ORDERS[0]
+}
+
+function getOrderTarget() {
+  let ord = getCurrentOrder()
+  return ord.target + orderTier * 4
+}
+
+function getOrderReward() {
+  let ord = getCurrentOrder()
+  return Math.round(ord.baseReward * (1.0 + orderTier * 0.42))
+}
+
+// ---------- State Labour Medals ----------
+
+function checkMedals() {
+  let conds = [
+    potatoesPeeled >= 1,
+    cleanPeelsTotal >= 10,
+    beetlesSwatted >= 5,
+    teaUsedCount >= 3,
+    tsarsPeeled >= 1,
+    ordersCompleted >= 5,
+    getBoardSlotCount() >= 5,
+    Boolean(unlockedPeelers[5])
+  ]
+  let awardedAny = false
+  let nextArr = medalsUnlocked.slice()
+  let i = 0
+  while (i < 8) {
+    if (!nextArr[i] && conds[i]) {
+      nextArr[i] = true
+      awardedAny = true
+      let md = STATE_MEDALS[i]
+      showBanner("★ MEDAL AWARDED: " + md.title.toUpperCase() + " (+5% ₽)")
+      playSfx("quota", 0.50)
+    }
+    i = i + 1
+  }
+  if (awardedAny) {
+    medalsUnlocked = nextArr
+    saveCareer()
+  }
+}
+
+// ---------- Potato, Boss Tsar-Kartoshka & Beetle Spawning ----------
+
+function hasActiveBoss() {
+  let i = 0
+  while (i < activePotatoes.length) {
+    if (activePotatoes[i].isBoss) { return true }
+    i = i + 1
+  }
+  return false
+}
+
+function getActiveBossTimer() {
+  let i = 0
+  while (i < activePotatoes.length) {
+    if (activePotatoes[i].isBoss) {
+      return activePotatoes[i].bossTimer
+    }
+    i = i + 1
+  }
+  return 0.0
+}
+
+function getActiveBossPct() {
+  let i = 0
+  while (i < activePotatoes.length) {
+    if (activePotatoes[i].isBoss) {
+      return activePotatoes[i].peelPct
+    }
+    i = i + 1
+  }
+  return 0
+}
+
+function refreshSceneAnchors() {
+  goldenAnchorId = ""
+  bossAnchorId = ""
+  let i = 0
+  while (i < activePotatoes.length) {
+    if (activePotatoes[i].isBoss) {
+      bossAnchorId = activePotatoes[i].id
+    } else if (activePotatoes[i].varietyIdx === 4 && goldenAnchorId === "") {
+      goldenAnchorId = activePotatoes[i].id
+    }
+    i = i + 1
+  }
+  activeBeetleAnchorId = ""
+  let b = 0
+  while (b < beetles.length) {
+    if (!beetles[b].swatted) {
+      activeBeetleAnchorId = beetles[b].id
+      break
+    }
+    b = b + 1
+  }
+}
+
+function chooseVarietyIndex() {
+  let r = randFloat()
+  let rareBoost = upgChute * 0.045 + equippedPeeler * 0.02
+  if (r < 0.04 + rareBoost * 0.45) { return 4 } // Golden Stakhanovite!
+  if (r < 0.15 + rareBoost) { return 3 }        // Ural Mud-Crust
+  if (r < 0.31 + rareBoost * 1.1) { return 2 }  // Siberian Frost-Eye
+  if (r < 0.55 + rareBoost * 0.8) { return 1 }  // Red October
+  return 0                                      // Sovkhoz Standard
+}
+
+function spawnPotatoAtSlot(slotIdx, sx, sz) {
+  let vIdx = chooseVarietyIndex()
+  let v = VARIETIES[vIdx]
+  let skinArr = []
+  let k = 0
+  while (k < 16) {
+    skinArr.push(v.durability)
+    k = k + 1
+  }
+  let effScale = v.scale * getSlotPotatoScale()
+  let p = {
+    id: "potato-slot-" + slotIdx + "-" + (nextEntityId++),
+    slotIdx: slotIdx,
+    varietyIdx: vIdx,
+    isBoss: false,
+    bossTimer: 0.0,
+    touchedOnce: false,
+    cutElapsed: 0.0,
+    x: sx,
+    y: 0.22 * effScale,
+    z: sz,
+    rollAngle: randFloat() * Math.PI * 2.0,
+    yawAngle: (randFloat() - 0.5) * 0.26,
+    rollVel: 0.35 + randFloat() * 0.35,
+    wobble: 0.0,
+    hitFlash: 0.0,
+    spawnAnim: 0.05,
+    skin: skinArr,
+    patchesLeft: 16,
+    peelPct: 0
+  }
+  activePotatoes.push(p)
+  sackBounce = 1.0
+  refreshSceneAnchors()
+}
+
+function summonTsarPotato(fromBell) {
+  if (hasActiveBoss()) {
+    if (fromBell) { showToast("Tsar-Kartoshka is already on the cutting board!") }
+    return false
+  }
+  let count = getBoardSlotCount()
+  let coords = getSlotCoords(count)
+  let centerSlot = Math.floor(count / 2)
+  let cx = coords[centerSlot] ? coords[centerSlot].x : 0.0
+  let cz = coords[centerSlot] ? coords[centerSlot].z : 0.04
+
+  // Clear existing normal tuber in the center slot to make room for the royal tuber!
+  let i = activePotatoes.length - 1
+  while (i >= 0) {
+    if (activePotatoes[i].slotIdx === centerSlot) {
+      activePotatoes.splice(i, 1)
+    }
+    i = i - 1
+  }
+
+  let bossSkin = []
+  let k = 0
+  let armor = 2.9 + Math.min(2.2, equippedPeeler * 0.35)
+  while (k < 16) {
+    bossSkin.push(armor)
+    k = k + 1
+  }
+
+  activePotatoes.push({
+    id: "potato-boss-" + (nextEntityId++),
+    slotIdx: centerSlot,
+    varietyIdx: 4,
+    isBoss: true,
+    bossTimer: 14.0,
+    touchedOnce: true,
+    cutElapsed: 0.0,
+    x: cx,
+    y: 0.275,
+    z: cz,
+    rollAngle: 0.2,
+    yawAngle: 0.0,
+    rollVel: 0.65,
+    wobble: 0.0,
+    hitFlash: 1.0,
+    spawnAnim: 0.15,
+    skin: bossSkin,
+    patchesLeft: 16,
+    peelPct: 0
+  })
+
+  sackBounce = 1.0
+  bellCooldown = 20.0
+  if (fromBell) {
+    bellRingAnim = 1.0
+    playSfx("bell", 0.45)
+  }
+  playSfx("boss_thud", 0.52)
+  triggerHaptic(30)
+  spawnStarchBurst(cx, 0.28, cz, "#facc15", 16, 1.5)
+  refreshSceneAnchors()
+  showBanner("★★ GIANT TSAR-KARTOSHKA ON THE BOARD! (14s) ★★")
+  return true
+}
+
+function ringCommissarBell() {
+  if (!started || shopOpen || boardOpen || blitzSummaryOpen) { return }
+  bellRingAnim = 1.0
+  if (hasActiveBoss()) {
+    playSfx("bell", 0.35)
+    showToast("Finish peeling the active Tsar-Kartoshka first!")
+    return
+  }
+  if (bellCooldown > 0.0) {
+    playSfx("buzz", 0.30)
+    showToast("Service Bell recharging: " + Math.ceil(bellCooldown) + "s")
+    return
+  }
+  summonTsarPotato(true)
+}
+
+function activateTeaOverdrive() {
+  if (!started || shopOpen || boardOpen || blitzSummaryOpen) { return }
+  if (teaOverdriveTimer > 0.0) {
+    showToast("Stakhanovite Tea Overdrive already surging (" + Math.ceil(teaOverdriveTimer) + "s)!")
+    return
+  }
+  if (teaCharge < 100.0) {
+    playSfx("buzz", 0.28)
+    showToast("Samovar Tea brewing: " + Math.floor(teaCharge) + "% (peel spuds to reach 100%)")
+    return
+  }
+  teaCharge = 0.0
+  teaOverdriveTimer = 10.0
+  teaUsedCount = teaUsedCount + 1
+  buildKitchenLights()
+  playSfx("overdrive", 0.52)
+  triggerHaptic(30)
+  spawnStarchBurst(1.24, 0.26, -0.92, "#fbbf24", 18, 1.4)
+  showBanner("☕ STAKHANOVITE TEA OVERDRIVE! 2x SPEED & 2x RUBLES! ☕")
+  checkMedals()
+}
+
+function spawnSaboteurBeetle() {
+  if (activePotatoes.length === 0 || beetles.length >= 2) { return }
+  let target = activePotatoes[Math.floor(randFloat() * activePotatoes.length)]
+  let bt = {
+    id: "beetle-" + (nextEntityId++),
+    x: -1.48,
+    y: 0.02,
+    z: -0.18 + (randFloat() - 0.5) * 0.25,
+    tx: target.x,
+    tz: target.z,
+    targetId: target.id,
+    yaw: 1.45,
+    rx: 0.0,
+    rz: 0.0,
+    vx: 0.0,
+    vy: 0.0,
+    vz: 0.0,
+    phase: randFloat() * 6.28,
+    nibbleAccum: 0.0,
+    zapTimer: upgZapper >= 3 ? 0.28 : (upgZapper === 2 ? 1.05 : 999.0),
+    swatted: false,
+    life: 14.0
+  }
+  beetles.push(bt)
+  refreshSceneAnchors()
+  showToast("⚠ Colorado Saboteur Beetle on the board! Swat it for +Rubles!")
+}
+
+function swatBeetle(idx, fromZapper) {
+  let bt = beetles[idx]
+  if (!bt || bt.swatted) { return }
+  bt.swatted = true
+  bt.vy = 2.6 + randFloat() * 0.8
+  bt.vx = (bt.x >= 0 ? 1.6 : -1.6) + (randFloat() - 0.5) * 0.8
+  bt.vz = -1.4
+  bt.life = 0.55
+
+  let bountyMult = upgZapper >= 3 ? 2.0 : 1.0
+  let bounty = Math.max(20, Math.round(45 * getEffectivePointMult() * bountyMult))
+  points = points + bounty
+  lifetimePoints = lifetimePoints + bounty
+  beetlesSwatted = beetlesSwatted + 1
+
+  comboCount = comboCount + 1
+  comboTimer = 3.5 + upgStamp * 0.45
+  comboMult = Math.min(3.5, 1.0 + Math.floor(comboCount / 3) * 0.25)
+
+  if (fromZapper) {
+    laserBeams.push({
+      sx: -0.95,
+      sy: 1.45,
+      sz: -0.45,
+      tx: bt.x,
+      ty: bt.y + 0.08,
+      tz: bt.z,
+      color: "#38bdf8",
+      radius: 0.020,
+      life: 0.22
+    })
+  }
+
+  spawnStarchBurst(bt.x, bt.y + 0.08, bt.z, fromZapper ? "#38bdf8" : "#fde047", 12, 1.35)
+  playSfx("squish", 0.46)
+  if (!fromZapper) { triggerHaptic(18) }
+  showPotCallout((fromZapper ? "⚡ ZAPPED +" : "★ SWATTED +") + bounty + " ₽!")
+  refreshSceneAnchors()
+  checkMedals()
+}
+
+function refillBoardSlots(immediate) {
+  let count = getBoardSlotCount()
+  let coords = getSlotCoords(count)
+  let slotSc = getSlotPotatoScale()
+
+  let i = 0
+  while (i < activePotatoes.length) {
+    let ap = activePotatoes[i]
+    if (!ap.isBoss) {
+      let av = VARIETIES[ap.varietyIdx] || VARIETIES[0]
+      ap.y = 0.22 * av.scale * slotSc
+    }
+    if (ap.slotIdx < coords.length) {
+      ap.x = coords[ap.slotIdx].x
+      ap.z = coords[ap.slotIdx].z
+    }
+    i = i + 1
+  }
+
+  let s = 0
+  let spawnedAny = false
+  while (s < count) {
+    let occupied = false
+    let j = 0
+    while (j < activePotatoes.length) {
+      if (activePotatoes[j].slotIdx === s) {
+        occupied = true
+        break
+      }
+      j = j + 1
+    }
+    if (!occupied) {
+      spawnPotatoAtSlot(s, coords[s].x, coords[s].z)
+      if (immediate) {
+        activePotatoes[activePotatoes.length - 1].spawnAnim = 1.0
+      }
+      spawnedAny = true
+      if (!immediate) { break }
+    }
+    s = s + 1
+  }
+  if (spawnedAny && !immediate) {
+    playSfx("sack", 0.24)
+  }
+  checkMedals()
+}
+
+function spawnStarchBurst(wx, wy, wz, hexColor, count, speed) {
+  let maxP = qualityPreset === "low" ? 45 : 150
+  let rgb = hexToRgb01(hexColor)
+  let i = 0
+  while (i < count) {
+    if (starchParticles.length >= maxP) {
+      starchParticles.shift()
+    }
+    let ang = randFloat() * Math.PI * 2.0
+    let spd = speed * (0.45 + randFloat() * 0.75)
+    starchParticles.push({
+      x: wx + (randFloat() - 0.5) * 0.08,
+      y: Math.max(0.05, wy + (randFloat() - 0.5) * 0.06),
+      z: wz + (randFloat() - 0.5) * 0.08,
+      vx: Math.cos(ang) * spd,
+      vy: 0.75 + randFloat() * 1.35,
+      vz: Math.sin(ang) * spd,
+      r: rgb[0],
+      g: rgb[1],
+      b: rgb[2],
+      life: 0.42 + randFloat() * 0.28
+    })
+    i = i + 1
+  }
+}
+
+function spawnPeelCurl(wx, wy, wz, skinHex) {
+  let maxCurls = qualityPreset === "low" ? 6 : 16
+  if (peelCurls.length >= maxCurls) {
+    peelCurls.shift()
+  }
+  peelCurls.push({
+    id: "curl-" + (nextEntityId++),
+    x: wx,
+    y: wy + 0.06,
+    z: wz,
+    vx: 1.15 + randFloat() * 1.1,
+    vy: 1.55 + randFloat() * 0.95,
+    vz: (randFloat() - 0.35) * 0.9,
+    rx: randFloat() * 3.14,
+    ry: randFloat() * 3.14,
+    rz: randFloat() * 3.14,
+    vrx: (randFloat() - 0.5) * 11.0,
+    vry: (randFloat() - 0.5) * 11.0,
+    skinColor: skinHex,
+    life: 0.68
+  })
+}
+
+function pushBladeTrailPoint(wx, wy, wz) {
+  if (qualityPreset === "low") { return }
+  if (prevTrailPos) {
+    let dx = wx - prevTrailPos.x
+    let dz = wz - prevTrailPos.z
+    if (dx * dx + dz * dz > 0.0012 && dx * dx + dz * dz < 0.85) {
+      bladeTrail.push({
+        x1: prevTrailPos.x,
+        y1: prevTrailPos.y + 0.08,
+        z1: prevTrailPos.z,
+        x2: wx,
+        y2: wy + 0.08,
+        z2: wz,
+        life: 0.18
+      })
+      if (bladeTrail.length > 14) {
+        bladeTrail.shift()
+      }
+    }
+  }
+  prevTrailPos = { x: wx, y: wy, z: wz }
+}
+
+// ---------- Peeling, Orders & Completion Logic ----------
+
+function recalcPotatoProgress(p) {
+  let left = 0
+  let i = 0
+  while (i < 16) {
+    if (p.skin[i] > 0.001) {
+      left = left + 1
+    }
+    i = i + 1
+  }
+  p.patchesLeft = left
+  p.peelPct = Math.round(((16 - left) / 16.0) * 100)
+}
+
+function advanceOrderOnPotato(p, wasClean) {
+  let ord = getCurrentOrder()
+  let step = 1
+  if (p.isBoss) {
+    step = ord.id === "banquet" ? 6 : 3
+  } else if (ord.id === "borscht" && p.varietyIdx === 1) {
+    step = 2
+  } else if (ord.id === "pyure" && wasClean) {
+    step = 2
+  } else if (ord.id === "ukha" && (p.varietyIdx === 2 || p.varietyIdx === 3)) {
+    step = 2
+  } else if (ord.id === "banquet" && p.varietyIdx === 4) {
+    step = 3
+  }
+
+  orderProgress = orderProgress + step
+  if (orderProgress >= getOrderTarget()) {
+    let reward = getOrderReward()
+    points = points + reward
+    lifetimePoints = lifetimePoints + reward
+    ordersCompleted = ordersCompleted + 1
+    if (teaOverdriveTimer <= 0.0) {
+      teaCharge = Math.min(100.0, teaCharge + ord.teaBonus)
+    }
+    potBounce = 1.0
+    playSfx("order_done", 0.48)
+    triggerHaptic(24)
+    showToast("🍲 ORDER SERVED: " + ord.name + " (+" + reward + " ₽)!")
+    orderProgress = 0
+    orderIdx = (orderIdx + 1) % CANTEEN_ORDERS.length
+    if (orderIdx === 0) {
+      orderTier = orderTier + 1
+    }
+  }
+}
+
+function completePotato(idxInArray) {
+  let p = activePotatoes[idxInArray]
+  if (!p) { return }
+  let v = VARIETIES[p.varietyIdx] || VARIETIES[0]
+
+  activePotatoes.splice(idxInArray, 1)
+  refreshSceneAnchors()
+
+  flyingTubers.push({
+    id: "fly-" + (nextEntityId++),
+    startX: p.x,
+    startY: p.y,
+    startZ: p.z,
+    fleshColor: p.isBoss ? "#fef08a" : v.fleshColor,
+    isBoss: p.isBoss,
+    t: 0.0,
+    duration: 0.42
+  })
+
+  spawnStarchBurst(p.x, p.y + 0.08, p.z, p.isBoss ? "#facc15" : v.fleshColor, p.isBoss ? 24 : 12, p.isBoss ? 1.75 : 1.35)
+
+  // Increment Tempo Streak
+  let streakWindow = 3.2 + upgStamp * 0.45
+  comboCount = comboCount + 1
+  comboTimer = streakWindow
+  comboMult = Math.min(3.5, 1.0 + Math.floor(comboCount / 3) * 0.25)
+
+  // Grade-A Clean Peel Bonus if peeled rapidly (<2.8s from first cut!)
+  let wasClean = !p.isBoss && p.touchedOnce && p.cutElapsed <= 2.8
+  if (wasClean) {
+    cleanPeelsTotal = cleanPeelsTotal + 1
+  }
+  let cleanMult = wasClean ? 1.35 : 1.0
+
+  // Award Rubles & Potato Count (Boss Tsar-Kartoshka = +5 potatoes & massive bounty!)
+  let basePts = p.isBoss ? 220 : v.basePoints
+  let earned = Math.max(1, Math.round(basePts * getEffectivePointMult() * comboMult * cleanMult))
+  let spudCredit = p.isBoss ? 5 : 1
+
+  points = points + earned
+  lifetimePoints = lifetimePoints + earned
+  potatoesPeeled = potatoesPeeled + spudCredit
+
+  if (blitzActive) {
+    blitzPotatoes = blitzPotatoes + spudCredit
+    blitzPoints = blitzPoints + earned
+  }
+
+  if (teaOverdriveTimer <= 0.0) {
+    teaCharge = Math.min(100.0, teaCharge + (p.isBoss ? 32.0 : 13.5))
+  }
+
+  if (p.isBoss) {
+    tsarsPeeled = tsarsPeeled + 1
+    triggerHaptic(35)
+    showBanner("★★ TSAR-KARTOSHKA CONQUERED! +5 SPUDS & +" + earned + " ₽! ★★")
+    showPotCallout("★★ TSAR +" + earned + " ₽! ★★")
+    playSfx("quota", 0.55)
+  } else if (p.varietyIdx === 4) {
+    triggerHaptic(20)
+    showToast("★ GOLDEN STAKHANOVITE TUBER! +" + earned + " ₽!")
+    showPotCallout("★ GOLD +" + earned + " ₽!")
+    playSfx("quota", 0.46)
+  } else if (wasClean) {
+    triggerHaptic(14)
+    showPotCallout("+" + earned + " ₽ · CLEAN PEEL!")
+  } else {
+    triggerHaptic(10)
+    showPotCallout("+" + earned + " ₽")
+  }
+
+  // Advance Canteen Dish Order
+  advanceOrderOnPotato(p, wasClean)
+
+  // Automatic Boss Tsar-Kartoshka arrival (at most once per bell recharge cycle!)
+  if (!p.isBoss) {
+    bossCounter = Math.min(22, bossCounter + 1)
+    if (bossCounter >= 22 && !hasActiveBoss() && bellCooldown <= 0.0) {
+      bossCounter = 0
+      summonTsarPotato(false)
+    }
+  }
+
+  // Check Five-Year Plan Quota Rank Promotion!
+  while (quotaIdx < QUOTA_RANKS.length && potatoesPeeled >= QUOTA_RANKS[quotaIdx].target) {
+    let q = QUOTA_RANKS[quotaIdx]
+    points = points + q.bonus
+    lifetimePoints = lifetimePoints + q.bonus
+    quotaIdx = quotaIdx + 1
+    showBanner("QUOTA MET: " + q.title.toUpperCase() + " (+" + q.bonus + " ₽)")
+    playSfx("quota", 0.52)
+  }
+
+  spawnCooldown = Math.max(0.04, 0.34 - upgChute * 0.075)
+  checkMedals()
+  rebuildLeaderboard()
+}
+
+function peelPatchesOnPotato(p, wx, wy, wz, power, radius, spawnLaser) {
+  let v = VARIETIES[p.varietyIdx] || VARIETIES[0]
+  let sc = p.isBoss ? 1.24 : (v.scale * getSlotPotatoScale())
+  let cr = Math.cos(p.rollAngle)
+  let sr = Math.sin(p.rollAngle)
+
+  let peeledAny = false
+  let touchedAny = false
+  let hitPatchWorld = null
+
+  let k = 0
+  while (k < 16) {
+    if (p.skin[k] > 0.001) {
+      let pc = PATCH_COORDS[k]
+      let ly = pc.ly0 * cr - pc.lz0 * sr
+      let lz = pc.ly0 * sr + pc.lz0 * cr
+      let px = p.x + pc.lx * sc
+      let py = p.y + ly * sc
+      let pz = p.z + lz * sc
+
+      let dx = px - wx
+      let dy = (py - wy) * 0.55
+      let dz = pz - wz
+      let dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
+
+      let effRad = p.isBoss ? (radius + 0.14) : radius
+      let accessible = (ly > -0.09 || lz > -0.02 || effRad >= 0.68)
+      if (accessible && dist <= effRad) {
+        let falloff = 1.0 - (dist / (effRad + 0.08)) * 0.35
+        p.skin[k] = Math.max(0.0, p.skin[k] - power * falloff)
+        touchedAny = true
+        if (p.skin[k] <= 0.001) {
+          p.skin[k] = 0.0
+          peeledAny = true
+          hitPatchWorld = { x: px, y: py, z: pz }
+          spawnPeelCurl(px, py, pz, p.isBoss ? "#b45309" : v.skinColor)
+          spawnStarchBurst(px, py, pz, "#f7e8a4", 4, 0.95)
+        }
+      }
+    }
+    k = k + 1
+  }
+
+  let bdx = p.x - wx
+  let bdz = p.z - wz
+  let bodyHitR = (p.isBoss ? 0.48 : 0.36) + radius * 0.5
+  if (!touchedAny && (bdx * bdx + bdz * bdz) <= bodyHitR * bodyHitR) {
+    let bestIdx = -1
+    let bestScore = -999.0
+    let m = 0
+    while (m < 16) {
+      if (p.skin[m] > 0.001) {
+        let mc = PATCH_COORDS[m]
+        let mly = mc.ly0 * cr - mc.lz0 * sr
+        let mlz = mc.ly0 * sr + mc.lz0 * cr
+        let mx = p.x + mc.lx * sc
+        let score = mly * 1.4 + mlz * 0.8 - Math.abs(mx - wx) * 0.9
+        if (score > bestScore) {
+          bestScore = score
+          bestIdx = m
+        }
+      }
+      m = m + 1
+    }
+    if (bestIdx >= 0) {
+      p.skin[bestIdx] = Math.max(0.0, p.skin[bestIdx] - power)
+      touchedAny = true
+      if (p.skin[bestIdx] <= 0.001) {
+        p.skin[bestIdx] = 0.0
+        peeledAny = true
+        hitPatchWorld = { x: p.x, y: p.y + 0.16, z: p.z }
+        spawnPeelCurl(p.x, p.y + 0.16, p.z, p.isBoss ? "#b45309" : v.skinColor)
+        spawnStarchBurst(p.x, p.y + 0.14, p.z, "#f7e8a4", 4, 0.95)
+      }
+    }
+  }
+
+  if (touchedAny) {
+    if (!p.touchedOnce) {
+      p.touchedOnce = true
+      p.cutElapsed = 0.0
+    }
+    let tDef = PEELERS[equippedPeeler] || PEELERS[0]
+    p.rollVel = Math.min(11.0, p.rollVel + tDef.spinBoost * 0.85)
+    p.hitFlash = 1.0
+    p.wobble = p.wobble + 1.9
+    if (spawnLaser || equippedPeeler === 5) {
+      let tx = hitPatchWorld ? hitPatchWorld.x : p.x
+      let ty = hitPatchWorld ? hitPatchWorld.y : (p.y + 0.12)
+      let tz = hitPatchWorld ? hitPatchWorld.z : p.z
+      laserBeams.push({
+        sx: toolPos.x,
+        sy: toolPos.y + 0.19,
+        sz: toolPos.z + 0.08,
+        tx: tx,
+        ty: ty,
+        tz: tz,
+        color: "#ff2a3c",
+        radius: 0.016,
+        life: 0.14
+      })
+      if (laserBeams.length > 10) { laserBeams.shift() }
+    }
+  }
+
+  recalcPotatoProgress(p)
+  let popThresh = p.isBoss ? 1 : 2
+  if (p.patchesLeft <= popThresh) {
+    let z = 0
+    while (z < 16) {
+      p.skin[z] = 0.0
+      z = z + 1
+    }
+    p.patchesLeft = 0
+    p.peelPct = 100
+  }
+  return touchedAny || peeledAny
+}
+
+function applyPeelStrokeAt(wx, wy, wz, mult) {
+  if (!started || shopOpen || boardOpen || blitzSummaryOpen) { return }
+  let power = getEffectivePeelPower() * (mult || 1.0)
+  let radius = getEffectiveBladeRadius()
+
+  strokeImpulse = 1.0
+  toolAnimPhase = toolAnimPhase + 0.85
+  pushBladeTrailPoint(wx, wy, wz)
+
+  // Also swat any Colorado Saboteur Beetle caught inside the blade sweep!
+  let bi = 0
+  let swatRad = (isTouchDevice ? 0.32 : 0.24) + radius * 0.35
+  while (bi < beetles.length) {
+    let bt = beetles[bi]
+    if (!bt.swatted) {
+      let bdx = bt.x - wx
+      let bdz = bt.z - wz
+      if (bdx * bdx + bdz * bdz <= swatRad * swatRad) {
+        swatBeetle(bi, false)
+      }
+    }
+    bi = bi + 1
+  }
+
+  let anyHit = false
+  let i = activePotatoes.length - 1
+  while (i >= 0) {
+    let p = activePotatoes[i]
+    let hit = peelPatchesOnPotato(p, wx, wy, wz, power, radius, equippedPeeler === 5)
+    if (hit) { anyHit = true }
+    if (p.patchesLeft <= 0) {
+      completePotato(i)
+    }
+    i = i - 1
+  }
+
+  if (anyHit) {
+    playScrapeSfx(equippedPeeler === 5)
+  }
+}
+
+function manualPeelAction() {
+  if (!started || shopOpen || boardOpen || blitzSummaryOpen) { return }
+  // Prioritize swatting an active beetle, then Boss Tsar-Kartoshka, then lowest-patch potato!
+  let bi = 0
+  while (bi < beetles.length) {
+    if (!beetles[bi].swatted) {
+      toolTargetPos = { x: beetles[bi].x, y: 0.16, z: beetles[bi].z }
+      toolPos = { x: toolTargetPos.x, y: toolTargetPos.y, z: toolTargetPos.z }
+      swatBeetle(bi, false)
+      return
+    }
+    bi = bi + 1
+  }
+
+  if (activePotatoes.length === 0) {
+    refillBoardSlots(false)
+    return
+  }
+  let target = activePotatoes[0]
+  let i = 1
+  while (i < activePotatoes.length) {
+    let cand = activePotatoes[i]
+    if (cand.isBoss && !target.isBoss) {
+      target = cand
+    } else if (cand.isBoss === target.isBoss && cand.patchesLeft < target.patchesLeft) {
+      target = cand
+    }
+    i = i + 1
+  }
+  toolTargetPos = {
+    x: target.x + (randFloat() - 0.5) * 0.18,
+    y: target.y + 0.14,
+    z: target.z + (randFloat() - 0.5) * 0.12
+  }
+  toolPos = { x: toolTargetPos.x, y: toolTargetPos.y, z: toolTargetPos.z }
+  applyPeelStrokeAt(toolTargetPos.x, toolTargetPos.y, toolTargetPos.z, 1.05)
+}
+
+// ---------- Scene3D Pointer Handlers ----------
+
+function clampCursorToBoard(pt) {
+  let cx = Math.max(-1.45, Math.min(1.45, Number(pt.x) || 0))
+  let cy = Math.max(0.08, Math.min(0.65, Number(pt.y) || 0.2))
+  let cz = Math.max(-0.62, Math.min(0.68, Number(pt.z) || 0.08))
+  return { x: cx, y: cy, z: cz }
+}
+
+function onScenePointerDown(info) {
+  if (mobileDrawerOpen) { mobileDrawerOpen = false }
+  if (!started || shopOpen || boardOpen || blitzSummaryOpen || cameraOrbitMode) { return }
+  let hitId = info ? (info.rootObjectId || info.objectId || "") : ""
+
+  if (hitId === "burlap-sack") {
+    sackBounce = 1.0
+    playSfx("sack", 0.35)
+    refillBoardSlots(false)
+    showToast("Fresh Sovkhoz tubers dispensed onto cutting board!")
+    return
+  }
+  if (hitId === "tea-glass") {
+    activateTeaOverdrive()
+    return
+  }
+  if (hitId === "commissar-bell") {
+    ringCommissarBell()
+    return
+  }
+  if (hitId === "samovar-prop") {
+    toggleRadioMusic()
+    return
+  }
+  if (hitId.indexOf("beetle-") === 0) {
+    let bIdx = 0
+    while (bIdx < beetles.length) {
+      if (beetles[bIdx].id === hitId) {
+        swatBeetle(bIdx, false)
+        return
+      }
+      bIdx = bIdx + 1
+    }
+  }
+
+  // Generous touch/counter tap hitboxes for small-screen props & scuttling beetles!
+  if (info && info.point && hitId.indexOf("potato-") !== 0) {
+    let px = Number(info.point.x) || 0
+    let pz = Number(info.point.z) || 0
+
+    let nearB = 0
+    let beetleHitR2 = isTouchDevice ? 0.1156 : 0.0625
+    while (nearB < beetles.length) {
+      if (!beetles[nearB].swatted) {
+        let bdx = beetles[nearB].x - px
+        let bdz = beetles[nearB].z - pz
+        if (bdx * bdx + bdz * bdz <= beetleHitR2) {
+          swatBeetle(nearB, false)
+          return
+        }
+      }
+      nearB = nearB + 1
+    }
+
+    let tdx = px - 1.24
+    let tdz = pz - (-0.92)
+    if (tdx * tdx + tdz * tdz <= 0.1089) {
+      activateTeaOverdrive()
+      return
+    }
+
+    let cdx = px - (-1.68)
+    let cdz = pz - 0.38
+    if (cdx * cdx + cdz * cdz <= 0.1089) {
+      ringCommissarBell()
+      return
+    }
+  }
+
+  pointerScraping = true
+  prevTrailPos = null
+  if (info && info.point) {
+    let cp = clampCursorToBoard(info.point)
+    toolTargetPos = cp
+    lastScrapeWorldX = cp.x
+    lastScrapeWorldZ = cp.z
+    applyPeelStrokeAt(cp.x, cp.y, cp.z, 1.0)
+  } else {
+    manualPeelAction()
+  }
+}
+
+function onScenePointerMove(info) {
+  if (!started || shopOpen || boardOpen || blitzSummaryOpen || cameraOrbitMode) { return }
+  if (!info || !info.point) { return }
+  let cp = clampCursorToBoard(info.point)
+  let dx = cp.x - toolTargetPos.x
+  toolTiltY = Math.max(-0.45, Math.min(0.45, -dx * 2.2))
+  toolTargetPos = cp
+
+  if (pointerScraping) {
+    let moveDist = Math.sqrt((cp.x - lastScrapeWorldX) * (cp.x - lastScrapeWorldX) + (cp.z - lastScrapeWorldZ) * (cp.z - lastScrapeWorldZ))
+    let stepMin = isTouchDevice ? 0.036 : 0.045
+    if (moveDist >= stepMin) {
+      lastScrapeWorldX = cp.x
+      lastScrapeWorldZ = cp.z
+      applyPeelStrokeAt(cp.x, cp.y, cp.z, 0.92)
+    }
+  }
+}
+
+function onScenePointerUp() {
+  pointerScraping = false
+  prevTrailPos = null
+}
+
+function onSceneHover(info) {
+  if (!started || shopOpen || boardOpen || blitzSummaryOpen || cameraOrbitMode) { return }
+  if (!info || !info.point) { return }
+  let cp = clampCursorToBoard(info.point)
+  let dx = cp.x - toolTargetPos.x
+  toolTiltY = Math.max(-0.45, Math.min(0.45, -dx * 2.2))
+  toolTargetPos = cp
+
+  if (hoverPeel) {
+    let hitId = info.rootObjectId || info.objectId || ""
+    let moveDist = Math.sqrt((cp.x - lastScrapeWorldX) * (cp.x - lastScrapeWorldX) + (cp.z - lastScrapeWorldZ) * (cp.z - lastScrapeWorldZ))
+    if (
+      moveDist >= 0.055 &&
+      (hitId.indexOf("potato-") === 0 || hitId.indexOf("beetle-") === 0 || getEffectiveBladeRadius() >= 0.5)
+    ) {
+      lastScrapeWorldX = cp.x
+      lastScrapeWorldZ = cp.z
+      applyPeelStrokeAt(cp.x, cp.y, cp.z, 0.85)
+    }
+  }
+}
+
+function onSceneStats(st) {
+  if (st && typeof st.fps === "number" && st.fps > 0) {
+    liveFps = Math.round(st.fps)
+  }
+}
+
+// ---------- Upgrades, Tool Selection & Modes ----------
+
+function selectOrUnlockPeeler(idx) {
+  if (idx < 0 || idx >= PEELERS.length) { return }
+  let t = PEELERS[idx]
+  if (unlockedPeelers[idx]) {
+    equippedPeeler = idx
+    playSfx("click", 0.35)
+    buildKitchenLights()
+    refillBoardSlots(false)
+    saveCareer()
+    rebuildLeaderboard()
+    showToast("Equipped " + t.name + " (" + getBoardSlotCount() + " board slots)")
+    return
+  }
+  if (points < t.unlockCost) {
+    playSfx("buzz", 0.32)
+    showToast("Need " + t.unlockCost + " ₽ to requisition " + t.name + "!")
+    return
+  }
+  points = points - t.unlockCost
+  unlockedPeelers = unlockedPeelers.slice()
+  unlockedPeelers[idx] = true
+  equippedPeeler = idx
+  playSfx("upgrade", 0.52)
+  buildKitchenLights()
+  refillBoardSlots(false)
+  checkMedals()
+  saveCareer()
+  rebuildLeaderboard()
+  showBanner("REQUISITIONED: " + t.name.toUpperCase() + "!")
+}
+
+function sharpenPeeler(idx) {
+  if (idx < 0 || idx >= PEELERS.length || !unlockedPeelers[idx]) { return }
+  let lv = toolLevels[idx] || 1
+  if (lv >= 5) { return }
+  let cost = getToolSharpenCost(idx)
+  if (points < cost) {
+    playSfx("buzz", 0.32)
+    showToast("Need " + cost + " ₽ to sharpen " + PEELERS[idx].code + "!")
+    return
+  }
+  points = points - cost
+  toolLevels = toolLevels.slice()
+  toolLevels[idx] = lv + 1
+  playSfx("upgrade", 0.46)
+  saveCareer()
+  showToast(PEELERS[idx].name + " sharpened to Lv " + toolLevels[idx] + "/5!")
+}
+
+function sharpenEquipped() {
+  sharpenPeeler(equippedPeeler)
+}
+
+function buySpindleUpgrade() {
+  if (upgSpindle >= 5) { return }
+  let cost = getSpindleCost()
+  if (points < cost) { playSfx("buzz", 0.32); showToast("Need " + cost + " ₽!"); return }
+  points = points - cost
+  upgSpindle = upgSpindle + 1
+  playSfx("upgrade", 0.48)
+  saveCareer()
+  showToast("Brigade Auto-Spindle upgraded to Lv " + upgSpindle + "/5!")
+}
+
+function buyChuteUpgrade() {
+  if (upgChute >= 4) { return }
+  let cost = getChuteCost()
+  if (points < cost) { playSfx("buzz", 0.32); showToast("Need " + cost + " ₽!"); return }
+  points = points - cost
+  upgChute = upgChute + 1
+  playSfx("upgrade", 0.48)
+  saveCareer()
+  showToast("Kolkhoz Conveyor Chute upgraded to Lv " + upgChute + "/4!")
+}
+
+function buyStampUpgrade() {
+  if (upgStamp >= 5) { return }
+  let cost = getStampCost()
+  if (points < cost) { playSfx("buzz", 0.32); showToast("Need " + cost + " ₽!"); return }
+  points = points - cost
+  upgStamp = upgStamp + 1
+  playSfx("upgrade", 0.48)
+  saveCareer()
+  showToast("GOST Quality Stamp upgraded to Lv " + upgStamp + "/5 (+25% ₽)!")
+}
+
+function buyBoardUpgrade() {
+  if (upgBoard >= 2) { return }
+  let cost = getBoardCost()
+  if (points < cost) { playSfx("buzz", 0.32); showToast("Need " + cost + " ₽!"); return }
+  points = points - cost
+  upgBoard = upgBoard + 1
+  playSfx("upgrade", 0.50)
+  refillBoardSlots(false)
+  checkMedals()
+  saveCareer()
+  showToast("Cutting Board expanded! Simultaneous tubers: " + getBoardSlotCount())
+}
+
+function buyZapperUpgrade() {
+  if (upgZapper >= 3) { return }
+  let cost = getZapperCost()
+  if (points < cost) { playSfx("buzz", 0.32); showToast("Need " + cost + " ₽!"); return }
+  points = points - cost
+  upgZapper = upgZapper + 1
+  buildKitchenLights()
+  playSfx("upgrade", 0.50)
+  saveCareer()
+  showToast("Pioneer Bug-Zapper upgraded to Lv " + upgZapper + "/3!")
+}
+
+// ---------- UI Navigation & Controls ----------
+
+function toggleMobileDrawer() {
+  mobileDrawerOpen = !mobileDrawerOpen
+  playSfx("click", 0.32)
+}
+
+function enterStation() {
+  started = true
+  shopOpen = false
+  boardOpen = false
+  blitzSummaryOpen = false
+  mobileDrawerOpen = false
+  blitzActive = false
+  setCameraView("station")
+  refillBoardSlots(true)
+  syncRadioLoop()
+  playSfx("click", 0.40)
+  showToast(
+    (isTouchDevice || isMobileLayout)
+      ? "Drag across potatoes to peel! Tap Tea at 100% or Bell for Tsar-Spud!"
+      : "Sweep potatoes to peel! Click Tea [Q] at 100% or Bell [R] for Tsar-Spud!"
+  )
+}
+
+function startBlitzShift() {
+  started = true
+  shopOpen = false
+  boardOpen = false
+  blitzSummaryOpen = false
+  mobileDrawerOpen = false
+  blitzActive = true
+  blitzTimeLeft = 60.0
+  blitzPotatoes = 0
+  blitzPoints = 0
+  setCameraView("station")
+  activePotatoes = []
+  beetles = []
+  refillBoardSlots(true)
+  syncRadioLoop()
+  playSfx("quota", 0.48)
+  showBanner("60s STAKHANOVITE QUOTA TRIAL — PEEL!")
+}
+
+function finishBlitzShift() {
+  blitzActive = false
+  pointerScraping = false
+  mobileDrawerOpen = false
+  if (blitzPotatoes > bestBlitzPotatoes) {
+    bestBlitzPotatoes = blitzPotatoes
+  }
+  blitzSummaryOpen = true
+  saveCareer()
+  rebuildLeaderboard()
+  playSfx("stamp", 0.50)
+}
+
+function closeBlitzSummary() {
+  blitzSummaryOpen = false
+  playSfx("click", 0.35)
+}
+
+function toggleShop() {
+  boardOpen = false
+  blitzSummaryOpen = false
+  mobileDrawerOpen = false
+  shopOpen = !shopOpen
+  pointerScraping = false
+  playSfx("click", 0.35)
+}
+
+function toggleBoard() {
+  shopOpen = false
+  blitzSummaryOpen = false
+  mobileDrawerOpen = false
+  boardOpen = !boardOpen
+  pointerScraping = false
+  if (boardOpen) {
+    boardStatusMsg = ""
+    fetchRemoteLeaderboard()
+  }
+  playSfx("click", 0.35)
+}
+
+function returnToTitle() {
+  started = false
+  shopOpen = false
+  boardOpen = false
+  blitzActive = false
+  blitzSummaryOpen = false
+  mobileDrawerOpen = false
+  pointerScraping = false
+  syncRadioLoop()
+  saveCareer()
+  rebuildLeaderboard()
+  playSfx("click", 0.35)
+}
+
+function toggleHoverPeel() {
+  hoverPeel = !hoverPeel
+  saveCareer()
+  playSfx("click", 0.35)
+  showToast(hoverPeel ? "Hover-Sweep Peeling: ON" : "Hover-Sweep OFF (Hold LMB/Touch to peel)")
+}
+
+function toggleCameraOrbit() {
+  cameraOrbitMode = !cameraOrbitMode
+  pointerScraping = false
+  playSfx("click", 0.35)
+  showToast(cameraOrbitMode ? "3D Camera Orbit ON — drag to inspect kitchen!" : "Camera Locked for Peeling")
+}
+
+function cycleCameraPreset() {
+  if (cameraPreset === "station") {
+    setCameraView("closeup")
+    showToast("Camera: Tuber Close-Up")
+  } else if (cameraPreset === "closeup") {
+    setCameraView("commissary")
+    showToast("Camera: Wide Commissary")
+  } else {
+    setCameraView("station")
+    showToast("Camera: Standard Cutting Board")
+  }
+  playSfx("click", 0.32)
+}
+
+function cycleQuality() {
+  _hasSavedQuality = true
+  if (qualityPreset === "high") {
+    applyQuality("balanced")
+  } else if (qualityPreset === "balanced") {
+    applyQuality("low")
+  } else {
+    applyQuality("high")
+  }
+  saveCareer()
+  playSfx("click", 0.34)
+}
+
+function toggleRadioMusic() {
+  radioOn = !radioOn
+  syncRadioLoop()
+  saveCareer()
+  playSfx("click", 0.34)
+  showToast(radioOn ? "Radio Mayak Work Polka: ON" : "Radio Mayak Music: OFF")
+}
+
+function toggleAudioMute() {
+  muted = !muted
+  if (muted) {
+    stopAllSfx()
+  } else {
+    syncRadioLoop()
+    playSfx("click", 0.35)
+  }
+  saveCareer()
+}
+
+function setPlayerNameInput(val) {
+  let raw = (val && typeof val === "object" && val.target) ? val.target.value : val
+  playerName = String(raw || "").slice(0, 22)
+  rebuildLeaderboard()
+}
+
+function onControlPress(action) {
+  if (action === "mute") { toggleAudioMute(); return }
+  if (action === "radio") { toggleRadioMusic(); return }
+  if (!started) { return }
+  if (action === "shop") { toggleShop(); return }
+  if (action === "board") { toggleBoard(); return }
+  if (action === "cam") { cycleCameraPreset(); return }
+  if (action === "orbit") { toggleCameraOrbit(); return }
+  if (action === "tea") { activateTeaOverdrive(); return }
+  if (action === "bell") { ringCommissarBell(); return }
+  if (action === "peel") { manualPeelAction(); return }
+  if (action === "t1") { selectOrUnlockPeeler(0) }
+  if (action === "t2") { selectOrUnlockPeeler(1) }
+  if (action === "t3") { selectOrUnlockPeeler(2) }
+  if (action === "t4") { selectOrUnlockPeeler(3) }
+  if (action === "t5") { selectOrUnlockPeeler(4) }
+  if (action === "t6") { selectOrUnlockPeeler(5) }
+}
+
+// ---------- Main Simulation Frame Step ----------
+
+function stepAutoPeeler(dt) {
+  if (!started || shopOpen || boardOpen || blitzSummaryOpen) { return }
+  let rate = getEffectiveAutoRate()
+  if (rate <= 0.0 || activePotatoes.length === 0) { return }
+
+  autoPeelAccum = autoPeelAccum + rate * dt
+  let safety = 0
+  while (autoPeelAccum >= 1.0 && activePotatoes.length > 0 && safety < 14) {
+    autoPeelAccum = autoPeelAccum - 1.0
+    safety = safety + 1
+    let idx = Math.floor(randFloat() * activePotatoes.length)
+    let p = activePotatoes[idx]
+    if (p) {
+      if (!p.touchedOnce) {
+        p.touchedOnce = true
+        p.cutElapsed = 0.0
+      }
+      let m = 0
+      while (m < 16) {
+        if (p.skin[m] > 0.001) {
+          let pc = PATCH_COORDS[m]
+          let cr = Math.cos(p.rollAngle)
+          let sr = Math.sin(p.rollAngle)
+          let ly = pc.ly0 * cr - pc.lz0 * sr
+          let lz = pc.ly0 * sr + pc.lz0 * cr
+          let wx = p.x + pc.lx * 0.9
+          let wy = p.y + ly * 0.9
+          let wz = p.z + lz * 0.9
+          let autoDmg = (0.95 + equippedPeeler * 0.35) * (teaOverdriveTimer > 0.0 ? 1.5 : 1.0)
+          p.skin[m] = Math.max(0.0, p.skin[m] - autoDmg)
+          p.rollVel = Math.min(10.0, p.rollVel + 1.6)
+          p.hitFlash = Math.max(p.hitFlash, 0.55)
+          if (p.skin[m] <= 0.001) {
+            p.skin[m] = 0.0
+            let v = VARIETIES[p.varietyIdx] || VARIETIES[0]
+            spawnPeelCurl(wx, wy, wz, p.isBoss ? "#b45309" : v.skinColor)
+            spawnStarchBurst(wx, wy, wz, "#f7e8a4", 3, 0.8)
+          }
+          if (equippedPeeler === 5) {
+            laserBeams.push({
+              sx: toolPos.x,
+              sy: toolPos.y + 0.19,
+              sz: toolPos.z + 0.08,
+              tx: wx,
+              ty: wy,
+              tz: wz,
+              color: "#ff2a3c",
+              radius: 0.016,
+              life: 0.12
+            })
+            if (laserBeams.length > 10) { laserBeams.shift() }
+          }
+          break
+        }
+        m = m + 1
+      }
+      recalcPotatoProgress(p)
+      if (p.patchesLeft <= (p.isBoss ? 1 : 2)) {
+        completePotato(idx)
+      }
+    }
+  }
+}
+
+function stepBeetles(dt) {
+  if (started && !shopOpen && !boardOpen && !blitzSummaryOpen) {
+    beetleSpawnTimer = beetleSpawnTimer - dt
+    if (beetleSpawnTimer <= 0.0) {
+      beetleSpawnTimer = 10.5 + randFloat() * 5.0
+      if (potatoesPeeled >= 2) {
+        spawnSaboteurBeetle()
+      }
+    }
+  }
+
+  let bi = beetles.length - 1
+  while (bi >= 0) {
+    let bt = beetles[bi]
+    if (bt.swatted) {
+      bt.vy = bt.vy - 8.5 * dt
+      bt.x = bt.x + bt.vx * dt
+      bt.y = bt.y + bt.vy * dt
+      bt.z = bt.z + bt.vz * dt
+      bt.rx = bt.rx + 12.0 * dt
+      bt.rz = bt.rz + 9.0 * dt
+      bt.life = bt.life - dt
+      if (bt.life <= 0.0 || bt.y < -0.3) {
+        beetles.splice(bi, 1)
+        refreshSceneAnchors()
+      }
+    } else if (started && !shopOpen && !boardOpen && !blitzSummaryOpen) {
+      bt.life = bt.life - dt
+      // Auto-zap if Pioneer Bug-Zapper Lamp Lv 2..3 installed!
+      if (upgZapper >= 2) {
+        bt.zapTimer = bt.zapTimer - dt
+        if (bt.zapTimer <= 0.0) {
+          swatBeetle(bi, true)
+          bi = bi - 1
+          continue
+        }
+      }
+
+      // Track nearest active potato on the board
+      if (activePotatoes.length > 0) {
+        let tgt = activePotatoes[0]
+        bt.tx = tgt.x
+        bt.tz = tgt.z
+      }
+      let dx = bt.tx - bt.x
+      let dz = bt.tz - bt.z
+      let dist = Math.sqrt(dx * dx + dz * dz)
+      let spd = upgZapper >= 1 ? 0.30 : 0.56
+      if (dist > 0.20) {
+        bt.x = bt.x + (dx / dist) * spd * dt
+        bt.z = bt.z + (dz / dist) * spd * dt
+        bt.yaw = Math.atan2(dx, dz)
+      } else if (activePotatoes.length > 0) {
+        // Nibble peeled patch back onto potato if ignored!
+        bt.nibbleAccum = bt.nibbleAccum + dt
+        if (bt.nibbleAccum >= 1.9) {
+          bt.nibbleAccum = 0.0
+          let p0 = activePotatoes[0]
+          let m = 0
+          while (m < 16) {
+            if (p0.skin[m] <= 0.001) {
+              p0.skin[m] = 0.65
+              recalcPotatoProgress(p0)
+              showToast((isTouchDevice || isMobileLayout) ? "⚠ Beetle regrew skin! Tap or swipe the striped beetle!" : "⚠ Beetle regrew skin! Click/sweep the striped beetle!")
+              break
+            }
+            m = m + 1
+          }
+        }
+      }
+      if (bt.life <= 0.0) {
+        beetles.splice(bi, 1)
+        refreshSceneAnchors()
+      }
+    }
+    bi = bi - 1
+  }
+}
+
+function gameTick(rawDt) {
+  let dt = typeof rawDt === "number" && rawDt > 0 ? Math.min(rawDt, 0.08) : 0.016
+  elapsed = elapsed + dt
+
+  if (toastTimer > 0.0) {
+    toastTimer = Math.max(0.0, toastTimer - dt)
+    if (toastTimer <= 0.0) { toastMsg = "" }
+  }
+  if (bannerTimer > 0.0) {
+    bannerTimer = Math.max(0.0, bannerTimer - dt)
+    if (bannerTimer <= 0.0) { bannerMsg = "" }
+  }
+  if (potCalloutTimer > 0.0) {
+    potCalloutTimer = Math.max(0.0, potCalloutTimer - dt)
+    if (potCalloutTimer <= 0.0) { potCalloutMsg = "" }
+  }
+
+  decreeTimer = decreeTimer + dt
+  if (decreeTimer >= 9.0) {
+    decreeTimer = 0.0
+    decreeIdx = (decreeIdx + 1) % DECREES.length
+    currentDecree = DECREES[decreeIdx]
+  }
+
+  if (comboTimer > 0.0) {
+    comboTimer = Math.max(0.0, comboTimer - dt)
+    if (comboTimer <= 0.0) {
+      comboCount = 0
+      comboMult = 1.0
+    }
+  }
+
+  if (teaOverdriveTimer > 0.0 && started && !shopOpen && !boardOpen) {
+    teaOverdriveTimer = Math.max(0.0, teaOverdriveTimer - dt)
+    if (teaOverdriveTimer <= 0.0) {
+      buildKitchenLights()
+      showToast("Tea Overdrive ended — peel tubers to brew next glass!")
+    }
+  }
+
+  if (bellCooldown > 0.0 && started && !shopOpen && !boardOpen) {
+    bellCooldown = Math.max(0.0, bellCooldown - dt)
+  }
+  bellRingAnim = Math.max(0.0, bellRingAnim - dt * 3.8)
+
+  if (blitzActive && !shopOpen && !boardOpen) {
+    blitzTimeLeft = Math.max(0.0, blitzTimeLeft - dt)
+    if (blitzTimeLeft <= 0.0) {
+      finishBlitzShift()
+    }
+  }
+
+  let lerp = Math.min(1.0, dt * 18.0)
+  toolPos = {
+    x: toolPos.x + (toolTargetPos.x - toolPos.x) * lerp,
+    y: toolPos.y + (toolTargetPos.y - toolPos.y) * lerp,
+    z: toolPos.z + (toolTargetPos.z - toolPos.z) * lerp
+  }
+  strokeImpulse = Math.max(0.0, strokeImpulse - dt * 5.5)
+  sackBounce = Math.max(0.0, sackBounce - dt * 4.2)
+  potBounce = Math.max(0.0, potBounce - dt * 3.8)
+  crankAngle = crankAngle + dt * (2.2 + getEffectiveAutoRate() * 0.8 + strokeImpulse * 8.0)
+  rotorAngle = rotorAngle + dt * (11.0 + strokeImpulse * 14.0)
+
+  // Step active potatoes (rolling, clean-peel timer & Tsar-Kartoshka countdown)
+  let baseSpin = (0.28 + upgSpindle * 0.42 + (equippedPeeler >= 1 ? 0.25 * equippedPeeler : 0.0)) * (teaOverdriveTimer > 0.0 ? 1.8 : 1.0)
+  let pi = activePotatoes.length - 1
+  while (pi >= 0) {
+    let p = activePotatoes[pi]
+    if (p.spawnAnim < 1.0) {
+      p.spawnAnim = Math.min(1.0, p.spawnAnim + dt * 5.2)
+    }
+    if (started && !shopOpen && !boardOpen && !blitzSummaryOpen) {
+      if (p.touchedOnce) {
+        p.cutElapsed = p.cutElapsed + dt
+      }
+      if (p.isBoss) {
+        p.bossTimer = p.bossTimer - dt
+        if (p.bossTimer <= 0.0) {
+          activePotatoes.splice(pi, 1)
+          refreshSceneAnchors()
+          showToast("Commissar reclaimed unpeeled Tsar-Kartoshka — upgrade blades & ring again!")
+          pi = pi - 1
+          continue
+        }
+      }
+    }
+    p.hitFlash = Math.max(0.0, p.hitFlash - dt * 5.0)
+    p.rollVel = Math.max(baseSpin, p.rollVel - dt * 3.2)
+    p.rollAngle = p.rollAngle + p.rollVel * dt
+    pi = pi - 1
+  }
+
+  // Step auto-peeler & Colorado Saboteur Beetles
+  stepAutoPeeler(dt)
+  stepBeetles(dt)
+
+  // Refill empty cutting board slots
+  if (activePotatoes.length < getBoardSlotCount()) {
+    spawnCooldown = spawnCooldown - dt
+    if (spawnCooldown <= 0.0) {
+      refillBoardSlots(false)
+      spawnCooldown = Math.max(0.04, 0.24 - upgChute * 0.05)
+    }
+  }
+
+  // Step flying completed potatoes into Enamel Pot
+  let fi = flyingTubers.length - 1
+  while (fi >= 0) {
+    let ft = flyingTubers[fi]
+    ft.t = ft.t + dt
+    if (ft.t >= ft.duration) {
+      flyingTubers.splice(fi, 1)
+      potBounce = 1.0
+      playSfx("plop", 0.36)
+      spawnStarchBurst(1.94, 0.44, -0.22, getCurrentOrder().brothHex, 9, 1.1)
+    }
+    fi = fi - 1
+  }
+
+  // Step flying 3D curled peel ribbons
+  let ci = peelCurls.length - 1
+  while (ci >= 0) {
+    let pc = peelCurls[ci]
+    pc.vy = pc.vy - 6.8 * dt
+    pc.x = pc.x + pc.vx * dt
+    pc.y = pc.y + pc.vy * dt
+    pc.z = pc.z + pc.vz * dt
+    pc.rx = pc.rx + pc.vrx * dt
+    pc.ry = pc.ry + pc.vry * dt
+    pc.life = pc.life - dt
+    if (pc.life <= 0.0 || pc.y < -0.25) {
+      peelCurls.splice(ci, 1)
+    }
+    ci = ci - 1
+  }
+
+  // Step 3D blade sweep trail
+  let tri = bladeTrail.length - 1
+  while (tri >= 0) {
+    bladeTrail[tri].life = bladeTrail[tri].life - dt
+    if (bladeTrail[tri].life <= 0.0) {
+      bladeTrail.splice(tri, 1)
+    }
+    tri = tri - 1
+  }
+
+  // Step laser & zapper beams
+  let bi = laserBeams.length - 1
+  while (bi >= 0) {
+    laserBeams[bi].life = laserBeams[bi].life - dt
+    if (laserBeams[bi].life <= 0.0) {
+      laserBeams.splice(bi, 1)
+    }
+    bi = bi - 1
+  }
+
+  // Step starch/water particles
+  let si = starchParticles.length - 1
+  while (si >= 0) {
+    let sp = starchParticles[si]
+    sp.vy = sp.vy - 5.2 * dt
+    sp.x = sp.x + sp.vx * dt
+    sp.y = sp.y + sp.vy * dt
+    sp.z = sp.z + sp.vz * dt
+    if (sp.y < 0.03) {
+      sp.y = 0.03
+      sp.vy = -sp.vy * 0.22
+      sp.vx = sp.vx * 0.65
+      sp.vz = sp.vz * 0.65
+    }
+    sp.life = sp.life - dt
+    if (sp.life <= 0.0) {
+      starchParticles.splice(si, 1)
+    }
+    si = si - 1
+  }
+
+  // Step Samovar & Hot Tea Glass steam plumes
+  if (qualityPreset !== "low") {
+    steamAccum = steamAccum + dt
+    if (steamAccum >= 0.14) {
+      steamAccum = 0.0
+      if (steamParticles.length < 22) {
+        steamParticles.push({
+          x: 0.92 + (randFloat() - 0.5) * 0.05,
+          y: 2.15,
+          z: -1.28 + (randFloat() - 0.5) * 0.05,
+          vy: 0.24 + randFloat() * 0.12,
+          life: 1.8
+        })
+        if (teaCharge >= 75.0 || teaOverdriveTimer > 0.0) {
+          steamParticles.push({
+            x: 1.24 + (randFloat() - 0.5) * 0.04,
+            y: 0.20,
+            z: -0.92 + (randFloat() - 0.5) * 0.04,
+            vy: 0.28 + randFloat() * 0.14,
+            life: 1.1
+          })
+        }
+      }
+    }
+    let sti = steamParticles.length - 1
+    while (sti >= 0) {
+      let st = steamParticles[sti]
+      st.y = st.y + st.vy * dt
+      st.x = st.x + Math.sin(elapsed * 2.0 + sti) * 0.04 * dt
+      st.life = st.life - dt
+      if (st.life <= 0.0) {
+        steamParticles.splice(sti, 1)
+      }
+      sti = sti - 1
+    }
+  } else {
+    steamParticles = []
+  }
+
+  if (started) {
+    autosaveAccum = autosaveAccum + dt
+    if (autosaveAccum >= 8.0) {
+      autosaveAccum = 0.0
+      saveCareer()
+    }
+  }
+
+  composeSceneFrame()
+}
+
+function setupViewportListeners() {
+  if (typeof window === "undefined" || !window) { return }
+  try {
+    if (typeof window.matchMedia === "function") {
+      let mq = window.matchMedia("(pointer: coarse)")
+      if (mq && mq.matches) {
+        isTouchDevice = true
+        isMobileLayout = true
+      }
+    }
+  } catch (e1) {}
+  try {
+    let iw = Number(window.innerWidth) || 0
+    let ih = Number(window.innerHeight) || 0
+    if (iw >= 160 && ih >= 160) {
+      applyViewportSize(iw, ih)
+    }
+  } catch (e2) {}
+
+  if (typeof window.addEventListener !== "function") { return }
+
+  let onTouch = function (e) {
+    let wasTouch = isTouchDevice
+    isTouchDevice = true
+    isMobileLayout = true
+    if (!wasTouch && !_hasSavedQuality && qualityPreset === "high") {
+      applyQuality("balanced")
+    }
+    if (!_measuredCanvas) {
+      let iw = 0
+      let ih = 0
+      try {
+        iw = Number(window.innerWidth) || 0
+        ih = Number(window.innerHeight) || 0
+      } catch (err) {}
+      if (iw >= 160 && ih >= 160) {
+        applyViewportSize(iw, ih)
+      } else if (e && typeof e.clientX === "number") {
+        let cy = typeof e.clientY === "number" ? e.clientY : 0
+        if (cy > 460 || (e.clientX > 0 && e.clientX < 260)) {
+          applyViewportSize(Math.max(360, Math.round(e.clientX * 2)), 800)
+        } else if (e.clientX >= 260 && cy > 0 && cy <= 430) {
+          applyViewportSize(844, 390)
+        }
+      }
+    }
+  }
+
+  let onPointer = function (e) {
+    if (!e) { return }
+    if (e.targetTag === "canvas") {
+      let tw = Number(e.targetWidth) || 0
+      let th = Number(e.targetHeight) || 0
+      if (tw >= 160 && th >= 160) {
+        _measuredCanvas = true
+        applyViewportSize(tw, th)
+      }
+    }
+  }
+
+  let onResize = function () {
+    try {
+      let rw = Number(window.innerWidth) || 0
+      let rh = Number(window.innerHeight) || 0
+      if (rw >= 160 && rh >= 160) {
+        applyViewportSize(rw, rh)
+      }
+    } catch (err) {}
+  }
+
+  try {
+    window.addEventListener("touchstart", onTouch, { passive: true })
+    window.addEventListener("pointerdown", onPointer, { passive: true })
+    window.addEventListener("pointermove", onPointer, { passive: true })
+    window.addEventListener("resize", onResize)
+    _cleanupWinListeners = function () {
+      try {
+        if (typeof window.removeEventListener === "function") {
+          window.removeEventListener("touchstart", onTouch)
+          window.removeEventListener("pointerdown", onPointer)
+          window.removeEventListener("pointermove", onPointer)
+          window.removeEventListener("resize", onResize)
+        }
+      } catch (err) {}
+    }
+  } catch (e3) {}
+}
+
+function _init() {
+  if (_booted) { return }
+  _booted = true
+  buildPatchCoords()
+  currentDecree = DECREES[0]
+  _hasSavedQuality = loadCareer()
+  setupViewportListeners()
+  if (isTouchDevice && !_hasSavedQuality && qualityPreset === "high") {
+    qualityPreset = "balanced"
+  }
+  buildStaticKitchen()
+  applyQuality(qualityPreset)
+  refillBoardSlots(true)
+  checkMedals()
+  fetchRemoteLeaderboard()
+  composeSceneFrame()
+}
+
+function _onHide() {
+  pointerScraping = false
+  mobileDrawerOpen = false
+  if (_cleanupWinListeners) {
+    _cleanupWinListeners()
+    _cleanupWinListeners = null
+  }
+  saveCareer()
+  stopAllSfx()
+}
