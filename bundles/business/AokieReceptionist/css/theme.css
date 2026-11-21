@@ -1,0 +1,48 @@
+/* Aokie Receptionist Theme: Modern Telecom Midnight-Violet, Electric Cyan & Warm Coral on Pearl-Indigo Canvas */
+:root {
+  --k-bg: #f5f5fb;
+  --k-surface: #ffffff;
+  --k-surface-2: #eeeaf7;
+  --k-text: #131126;
+  --k-muted: #565275;
+  --k-border: #dad6ec;
+  --k-accent: #5b3df5;
+  --k-accent-text: #ffffff;
+  --k-accent-soft: #ede9fe;
+  --k-danger: #dc2626;
+  --k-danger-soft: #fee2e2;
+  --k-success: #059669;
+  --k-warning: #d97706;
+  --k-radius: 10px;
+  --k-radius-lg: 14px;
+  --k-font: var(--font-grotesque);
+  --k-font-display: var(--font-geometric);
+
+  --t-rail: #0d0a20;
+  --t-rail-text: #d5d2eb;
+  --t-rail-muted: #8f8ab5;
+  --t-rail-on: #ffffff;
+  --t-rail-active: rgba(34, 211, 238, .18);
+  --t-card-border: rgba(19, 17, 38, .085);
+
+  --ak-live: #10b981;
+  --ak-cyan: #06b6d4;
+  --ak-cyan-bright: #22d3ee;
+  --ak-cyan-soft: #ecfeff;
+  --ak-cyan-deep: #0e7490;
+  --ak-coral: #f43f5e;
+  --ak-coral-bright: #fb7185;
+  --ak-coral-soft: #fff1f2;
+  --ak-coral-deep: #be123c;
+  --ak-violet: #6d28d9;
+  --ak-violet-hi: #8b5cf6;
+  --ak-violet-soft: #f4f0ff;
+  --ak-caller-bg: #f2f1f7;
+  --ak-caller-border: #dfdce9;
+}
+
+body { background: var(--k-bg); color: var(--k-text); font-size: 14.5px; }
+h1, .tk-head__title, .ak-masthead__title { font-weight: 780; letter-spacing: -0.022em; }
+
+.tk-brand__name { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.24; }
+.tk-brand__sub { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.35; margin-top: 4px; color: #a8a3cc; }

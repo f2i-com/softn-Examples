@@ -1,0 +1,31 @@
+{
+  "id": "formlogic.pack.grillstack-burger-ops",
+  "name": "GrillStack",
+  "version": "1.0.0",
+  "description": "Turnkey burger shop command center: live order counter with Rush toggle, multi-station kitchen pass KDS (Grill, Fryer, Assembly, Drinks), menu & ingredient builds, prep & par stock, crew shifts with break tracking, and nightly till reconciliation.",
+  "icon": "assets/icon.svg",
+  "engine": 2,
+  "main": "index.html",
+  "config": {
+    "server": {
+      "requestsPerMinute": 600
+    }
+  },
+  "backend": {
+    "runtime": "php",
+    "entry": "server/public/index.php",
+    "mode": "api",
+    "routes": [
+      "/api/"
+    ]
+  },
+  "databases": [
+    {
+      "name": "app",
+      "engine": "sqlite",
+      "file": "data/app.db",
+      "seedSql": "server/migrations/schema.sql",
+      "persist": true
+    }
+  ]
+}

@@ -1,0 +1,343 @@
+/* Salon Studio Pass 3 Bespoke Craft: Editorial Blush-Rose, Espresso & Champagne Gold
+   Unified Velvet Espresso-Rosewood Masthead with Champagne KPI Pods & Settlement Ring,
+   Two-Column Stylist Chair Book + Walk-In & Front Desk Pulse Rail, Service Duration/Price Cards,
+   Rose-Gold Colour Formula Cards, Quick-Rebook Pills (+4w/+6w/+8w) & Boutique Retail Ledger */
+
+/* ---- Calm Atelier Topbar Ticker ---- */
+.sl-ticker {
+  display: flex; align-items: center; gap: 10px; min-width: 0;
+  font-size: 12.5px; font-weight: 600; color: var(--k-muted);
+}
+.sl-ticker__pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border-radius: 99px;
+  background: var(--k-surface); color: var(--k-text);
+  border: 1px solid var(--t-card-border);
+  font-size: 12px; font-weight: 650; text-decoration: none;
+  white-space: nowrap; flex: none;
+  transition: border-color .12s, background .12s, color .12s;
+}
+.sl-ticker__pill:hover { border-color: var(--k-accent); color: var(--k-accent); background: var(--k-accent-soft); }
+.sl-ticker__pill--alert {
+  background: #fef2f2; color: #be123c; border-color: #fda4af;
+}
+
+/* ---- Unified Velvet Espresso, Rosewood & Champagne Gold Masthead ---- */
+.sl-masthead {
+  position: relative; overflow: hidden;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 22px;
+  padding: 20px 24px; margin-bottom: 16px;
+  border-radius: calc(var(--k-radius-lg) + 3px);
+  color: #fffaf7;
+  background:
+    radial-gradient(ellipse 52% 135% at 94% -16%, rgba(237, 210, 171, .34), transparent 60%),
+    radial-gradient(ellipse 46% 120% at 8% 118%, rgba(168, 46, 86, .42), transparent 60%),
+    radial-gradient(ellipse 36% 85% at 54% -12%, rgba(207, 162, 105, .24), transparent 62%),
+    repeating-linear-gradient(
+      135deg,
+      rgba(255, 240, 228, .025) 0,
+      rgba(255, 240, 228, .025) 1px,
+      transparent 1px,
+      transparent 34px
+    ),
+    linear-gradient(132deg, #190c13 0%, #2b1321 54%, #401a2e 100%);
+  border: 1px solid rgba(237, 210, 171, .26);
+  box-shadow: 0 14px 36px rgba(25, 12, 19, .26), inset 0 1px 0 rgba(255, 242, 232, .15);
+}
+.sl-masthead__copy { display: grid; gap: 5px; min-width: 0; flex: 1 1 280px; }
+.sl-masthead__eyebrow {
+  display: inline-flex; align-items: center; gap: 7px; width: fit-content; max-width: 100%;
+  padding: 3px 10px; border-radius: 99px;
+  background: rgba(237, 210, 171, .16);
+  border: 1px solid rgba(237, 210, 171, .36);
+  color: #f9e6cc; font-size: 10.5px; font-weight: 750;
+  text-transform: uppercase; letter-spacing: .1em;
+}
+.sl-masthead__title {
+  font-family: var(--k-font-display);
+  font-size: clamp(25px, 2.6vw, 33px);
+  font-weight: 700; line-height: 1.12; color: #fffaf7;
+}
+.sl-masthead__meta {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
+  font-size: 13px; color: rgba(248, 234, 238, .82);
+}
+.sl-masthead__pods { display: flex; flex-wrap: wrap; align-items: stretch; gap: 9px; }
+.sl-pod {
+  display: grid; gap: 2px; align-content: center;
+  min-width: 108px; padding: 9px 13px; border-radius: 12px;
+  background: rgba(255, 248, 244, .085);
+  border: 1px solid rgba(237, 210, 171, .22);
+  backdrop-filter: blur(10px);
+  color: #fffaf7; text-decoration: none;
+  transition: background .14s, border-color .14s, transform .14s;
+}
+a.sl-pod:hover {
+  background: rgba(255, 248, 244, .15);
+  border-color: rgba(237, 210, 171, .52);
+  transform: translateY(-1px);
+}
+.sl-pod--champagne {
+  background: linear-gradient(145deg, rgba(207, 162, 105, .24), rgba(255, 248, 244, .07));
+  border-color: rgba(237, 210, 171, .44);
+}
+.sl-pod--ring { display: flex; align-items: center; gap: 11px; min-width: 172px; padding: 8px 14px 8px 10px; }
+.sl-pod__lbl {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10px; font-weight: 750; text-transform: uppercase; letter-spacing: .075em;
+  color: rgba(244, 224, 230, .78); white-space: nowrap;
+}
+.sl-pod--champagne .sl-pod__lbl { color: #f6dec0; }
+.sl-pod__val {
+  font-size: 19px; font-weight: 800; line-height: 1.15; letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums; color: #ffffff; white-space: nowrap;
+}
+.sl-pod__sub { font-size: 11px; color: rgba(244, 226, 232, .74); white-space: nowrap; }
+.sl-masthead .tk-ring {
+  background: conic-gradient(var(--ring-color, #edd2ab) var(--p), rgba(255, 255, 255, .15) 0);
+}
+.sl-masthead .tk-ring::before { background: #2b1321; }
+.sl-masthead .tk-ring__val { color: #ffffff; font-size: 12px; font-weight: 800; }
+
+.sl-cta-gold {
+  background: linear-gradient(180deg, #ebd0aa 0%, #c89566 100%);
+  border-color: rgba(253, 236, 214, .62);
+  color: #220e17; font-weight: 800;
+  box-shadow: 0 6px 20px rgba(200, 149, 102, .34), inset 0 1px 0 rgba(255, 255, 255, .48);
+}
+.sl-cta-gold:hover { background: linear-gradient(180deg, #f3dcba 0%, #d3a072 100%); color: #1b0a12; }
+.sl-cta-glass {
+  background: rgba(255, 248, 244, .1);
+  border-color: rgba(237, 210, 171, .3);
+  color: #fff9f5; font-weight: 650;
+}
+.sl-cta-glass:hover { background: rgba(255, 248, 244, .18); color: #ffffff; }
+.sl-masthead__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+/* ---- Two-Column Book + Sticky Walk-In & Stylist Pulse Rail ---- */
+.sl-split {
+  display: grid; grid-template-columns: minmax(0, 1fr) 326px; gap: 18px; align-items: start;
+}
+.sl-split > *, .sl-daybar, .sl-daybar__row, .sl-chairs, .sl-chair, .sl-rail-panel, .sl-rail-card { min-width: 0; max-width: 100%; }
+.sl-rail-panel { position: sticky; top: 70px; display: grid; gap: 14px; }
+.sl-rail-card {
+  background: var(--k-surface); border: 1px solid var(--t-card-border);
+  border-radius: calc(var(--k-radius) + 3px); overflow: hidden; box-shadow: var(--t-card-shadow);
+}
+.sl-rail-card__head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 11px 14px;
+  background: linear-gradient(180deg, #fdf8f7 0%, #f7ecee 100%);
+  border-bottom: 1px solid color-mix(in srgb, var(--k-border) 82%, transparent);
+}
+.sl-rail-card__title {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--k-text);
+}
+.sl-rail-list { display: grid; }
+.sl-rail-item {
+  display: grid; gap: 5px; padding: 11px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--k-text) 6%, transparent);
+}
+.sl-rail-item:last-child { border-bottom: 0; }
+.sl-rail-item__top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.sl-rail-item__name { font-size: 13.5px; font-weight: 750; color: var(--k-text); line-height: 1.25; }
+.sl-rail-item__sub { font-size: 12px; color: var(--k-muted); }
+.sl-rail-item__foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; margin-top: 2px; }
+
+.sl-status-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: #16a34a; display: inline-block; }
+.sl-status-dot--busy { background: #d97706; box-shadow: 0 0 0 3px rgba(217, 119, 6, .2); }
+
+/* ---- Day Bar ---- */
+.sl-daybar {
+  display: grid; gap: 9px; padding: 11px 14px;
+  background: var(--k-surface); border: 1px solid var(--t-card-border);
+  border-radius: calc(var(--k-radius) + 2px); box-shadow: var(--t-card-shadow);
+}
+.sl-daybar__row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sl-daybar__spacer { flex: 1; min-width: 6px; }
+
+/* ---- Luxury Stylist Chair Column Board ---- */
+.sl-chairs {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; align-items: start;
+}
+.sl-chair {
+  background: var(--k-surface);
+  border: 1px solid color-mix(in srgb, var(--sl-rosegold) 28%, var(--k-border));
+  border-radius: calc(var(--k-radius-lg) + 2px);
+  box-shadow: var(--t-card-shadow); overflow: hidden;
+}
+.sl-chair__head {
+  padding: 13px 14px; margin: 9px 9px 0; border-radius: 11px;
+  border: 1px solid color-mix(in srgb, var(--sl-rosegold) 32%, var(--k-border));
+  background:
+    radial-gradient(ellipse 80% 120% at 100% 0%, rgba(237, 210, 171, .28), transparent 65%),
+    linear-gradient(135deg, #fdf4f7 0%, #faf1ec 100%);
+  display: grid; gap: 10px;
+}
+.sl-chair__top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sl-chair__who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.sl-chair__avatar {
+  display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; flex: none;
+  background: linear-gradient(135deg, #922649 0%, #cfa269 100%);
+  color: #fffaf7; font-family: var(--k-font-display); font-size: 14px; font-weight: 700;
+}
+.sl-chair__name { font-family: var(--k-font-display); font-weight: 750; font-size: 17.5px; color: var(--k-text); line-height: 1.15; }
+.sl-chair__role { font-size: 11.5px; color: var(--k-muted); margin-top: 2px; font-weight: 600; }
+.sl-chair__rev {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px;
+  padding: 6px 10px; border-radius: 99px; background: #ffffff;
+  border: 1px solid color-mix(in srgb, var(--sl-rosegold) 34%, var(--k-border));
+}
+.sl-chair__rev-pill { font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--k-accent); white-space: nowrap; }
+.sl-chair__rev-meta { font-size: 11px; color: var(--k-muted); font-weight: 650; white-space: nowrap; }
+.sl-chair__paid { font-size: 10.5px; font-weight: 750; color: #166534; background: #dcfce7; padding: 1px 7px; border-radius: 99px; white-space: nowrap; }
+.sl-chair__body { padding: 11px; display: grid; gap: 10px; }
+
+/* ---- Time Slots, Category Tags & Appointment Cards ---- */
+.sl-slot {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--k-font-mono); font-size: 11.5px; font-weight: 750;
+  padding: 2px 8px; border-radius: 7px; white-space: nowrap; flex: none;
+  background: var(--k-accent-soft); color: var(--k-accent);
+  border: 1px solid color-mix(in srgb, var(--k-accent) 20%, transparent);
+}
+.sl-price { font-weight: 800; font-variant-numeric: tabular-nums; color: var(--k-accent); white-space: nowrap; flex: none; }
+
+.sl-cat-cut { background: #fce7f3; color: #9d174d; border: 1px solid #f9a8d4; }
+.sl-cat-colour { background: #f3e8ff; color: #6b21a8; border: 1px solid #d8b4fe; }
+.sl-cat-treatment { background: #ccfbf1; color: #115e59; border: 1px solid #5eead4; }
+.sl-cat-nails { background: #ffe4e6; color: #be123c; border: 1px solid #fda4af; }
+.sl-cat-beauty { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+
+.sl-appt-card {
+  background: var(--k-surface);
+  border: 1px solid color-mix(in srgb, var(--k-border) 88%, transparent);
+  border-left: 4px solid var(--k-accent);
+  border-radius: 11px; padding: 12px 13px; box-shadow: var(--k-shadow-xs);
+  display: grid; gap: 8px; transition: transform .14s var(--k-ease), box-shadow .14s var(--k-ease);
+}
+.sl-appt-card:hover { transform: translateY(-1px); box-shadow: var(--t-card-shadow-hover); }
+.sl-appt-card--confirmed { border-left-color: #2563eb; }
+.sl-appt-card--chair { border-left-color: #d97706; background: linear-gradient(135deg, #fffcf0 0%, #ffffff 42%); }
+.sl-appt-card--done { border-left-color: #7c3aed; }
+.sl-appt-card--paid { border-left-color: #16a34a; background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 38%); }
+.sl-appt-card--off { border-left-color: #94a3b8; opacity: .72; }
+
+.sl-mini-formula {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;
+  padding: 7px 10px; border-radius: 9px;
+  background: linear-gradient(135deg, #fff8f9 0%, #fbf0ea 100%);
+  border: 1px solid color-mix(in srgb, var(--sl-rosegold) 55%, var(--k-border));
+  border-left: 3px solid var(--sl-rosegold);
+  font-size: 12px; color: #4d192e; line-height: 1.4;
+}
+
+/* ---- Crisp Quick-Rebook Pills (+4w, +6w, +8w) ---- */
+.sl-rebook-strip {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-top: 8px;
+  border-top: 1px dashed color-mix(in srgb, var(--sl-rosegold) 42%, var(--k-border));
+}
+.sl-rebook-strip__lbl {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--k-muted);
+}
+.sl-rebook-pill {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 3px 9px; border-radius: 99px; font-size: 11px; font-weight: 800; white-space: nowrap; flex: none;
+  background: linear-gradient(180deg, #fffaf8 0%, #fae8ef 100%);
+  color: var(--k-accent); border: 1px solid color-mix(in srgb, var(--sl-rosegold) 52%, var(--k-accent)); cursor: pointer;
+}
+.sl-rebook-pill:hover { background: var(--k-accent); border-color: var(--k-accent); color: #ffffff; }
+
+/* ---- Signature Rose-Gold Bordered Colour Formula Box (.formula-box) ---- */
+.formula-box {
+  padding: 12px 14px; border-radius: 12px;
+  background:
+    radial-gradient(ellipse 80% 100% at 100% 0%, rgba(237, 210, 171, .28), transparent 64%),
+    linear-gradient(135deg, #fff8f9 0%, #fceef3 54%, #fbf2ea 100%);
+  border: 1.5px solid #d5a182; border-left: 4px solid #c48966;
+  color: #361322; display: grid; gap: 7px;
+  box-shadow: 0 4px 14px rgba(184, 134, 102, .12), inset 0 1px 0 rgba(255, 255, 255, .85);
+}
+.formula-box__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.formula-box__label {
+  font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .085em;
+  color: #8f2447; display: inline-flex; align-items: center; gap: 5px;
+}
+.formula-box__body { font-size: 13px; line-height: 1.5; font-weight: 550; color: #2b111e; }
+.formula-box__copy {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 99px;
+  font-size: 11px; font-weight: 750; white-space: nowrap; flex: none;
+  background: #ffffff; color: #8f2447; border: 1px solid #d5a182; cursor: pointer;
+}
+.formula-box__copy:hover { background: #8f2447; border-color: #8f2447; color: #ffffff; }
+
+/* ---- Service Duration/Price Cards & Client Profile Cards ---- */
+.sl-cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(306px, 1fr)); gap: 15px; }
+.sl-svc-card {
+  background: var(--k-surface); border: 1px solid var(--t-card-border);
+  border-radius: calc(var(--k-radius) + 3px); overflow: hidden; box-shadow: var(--t-card-shadow);
+  display: flex; flex-direction: column;
+  transition: transform .14s var(--k-ease), box-shadow .14s var(--k-ease);
+}
+.sl-svc-card:hover { transform: translateY(-2px); box-shadow: var(--t-card-shadow-hover); }
+.sl-svc-card__head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+  padding: 14px 16px; border-top: 3.5px solid var(--k-accent);
+  background: linear-gradient(135deg, #fdf4f7 0%, #fbf5f0 100%);
+  border-bottom: 1px solid color-mix(in srgb, var(--k-border) 78%, transparent);
+}
+.sl-svc-card--colour .sl-svc-card__head { border-top-color: #7c3aed; background: linear-gradient(135deg, #faf5ff 0%, #fdf4f7 100%); }
+.sl-svc-card--treatment .sl-svc-card__head { border-top-color: #0d9488; background: linear-gradient(135deg, #f0fdfa 0%, #faf6f4 100%); }
+.sl-svc-card--nails .sl-svc-card__head { border-top-color: #e11d48; background: linear-gradient(135deg, #fff1f2 0%, #fbf5f0 100%); }
+.sl-svc-card--beauty .sl-svc-card__head { border-top-color: #cfa269; background: linear-gradient(135deg, #fefaf0 0%, #fbf5f0 100%); }
+.sl-svc-price-big {
+  font-family: var(--k-font-display); font-size: 22px; font-weight: 800; color: var(--k-accent);
+  font-variant-numeric: tabular-nums; white-space: nowrap; flex: none;
+}
+.sl-svc-card__body { padding: 13px 16px; display: grid; gap: 10px; flex: 1; }
+.sl-svc-card__foot {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px;
+  padding: 10px 16px 12px; background: var(--sl-blush);
+  border-top: 1px solid color-mix(in srgb, var(--k-border) 75%, transparent);
+}
+
+.sl-client-avatar {
+  width: 40px; height: 40px; border-radius: 50%; flex: none; display: grid; place-items: center;
+  background: linear-gradient(135deg, #2b1321 0%, #922649 100%);
+  color: #f6dec0; font-family: var(--k-font-display); font-weight: 800; font-size: 14px;
+}
+
+/* ---- Mobile & Tablet Polish ---- */
+@media (max-width: 1140px) {
+  .sl-split { grid-template-columns: minmax(0, 1fr); }
+  .sl-rail-panel { position: static; }
+}
+@media (max-width: 920px) {
+  .sl-ticker { display: none; }
+}
+@media (max-width: 640px) {
+  .tk-topbar__actions .sl-ticker__pill:not(.sl-ticker__pill--alert) { display: none; }
+  .sl-masthead { padding: 14px 15px; margin-bottom: 13px; gap: 12px; }
+  .sl-masthead__copy { flex: 1 1 100%; }
+  .sl-masthead__eyebrow { font-size: 9.5px; line-height: 1.3; }
+  .sl-masthead__title { font-size: 24px; }
+  .sl-masthead__meta { font-size: 12px; gap: 3px 8px; }
+  .sl-masthead__pods {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%; gap: 8px; align-items: stretch !important;
+  }
+  .sl-masthead__pods--3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sl-masthead__pods--3 > .sl-pod:nth-child(4) {
+    grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px;
+  }
+  .sl-pod { min-width: 0; padding: 8px 10px; overflow: hidden; }
+  .sl-pod--ring,
+  .sl-masthead__pods > .k-btn,
+  .sl-masthead__pods > .sl-masthead__actions { grid-column: 1 / -1; }
+  .sl-masthead__actions .k-btn { flex: 1 1 auto; justify-content: center; }
+  .sl-pod__val { font-size: 16.5px; }
+  .sl-daybar { padding: 10px 11px; gap: 8px; }
+  .sl-daybar__spacer { display: none; }
+  .sl-chairs, .sl-cards-grid { grid-template-columns: minmax(0, 1fr); }
+}

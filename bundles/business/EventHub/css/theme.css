@@ -1,0 +1,45 @@
+/* Event Hub Theme: Stage Obsidian, Royal Magenta & Champagne Spotlight */
+:root {
+  --k-bg: #f8f6fb;
+  --k-surface: #ffffff;
+  --k-surface-2: #f1eaf8;
+  --k-text: #160d24;
+  --k-muted: #5b4d72;
+  --k-border: #ded5ec;
+  --k-accent: #9b1cb8;
+  --k-accent-2: #db2777;
+  --k-accent-text: #ffffff;
+  --k-accent-soft: #f5e6fe;
+  --k-danger: #e11d48;
+  --k-danger-soft: #ffe4eb;
+  --k-success: #047857;
+  --k-warning: #b45309;
+  --k-focus: #9b1cb8;
+  --k-radius: 10px;
+  --k-radius-lg: 14px;
+  --k-font: var(--font-system);
+  --k-font-display: var(--font-geometric);
+
+  --ev-obsidian: #120b1f;
+  --ev-magenta: #db2777;
+  --ev-gold: #f3c969;
+  --ev-gold-soft: #fef6dc;
+
+  --t-rail: #120b1f;
+  --t-rail-text: #dcd2ec;
+  --t-rail-muted: #9886b6;
+  --t-rail-on: #ffffff;
+  --t-rail-active: rgba(219, 39, 119, .28);
+  --t-card-border: rgba(22, 13, 36, .085);
+  --t-ok-bg: #dcfce7;
+  --t-ok-fg: #116637;
+  --t-warn-bg: #fef3c7;
+  --t-warn-fg: #92400e;
+  --t-bad-bg: #ffe4e6;
+  --t-bad-fg: #9f1239;
+  --t-info-bg: #f3e8ff;
+  --t-info-fg: #6b21a8;
+}
+
+body { background: var(--k-bg); color: var(--k-text); font-size: 14.5px; }
+h1, .tk-head__title, .ev-masthead__title { font-weight: 800; letter-spacing: -0.02em; }

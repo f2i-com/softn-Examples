@@ -1,0 +1,31 @@
+{
+  "id": "formlogic.pack.property-maintenance",
+  "name": "Property Maintenance",
+  "version": "1.0.0",
+  "description": "Turnkey property maintenance and handyman operations desk: tenant request triage board, 1-click work order dispatch, properties register with access notes, tenants directory, and rated property inspections.",
+  "icon": "assets/icon.svg",
+  "engine": 2,
+  "main": "index.html",
+  "config": {
+    "server": {
+      "requestsPerMinute": 600
+    }
+  },
+  "backend": {
+    "runtime": "php",
+    "entry": "server/public/index.php",
+    "mode": "api",
+    "routes": [
+      "/api/"
+    ]
+  },
+  "databases": [
+    {
+      "name": "app",
+      "engine": "sqlite",
+      "file": "data/app.db",
+      "seedSql": "server/migrations/schema.sql",
+      "persist": true
+    }
+  ]
+}

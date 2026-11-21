@@ -1,0 +1,31 @@
+{
+  "id": "formlogic.pack.hr-people",
+  "name": "People Hub",
+  "version": "1.0.0",
+  "description": "Turnkey HR & people operations desk with actionable approvals inbox, recruitment pipeline & interview scorecards, interactive onboarding checklists, leave, performance reviews, expenses, training, and exit interviews.",
+  "icon": "assets/icon.svg",
+  "engine": 2,
+  "main": "index.html",
+  "config": {
+    "server": {
+      "requestsPerMinute": 600
+    }
+  },
+  "backend": {
+    "runtime": "php",
+    "entry": "server/public/index.php",
+    "mode": "api",
+    "routes": [
+      "/api/"
+    ]
+  },
+  "databases": [
+    {
+      "name": "app",
+      "engine": "sqlite",
+      "file": "data/app.db",
+      "seedSql": "server/migrations/schema.sql",
+      "persist": true
+    }
+  ]
+}

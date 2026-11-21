@@ -1,0 +1,50 @@
+/* FitStudio Pass 3 Theme: Athletic Obsidian, Electric Lime & Cobalt */
+:root {
+  --k-bg: #f3f6fa;
+  --k-surface: #ffffff;
+  --k-surface-2: #e9eff7;
+  --k-text: #0b1220;
+  --k-muted: #495870;
+  --k-border: #d3dce8;
+  --k-accent: #1d4ed8;
+  --k-accent-text: #ffffff;
+  --k-accent-soft: #dbeafe;
+  --k-danger: #dc2626;
+  --k-danger-soft: #fee2e2;
+  --k-success: #059669;
+  --k-warning: #b45309;
+  --k-focus: #2563eb;
+  --k-radius: 10px;
+  --k-radius-lg: 14px;
+  --k-font: var(--font-system);
+  --k-font-display: var(--font-industrial);
+
+  --fs-volt: #84cc16;
+  --fs-volt-bright: #a3e635;
+  --fs-volt-soft: #ecfccb;
+  --fs-volt-ink: #365314;
+  --fs-cobalt: #2563eb;
+  --fs-cobalt-bright: #60a5fa;
+  --fs-cobalt-soft: #dbeafe;
+
+  --t-rail: #090e19;
+  --t-rail-text: #cdd8ea;
+  --t-rail-muted: #7c8da8;
+  --t-rail-on: #ffffff;
+  --t-rail-active: rgba(163, 230, 53, .2);
+  --t-card-border: rgba(11, 18, 32, .085);
+
+  --t-ok-bg: #dcfce7;
+  --t-ok-fg: #14532d;
+  --t-warn-bg: #fef3c7;
+  --t-warn-fg: #92400e;
+  --t-bad-bg: #fee2e2;
+  --t-bad-fg: #991b1b;
+  --t-info-bg: #dbeafe;
+  --t-info-fg: #1e40af;
+  --t-neutral-bg: #ebf0f6;
+  --t-neutral-fg: #44536a;
+}
+
+body { background: var(--k-bg); color: var(--k-text); font-size: 15px; }
+h1, h2, h3, .fs-masthead__title { letter-spacing: .006em; }

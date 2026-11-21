@@ -1,0 +1,31 @@
+{
+  "id": "formlogic.pack.venueops-venue-hire",
+  "name": "VenueOps",
+  "version": "1.0.0",
+  "description": "Turnkey venue hire & booking manager: space schedule with automatic time-overlap conflict detection and hourly fee calculation, spaces catalogue, setup & facilities checklists, hirer clients directory, payments & deposits ledger with HTML booking confirmations, and incidents/damage log.",
+  "icon": "assets/icon.svg",
+  "engine": 2,
+  "main": "index.html",
+  "config": {
+    "server": {
+      "requestsPerMinute": 600
+    }
+  },
+  "backend": {
+    "runtime": "php",
+    "entry": "server/public/index.php",
+    "mode": "api",
+    "routes": [
+      "/api/"
+    ]
+  },
+  "databases": [
+    {
+      "name": "app",
+      "engine": "sqlite",
+      "file": "data/app.db",
+      "seedSql": "server/migrations/schema.sql",
+      "persist": true
+    }
+  ]
+}

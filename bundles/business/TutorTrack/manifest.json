@@ -1,0 +1,31 @@
+{
+  "id": "formlogic.pack.tutortrack-tutoring",
+  "name": "TutorTrack",
+  "version": "1.0.0",
+  "description": "Turnkey tutoring studio and music lessons desk: filterable lesson schedule with one-click progress note logging, student and guardian dossiers, homework and copyable parent updates, tutor roster, and printable HTML tuition invoices.",
+  "icon": "assets/icon.svg",
+  "engine": 2,
+  "main": "index.html",
+  "config": {
+    "server": {
+      "requestsPerMinute": 600
+    }
+  },
+  "backend": {
+    "runtime": "php",
+    "entry": "server/public/index.php",
+    "mode": "api",
+    "routes": [
+      "/api/"
+    ]
+  },
+  "databases": [
+    {
+      "name": "app",
+      "engine": "sqlite",
+      "file": "data/app.db",
+      "seedSql": "server/migrations/schema.sql",
+      "persist": true
+    }
+  ]
+}

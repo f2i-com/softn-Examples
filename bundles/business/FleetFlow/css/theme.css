@@ -1,0 +1,37 @@
+/* FleetFlow Theme: Highway Asphalt Slate, Signal Blue & Safety Amber on Crisp Highway Canvas */
+:root {
+  --k-bg: #f2f5f9;
+  --k-surface: #ffffff;
+  --k-surface-2: #e7edf4;
+  --k-text: #111824;
+  --k-muted: #526176;
+  --k-border: #d2dce7;
+  --k-accent: #135596;
+  --k-accent-text: #ffffff;
+  --k-accent-soft: #e0eefc;
+  --k-danger: #b91c1c;
+  --k-danger-soft: #fee2e2;
+  --k-success: #15703d;
+  --k-warning: #d97706;
+  --k-radius: 10px;
+  --k-radius-lg: 14px;
+  --k-font: var(--font-system);
+  --k-font-display: var(--font-industrial);
+
+  --ff-asphalt: #161d28;
+  --ff-signal: #2c86e0;
+  --ff-amber: #d97706;
+  --ff-amber-bright: #f59e0b;
+  --ff-amber-soft: #fef3c7;
+  --ff-amber-fg: #92400e;
+
+  --t-rail: #11161f;
+  --t-rail-text: #cbd5e1;
+  --t-rail-muted: #8b9bb4;
+  --t-rail-on: #f8fafc;
+  --t-rail-active: rgba(245, 158, 11, .28);
+  --t-card-border: rgba(17, 24, 36, .085);
+}
+
+body { background: var(--k-bg); color: var(--k-text); font-size: 15px; }
+h1, .tk-head__title, .ff-masthead__title { font-weight: 700; letter-spacing: -0.016em; }

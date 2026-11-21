@@ -1,6 +1,0 @@
-// The outside is a narrative clock. It never races a reader or advances while the app is closed.
-function updateCosmic(){S.cosmic.level=S.stage+Math.min(0.95,S.shift.served/Math.max(1,S.shift.roster.length)*0.95);}
-function stepCosmic(dt){
- S.cosmic.echo=Math.max(0,S.cosmic.echo-dt);S.cosmic.stasis=Math.max(0,S.cosmic.stasis-dt);S.cosmic.pulse=Math.max(0,S.cosmic.pulse-dt);
-}
-function lookOutside(){tell(SHIFTS[S.stage].sky+(flag("starReturned") && S.stage<6?" A small star you recognise is still holding on.":""));}

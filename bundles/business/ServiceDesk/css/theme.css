@@ -1,0 +1,46 @@
+/* Service Desk Theme: Crisp Indigo-Blue & Signal Coral SLA Command */
+:root {
+  --k-bg: #f3f6fc;
+  --k-surface: #ffffff;
+  --k-surface-2: #eaeff9;
+  --k-text: #0e1529;
+  --k-muted: #4f5e7a;
+  --k-border: #d5def0;
+  --k-accent: #3748e0;
+  --k-accent-2: #6d28d9;
+  --k-accent-text: #ffffff;
+  --k-accent-soft: #e8ecff;
+  --k-danger: #e11d48;
+  --k-danger-soft: #fff1f2;
+  --k-success: #047857;
+  --k-warning: #d97706;
+  --k-focus: #3748e0;
+  --k-radius: 10px;
+  --k-radius-lg: 14px;
+  --k-font: var(--font-grotesque);
+  --k-font-display: var(--font-grotesque);
+
+  --cs-indigo: #111936;
+  --cs-coral: #f43f5e;
+  --cs-coral-soft: #ffe4e6;
+  --cs-sky: #38bdf8;
+  --cs-mint: #10b981;
+
+  --t-rail: #101630;
+  --t-rail-text: #cdd7f0;
+  --t-rail-muted: #8293bc;
+  --t-rail-on: #ffffff;
+  --t-rail-active: rgba(244, 63, 94, .22);
+  --t-card-border: rgba(14, 21, 41, .085);
+  --t-ok-bg: #dcfce7;
+  --t-ok-fg: #146c37;
+  --t-warn-bg: #fef3c7;
+  --t-warn-fg: #92400e;
+  --t-bad-bg: #ffe4e6;
+  --t-bad-fg: #9f1239;
+  --t-info-bg: #e4e9ff;
+  --t-info-fg: #2c3ab8;
+}
+
+body { background: var(--k-bg); color: var(--k-text); font-size: 14.5px; }
+h1, .tk-head__title, .cs-masthead__title { font-weight: 800; letter-spacing: -0.022em; }

@@ -1,0 +1,49 @@
+/* Clinic Front Desk Pass 3 Theme: Serene Clinical Teal & Porcelain Slate */
+:root {
+  --k-bg: #f4f7f9;
+  --k-surface: #ffffff;
+  --k-surface-2: #eaf2f4;
+  --k-text: #0d1f26;
+  --k-muted: #4b646d;
+  --k-border: #d4e1e6;
+  --k-accent: #0c7f85;
+  --k-accent-text: #ffffff;
+  --k-accent-soft: #d9f3f3;
+  --k-danger: #c81e46;
+  --k-danger-soft: #ffe8ee;
+  --k-success: #0d7a5f;
+  --k-warning: #b45309;
+  --k-focus: #0284c7;
+  --k-radius: 10px;
+  --k-radius-lg: 14px;
+  --k-font: var(--font-system);
+  --k-font-display: var(--font-classical);
+
+  --cl-teal-bright: #2dd4bf;
+  --cl-cerulean: #0284c7;
+  --cl-cerulean-soft: #e0f2fe;
+  --cl-mint: #10b981;
+  --cl-amber: #d97706;
+  --cl-rose: #c81e46;
+
+  --t-rail: #091d24;
+  --t-rail-text: #c9e1e6;
+  --t-rail-muted: #7ea3ad;
+  --t-rail-on: #ffffff;
+  --t-rail-active: rgba(45, 212, 191, .2);
+  --t-card-border: rgba(13, 31, 38, .085);
+
+  --t-ok-bg: #dcfce7;
+  --t-ok-fg: #14532d;
+  --t-warn-bg: #fef3c7;
+  --t-warn-fg: #92400e;
+  --t-bad-bg: #ffe4e6;
+  --t-bad-fg: #9f1239;
+  --t-info-bg: #e0f2fe;
+  --t-info-fg: #075985;
+  --t-neutral-bg: #ebf2f5;
+  --t-neutral-fg: #3e5861;
+}
+
+body { background: var(--k-bg); color: var(--k-text); font-size: 15px; }
+h1, .tk-head__title, .cl-masthead__title { font-weight: 700; letter-spacing: -0.018em; }

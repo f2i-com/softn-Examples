@@ -1,0 +1,39 @@
+/* Plumbing & Trades Theme: Copper/Brass & Blueprint Steel on Draftsman Slate Canvas */
+:root {
+  --k-bg: #f3f6fa;
+  --k-surface: #ffffff;
+  --k-surface-2: #e9eff7;
+  --k-text: #0f1a2b;
+  --k-muted: #4b5d75;
+  --k-border: #d2deec;
+  --k-accent: #1d4ed8;
+  --k-accent-text: #ffffff;
+  --k-accent-soft: #dbeafe;
+  --k-danger: #c81e1e;
+  --k-danger-soft: #fee2e2;
+  --k-success: #0f766e;
+  --k-warning: #b45309;
+  --k-focus: #1d4ed8;
+  --k-radius: 10px;
+  --k-radius-lg: 14px;
+  --k-font: var(--font-system);
+  --k-font-display: var(--font-industrial);
+
+  /* Copper/Brass Blueprint Steel Tokens */
+  --pl-steel: #091628;
+  --pl-steel-mid: #102442;
+  --pl-copper: #c86d2d;
+  --pl-brass: #e6ad54;
+  --pl-brass-soft: #fef4e2;
+  --pl-hydro: #0ea5e9;
+
+  --t-rail: #091526;
+  --t-rail-text: #ced8e8;
+  --t-rail-muted: #8296b5;
+  --t-rail-on: #f8fafc;
+  --t-rail-active: rgba(230, 173, 84, .22);
+  --t-card-border: rgba(15, 26, 43, .09);
+}
+
+body { background: var(--k-bg); color: var(--k-text); font-size: 15px; }
+h1, .tk-head__title, .pl-masthead__title { font-weight: 750; letter-spacing: -0.015em; }

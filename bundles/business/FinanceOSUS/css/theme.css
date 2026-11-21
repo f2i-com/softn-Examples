@@ -1,0 +1,42 @@
+/* Finance OS (US) Theme: Institutional Oxford Navy, Champagne Brass & Crisp Alabaster */
+:root {
+  --k-bg: #f5f6f8;
+  --k-surface: #ffffff;
+  --k-surface-2: #eceef2;
+  --k-text: #0e1829;
+  --k-muted: #4e5d73;
+  --k-border: #d7dce4;
+  --k-accent: #162a4c;
+  --k-accent-text: #ffffff;
+  --k-accent-soft: #e6ecf6;
+  --k-danger: #b91c1c;
+  --k-danger-soft: #fee2e2;
+  --k-success: #156e43;
+  --k-warning: #a16207;
+  --k-radius: 10px;
+  --k-radius-lg: 14px;
+  --k-font: var(--font-system);
+  --k-font-display: var(--font-oldstyle);
+
+  --t-rail: #0a1222;
+  --t-rail-text: #ced7e6;
+  --t-rail-muted: #8a97ae;
+  --t-rail-on: #ffffff;
+  --t-rail-active: rgba(228, 190, 126, .22);
+  --t-card-border: rgba(14, 24, 41, .088);
+
+  --us-brass: #a8742a;
+  --us-brass-light: #e4be7e;
+  --us-brass-ink: #69430b;
+  --us-brass-soft: #fbf3e2;
+  --us-brass-border: #d3a154;
+  --us-oxford: #162a4c;
+  --us-oxford-deep: #070d1b;
+  --us-slate-soft: #eaeff6;
+}
+
+body { background: var(--k-bg); color: var(--k-text); font-size: 14.5px; }
+h1, .tk-head__title, .us-masthead__title { font-weight: 720; letter-spacing: -0.02em; }
+
+.tk-brand__name { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.24; }
+.tk-brand__sub { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.35; margin-top: 4px; color: #a7b4c9; }

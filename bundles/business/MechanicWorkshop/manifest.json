@@ -1,0 +1,31 @@
+{
+  "id": "formlogic.pack.mechanic-workshop",
+  "name": "Mechanic Workshop",
+  "version": "1.0.0",
+  "description": "Turnkey automotive workshop and bay manager: live bay pipeline board, job card workbench with inline parts used, vehicle garage with rego/VIN & odometer auto-update, and 1-click workshop invoicing.",
+  "icon": "assets/icon.svg",
+  "engine": 2,
+  "main": "index.html",
+  "config": {
+    "server": {
+      "requestsPerMinute": 600
+    }
+  },
+  "backend": {
+    "runtime": "php",
+    "entry": "server/public/index.php",
+    "mode": "api",
+    "routes": [
+      "/api/"
+    ]
+  },
+  "databases": [
+    {
+      "name": "app",
+      "engine": "sqlite",
+      "file": "data/app.db",
+      "seedSql": "server/migrations/schema.sql",
+      "persist": true
+    }
+  ]
+}

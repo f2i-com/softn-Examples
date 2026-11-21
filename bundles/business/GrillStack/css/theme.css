@@ -1,0 +1,36 @@
+/* GrillStack Theme: Craft Smash Burger Diner — Warm Butcher-Paper Canvas, Cast-Iron Graphite, Seared Crimson & Melted Cheddar Gold */
+:root {
+  --k-bg: #f8f5ef;
+  --k-surface: #ffffff;
+  --k-surface-2: #f1ece3;
+  --k-text: #14161b;
+  --k-muted: #5a606d;
+  --k-border: #e3dcd0;
+  --k-accent: #c8231a;
+  --k-accent-text: #ffffff;
+  --k-accent-soft: #fde9e6;
+  --k-danger: #b91c1c;
+  --k-danger-soft: #fee2e2;
+  --k-success: #15803d;
+  --k-warning: #d97706;
+  --k-radius: 11px;
+  --k-radius-lg: 16px;
+  --k-font: var(--font-system);
+  --k-font-display: var(--font-industrial);
+
+  --gs-iron: #13151a;
+  --gs-iron-2: #1e2028;
+  --gs-cheddar: #f59e0b;
+  --gs-cheddar-soft: #fef3c7;
+  --gs-ember: #ea580c;
+  --gs-ember-soft: #fff1e6;
+
+  --t-rail: #13151a;
+  --t-rail-text: #d7dbe3;
+  --t-rail-muted: #9098a7;
+  --t-rail-on: #ffffff;
+  --t-rail-active: rgba(234, 88, 12, .25);
+}
+
+body { background: var(--k-bg); color: var(--k-text); font-size: 14.5px; }
+h1, h2, h3, .tk-head__title, .gs-masthead__title, .tk-brand__name { letter-spacing: 0.01em; }

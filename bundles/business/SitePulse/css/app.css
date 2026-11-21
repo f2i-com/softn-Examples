@@ -1,0 +1,432 @@
+/* SitePulse Pass 3 Bespoke Craft: High-Vis Amber & Structural Concrete Navy Site Command
+   Unified Concrete-Navy Masthead with Compliance Ring & Pods, Two-Column Site Command + Safety/Defects Rail,
+   Architectural Project Health Cards, Atmospheric Weather Chips, Interactive Diary Checklists,
+   4-Stage Defect Steppers & Traffic-Light Subcontractor Trade Cards */
+
+/* ---- Calm Site Command Topbar Ticker ---- */
+.sp-ticker {
+  display: flex; align-items: center; gap: 10px; min-width: 0;
+  font-size: 12.5px; font-weight: 600; color: var(--k-muted);
+}
+.sp-ticker__pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border-radius: 99px;
+  background: var(--k-surface); color: var(--k-text);
+  border: 1px solid var(--t-card-border);
+  font-size: 12px; font-weight: 650; text-decoration: none;
+  white-space: nowrap; flex: none;
+  transition: border-color .12s, background .12s, color .12s;
+}
+.sp-ticker__pill:hover { border-color: var(--k-accent); color: var(--k-accent); background: var(--k-accent-soft); }
+.sp-ticker__pill--alert {
+  background: #fef2f2; color: #b91c1c; border-color: #fca5a5;
+}
+.sp-ticker__pill--alert:hover { background: #fee2e2; border-color: #dc2626; color: #991b1b; }
+.sp-ticker__pill--amber {
+  background: #fffbeb; color: #92400e; border-color: #fcd34d;
+}
+.sp-ticker__pill--amber:hover { background: #fef3c7; border-color: #f59e0b; }
+
+/* ---- Unified High-Vis Amber & Structural Concrete Navy Masthead ---- */
+.sp-masthead {
+  position: relative; overflow: hidden;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 22px;
+  padding: 20px 24px; margin-bottom: 18px;
+  border-radius: calc(var(--k-radius-lg) + 3px);
+  color: #ffffff;
+  background:
+    radial-gradient(ellipse 46% 132% at 94% -12%, rgba(245, 158, 11, .34), transparent 62%),
+    radial-gradient(ellipse 48% 120% at 6% 114%, rgba(37, 99, 235, .36), transparent 60%),
+    repeating-linear-gradient(0deg, rgba(148, 163, 184, .055) 0 1px, transparent 1px 28px),
+    repeating-linear-gradient(90deg, rgba(148, 163, 184, .055) 0 1px, transparent 1px 28px),
+    linear-gradient(132deg, #0b1320 0%, #142238 52%, #1c2430 100%);
+  border: 1px solid rgba(251, 191, 36, .25);
+  box-shadow: 0 14px 36px rgba(11, 19, 32, .26), inset 0 1px 0 rgba(255, 255, 255, .14);
+}
+.sp-masthead::before {
+  content: ""; position: absolute; inset: 0 0 auto 0; height: 3px;
+  background: linear-gradient(90deg, #3b82f6 0%, #f59e0b 52%, #fbbf24 100%);
+  pointer-events: none;
+}
+.sp-masthead > * { position: relative; z-index: 1; }
+.sp-masthead__copy { display: grid; gap: 5px; min-width: 0; flex: 1 1 280px; }
+.sp-masthead__eyebrow {
+  display: inline-flex; align-items: center; gap: 7px; width: fit-content; max-width: 100%;
+  padding: 3px 10px; border-radius: 99px;
+  background: rgba(245, 158, 11, .16);
+  border: 1px solid rgba(251, 191, 36, .36);
+  color: #fde68a; font-size: 10.5px; font-weight: 750;
+  text-transform: uppercase; letter-spacing: .09em; white-space: nowrap;
+}
+.sp-masthead__title {
+  font-family: var(--k-font-display);
+  font-size: clamp(24px, 2.5vw, 32px);
+  line-height: 1.1; color: #ffffff;
+}
+.sp-masthead__meta {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
+  font-size: 13px; color: rgba(219, 234, 254, .82);
+}
+
+.sp-masthead__pods { display: flex; flex-wrap: wrap; align-items: stretch; gap: 9px; }
+.sp-pod {
+  display: grid; gap: 2px; align-content: center;
+  min-width: 112px; padding: 9px 13px; border-radius: 12px;
+  background: rgba(15, 23, 42, .52);
+  border: 1px solid rgba(148, 163, 184, .24);
+  backdrop-filter: blur(10px);
+  color: #ffffff; text-decoration: none;
+  transition: background .14s, border-color .14s, transform .14s;
+}
+a.sp-pod:hover, button.sp-pod:hover {
+  background: rgba(30, 58, 108, .66);
+  border-color: rgba(251, 191, 36, .52);
+  transform: translateY(-1px);
+}
+.sp-pod--navy {
+  background: linear-gradient(145deg, rgba(30, 75, 143, .42), rgba(15, 23, 42, .52));
+  border-color: rgba(147, 197, 253, .38);
+}
+.sp-pod--hivis {
+  background: linear-gradient(145deg, rgba(245, 158, 11, .28), rgba(15, 23, 42, .52));
+  border-color: rgba(251, 191, 36, .45);
+}
+.sp-pod--ok {
+  background: linear-gradient(145deg, rgba(22, 163, 74, .28), rgba(15, 23, 42, .52));
+  border-color: rgba(134, 239, 172, .4);
+}
+.sp-pod--alert {
+  background: linear-gradient(145deg, rgba(220, 38, 38, .36), rgba(127, 29, 29, .28));
+  border-color: rgba(252, 165, 165, .52);
+}
+.sp-pod--ring {
+  display: flex; align-items: center; gap: 11px; min-width: 170px; padding: 8px 14px 8px 10px;
+}
+.sp-pod__lbl {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10px; font-weight: 750; text-transform: uppercase; letter-spacing: .07em;
+  color: rgba(203, 213, 225, .78); white-space: nowrap;
+}
+.sp-pod--navy .sp-pod__lbl { color: #bfdbfe; }
+.sp-pod--hivis .sp-pod__lbl { color: #fde68a; }
+.sp-pod--ok .sp-pod__lbl { color: #bbf7d0; }
+.sp-pod--alert .sp-pod__lbl { color: #fecaca; }
+.sp-pod__val {
+  font-size: 19px; font-weight: 800; line-height: 1.15; letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums; color: #ffffff; white-space: nowrap;
+}
+.sp-pod__sub { font-size: 11px; color: rgba(203, 213, 225, .74); white-space: nowrap; }
+.sp-masthead__cta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+.sp-masthead .tk-ring {
+  background: conic-gradient(var(--ring-color) var(--p), rgba(255, 255, 255, .15) 0);
+}
+.sp-masthead .tk-ring::before { background: #142238; }
+.sp-masthead .tk-ring__val { color: #ffffff; font-size: 12px; font-weight: 800; }
+
+/* ---- Two-Column Site Command + Sticky Safety/Defects Rail ---- */
+.sp-split {
+  display: grid; grid-template-columns: minmax(0, 1fr) 332px; gap: 18px; align-items: start;
+  min-width: 0; max-width: 100%;
+}
+.sp-split > *,
+.sp-pulse-sheet,
+.sp-pulse-sheet .tk-row,
+.sp-pulse-sheet .tk-row__main,
+.sp-pulse-sheet .tk-row__title,
+.sp-proj-grid,
+.sp-proj-grid > *,
+.sp-subbie-grid > *,
+.sp-snag-list,
+.sp-snag-list > *,
+.sp-rail-panel,
+.sp-rail-card,
+.sp-rail-item,
+.proj-card,
+.snag-card,
+.sp-subbie-card {
+  min-width: 0; max-width: 100%;
+}
+@media (max-width: 1140px) {
+  .sp-split { grid-template-columns: minmax(0, 1fr); }
+}
+
+.sp-pulse-sheet .tk-row__title { flex-wrap: wrap; gap: 6px; }
+.sp-pulse-sheet .tk-row__title > strong { max-width: 100%; overflow-wrap: anywhere; }
+.sp-pulse-desc { font-size: 13.5px; color: var(--k-muted); line-height: 1.45; overflow-wrap: anywhere; }
+.sp-meta-ico,
+.tk-row__meta > span:has(svg),
+.sp-masthead__meta > span:has(svg) {
+  display: inline-flex; align-items: center; gap: 4px;
+}
+
+.sp-rail-panel { position: sticky; top: 72px; display: grid; gap: 14px; }
+.sp-rail-card {
+  background: var(--k-surface); border: 1px solid var(--t-card-border);
+  border-radius: calc(var(--k-radius) + 3px); overflow: hidden;
+  box-shadow: var(--t-card-shadow);
+}
+.sp-rail-card__head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 11px 14px;
+  background: linear-gradient(180deg, #f8fafd 0%, #edf2f8 100%);
+  border-bottom: 1px solid color-mix(in srgb, var(--k-border) 82%, transparent);
+}
+.sp-rail-card__title {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--k-text);
+}
+.sp-rail-list { display: grid; }
+.sp-rail-item {
+  display: grid; gap: 6px; padding: 11px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--k-text) 6%, transparent);
+}
+.sp-rail-item:last-child { border-bottom: 0; }
+.sp-rail-item__top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.sp-rail-item__name { font-size: 13.5px; font-weight: 750; color: var(--k-text); line-height: 1.25; }
+.sp-rail-item__sub { font-size: 12px; color: var(--k-muted); }
+.sp-rail-item__foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; margin-top: 2px; }
+
+/* ---- Codes, Weather Chips & Crew Headcount ---- */
+.sp-code {
+  display: inline-flex; align-items: center;
+  font-family: var(--k-font-mono); font-size: 11.5px; font-weight: 800;
+  padding: 2px 8px; border-radius: 6px;
+  background: #142238; color: #fde68a;
+  border: 1px solid rgba(251, 191, 36, .3); white-space: nowrap; flex: none;
+}
+
+.weather-chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 11px 3px 5px;
+  border-radius: 99px; font-size: 12px; font-weight: 750; white-space: nowrap; flex: none;
+  border: 1px solid transparent; box-shadow: 0 1px 3px rgba(15, 23, 42, .06);
+}
+.weather-chip__icon {
+  display: inline-grid; place-items: center; width: 21px; height: 21px; border-radius: 50%;
+  background: rgba(255, 255, 255, .86); flex: none;
+}
+.weather-chip--sunny, .weather-chip--fine { background: linear-gradient(135deg, #fffbeb 0%, #fde68a 100%); color: #92400e; border-color: #f59e0b; }
+.weather-chip--sunny .weather-chip__icon, .weather-chip--fine .weather-chip__icon { color: #d97706; }
+.weather-chip--cloudy, .weather-chip--overcast { background: linear-gradient(135deg, #f8fafc 0%, #dce4ee 100%); color: #334155; border-color: #94a3b8; }
+.weather-chip--cloudy .weather-chip__icon, .weather-chip--overcast .weather-chip__icon { color: #475569; }
+.weather-chip--rain { background: linear-gradient(135deg, #eff6ff 0%, #bfdbfe 100%); color: #1e3a8a; border-color: #60a5fa; }
+.weather-chip--rain .weather-chip__icon { color: #2563eb; }
+.weather-chip--windy, .weather-chip--wind { background: linear-gradient(135deg, #ecfeff 0%, #bae6fd 100%); color: #075985; border-color: #38bdf8; }
+.weather-chip--windy .weather-chip__icon, .weather-chip--wind .weather-chip__icon { color: #0284c7; }
+.weather-chip--storm { background: linear-gradient(135deg, #f5f3ff 0%, #ddd6fe 100%); color: #4c1d95; border-color: #a78bfa; }
+.weather-chip--storm .weather-chip__icon { color: #7c3aed; }
+.weather-chip--heat { background: linear-gradient(135deg, #fef2f2 0%, #fecaca 100%); color: #991b1b; border-color: #f87171; }
+.weather-chip--heat .weather-chip__icon { color: #dc2626; }
+
+.crew-badge {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 99px;
+  background: var(--sp-steel-soft); color: var(--sp-steel);
+  border: 1px solid color-mix(in srgb, var(--sp-steel) 26%, transparent);
+  font-size: 12px; font-weight: 750; font-variant-numeric: tabular-nums; white-space: nowrap; flex: none;
+}
+
+.delay-callout {
+  padding: 10px 13px; border-radius: 9px;
+  background: linear-gradient(90deg, #fff7ed 0%, #ffedd5 100%);
+  border: 1px solid #fdba74; border-left: 4px solid #ea580c;
+  font-size: 13px; color: #7c2d12;
+  min-width: 0; max-width: 100%; overflow-wrap: anywhere;
+}
+
+/* ---- Interactive Daily Safety Pre-Start Checklist Chips ---- */
+.sp-check-row { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 4px; }
+.sp-check-chip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 7px;
+  font-size: 11.5px; font-weight: 700; background: var(--k-surface-2); color: var(--k-text);
+  border: 1px solid var(--k-border); white-space: nowrap; cursor: pointer;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.sp-check-chip:hover { border-color: var(--sp-steel); color: var(--sp-steel); }
+.sp-check-chip--done { background: #dcfce7; color: #166534; border-color: #86efac; }
+
+/* ---- Architectural Project Health Cards ---- */
+.sp-proj-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 15px; }
+.proj-card {
+  position: relative; overflow: hidden; background: var(--k-surface);
+  border: 1px solid var(--t-card-border); border-radius: calc(var(--k-radius) + 3px);
+  display: grid; align-content: start; box-shadow: var(--t-card-shadow);
+  transition: transform .15s var(--k-ease), box-shadow .15s var(--k-ease), border-color .15s;
+}
+.proj-card:hover { transform: translateY(-2px); box-shadow: var(--t-card-shadow-hover); border-color: color-mix(in srgb, var(--sp-steel) 34%, var(--t-card-border)); }
+.proj-card__band {
+  position: relative; padding: 15px 17px 14px; color: #ffffff;
+  background:
+    radial-gradient(ellipse 68% 120% at 100% 0%, rgba(245, 158, 11, .28), transparent 64%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, .04) 0 1px, transparent 1px 22px),
+    linear-gradient(135deg, #0f1c30 0%, #1a3154 100%);
+  border-bottom: 1px solid rgba(15, 23, 42, .12); display: grid; gap: 8px;
+}
+.proj-card--hold .proj-card__band { background: linear-gradient(135deg, #1b222c 0%, #2c3442 100%); }
+.proj-card--complete .proj-card__band { background: linear-gradient(135deg, #0f2621 0%, #173b33 100%); }
+.proj-card--planning .proj-card__band { background: linear-gradient(135deg, #18202c 0%, #263143 100%); }
+.proj-card__band-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.proj-card__title { font-family: var(--k-font-display); font-size: 17px; font-weight: 800; color: #ffffff; line-height: 1.2; }
+.proj-card__client { font-size: 12.5px; color: rgba(226, 232, 240, .78); margin-top: 2px; }
+.proj-card__status-tag {
+  display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 99px;
+  font-size: 11px; font-weight: 750; white-space: nowrap; flex: none;
+  background: rgba(255, 255, 255, .14); border: 1px solid rgba(255, 255, 255, .22); color: #ffffff;
+}
+.proj-card__band-addr { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: rgba(203, 213, 225, .82); }
+.proj-card__body { padding: 14px 17px; display: grid; gap: 11px; }
+.proj-card__foot {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 10px 17px 12px;
+  background: color-mix(in srgb, var(--k-surface-2) 45%, var(--k-surface));
+  border-top: 1px solid color-mix(in srgb, var(--k-border) 74%, transparent);
+}
+
+.proj-health-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; }
+.proj-health-pill {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2.5px 9px; border-radius: 99px;
+  font-size: 11.5px; font-weight: 750; white-space: nowrap; border: 1px solid transparent;
+}
+.proj-health-pill--ok { background: #dcfce7; color: #166534; border-color: #86efac; }
+.proj-health-pill--warn { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
+.proj-health-pill--alert { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+
+.proj-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.proj-stat {
+  display: grid; gap: 3px; padding: 9px 11px; border-radius: 9px;
+  background: linear-gradient(180deg, #fafcff 0%, #f1f5f9 100%);
+  border: 1px solid color-mix(in srgb, var(--k-border) 82%, transparent);
+}
+.proj-stat__l { font-size: 10px; color: var(--k-muted); font-weight: 750; text-transform: uppercase; letter-spacing: 0.055em; }
+.proj-stat__v { font-size: 16px; font-weight: 850; font-variant-numeric: tabular-nums; color: var(--k-text); line-height: 1.15; }
+.proj-stat--steel { background: linear-gradient(180deg, #f5f9ff 0%, #e8f1fd 100%); border-color: #bfdbfe; }
+.proj-stat--steel .proj-stat__v { color: #1e40af; }
+.proj-stat--alert { background: linear-gradient(180deg, #fff5f5 0%, #fee2e2 100%); border-color: #fca5a5; }
+.proj-stat--alert .proj-stat__v { color: var(--k-danger); }
+.proj-stat--good { background: linear-gradient(180deg, #f0fdf4 0%, #dcfce7 100%); border-color: #bbf7d0; }
+.proj-stat--good .proj-stat__v { color: var(--k-success); }
+
+/* ---- Daily Diary & Snag Cards with 4-Stage Interactive Steppers ---- */
+.diary-sheet--signed { border-left: 4px solid #16a34a; }
+.diary-sheet--unsigned { border-left: 4px solid #f59e0b; }
+
+.sp-board-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 6px; }
+.sp-snag-list { display: grid; gap: 13px; }
+.snag-card {
+  background: var(--k-surface); border: 1px solid var(--t-card-border);
+  border-left: 4px solid var(--k-accent); border-radius: calc(var(--k-radius) + 2px);
+  padding: 14px 16px; display: grid; gap: 9px; box-shadow: var(--t-card-shadow);
+  transition: transform .13s var(--k-ease), box-shadow .13s var(--k-ease);
+}
+.snag-card:hover { transform: translateY(-2px); box-shadow: var(--t-card-shadow-hover); }
+.snag-card--critical { border-left-color: #dc2626; background: linear-gradient(180deg, #fff5f5 0%, #ffffff 36%); }
+.snag-card--high { border-left-color: #d97706; }
+.snag-card--medium { border-left-color: var(--sp-steel); }
+.snag-card--low { border-left-color: #94a3b8; }
+
+.sp-defect-steps {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px;
+  padding-top: 8px; border-top: 1px dashed var(--k-border);
+}
+.sp-defect-step {
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+  padding: 5px 8px; border-radius: 7px; font-size: 11px; font-weight: 750;
+  background: var(--k-surface-2); color: var(--k-muted); border: 1px solid transparent; cursor: pointer;
+  transition: border-color .12s, background .12s, color .12s;
+}
+.sp-defect-step:hover { border-color: var(--sp-steel); color: var(--sp-steel); }
+.sp-defect-step.is-done { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+.sp-defect-step.is-now { background: #fef3c7; color: #92400e; border-color: #f59e0b; }
+
+/* ---- Subcontractor Trade Cards & Traffic-Light Insurance Expiry Pills ---- */
+.sp-subbie-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.sp-subbie-card {
+  background: var(--k-surface); border: 1px solid var(--t-card-border);
+  border-top: 3.5px solid #16a34a; border-radius: calc(var(--k-radius) + 3px);
+  padding: 15px 16px; display: grid; gap: 10px; align-content: start; box-shadow: var(--t-card-shadow);
+  transition: transform .14s var(--k-ease), box-shadow .14s var(--k-ease);
+}
+.sp-subbie-card:hover { transform: translateY(-2px); box-shadow: var(--t-card-shadow-hover); }
+.sp-subbie-card--expired { border-top-color: #dc2626; background: linear-gradient(180deg, #fff6f6 0%, #ffffff 34%); }
+.sp-subbie-card--expiring { border-top-color: #f59e0b; background: linear-gradient(180deg, #fffcf0 0%, #ffffff 34%); }
+.sp-subbie-head { display: flex; align-items: center; gap: 11px; }
+.sp-subbie-av {
+  width: 40px; height: 40px; border-radius: 10px; flex: none; display: grid; place-items: center;
+  background: linear-gradient(135deg, #0e1828, #1e4b8f); color: #fde68a;
+  font-family: var(--k-font-display); font-weight: 800; font-size: 14.5px;
+}
+
+.ins-badge {
+  display: inline-flex; align-items: center; gap: 6px; padding: 3.5px 11px 3.5px 8px;
+  border-radius: 99px; font-size: 12px; font-weight: 800; white-space: nowrap; flex: none;
+  font-variant-numeric: tabular-nums; box-shadow: 0 1px 3px rgba(15, 23, 42, .06);
+}
+.ins-badge__light { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.ins-badge--expired { background: #dc2626; color: #ffffff; border: 1px solid #991b1b; }
+.ins-badge--expired .ins-badge__light { background: #ffffff; box-shadow: 0 0 0 3px rgba(255, 255, 255, .32); animation: sp-beacon-pulse 1.5s ease-in-out infinite; }
+.ins-badge--expiring { background: linear-gradient(135deg, #fffbeb 0%, #fde68a 100%); color: #78350f; border: 1.5px solid #f59e0b; }
+.ins-badge--expiring .ins-badge__light { background: #f59e0b; }
+.ins-badge--ok { background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); color: #14532d; border: 1.5px solid #22c55e; }
+.ins-badge--ok .ins-badge__light { background: #16a34a; }
+.ins-badge--none { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+.ins-badge--none .ins-badge__light { background: #94a3b8; }
+
+@keyframes sp-beacon-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(255, 255, 255, .42); }
+  50% { box-shadow: 0 0 0 5px rgba(255, 255, 255, 0); }
+}
+
+.var-summary-strip { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.var-proj-pill {
+  background: var(--k-surface); border: 1px solid var(--t-card-border); border-left: 3.5px solid #16a34a;
+  border-radius: var(--k-radius); padding: 11px 15px; display: grid; gap: 2px; min-width: 195px;
+  box-shadow: var(--t-card-shadow);
+}
+.var-proj-pill__name { font-size: 12.5px; color: var(--k-muted); font-weight: 650; }
+.var-proj-pill__val { font-size: 17px; font-weight: 800; color: var(--k-success); font-variant-numeric: tabular-nums; }
+
+/* ---- Mobile & Tablet Polish ---- */
+@media (max-width: 1140px) {
+  .sp-rail-panel { position: static; }
+}
+@media (max-width: 920px) {
+  .sp-ticker { display: none; }
+}
+@media (max-width: 640px) {
+  .tk-topbar__actions .sp-ticker__pill:not(.sp-ticker__pill--alert) { display: none; }
+  .sp-masthead { padding: 14px 15px; margin-bottom: 13px; gap: 12px; }
+  .sp-masthead__copy { flex: 1 1 100%; }
+  .sp-masthead__eyebrow { font-size: 9.5px; line-height: 1.3; }
+  .sp-masthead__title { font-size: 24px; }
+  .sp-masthead__meta { font-size: 12px; gap: 3px 8px; }
+  .sp-masthead__pods,
+  .sp-masthead__pods--ring3 {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%; gap: 8px; align-items: stretch !important;
+  }
+  .sp-pod { min-width: 0; padding: 9px 11px; }
+  .sp-pod--ring,
+  .sp-masthead__pods > .k-btn,
+  .sp-masthead__cta { grid-column: 1 / -1; }
+  .sp-masthead__pods--ring3 > .sp-pod:nth-child(4),
+  .sp-pod--wide-sm {
+    grid-column: 1 / -1;
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px;
+    padding: 10px 13px;
+  }
+  .sp-masthead__pods--ring3 > .sp-pod:nth-child(4) .sp-pod__lbl,
+  .sp-pod--wide-sm .sp-pod__lbl { flex: none; }
+  .sp-masthead__pods--ring3 > .sp-pod:nth-child(4) .sp-pod__val,
+  .sp-pod--wide-sm .sp-pod__val { margin-left: auto; font-size: 16.5px; flex: none; }
+  .sp-masthead__pods--ring3 > .sp-pod:nth-child(4) .sp-pod__sub,
+  .sp-pod--wide-sm .sp-pod__sub { flex: none; overflow: visible; text-overflow: clip; white-space: nowrap; font-size: 11px; }
+  .sp-masthead__cta .k-btn { flex: 1 1 auto; justify-content: center; }
+  .sp-pod__val { font-size: 17px; }
+  .sp-pod__sub { font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; }
+  .sp-pulse-sheet .tk-sheet__head { gap: 8px; }
+  .sp-pulse-sheet .tk-sheet__actions { margin-left: 0; }
+  .sp-pulse-sheet .tk-row { flex-direction: column; align-items: stretch; }
+  .tk-toolbar > select.k-input,
+  .tk-toolbar > input.k-input { min-width: 0 !important; width: 100% !important; flex: 1 1 100%; }
+  .sp-proj-grid, .sp-subbie-grid { grid-template-columns: minmax(0, 1fr); }
+  .sp-defect-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .var-proj-pill { flex: 1 1 100%; }
+}

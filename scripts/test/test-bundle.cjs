@@ -136,30 +136,63 @@ if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
   fail('manifest.json must contain an object');
   manifest = { files: {} };
 }
-if (!manifest.files || typeof manifest.files !== 'object' || Array.isArray(manifest.files)) {
-  fail('manifest.files must contain an object');
-  manifest.files = {};
-}
+
+const isWebContainer =
+  manifest.engine === 2 ||
+  manifest.container === true ||
+  Boolean(manifest.backend && typeof manifest.backend === 'object') ||
+  (!manifest.files && typeof manifest.main === 'string' && /\.html?$/i.test(manifest.main));
 
 const declaredFiles = new Set();
-for (const group of ['ui', 'logic', 'server', 'xdb', 'assets']) {
-  const entries = manifest.files[group] || [];
-  if (!Array.isArray(entries)) {
-    fail(`manifest.files.${group} must be an array`);
-    continue;
+if (!isWebContainer) {
+  if (!manifest.files || typeof manifest.files !== 'object' || Array.isArray(manifest.files)) {
+    fail('manifest.files must contain an object');
+    manifest.files = {};
   }
-  for (let index = 0; index < entries.length; index += 1) {
-    const normalized = normalizeBundlePath(entries[index], `manifest.files.${group}[${index}]`);
-    if (!normalized) continue;
-    declaredFiles.add(normalized);
-    if (!unzipped[normalized]) fail(`Manifest references missing file: ${normalized}`);
+  for (const group of ['ui', 'logic', 'server', 'xdb', 'assets']) {
+    const entries = manifest.files[group] || [];
+    if (!Array.isArray(entries)) {
+      fail(`manifest.files.${group} must be an array`);
+      continue;
+    }
+    for (let index = 0; index < entries.length; index += 1) {
+      const normalized = normalizeBundlePath(entries[index], `manifest.files.${group}[${index}]`);
+      if (!normalized) continue;
+      declaredFiles.add(normalized);
+      if (!unzipped[normalized]) fail(`Manifest references missing file: ${normalized}`);
+    }
+  }
+} else {
+  if (manifest.backend && typeof manifest.backend === 'object') {
+    if (typeof manifest.backend.runtime !== 'string' || !manifest.backend.runtime.trim()) {
+      fail('manifest.backend.runtime must be a non-empty string');
+    }
+    if (typeof manifest.backend.entry === 'string' && manifest.backend.entry.trim()) {
+      const entryPath = normalizeBundlePath(manifest.backend.entry, 'manifest.backend.entry');
+      if (entryPath) {
+        declaredFiles.add(entryPath);
+        if (!unzipped[entryPath]) fail(`Backend entry is missing: ${entryPath}`);
+      }
+    }
+  }
+  if (Array.isArray(manifest.databases)) {
+    for (let i = 0; i < manifest.databases.length; i += 1) {
+      const db = manifest.databases[i];
+      if (db && typeof db.seedSql === 'string' && db.seedSql.trim()) {
+        const sqlPath = normalizeBundlePath(db.seedSql, `manifest.databases[${i}].seedSql`);
+        if (sqlPath) {
+          declaredFiles.add(sqlPath);
+          if (!unzipped[sqlPath]) fail(`Database seedSql is missing: ${sqlPath}`);
+        }
+      }
+    }
   }
 }
 
 const mainPath = normalizeBundlePath(manifest.main, 'manifest.main');
 if (mainPath) {
   declaredFiles.add(mainPath);
-  if (!unzipped[mainPath]) fail(`Main UI is missing: ${mainPath}`);
+  if (!unzipped[mainPath]) fail(`Main entry is missing: ${mainPath}`);
 }
 if (manifest.icon) {
   const iconPath = normalizeBundlePath(manifest.icon, 'manifest.icon');
@@ -204,26 +237,45 @@ if (sourceDir !== bundlePath && fs.existsSync(sourceDir) && fs.statSync(sourceDi
     }
   }
 
-  const sourceAssets = path.join(sourceDir, 'assets');
-  if (fs.existsSync(sourceAssets)) {
-    const pending = [sourceAssets];
+  if (isWebContainer) {
+    const excludedDirs = new Set(['assets-src', '.git', 'node_modules']);
+    const excludedFiles = new Set(['.DS_Store', 'Thumbs.db']);
+    const pending = [sourceDir];
     while (pending.length > 0) {
       const directory = pending.pop();
       for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
         const absolutePath = path.join(directory, entry.name);
         if (entry.isDirectory()) {
-          pending.push(absolutePath);
+          if (!excludedDirs.has(entry.name)) pending.push(absolutePath);
           continue;
         }
+        if (excludedFiles.has(entry.name)) continue;
         const bundleFile = path.relative(sourceDir, absolutePath).replace(/\\/g, '/');
-        if (!unzipped[bundleFile]) fail(`Source asset is missing from the archive: ${bundleFile}`);
+        if (!unzipped[bundleFile]) fail(`Source file is missing from the archive: ${bundleFile}`);
+      }
+    }
+  } else {
+    const sourceAssets = path.join(sourceDir, 'assets');
+    if (fs.existsSync(sourceAssets)) {
+      const pending = [sourceAssets];
+      while (pending.length > 0) {
+        const directory = pending.pop();
+        for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+          const absolutePath = path.join(directory, entry.name);
+          if (entry.isDirectory()) {
+            pending.push(absolutePath);
+            continue;
+          }
+          const bundleFile = path.relative(sourceDir, absolutePath).replace(/\\/g, '/');
+          if (!unzipped[bundleFile]) fail(`Source asset is missing from the archive: ${bundleFile}`);
+        }
       }
     }
   }
 }
 
 let fullSource = mainPath ? readText(mainPath) : null;
-if (fullSource && mainPath) {
+if (!isWebContainer && fullSource && mainPath) {
   const sourceFiles = new Map();
   for (const bundleFile of files) {
     if (bundleFile === mainPath || /\.(?:ui|logic)$/i.test(bundleFile)) {

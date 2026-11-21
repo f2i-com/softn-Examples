@@ -1,0 +1,46 @@
+/* People Hub Theme: Warm Plum-Slate & Sage People-First Operations */
+:root {
+  --k-bg: #f8f6f4;
+  --k-surface: #ffffff;
+  --k-surface-2: #f0ece8;
+  --k-text: #1c1524;
+  --k-muted: #5e5469;
+  --k-border: #dfd8e3;
+  --k-accent: #823462;
+  --k-accent-2: #2e7d63;
+  --k-accent-text: #ffffff;
+  --k-accent-soft: #f9e9f2;
+  --k-danger: #c81e3a;
+  --k-danger-soft: #fee9ed;
+  --k-success: #1b7a54;
+  --k-warning: #b45309;
+  --k-focus: #823462;
+  --k-radius: 10px;
+  --k-radius-lg: 14px;
+  --k-font: var(--font-humanist);
+  --k-font-display: var(--font-humanist);
+
+  --hr-plum: #1f1627;
+  --hr-sage: #2e7d63;
+  --hr-sage-bright: #5ec29c;
+  --hr-sage-soft: #e0f4ec;
+  --hr-blush: #f0a8b8;
+
+  --t-rail: #1f1627;
+  --t-rail-text: #ded6e6;
+  --t-rail-muted: #9e90ad;
+  --t-rail-on: #ffffff;
+  --t-rail-active: rgba(94, 194, 156, .22);
+  --t-card-border: rgba(28, 21, 36, .085);
+  --t-ok-bg: #def4ea;
+  --t-ok-fg: #145c3e;
+  --t-warn-bg: #fef3c7;
+  --t-warn-fg: #92400e;
+  --t-bad-bg: #fee2e2;
+  --t-bad-fg: #991b1b;
+  --t-info-bg: #efe7f5;
+  --t-info-fg: #5e2450;
+}
+
+body { background: var(--k-bg); color: var(--k-text); font-size: 14.5px; }
+h1, .tk-head__title, .hr-masthead__title { font-weight: 800; letter-spacing: -0.02em; }

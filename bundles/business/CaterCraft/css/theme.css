@@ -1,0 +1,33 @@
+/* CaterCraft Theme: Botanical Deep-Sage Rail, Luxury Olive Accent, Champagne Gold & Warm Ivory Editorial Canvas */
+:root {
+  --k-bg: #f8f6f0;
+  --k-surface: #ffffff;
+  --k-surface-2: #f1ede2;
+  --k-text: #192216;
+  --k-muted: #5a6754;
+  --k-border: #dfd9cb;
+  --k-accent: #3f5f1e;
+  --k-accent-text: #ffffff;
+  --k-accent-soft: #ebf3de;
+  --k-danger: #b91c1c;
+  --k-danger-soft: #fee2e2;
+  --k-success: #15803d;
+  --k-warning: #a16207;
+  --k-radius: 10px;
+  --k-radius-lg: 14px;
+  --k-font: var(--font-geometric);
+  --k-font-display: var(--font-oldstyle);
+
+  --cc-champagne: #b88c32;
+  --cc-champagne-soft: #faf2dd;
+  --cc-sage-deep: #152113;
+
+  --t-rail: #152113;
+  --t-rail-text: #dae3d5;
+  --t-rail-muted: #93a48c;
+  --t-rail-on: #fbfaf4;
+  --t-rail-active: rgba(212, 168, 79, .24);
+}
+
+body { background: var(--k-bg); color: var(--k-text); font-size: 14.5px; }
+h1, .tk-head__title, .tk-hero__title, .cc-masthead__title { font-family: var(--k-font-display); font-weight: 700; letter-spacing: -0.014em; }

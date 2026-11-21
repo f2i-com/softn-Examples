@@ -1,0 +1,44 @@
+/* Finance OS (AU) Theme: Private Bank Forest-Emerald, Sovereign Gold & Warm Ivory */
+:root {
+  --k-bg: #f6f4ee;
+  --k-surface: #ffffff;
+  --k-surface-2: #eeeae0;
+  --k-text: #0e1f22;
+  --k-muted: #4e6061;
+  --k-border: #dad3c2;
+  --k-accent: #114237;
+  --k-accent-text: #ffffff;
+  --k-accent-soft: #e1f0eb;
+  --k-danger: #b91c1c;
+  --k-danger-soft: #fee2e2;
+  --k-success: #146e43;
+  --k-warning: #a16207;
+  --k-radius: 10px;
+  --k-radius-lg: 14px;
+  --k-font: var(--font-system);
+  --k-font-display: var(--font-transitional);
+
+  --t-rail: #081b17;
+  --t-rail-text: #cfe0da;
+  --t-rail-muted: #84a399;
+  --t-rail-on: #ffffff;
+  --t-rail-active: rgba(232, 194, 111, .22);
+  --t-card-border: rgba(14, 31, 34, .088);
+
+  --au-gold: #b07a1d;
+  --au-gold-light: #e8c26f;
+  --au-gold-ink: #6c4406;
+  --au-gold-soft: #fdf5e2;
+  --au-gold-border: #d8a748;
+  --au-navy: #14304f;
+  --au-navy-soft: #e6eef7;
+  --au-forest: #114237;
+  --au-forest-deep: #071915;
+}
+
+body { background: var(--k-bg); color: var(--k-text); font-size: 14.5px; }
+h1, .tk-head__title, .au-masthead__title { font-weight: 720; letter-spacing: -0.02em; }
+
+/* Ensure sidebar brand title & AFSL subtitle wrap cleanly without clipping */
+.tk-brand__name { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.24; }
+.tk-brand__sub { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.35; margin-top: 4px; color: #9ab7ad; }

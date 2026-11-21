@@ -1,0 +1,44 @@
+/* PawRoute Theme: Warm Meadow Forest, Terracotta Paw Accent & Sunlit Cream Canvas */
+:root {
+  --k-bg: #fbf7f0;
+  --k-surface: #ffffff;
+  --k-surface-2: #f3ecdf;
+  --k-text: #13251c;
+  --k-muted: #506458;
+  --k-border: #dfd6c4;
+  --k-accent: #1b6a48;
+  --k-accent-text: #ffffff;
+  --k-accent-soft: #def7e8;
+  --k-danger: #c81e1e;
+  --k-danger-soft: #fee2e2;
+  --k-success: #15803d;
+  --k-warning: #c85c2b;
+  --k-radius: 10px;
+  --k-radius-lg: 14px;
+  --k-font: var(--font-humanist);
+  --k-font-display: var(--font-rounded);
+
+  --t-rail: #0f241a;
+  --t-rail-text: #cfe2d7;
+  --t-rail-muted: #80a593;
+  --t-rail-on: #fbf7f0;
+  --t-rail-active: rgba(217, 108, 63, .28);
+  --t-card-border: rgba(19, 37, 28, .085);
+
+  --pr-terra: #c95c36;
+  --pr-terra-bright: #e07a47;
+  --pr-terra-soft: #fceded;
+  --pr-amber: #d97706;
+  --pr-amber-soft: #fef3c7;
+  --pr-cream: #faf4e8;
+}
+
+body {
+  background: var(--k-bg);
+  color: var(--k-text);
+  font-size: 14.5px;
+}
+h1, .tk-head__title, .pr-masthead__title {
+  font-weight: 800;
+  letter-spacing: -0.018em;
+}

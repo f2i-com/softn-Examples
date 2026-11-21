@@ -1,0 +1,31 @@
+{
+  "id": "formlogic.pack.ohs-qms",
+  "name": "OHS & QMS",
+  "version": "1.0.0",
+  "description": "Turnkey ISO 45001 safety and ISO 9001 quality management system: incident & injury register, interactive 5x5 risk matrix hazard register, CAPA tracker, audits/CARs/NCRs with printable reports, mandatory training matrix, contractor approvals, toolbox talks, complaints and plant register.",
+  "icon": "assets/icon.svg",
+  "engine": 2,
+  "main": "index.html",
+  "config": {
+    "server": {
+      "requestsPerMinute": 600
+    }
+  },
+  "backend": {
+    "runtime": "php",
+    "entry": "server/public/index.php",
+    "mode": "api",
+    "routes": [
+      "/api/"
+    ]
+  },
+  "databases": [
+    {
+      "name": "app",
+      "engine": "sqlite",
+      "file": "data/app.db",
+      "seedSql": "server/migrations/schema.sql",
+      "persist": true
+    }
+  ]
+}

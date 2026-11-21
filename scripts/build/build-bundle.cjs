@@ -40,6 +40,38 @@ function isBinary(filePath) {
   return binaryExtensions.includes(ext);
 }
 
+const CONTAINER_EXCLUDED_DIRS = new Set(['assets-src', '.git', 'node_modules']);
+const CONTAINER_EXCLUDED_FILES = new Set(['.DS_Store', 'Thumbs.db']);
+
+function isWebContainerManifest(manifest) {
+  if (!manifest || typeof manifest !== 'object') return false;
+  if (manifest.engine === 2 || manifest.container === true) return true;
+  if (manifest.backend && typeof manifest.backend === 'object') return true;
+  if (!manifest.files && typeof manifest.main === 'string' && /\.html?$/i.test(manifest.main)) return true;
+  return false;
+}
+
+function collectContainerFiles(sourceDir) {
+  const out = [];
+  const stack = [sourceDir];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const abs = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        if (CONTAINER_EXCLUDED_DIRS.has(entry.name)) continue;
+        stack.push(abs);
+      } else {
+        if (CONTAINER_EXCLUDED_FILES.has(entry.name)) continue;
+        const rel = path.relative(sourceDir, abs).replace(/\\/g, '/');
+        if (rel === 'manifest.json' || rel === 'permission.json') continue;
+        out.push(rel);
+      }
+    }
+  }
+  return out.sort((a, b) => a.localeCompare(b));
+}
+
 function collectFilesRecursive(rootDir, baseDir) {
   const out = [];
   if (!fs.existsSync(rootDir)) return out;
@@ -240,23 +272,31 @@ function buildBundle(bundleName, options = {}) {
     entries.set('permission.json', fs.readFileSync(permPath, 'utf-8'));
   }
 
-  // Collect all files from manifest, ensuring main and icon are included
-  const fileSet = new Set([
-    ...(manifest.files.ui || []),
-    ...(manifest.files.logic || []),
-    ...(manifest.files.server || []),
-    ...(manifest.files.xdb || []),
-    ...(manifest.files.assets || []),
-  ]);
-  // Always include files physically under assets/ so new media files are picked up
-  // even if manifest.files.assets is stale.
-  const discoveredAssets = collectFilesRecursive(path.join(sourceDir, 'assets'), sourceDir);
-  for (const a of discoveredAssets) {
-    fileSet.add(a);
+  let allFiles;
+  if (isWebContainerManifest(manifest)) {
+    // Engine 2 Web Container bundles pack their entire source tree (HTML/CSS/JS,
+    // assets, .htaccess, PHP/JS/TS/Rust/Python backend, SQL migrations, vendor).
+    allFiles = collectContainerFiles(sourceDir);
+  } else {
+    // Classic Engine 1 bundles declare their files in manifest.files.
+    const mf = manifest.files || {};
+    const fileSet = new Set([
+      ...(mf.ui || []),
+      ...(mf.logic || []),
+      ...(mf.server || []),
+      ...(mf.xdb || []),
+      ...(mf.assets || []),
+    ]);
+    // Always include files physically under assets/ so new media files are picked up
+    // even if manifest.files.assets is stale.
+    const discoveredAssets = collectFilesRecursive(path.join(sourceDir, 'assets'), sourceDir);
+    for (const a of discoveredAssets) {
+      fileSet.add(a);
+    }
+    if (manifest.main) fileSet.add(manifest.main);
+    if (manifest.icon) fileSet.add(manifest.icon);
+    allFiles = [...fileSet];
   }
-  if (manifest.main) fileSet.add(manifest.main);
-  if (manifest.icon) fileSet.add(manifest.icon);
-  const allFiles = [...fileSet];
 
   // Add each file
   for (const filePath of allFiles) {

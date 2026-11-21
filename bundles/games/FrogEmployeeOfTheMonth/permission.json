@@ -1,9 +1,0 @@
-{
-  "app": {
-    "id": "com.softn.oddjobs.frog",
-    "name": "Frog Employee of the Month",
-    "version": "0.2.2"
-  },
-  "permissions": {},
-  "version": 1
-}

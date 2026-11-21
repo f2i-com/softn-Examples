@@ -1,282 +1,351 @@
 [
   {
-    "id": "ai-chat",
-    "file": "AIChat.softn",
-    "name": "AI Chat",
-    "description": "Private on-device LLM chat with Qwen3-0.6B, conversation history, starter prompt cards, parameter tuning, and one-click reply copy",
-    "primary": "#10b981"
+    "id": "agrilog-farm",
+    "file": "AgriLog.softn",
+    "name": "AgriLog",
+    "description": "Turnkey farm operations tracker: paddocks with live chemical withholding period locks, crop jobs, harvest yield log, chemical register, and machinery maintenance.",
+    "category": "business",
+    "subcategory": "field-trades",
+    "tags": "field-trades,php,sqlite,full-stack",
+    "primary": "#1b5e36"
   },
   {
-    "id": "device-kit",
-    "file": "DeviceKit.softn",
-    "name": "Device Kit",
-    "description": "Sandbox capability tour: GET/POST API Explorer, live system capability telemetry, QR reader/generator, camera studio with calibration fallback, and file inspector",
-    "primary": "#3b82f6"
+    "id": "aokie-receptionist",
+    "file": "AokieReceptionist.softn",
+    "name": "Aokie Receptionist",
+    "description": "Turnkey AI phone & front-desk console: two-pane live call console with structured Caller/AI transcripts, two-pane SMS inbox with AI draft approval, appointments & orders desk, follow-up tasks queue, callers CRM, Bluetooth dongle hardware events log and AI persona/routing configuration.",
+    "category": "business",
+    "subcategory": "people-support",
+    "tags": "people-support,php,sqlite,full-stack",
+    "primary": "#5b3df5"
   },
   {
-    "id": "glamour-studio",
-    "file": "GlamourStudio.softn",
-    "name": "Glamour Studio",
-    "description": "Luxury salon front desk with live revenue KPIs, interactive Beauty & Lighting portrait studio, appointments, clients, staff, services, and multi-device sync",
-    "primary": "#d4a574"
+    "id": "brewdesk-cafe-ops",
+    "file": "BrewDesk.softn",
+    "name": "BrewDesk",
+    "description": "Turnkey cafe and barista operations desk: live order pad, espresso ticket queue, menu board, beans and milk par stock, shift roster and daily closeout.",
+    "category": "business",
+    "subcategory": "hospitality",
+    "tags": "hospitality,php,sqlite,full-stack",
+    "primary": "#8c3413"
   },
   {
-    "id": "gpu-demo",
-    "file": "GPUDemo.softn",
-    "name": "GPU Compute",
-    "description": "WebGPU WGSL & CPU vector compute bench with 6 kernels across 8 to 4096 floats, live spectrum analytics, dispatch timing, and an interactive Compute Field simulation",
-    "primary": "#10b981"
+    "id": "catercraft-catering",
+    "file": "CaterCraft.softn",
+    "name": "CaterCraft",
+    "description": "Turnkey catering & event orders hub: visual event pipeline with automatic per-head quote calculation and HTML run-sheets, multi-station kitchen production board, delivery dispatch runs, dietary requirements matrix with kitchen sign-off, menu packages and client directory.",
+    "category": "business",
+    "subcategory": "hospitality",
+    "tags": "hospitality,php,sqlite,full-stack",
+    "primary": "#3f5f1e"
   },
   {
-    "id": "maze-escape-3d",
-    "file": "MazeEscape3D.softn",
-    "name": "Maze Escape 3D",
-    "description": "First-person procedural stone cavern maze with Blender PBR sconces, obelisks, unsealing rune crystals, a glowing portal gate, dynamic shadows, and a live fog-of-war minimap across 3 sizes.",
-    "primary": "#4ade80"
+    "id": "cleanshift-cleaning",
+    "file": "CleanShift.softn",
+    "name": "CleanShift",
+    "description": "Turnkey cleaning business scheduler: crew dispatch board, client access instructions, teams roster, quality checklists & star ratings, supply par stock, and client issues desk.",
+    "category": "business",
+    "subcategory": "field-trades",
+    "tags": "field-trades,php,sqlite,full-stack",
+    "primary": "#0891b2"
   },
   {
-    "id": "notes",
-    "file": "Notes.softn",
-    "name": "Notes",
-    "description": "Persistent Markdown notes board across site XDB, local server, or browser storage with live preview, category tags, pinned notes, undo delete, and instant search",
-    "primary": "#6366f1"
+    "id": "clinic-appointment-intake",
+    "file": "ClinicFrontDesk.softn",
+    "name": "Clinic Front Desk",
+    "description": "Turnkey clinic reception and patient flow desk: live waiting room queue, patient directory and dossiers, digital intake and consent forms, clinician roster, and follow-up recall queue.",
+    "category": "business",
+    "subcategory": "healthcare-wellness",
+    "tags": "healthcare-wellness,php,sqlite,full-stack",
+    "primary": "#0c7f85"
   },
   {
-    "id": "pocket",
-    "file": "Pocket.softn",
-    "name": "Pocket",
-    "description": "8-bit handheld emulator with SM83 CPU, PPU, APU, and mappers in .logic, built-in playable Brick-Breaker cartridge, DMG palettes, save states, and PixelCanvas + AudioStream",
-    "primary": "#9bbc0f"
+    "id": "counterflow-retail-ops",
+    "file": "CounterFlow.softn",
+    "name": "CounterFlow",
+    "description": "Turnkey retail store operations hub around the till: product catalogue with live margins and quick stock adjustments, audited stock ledger, floor tasks, suppliers, staff roster, and customer returns desk.",
+    "category": "business",
+    "subcategory": "retail-inventory",
+    "tags": "retail-inventory,php,sqlite,full-stack",
+    "primary": "#c84b24"
   },
   {
-    "id": "soft-dos",
-    "file": "SoftDOS.softn",
-    "name": "SoftDOS",
-    "description": "x86 PC emulator in .logic with bundled one-click FastDOOM + Freedoom Phase 1, 386 integer CPU, VGA mode 13h & 80x25 text, Sound Blaster + AdLib, and touch controls",
-    "primary": "#48d080"
+    "id": "event-management",
+    "file": "EventHub.softn",
+    "name": "Event Hub",
+    "description": "Turnkey event operations command center with 1-tap attendee check-in desk, dietary & accessibility alerts, speaker program, vendor booths, volunteer roster, live budget variance, incident log, and post-event feedback.",
+    "category": "business",
+    "subcategory": "hospitality",
+    "tags": "hospitality,php,sqlite,full-stack",
+    "primary": "#9b1cb8"
   },
   {
-    "id": "showcase",
-    "file": "Showcase.softn",
-    "name": "Component Showcase",
-    "description": "Interactive UI controls, charts, spring animations, drag-and-drop widgets, and an articulated PBR Chrono Orrery 3D studio scene with HDR IBL, GTAO, Bloom, and SceneAnchor",
-    "primary": "#6366f1"
+    "id": "finance-os-au",
+    "file": "FinanceOSAU.softn",
+    "name": "Finance OS (AU)",
+    "description": "Turnkey Australian AFSL advisory & compliance workbench: client onboarding, Best Interest Duty risk profile scorer, Fee Disclosure Statements (FDS), superannuation rollovers, 100%-validated BDBNs, off-market transfers, annual reviews and document vault.",
+    "category": "business",
+    "subcategory": "finance-compliance",
+    "tags": "finance-compliance,php,sqlite,full-stack",
+    "primary": "#114237"
   },
   {
-    "id": "texas-holdem",
-    "file": "TexasHoldem.softn",
-    "name": "Texas Hold'em",
-    "description": "Texas Hold'em Poker with peer sync or authoritative server tables, full side-pot resolution, AI bots, and WAV table audio",
-    "primary": "#c8aa6e"
+    "id": "finance-os-us",
+    "file": "FinanceOSUS.softn",
+    "name": "Finance OS (US)",
+    "description": "Turnkey US RIA & wealth compliance workbench: client onboarding, SEC Form CRS & W-9 tracking, Reg BI risk tolerance scorer, tiered AUM fee agreement calculator, ACAT/Rollover/1035 transfers hub, 100%-validated beneficiary designations, POA, annual reviews and document vault.",
+    "category": "business",
+    "subcategory": "finance-compliance",
+    "tags": "finance-compliance,php,sqlite,full-stack",
+    "primary": "#162a4c"
   },
   {
-    "id": "the-office",
-    "file": "TheOffice.softn",
-    "name": "TheOffice",
-    "description": "Local AI sim game where 6 Office-inspired characters roam, gossip with 1x/2x simulation pace & instant banter sparks, and chat via Qwen3-0.6B",
-    "primary": "#58a6ff"
+    "id": "fitstudio-coaching",
+    "file": "FitStudio.softn",
+    "name": "FitStudio",
+    "description": "Turnkey personal training and gym coaching operations desk: live coach session board, client progress dossiers with automatic body-composition deltas, assessments log, workout program builder, trainer roster, and payments ledger.",
+    "category": "business",
+    "subcategory": "healthcare-wellness",
+    "tags": "healthcare-wellness,php,sqlite,full-stack",
+    "primary": "#1d4ed8"
   },
   {
-    "id": "three-demo",
-    "file": "ThreeDemo.softn",
-    "name": "3D Scene",
-    "description": "Interactive PBR 3D studio with articulated Blender Chrono Orrery & Crystal Relic GLBs, dusk HDR sky, AgX lighting, GTAO, bloom, and floating SceneAnchor pins",
-    "primary": "#f59e0b"
+    "id": "fleetflow-fleet",
+    "file": "FleetFlow.softn",
+    "name": "FleetFlow",
+    "description": "Turnkey vehicle fleet and driver logbook: live rego, insurance and licence expiry countdown alerts, vehicle register with automatic odometer syncing from trips, FBT business/personal trip and fuel logbook, workshop maintenance pipeline, and incident register.",
+    "category": "business",
+    "subcategory": "operations",
+    "tags": "operations,php,sqlite,full-stack",
+    "primary": "#135596"
   },
   {
-    "id": "warble-wire",
-    "file": "WarbleWire.softn",
-    "name": "WarbleWire",
-    "description": "Send a message as synthetic birdsong and decode it back — the QXW acoustic transport with sample presets, noise channels, and live mic decode",
-    "primary": "#c7ee53"
+    "id": "grillstack-burger-ops",
+    "file": "GrillStack.softn",
+    "name": "GrillStack",
+    "description": "Turnkey burger shop command center: live order counter with Rush toggle, multi-station kitchen pass KDS (Grill, Fryer, Assembly, Drinks), menu & ingredient builds, prep & par stock, crew shifts with break tracking, and nightly till reconciliation.",
+    "category": "business",
+    "subcategory": "hospitality",
+    "tags": "hospitality,php,sqlite,full-stack",
+    "primary": "#c8231a"
   },
   {
-    "id": "promptly-unemployed",
-    "file": "PromptlyUnemployed.softn",
-    "name": "Promptly Unemployed",
-    "description": "First-person 3D narrative tragicomedy upgraded with AgX tone mapping, studio IBL, GTAO & subtle bloom, full voice acting, and single-bundle portability",
-    "primary": "#f59e0b"
+    "id": "inventory-purchase-orders",
+    "file": "InventoryPOs.softn",
+    "name": "Inventory & POs",
+    "description": "Turnkey warehouse stock control and purchasing hub: SKU bin locations, low-stock reorder alerts with 1-click Draft PO, multi-line purchase order builder, atomic goods receiving, printable POs, suppliers, and stock audit ledger.",
+    "category": "business",
+    "subcategory": "retail-inventory",
+    "tags": "retail-inventory,php,sqlite,full-stack",
+    "primary": "#1b5299"
   },
   {
-    "id": "blockscape",
-    "file": "Blockscape.softn",
-    "name": "Blockscape",
-    "description": "First-person voxel island sandbox with voxel diamond pickaxe, Blender PBR treasure chest, dynamic sun shadows, glowing torches, soft debris particles, and day-night atmospheric sky.",
-    "primary": "#5cae4a"
+    "id": "job-invoice-management",
+    "file": "JobInvoiceDesk.softn",
+    "name": "Job & Invoice Desk",
+    "description": "Turnkey job-to-quote-to-invoice-to-payment billing pipeline with client ledger, auto-numbered quotes & tax invoices, partial payment reconciliation, and overdue chase queue.",
+    "category": "business",
+    "subcategory": "operations",
+    "tags": "operations,php,sqlite,full-stack",
+    "primary": "#057a55"
   },
   {
-    "id": "dead-hours",
-    "file": "DeadHours.softn",
-    "name": "Dead Hours",
-    "description": "First-person night-courtyard zombie shooter with articulated PBR zombies and weapons, tactical Armory upgrades, frag grenades, hazard barrels, and a graveyard leaderboard.",
-    "primary": "#ff5a3c"
+    "id": "mechanic-workshop",
+    "file": "MechanicWorkshop.softn",
+    "name": "Mechanic Workshop",
+    "description": "Turnkey automotive workshop and bay manager: live bay pipeline board, job card workbench with inline parts used, vehicle garage with rego/VIN & odometer auto-update, and 1-click workshop invoicing.",
+    "category": "business",
+    "subcategory": "field-trades",
+    "tags": "field-trades,php,sqlite,full-stack",
+    "primary": "#e04f16"
   },
   {
-    "id": "train-yard",
-    "file": "TrainYard.softn",
-    "name": "Model Train Yard",
-    "description": "Animated HO-scale model train yard diorama with Blender PBR steam locomotive, freight hoppers, harbor tug, signal gantries, HDRI day-night cycle, GTAO/bloom lighting, chuff audio, and interactive fascia controls",
-    "primary": "#3b82f6"
+    "id": "ohs-qms",
+    "file": "OHSQMS.softn",
+    "name": "OHS & QMS",
+    "description": "Turnkey ISO 45001 safety and ISO 9001 quality management system: incident & injury register, interactive 5x5 risk matrix hazard register, CAPA tracker, audits/CARs/NCRs with printable reports, mandatory training matrix, contractor approvals, toolbox talks, complaints and plant register.",
+    "category": "business",
+    "subcategory": "finance-compliance",
+    "tags": "finance-compliance,php,sqlite,full-stack",
+    "primary": "#c96a08"
   },
   {
-    "id": "predator-prey",
-    "file": "PredatorPrey.softn",
-    "name": "Predator-Prey Simulator",
-    "description": "Interactive 3D predator-prey ecosystem diorama with articulated Blender PBR foxes and rabbits, pine woodland, 4-season cycle, GTAO/bloom lighting, soft particles, and nature SFX",
-    "primary": "#10b981"
+    "id": "passmaster-restaurant",
+    "file": "PassMaster.softn",
+    "name": "PassMaster",
+    "description": "Turnkey restaurant front-of-house & kitchen pass: interactive section floor map, reservations book with 1-click table seating, course kitchen pass with red allergy alerts, station prep checklist, brigade roster and nightly shift close.",
+    "category": "business",
+    "subcategory": "hospitality",
+    "tags": "hospitality,php,sqlite,full-stack",
+    "primary": "#8c1d37"
   },
   {
-    "id": "house-builder",
-    "file": "HouseBuilder.softn",
-    "name": "House Builder",
-    "description": "Draw a house from above and see it in 3D with HDR skies, AgX lighting, GTAO, animated doors, room area pins, furniture and garden props, OBJ/JSON export, and first-person walkthrough with touch D-Pad.",
-    "primary": "#f59e0b"
+    "id": "pawroute-pet-care",
+    "file": "PawRoute.softn",
+    "name": "PawRoute",
+    "description": "Turnkey dog walking & pet care operations hub: daily walk run-sheet with 1-click owner updates, temperament & medical pet profiles, home access client cards, walkers roster, and incidents log.",
+    "category": "business",
+    "subcategory": "field-trades",
+    "tags": "field-trades,php,sqlite,full-stack",
+    "primary": "#1b6a48"
   },
   {
-    "id": "photo-studio",
-    "file": "PhotoStudio.softn",
-    "name": "Photo Studio",
-    "description": "Layered image editor with PNG, JPEG, GIF, BMP, and PSD import/export, 16 blend modes, brushes, selections, masks, adjustments, bitmap type, and undo history.",
-    "primary": "#b2a0ff"
+    "id": "hr-people",
+    "file": "PeopleHub.softn",
+    "name": "People Hub",
+    "description": "Turnkey HR & people operations desk with actionable approvals inbox, recruitment pipeline & interview scorecards, interactive onboarding checklists, leave, performance reviews, expenses, training, and exit interviews.",
+    "category": "business",
+    "subcategory": "people-support",
+    "tags": "people-support,php,sqlite,full-stack",
+    "primary": "#823462"
   },
   {
-    "id": "sim-lives",
-    "file": "SimLives.softn",
-    "name": "Sim Lives",
-    "description": "Build houses, design Sims and guide or automate daily life in a sunny-meadow HDR 3D neighborhood featuring Blender fountain & stove models, day-night lighting, and SceneAnchor pins",
-    "primary": "#22c55e"
+    "id": "plumbing-field-service",
+    "file": "PlumbingTrades.softn",
+    "name": "Plumbing & Trades",
+    "description": "Turnkey field service operations for plumbing and trades businesses: priority dispatch board, on-site work orders, parts & materials tracking, customer directory, and 1-click job invoicing.",
+    "category": "business",
+    "subcategory": "field-trades",
+    "tags": "field-trades,php,sqlite,full-stack",
+    "primary": "#1d4ed8"
   },
   {
-    "id": "outermate",
-    "file": "Outermate.softn",
-    "name": "Outermate",
-    "description": "First Count: a living prison-escape strategy game on Hollow-7. Learn routines, trade favours, prepare a route and get beyond Greywall.",
-    "primary": "#efba72"
+    "id": "property-maintenance",
+    "file": "PropertyMaintenance.softn",
+    "name": "Property Maintenance",
+    "description": "Turnkey property maintenance and handyman operations desk: tenant request triage board, 1-click work order dispatch, properties register with access notes, tenants directory, and rated property inspections.",
+    "category": "business",
+    "subcategory": "field-trades",
+    "tags": "field-trades,php,sqlite,full-stack",
+    "primary": "#0d6e6e"
+  },
+  {
+    "id": "repairbench-device-repair",
+    "file": "RepairBench.softn",
+    "name": "RepairBench",
+    "description": "Turnkey electronics and device repair workshop desk: 7-stage repair pipeline board with printable claim tickets, device IMEI/serial intake registry, parts order tracker, interactive QA test checklist and pickup SMS desk, plus customers and bench technicians.",
+    "category": "business",
+    "subcategory": "operations",
+    "tags": "operations,php,sqlite,full-stack",
+    "primary": "#0891b2"
+  },
+  {
+    "id": "salon-beauty-studio",
+    "file": "SalonStudio.softn",
+    "name": "Salon Studio",
+    "description": "Turnkey hair salon & beauty studio manager: daily appointment book by stylist with auto-filled service pricing & conflict checks, client colour formula cards, service menu, stylist roster, and retail sales with printable receipts.",
+    "category": "business",
+    "subcategory": "healthcare-wellness",
+    "tags": "healthcare-wellness,php,sqlite,full-stack",
+    "primary": "#922649"
+  },
+  {
+    "id": "customer-service",
+    "file": "ServiceDesk.softn",
+    "name": "Service Desk",
+    "description": "Turnkey customer support helpdesk with ticket triage queue, 1-click escalations, bug tracker, upvotable feature board, refunds desk, live NPS calculator, and searchable knowledge base.",
+    "category": "business",
+    "subcategory": "people-support",
+    "tags": "people-support,php,sqlite,full-stack",
+    "primary": "#3748e0"
+  },
+  {
+    "id": "sitepulse-site-diary",
+    "file": "SitePulse.softn",
+    "name": "SitePulse",
+    "description": "Turnkey construction site diary and builder command hub: active projects overview, daily site diaries with weather & sign-off, defect snag list, client-approved variations, deliveries log, and subcontractor insurance expiry tracking.",
+    "category": "business",
+    "subcategory": "field-trades",
+    "tags": "field-trades,php,sqlite,full-stack",
+    "primary": "#c2590a"
+  },
+  {
+    "id": "stayready-short-stay",
+    "file": "StayReady.softn",
+    "name": "StayReady",
+    "description": "Turnkey short-stay & Airbnb turnover manager: same-day checkout/check-in command board, bookings board, cleaner turnover pipeline, lockbox access directory, inspections & damage log, and per-property supply stock.",
+    "category": "business",
+    "subcategory": "hospitality",
+    "tags": "hospitality,php,sqlite,full-stack",
+    "primary": "#283e7a"
+  },
+  {
+    "id": "tutortrack-tutoring",
+    "file": "TutorTrack.softn",
+    "name": "TutorTrack",
+    "description": "Turnkey tutoring studio and music lessons desk: filterable lesson schedule with one-click progress note logging, student and guardian dossiers, homework and copyable parent updates, tutor roster, and printable HTML tuition invoices.",
+    "category": "business",
+    "subcategory": "healthcare-wellness",
+    "tags": "healthcare-wellness,php,sqlite,full-stack",
+    "primary": "#1d356b"
+  },
+  {
+    "id": "venueops-venue-hire",
+    "file": "VenueOps.softn",
+    "name": "VenueOps",
+    "description": "Turnkey venue hire & booking manager: space schedule with automatic time-overlap conflict detection and hourly fee calculation, spaces catalogue, setup & facilities checklists, hirer clients directory, payments & deposits ledger with HTML booking confirmations, and incidents/damage log.",
+    "category": "business",
+    "subcategory": "hospitality",
+    "tags": "hospitality,php,sqlite,full-stack",
+    "primary": "#4c35b8"
   },
   {
     "id": "outerstead",
     "file": "Outerstead.softn",
     "name": "Outerstead",
     "description": "First Light: a people-first frontier colony survival game on Hollow-7. Four survivors, a growing settlement, and an older world that still listens.",
+    "category": "games",
+    "subcategory": "strategy",
+    "tags": "strategy,colony,survival",
     "primary": "#c5ad77"
-  },
-  {
-    "id": "convenience-store-at-the-end-of-the-universe",
-    "file": "ConvenienceStoreAtTheEndOfTheUniverse.softn",
-    "name": "Convenience Store at the End of the Universe",
-    "description": "Last Light: seven nights, six usuals, one little shop at the end of everything.",
-    "primary": "#e1bc7b"
-  },
-  {
-    "id": "do-not-press-the-duck",
-    "file": "DoNotPressTheDuck.softn",
-    "name": "Do Not Press the Duck",
-    "description": "One button. A roomful of consequences. A completely unreasonable amount of duck.",
-    "primary": "#f6ca50"
-  },
-  {
-    "id": "express-delivery-snail",
-    "file": "ExpressDeliverySnail.softn",
-    "name": "Express Delivery Snail",
-    "description": "Special Delivery — seven tiny routes, seven very particular parcels, one impossibly determined snail.",
-    "primary": "#bd7048"
-  },
-  {
-    "id": "first-drive",
-    "file": "FirstDrive.softn",
-    "name": "First drive",
-    "description": "A one-minute real-time 3D film of a lunar rover leaving its lander on the Moon in eight Blender-animated shots with sunlight, bounce light, shadows, and depth of field.",
-    "primary": "#4b6b94"
-  },
-  {
-    "id": "frog-employee-of-the-month",
-    "file": "FrogEmployeeOfTheMonth.softn",
-    "name": "Frog Employee of the Month",
-    "description": "Corporate Ascent: eight frog-scale office assignments, physical tongue traversal and a very unreasonable printer.",
-    "primary": "#80cf73"
-  },
-  {
-    "id": "lastsound3d",
-    "file": "LastSound3D.softn",
-    "name": "LastSound3D",
-    "description": "LAST SOUND: Below the Call. Fully voiced first-person survey of a blood ocean from inside a sealed pressure hull across three compartments and six photographs.",
-    "primary": "#c9a865"
-  },
-  {
-    "id": "pigeon-municipal-employee",
-    "file": "PigeonMunicipalEmployee.softn",
-    "name": "Pigeon: Municipal Employee",
-    "description": "A small bird with considerable jurisdiction. Explore Littleborough, fly, perch, collect evidence and physically process excessively official paperwork.",
-    "primary": "#64748b"
-  },
-  {
-    "id": "please-do-not-feed-the-moon",
-    "file": "PleaseDoNotFeedTheMoon.softn",
-    "name": "Please Do Not Feed the Moon",
-    "description": "A dreamy late-night convenience store. Twenty-four bad ideas. Nine hidden combinations. Seven endings.",
-    "primary": "#b8d5bd"
-  },
-  {
-    "id": "racelab",
-    "file": "RaceLab.softn",
-    "name": "RaceLab",
-    "description": "Experimental Melbourne Cup simulator with multi-trial Monte Carlo probability analysis, interactive 3D replay, and reproducible results.",
-    "primary": "#173b29"
-  },
-  {
-    "id": "scorchline",
-    "file": "Scorchline.softn",
-    "name": "Scorchline",
-    "description": "An original top-down resource-warfare RTS. Two factions, three maps and offline AI skirmishes.",
-    "primary": "#ddb479"
-  },
-  {
-    "id": "the-night-window",
-    "file": "TheNightWindow.softn",
-    "name": "The Night Window",
-    "description": "Seven graveyard shifts at Meridian-17. Inspect documents, question returning residents, and preserve a truth the terminal can rewrite across six endings.",
-    "primary": "#c7b886"
   },
   {
     "id": "urbanward",
     "file": "Urbanward.softn",
     "name": "Urbanward",
     "description": "An original, modular city simulation: build connected neighbourhoods, balance the books and watch a city find its identity.",
+    "category": "games",
+    "subcategory": "strategy",
+    "tags": "3d,city-builder,strategy",
     "primary": "#b9d9b8"
   },
   {
-    "id": "very-normal-post-office",
-    "file": "VeryNormalPostOffice.softn",
-    "name": "Very Normal Post Office",
-    "description": "Work Window 04: eight shifts of tactile postal inspection, questionable regulations, and very hungry mail.",
-    "primary": "#385347"
+    "id": "outermate",
+    "file": "Outermate.softn",
+    "name": "Outermate",
+    "description": "First Count: a living prison-escape strategy game on Hollow-7. Learn routines, trade favours, prepare a route and get beyond Greywall.",
+    "category": "games",
+    "subcategory": "strategy",
+    "tags": "strategy,stealth,prison",
+    "primary": "#efba72"
   },
   {
-    "id": "mine-management",
-    "file": "MineManagement.softn",
-    "name": "Mine Management",
-    "description": "One human. One mine. Questionable automation. A comedic 3D mine-site game: run the robot fleet from your PIT tablet, drive trucks and excavators, fix faults in person, and keep the emu off the haul road.",
-    "primary": "#eab65d"
+    "id": "scorchline",
+    "file": "Scorchline.softn",
+    "name": "Scorchline",
+    "description": "An original top-down resource-warfare RTS. Two factions, three maps and offline AI skirmishes.",
+    "category": "games",
+    "subcategory": "strategy",
+    "tags": "rts,strategy,skirmish",
+    "primary": "#ddb479"
   },
   {
     "id": "potato-peeler",
     "file": "PotatoPeeler.softn",
     "name": "Potato Peeler",
     "description": "Mobile-ready Soviet 3D commissary potato-peeling game with 17 Blender PBR kitchen models, tactile touch & mouse 16-patch 3D potato shaving, Canteen Borscht & Banquet dish orders, Podstakannik Tea Overdrive, Colorado Saboteur Beetles, Boss Tsar-Kartoshka events, 6 upgradable peelers up to the Kosmos-9 ruby laser-lathe, Radio Mayak polka, and a Hall of Labour leaderboard.",
+    "category": "games",
+    "subcategory": "arcade",
+    "tags": "3d,arcade,kitchen",
     "primary": "#dc2626"
   },
   {
-    "id": "voice-simulator",
-    "file": "VoiceSimulator.softn",
-    "name": "Voice Simulator",
-    "description": "Physical 3D human vocal-tract speech synthesizer and conversational mouth simulator. Generates lifelike Male & Female voices with adjustable pitch purely from code using LF glottal oscillation, velopharyngeal nasal coupling, 5-formant cascade resonance, and a 17-morph Blender PBR 3D mouth rig.",
-    "primary": "#38bdf8"
-  },
-  {
-    "id": "solar-simulator",
-    "file": "SolarSimulator.softn",
-    "name": "Solar Simulator",
-    "description": "True-scale 3D N-body Solar System simulator and astrophysics sandbox with 12 Blender PBR celestial models, NASA J2000 orbital mechanics, orbital perturbation chaos lab, Red Giant stellar evolution with mass-loss spiral & engulfment, kinetic asteroid impacts up to planet-shattering Theia collisions, and 2-sun & 3-sun multi-star scenarios.",
-    "primary": "#f59e0b"
+    "id": "showcase",
+    "file": "Showcase.softn",
+    "name": "Component Showcase",
+    "description": "Interactive UI controls, charts, spring animations, drag-and-drop widgets, and an articulated PBR Chrono Orrery 3D studio scene with HDR IBL, GTAO, Bloom, and SceneAnchor",
+    "category": "demos",
+    "tags": "components,ui,3d",
+    "primary": "#6366f1"
   }
 ]

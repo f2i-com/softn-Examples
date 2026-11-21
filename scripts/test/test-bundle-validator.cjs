@@ -112,6 +112,44 @@ try {
   assert.notStrictEqual(circularResult.status, 0);
   assert.match(`${circularResult.stdout}\n${circularResult.stderr}`, /Circular logic import/);
   console.log('PASS: circular logic imports fail before de-duplication');
+
+  const containerOk = writeBundle(
+    'web-container-ok',
+    {
+      'index.html': '<!doctype html><html><body>ok</body></html>',
+      'server/public/index.php': '<?php echo json_encode(["ok" => true]);',
+      'server/migrations/schema.sql': 'CREATE TABLE items (id INTEGER PRIMARY KEY);',
+    },
+    {
+      name: 'Web Container OK',
+      version: '1.0.0',
+      engine: 2,
+      main: 'index.html',
+      backend: { runtime: 'php', entry: 'server/public/index.php', mode: 'api', routes: ['/api/'] },
+      databases: [{ name: 'app', engine: 'sqlite', file: 'data/app.db', seedSql: 'server/migrations/schema.sql' }],
+    }
+  );
+  const containerOkResult = runValidator(containerOk);
+  assert.strictEqual(containerOkResult.status, 0, containerOkResult.stderr || containerOkResult.stdout);
+  console.log('PASS: Engine 2 web container bundle validates without manifest.files');
+
+  const containerMissingEntry = writeBundle(
+    'web-container-missing-entry',
+    {
+      'index.html': '<!doctype html><html><body>missing backend</body></html>',
+    },
+    {
+      name: 'Web Container Missing Entry',
+      version: '1.0.0',
+      engine: 2,
+      main: 'index.html',
+      backend: { runtime: 'php', entry: 'server/public/index.php', mode: 'api', routes: ['/api/'] },
+    }
+  );
+  const containerMissingResult = runValidator(containerMissingEntry);
+  assert.notStrictEqual(containerMissingResult.status, 0);
+  assert.match(`${containerMissingResult.stdout}\n${containerMissingResult.stderr}`, /Backend entry is missing/);
+  console.log('PASS: Engine 2 web container with missing backend.entry fails validation');
 } finally {
   const resolvedTemp = path.resolve(tempRoot);
   const resolvedParent = path.resolve(os.tmpdir());

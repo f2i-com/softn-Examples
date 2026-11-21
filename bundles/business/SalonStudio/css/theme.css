@@ -1,0 +1,43 @@
+/* Salon Studio Theme: Editorial Blush-Rose, Velvet Espresso & Champagne Gold */
+:root {
+  --k-bg: #fbf6f4;
+  --k-surface: #ffffff;
+  --k-surface-2: #f5ebe8;
+  --k-text: #221119;
+  --k-muted: #6c4f5d;
+  --k-border: #e6d5da;
+  --k-accent: #922649;
+  --k-accent-text: #ffffff;
+  --k-accent-soft: #fae8ef;
+  --k-danger: #be123c;
+  --k-danger-soft: #ffe4e6;
+  --k-success: #166534;
+  --k-warning: #b45309;
+  --k-radius: 10px;
+  --k-radius-lg: 14px;
+  --k-font: var(--font-classical);
+  --k-font-display: var(--font-didone);
+
+  --t-rail: #1f1018;
+  --t-rail-text: #e9d5de;
+  --t-rail-muted: #b38fa0;
+  --t-rail-on: #fdf8fa;
+  --t-rail-active: rgba(207, 162, 105, .25);
+  --t-card-border: rgba(34, 17, 25, .085);
+
+  --sl-rosewood: #922649;
+  --sl-espresso: #23121a;
+  --sl-rosegold: #c89272;
+  --sl-champagne: #cfa269;
+  --sl-champagne-light: #edd2ab;
+  --sl-blush: #fdf4f6;
+}
+
+body {
+  background: var(--k-bg);
+  color: var(--k-text);
+  font-size: 14.5px;
+}
+h1, h2, .tk-brand__name, .sl-masthead__title {
+  letter-spacing: 0.01em;
+}

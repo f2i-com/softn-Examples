@@ -1,0 +1,31 @@
+{
+  "id": "formlogic.pack.job-invoice-management",
+  "name": "Job & Invoice Desk",
+  "version": "1.0.0",
+  "description": "Turnkey job-to-quote-to-invoice-to-payment billing pipeline with client ledger, auto-numbered quotes & tax invoices, partial payment reconciliation, and overdue chase queue.",
+  "icon": "assets/icon.svg",
+  "engine": 2,
+  "main": "index.html",
+  "config": {
+    "server": {
+      "requestsPerMinute": 600
+    }
+  },
+  "backend": {
+    "runtime": "php",
+    "entry": "server/public/index.php",
+    "mode": "api",
+    "routes": [
+      "/api/"
+    ]
+  },
+  "databases": [
+    {
+      "name": "app",
+      "engine": "sqlite",
+      "file": "data/app.db",
+      "seedSql": "server/migrations/schema.sql",
+      "persist": true
+    }
+  ]
+}

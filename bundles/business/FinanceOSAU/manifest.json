@@ -1,0 +1,31 @@
+{
+  "id": "formlogic.pack.finance-os-au",
+  "name": "Finance OS (AU)",
+  "version": "1.0.0",
+  "description": "Turnkey Australian AFSL advisory & compliance workbench: client onboarding, Best Interest Duty risk profile scorer, Fee Disclosure Statements (FDS), superannuation rollovers, 100%-validated BDBNs, off-market transfers, annual reviews and document vault.",
+  "icon": "assets/icon.svg",
+  "engine": 2,
+  "main": "index.html",
+  "config": {
+    "server": {
+      "requestsPerMinute": 600
+    }
+  },
+  "backend": {
+    "runtime": "php",
+    "entry": "server/public/index.php",
+    "mode": "api",
+    "routes": [
+      "/api/"
+    ]
+  },
+  "databases": [
+    {
+      "name": "app",
+      "engine": "sqlite",
+      "file": "data/app.db",
+      "seedSql": "server/migrations/schema.sql",
+      "persist": true
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+/* Job & Invoice Desk Theme: Executive Midnight Navy & Emerald-Mint Ledger */
+:root {
+  --k-bg: #f2f5f8;
+  --k-surface: #ffffff;
+  --k-surface-2: #eaf0f4;
+  --k-text: #0b1628;
+  --k-muted: #4c5e72;
+  --k-border: #d3dde6;
+  --k-accent: #057a55;
+  --k-accent-text: #ffffff;
+  --k-accent-soft: #dcf7ec;
+  --k-danger: #be123c;
+  --k-danger-soft: #ffe4e6;
+  --k-success: #047857;
+  --k-warning: #b45309;
+  --k-focus: #057a55;
+  --k-radius: 10px;
+  --k-radius-lg: 14px;
+  --k-font: var(--font-system);
+  --k-font-display: var(--font-grotesque);
+
+  --ji-navy: #0a1426;
+  --ji-navy-mid: #11223d;
+  --ji-mint: #34d399;
+  --ji-mint-soft: #d1fae5;
+  --ji-gold: #e8b948;
+  --ji-gold-soft: #fef5d4;
+
+  --t-rail: #0a1426;
+  --t-rail-text: #cbd8e6;
+  --t-rail-muted: #7c93ad;
+  --t-rail-on: #ffffff;
+  --t-rail-active: rgba(52, 211, 153, .2);
+  --t-card-border: rgba(11, 22, 40, .085);
+  --t-ok-bg: #dcf5ea;
+  --t-ok-fg: #0c5838;
+  --t-warn-bg: #fef3c7;
+  --t-warn-fg: #92400e;
+  --t-bad-bg: #fee2e2;
+  --t-bad-fg: #991b1b;
+  --t-info-bg: #e0effa;
+  --t-info-fg: #1d4e7a;
+}
+
+body { background: var(--k-bg); color: var(--k-text); font-size: 14.5px; }
+h1, .tk-head__title, .ji-masthead__title { font-weight: 800; letter-spacing: -0.022em; }

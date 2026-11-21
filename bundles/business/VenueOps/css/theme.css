@@ -1,0 +1,37 @@
+/* VenueOps Theme: Architectural Indigo, Studio Plum & Champagne Brass on Gallery Alabaster Canvas */
+:root {
+  --k-bg: #f6f6fb;
+  --k-surface: #ffffff;
+  --k-surface-2: #efeff8;
+  --k-text: #17132a;
+  --k-muted: #5a5574;
+  --k-border: #dcd9eb;
+  --k-accent: #4c35b8;
+  --k-accent-text: #ffffff;
+  --k-accent-soft: #ebe7fc;
+  --k-danger: #b91c1c;
+  --k-danger-soft: #fee2e2;
+  --k-success: #047857;
+  --k-warning: #b45309;
+  --k-radius: 10px;
+  --k-radius-lg: 14px;
+  --k-font: var(--font-system);
+  --k-font-display: var(--font-antique);
+
+  --vo-plum: #7e2262;
+  --vo-plum-soft: #fae8f4;
+  --vo-violet: #7c3aed;
+  --vo-brass: #c2870a;
+  --vo-brass-bright: #e8b956;
+  --vo-brass-soft: #fef6dc;
+
+  --t-rail: #141028;
+  --t-rail-text: #d8d5f0;
+  --t-rail-muted: #9893bd;
+  --t-rail-on: #ffffff;
+  --t-rail-active: rgba(167, 139, 250, .24);
+  --t-card-border: rgba(23, 19, 42, .085);
+}
+
+body { background: var(--k-bg); color: var(--k-text); font-size: 15px; }
+h1, .tk-head__title, .vo-masthead__title { font-weight: 700; letter-spacing: -0.018em; }

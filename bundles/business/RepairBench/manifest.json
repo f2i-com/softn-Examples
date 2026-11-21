@@ -1,0 +1,31 @@
+{
+  "id": "formlogic.pack.repairbench-device-repair",
+  "name": "RepairBench",
+  "version": "1.0.0",
+  "description": "Turnkey electronics and device repair workshop desk: 7-stage repair pipeline board with printable claim tickets, device IMEI/serial intake registry, parts order tracker, interactive QA test checklist and pickup SMS desk, plus customers and bench technicians.",
+  "icon": "assets/icon.svg",
+  "engine": 2,
+  "main": "index.html",
+  "config": {
+    "server": {
+      "requestsPerMinute": 600
+    }
+  },
+  "backend": {
+    "runtime": "php",
+    "entry": "server/public/index.php",
+    "mode": "api",
+    "routes": [
+      "/api/"
+    ]
+  },
+  "databases": [
+    {
+      "name": "app",
+      "engine": "sqlite",
+      "file": "data/app.db",
+      "seedSql": "server/migrations/schema.sql",
+      "persist": true
+    }
+  ]
+}

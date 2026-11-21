@@ -1,0 +1,31 @@
+{
+  "id": "formlogic.pack.salon-beauty-studio",
+  "name": "Salon Studio",
+  "version": "1.0.0",
+  "description": "Turnkey hair salon & beauty studio manager: daily appointment book by stylist with auto-filled service pricing & conflict checks, client colour formula cards, service menu, stylist roster, and retail sales with printable receipts.",
+  "icon": "assets/icon.svg",
+  "engine": 2,
+  "main": "index.html",
+  "config": {
+    "server": {
+      "requestsPerMinute": 600
+    }
+  },
+  "backend": {
+    "runtime": "php",
+    "entry": "server/public/index.php",
+    "mode": "api",
+    "routes": [
+      "/api/"
+    ]
+  },
+  "databases": [
+    {
+      "name": "app",
+      "engine": "sqlite",
+      "file": "data/app.db",
+      "seedSql": "server/migrations/schema.sql",
+      "persist": true
+    }
+  ]
+}

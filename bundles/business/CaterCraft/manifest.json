@@ -1,0 +1,31 @@
+{
+  "id": "formlogic.pack.catercraft-catering",
+  "name": "CaterCraft",
+  "version": "1.0.0",
+  "description": "Turnkey catering & event orders hub: visual event pipeline with automatic per-head quote calculation and HTML run-sheets, multi-station kitchen production board, delivery dispatch runs, dietary requirements matrix with kitchen sign-off, menu packages and client directory.",
+  "icon": "assets/icon.svg",
+  "engine": 2,
+  "main": "index.html",
+  "config": {
+    "server": {
+      "requestsPerMinute": 600
+    }
+  },
+  "backend": {
+    "runtime": "php",
+    "entry": "server/public/index.php",
+    "mode": "api",
+    "routes": [
+      "/api/"
+    ]
+  },
+  "databases": [
+    {
+      "name": "app",
+      "engine": "sqlite",
+      "file": "data/app.db",
+      "seedSql": "server/migrations/schema.sql",
+      "persist": true
+    }
+  ]
+}

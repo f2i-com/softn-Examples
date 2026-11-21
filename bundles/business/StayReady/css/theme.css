@@ -1,0 +1,43 @@
+/* StayReady Theme: Coastal Indigo, Warm Sunlit Sand Canvas & Terracotta Hospitality Accent */
+:root {
+  --k-bg: #faf6ef;
+  --k-surface: #ffffff;
+  --k-surface-2: #f3ece1;
+  --k-text: #151e34;
+  --k-muted: #566078;
+  --k-border: #dfd6c7;
+  --k-accent: #283e7a;
+  --k-accent-text: #ffffff;
+  --k-accent-soft: #e6ecfb;
+  --k-danger: #c81e3a;
+  --k-danger-soft: #fdebed;
+  --k-success: #15803d;
+  --k-warning: #c26a13;
+  --k-radius: 10px;
+  --k-radius-lg: 14px;
+  --k-font: var(--font-system);
+  --k-font-display: var(--font-classical);
+
+  --t-rail: #101a34;
+  --t-rail-text: #d4def2;
+  --t-rail-muted: #8a9bc2;
+  --t-rail-on: #fbf8f2;
+  --t-rail-active: rgba(230, 179, 92, .24);
+  --t-card-border: rgba(21, 30, 52, .085);
+
+  --sr-terracotta: #cc5a39;
+  --sr-terracotta-soft: #fceded;
+  --sr-sand-gold: #e6b35c;
+  --sr-coral: #e11d48;
+  --sr-sand: #f7f1e6;
+}
+
+body {
+  background: var(--k-bg);
+  color: var(--k-text);
+  font-size: 14.5px;
+}
+h1, .tk-head__title, .sr-masthead__title {
+  font-weight: 750;
+  letter-spacing: -0.018em;
+}

@@ -1,0 +1,43 @@
+/* OHS & QMS Theme: Industrial Safety Slate, High-Vis Amber & Certified Emerald on Steel-Alabaster Canvas */
+:root {
+  --k-bg: #f4f6f9;
+  --k-surface: #ffffff;
+  --k-surface-2: #eaeff5;
+  --k-text: #0d1826;
+  --k-muted: #4b5d73;
+  --k-border: #cfd8e3;
+  --k-accent: #c96a08;
+  --k-accent-text: #ffffff;
+  --k-accent-soft: #fef3dc;
+  --k-danger: #c81e1e;
+  --k-danger-soft: #fee2e2;
+  --k-success: #047857;
+  --k-warning: #b45309;
+  --k-radius: 10px;
+  --k-radius-lg: 14px;
+  --k-font: var(--font-grotesque);
+  --k-font-display: var(--font-industrial);
+
+  --t-rail: #0c1523;
+  --t-rail-text: #d0dae6;
+  --t-rail-muted: #8a9bb2;
+  --t-rail-on: #ffffff;
+  --t-rail-active: rgba(245, 158, 11, .22);
+  --t-card-border: rgba(13, 24, 38, .09);
+
+  --ohs-slate: #1d4e78;
+  --ohs-slate-soft: #e3eef8;
+  --ohs-amber: #d97706;
+  --ohs-amber-hi: #f59e0b;
+  --ohs-amber-bright: #fbbf24;
+  --ohs-emerald: #047857;
+  --ohs-emerald-hi: #10b981;
+  --ohs-emerald-soft: #dcfce7;
+  --ohs-crimson: #dc2626;
+}
+
+body { background: var(--k-bg); color: var(--k-text); font-size: 14.5px; }
+h1, .tk-head__title, .ohs-masthead__title { font-weight: 750; letter-spacing: -0.015em; }
+
+.tk-brand__name { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.22; }
+.tk-brand__sub { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.32; margin-top: 4px; color: #9eb0c6; }

@@ -1,0 +1,48 @@
+/* TutorTrack Pass 3 Theme: Academic Oxford Navy & Warm Gold-Parchment */
+:root {
+  --k-bg: #f8f5ee;
+  --k-surface: #ffffff;
+  --k-surface-2: #f1ece1;
+  --k-text: #121c2d;
+  --k-muted: #525d73;
+  --k-border: #ddd5c5;
+  --k-accent: #1d356b;
+  --k-accent-text: #ffffff;
+  --k-accent-soft: #e3e9f8;
+  --k-danger: #be123c;
+  --k-danger-soft: #ffe4e6;
+  --k-success: #15803d;
+  --k-warning: #b45309;
+  --k-focus: #1d356b;
+  --k-radius: 10px;
+  --k-radius-lg: 14px;
+  --k-font: var(--font-system);
+  --k-font-display: var(--font-oldstyle);
+
+  --tt-navy: #0e1c38;
+  --tt-gold: #c69123;
+  --tt-gold-bright: #ebc05a;
+  --tt-gold-soft: #fef6df;
+  --tt-gold-ink: #784f08;
+
+  --t-rail: #0d1933;
+  --t-rail-text: #d3dcf0;
+  --t-rail-muted: #8898ba;
+  --t-rail-on: #ffffff;
+  --t-rail-active: rgba(235, 192, 90, .22);
+  --t-card-border: rgba(18, 28, 45, .09);
+
+  --t-ok-bg: #dcfce7;
+  --t-ok-fg: #14532d;
+  --t-warn-bg: #fef3c7;
+  --t-warn-fg: #92400e;
+  --t-bad-bg: #ffe4e6;
+  --t-bad-fg: #9f1239;
+  --t-info-bg: #e3e9f8;
+  --t-info-fg: #1d356b;
+  --t-neutral-bg: #efeae0;
+  --t-neutral-fg: #4b5563;
+}
+
+body { background: var(--k-bg); color: var(--k-text); font-size: 15px; }
+h1, .tk-head__title, .tt-masthead__title { font-weight: 700; letter-spacing: -0.014em; }

@@ -1,0 +1,37 @@
+/* AgriLog Theme: Heritage Eucalyptus Green, Loam Soil & Harvest Gold on Warm Country Paper Canvas */
+:root {
+  --k-bg: #f6f5ee;
+  --k-surface: #ffffff;
+  --k-surface-2: #ecebe0;
+  --k-text: #182419;
+  --k-muted: #556456;
+  --k-border: #d7dcd0;
+  --k-accent: #1b5e36;
+  --k-accent-text: #ffffff;
+  --k-accent-soft: #dcf5e6;
+  --k-danger: #b91c1c;
+  --k-danger-soft: #fee2e2;
+  --k-success: #15803d;
+  --k-warning: #b45309;
+  --k-radius: 10px;
+  --k-radius-lg: 14px;
+  --k-font: var(--font-system);
+  --k-font-display: var(--font-slab);
+
+  --ag-eucalyptus: #1b5e36;
+  --ag-loam: #7c4a26;
+  --ag-loam-soft: #f6ebe1;
+  --ag-gold: #c98a12;
+  --ag-gold-bright: #eab308;
+  --ag-gold-soft: #fef6dc;
+
+  --t-rail: #112418;
+  --t-rail-text: #d2e4d6;
+  --t-rail-muted: #8aa892;
+  --t-rail-on: #f7fbf7;
+  --t-rail-active: rgba(234, 179, 8, .28);
+  --t-card-border: rgba(24, 36, 25, .085);
+}
+
+body { background: var(--k-bg); color: var(--k-text); font-size: 15px; }
+h1, .tk-head__title, .ag-masthead__title { font-weight: 700; letter-spacing: -0.015em; }

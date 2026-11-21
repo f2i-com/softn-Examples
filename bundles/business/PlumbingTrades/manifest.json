@@ -1,0 +1,31 @@
+{
+  "id": "formlogic.pack.plumbing-field-service",
+  "name": "Plumbing & Trades",
+  "version": "1.0.0",
+  "description": "Turnkey field service operations for plumbing and trades businesses: priority dispatch board, on-site work orders, parts & materials tracking, customer directory, and 1-click job invoicing.",
+  "icon": "assets/icon.svg",
+  "engine": 2,
+  "main": "index.html",
+  "config": {
+    "server": {
+      "requestsPerMinute": 600
+    }
+  },
+  "backend": {
+    "runtime": "php",
+    "entry": "server/public/index.php",
+    "mode": "api",
+    "routes": [
+      "/api/"
+    ]
+  },
+  "databases": [
+    {
+      "name": "app",
+      "engine": "sqlite",
+      "file": "data/app.db",
+      "seedSql": "server/migrations/schema.sql",
+      "persist": true
+    }
+  ]
+}

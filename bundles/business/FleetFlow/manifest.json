@@ -1,0 +1,31 @@
+{
+  "id": "formlogic.pack.fleetflow-fleet",
+  "name": "FleetFlow",
+  "version": "1.0.0",
+  "description": "Turnkey vehicle fleet and driver logbook: live rego, insurance and licence expiry countdown alerts, vehicle register with automatic odometer syncing from trips, FBT business/personal trip and fuel logbook, workshop maintenance pipeline, and incident register.",
+  "icon": "assets/icon.svg",
+  "engine": 2,
+  "main": "index.html",
+  "config": {
+    "server": {
+      "requestsPerMinute": 600
+    }
+  },
+  "backend": {
+    "runtime": "php",
+    "entry": "server/public/index.php",
+    "mode": "api",
+    "routes": [
+      "/api/"
+    ]
+  },
+  "databases": [
+    {
+      "name": "app",
+      "engine": "sqlite",
+      "file": "data/app.db",
+      "seedSql": "server/migrations/schema.sql",
+      "persist": true
+    }
+  ]
+}

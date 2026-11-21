@@ -1,0 +1,31 @@
+{
+  "id": "formlogic.pack.stayready-short-stay",
+  "name": "StayReady",
+  "version": "1.0.0",
+  "description": "Turnkey short-stay & Airbnb turnover manager: same-day checkout/check-in command board, bookings board, cleaner turnover pipeline, lockbox access directory, inspections & damage log, and per-property supply stock.",
+  "icon": "assets/icon.svg",
+  "engine": 2,
+  "main": "index.html",
+  "config": {
+    "server": {
+      "requestsPerMinute": 600
+    }
+  },
+  "backend": {
+    "runtime": "php",
+    "entry": "server/public/index.php",
+    "mode": "api",
+    "routes": [
+      "/api/"
+    ]
+  },
+  "databases": [
+    {
+      "name": "app",
+      "engine": "sqlite",
+      "file": "data/app.db",
+      "seedSql": "server/migrations/schema.sql",
+      "persist": true
+    }
+  ]
+}

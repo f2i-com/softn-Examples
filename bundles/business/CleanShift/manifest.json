@@ -1,0 +1,31 @@
+{
+  "id": "formlogic.pack.cleanshift-cleaning",
+  "name": "CleanShift",
+  "version": "1.0.0",
+  "description": "Turnkey cleaning business scheduler: crew dispatch board, client access instructions, teams roster, quality checklists & star ratings, supply par stock, and client issues desk.",
+  "icon": "assets/icon.svg",
+  "engine": 2,
+  "main": "index.html",
+  "config": {
+    "server": {
+      "requestsPerMinute": 600
+    }
+  },
+  "backend": {
+    "runtime": "php",
+    "entry": "server/public/index.php",
+    "mode": "api",
+    "routes": [
+      "/api/"
+    ]
+  },
+  "databases": [
+    {
+      "name": "app",
+      "engine": "sqlite",
+      "file": "data/app.db",
+      "seedSql": "server/migrations/schema.sql",
+      "persist": true
+    }
+  ]
+}

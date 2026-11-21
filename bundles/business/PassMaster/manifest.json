@@ -1,0 +1,31 @@
+{
+  "id": "formlogic.pack.passmaster-restaurant",
+  "name": "PassMaster",
+  "version": "1.0.0",
+  "description": "Turnkey restaurant front-of-house & kitchen pass: interactive section floor map, reservations book with 1-click table seating, course kitchen pass with red allergy alerts, station prep checklist, brigade roster and nightly shift close.",
+  "icon": "assets/icon.svg",
+  "engine": 2,
+  "main": "index.html",
+  "config": {
+    "server": {
+      "requestsPerMinute": 600
+    }
+  },
+  "backend": {
+    "runtime": "php",
+    "entry": "server/public/index.php",
+    "mode": "api",
+    "routes": [
+      "/api/"
+    ]
+  },
+  "databases": [
+    {
+      "name": "app",
+      "engine": "sqlite",
+      "file": "data/app.db",
+      "seedSql": "server/migrations/schema.sql",
+      "persist": true
+    }
+  ]
+}

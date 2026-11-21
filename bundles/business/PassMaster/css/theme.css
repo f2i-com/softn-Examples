@@ -1,0 +1,36 @@
+/* PassMaster Theme: Bistro Marlowe Burgundy & Burnished Champagne Brass, Warm Travertine Linen, Deep Velvet Charcoal Rail */
+:root {
+  --k-bg: #f9f5ef;
+  --k-surface: #ffffff;
+  --k-surface-2: #f2ebe0;
+  --k-text: #1c1317;
+  --k-muted: #66575c;
+  --k-border: #e4d8ca;
+  --k-accent: #8c1d37;
+  --k-accent-text: #ffffff;
+  --k-accent-soft: #fae9ee;
+  --k-danger: #b91c1c;
+  --k-danger-soft: #fee2e2;
+  --k-success: #166534;
+  --k-warning: #b45309;
+  --k-radius: 10px;
+  --k-radius-lg: 14px;
+  --k-font: var(--font-humanist);
+  --k-font-display: var(--font-didone);
+
+  --pm-wine: #8c1d37;
+  --pm-wine-deep: #241018;
+  --pm-terracotta: #c25732;
+  --pm-terracotta-soft: #fceee8;
+  --pm-champagne: #d4a359;
+  --pm-champagne-soft: #fbf3e4;
+
+  --t-rail: #1a1216;
+  --t-rail-text: #e6dce0;
+  --t-rail-muted: #a4959c;
+  --t-rail-on: #fffaf4;
+  --t-rail-active: rgba(212, 163, 89, .24);
+}
+
+body { background: var(--k-bg); color: var(--k-text); font-size: 14.5px; }
+h1, .tk-head__title, .tk-hero__title, .pm-masthead__title { font-family: var(--k-font-display); font-weight: 700; letter-spacing: -0.014em; }

@@ -1,0 +1,31 @@
+{
+  "id": "formlogic.pack.agrilog-farm",
+  "name": "AgriLog",
+  "version": "1.0.0",
+  "description": "Turnkey farm operations tracker: paddocks with live chemical withholding period locks, crop jobs, harvest yield log, chemical register, and machinery maintenance.",
+  "icon": "assets/icon.svg",
+  "engine": 2,
+  "main": "index.html",
+  "config": {
+    "server": {
+      "requestsPerMinute": 600
+    }
+  },
+  "backend": {
+    "runtime": "php",
+    "entry": "server/public/index.php",
+    "mode": "api",
+    "routes": [
+      "/api/"
+    ]
+  },
+  "databases": [
+    {
+      "name": "app",
+      "engine": "sqlite",
+      "file": "data/app.db",
+      "seedSql": "server/migrations/schema.sql",
+      "persist": true
+    }
+  ]
+}

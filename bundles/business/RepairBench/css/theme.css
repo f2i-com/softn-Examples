@@ -1,0 +1,49 @@
+/* RepairBench Pass 3 Theme: Precision ESD Graphite, Circuit Cyan & Solder Amber */
+:root {
+  --k-bg: #f1f4f8;
+  --k-surface: #ffffff;
+  --k-surface-2: #e6ecf3;
+  --k-text: #0c121d;
+  --k-muted: #4b5a70;
+  --k-border: #cfd9e6;
+  --k-accent: #0891b2;
+  --k-accent-text: #ffffff;
+  --k-accent-soft: #cffafe;
+  --k-danger: #dc2626;
+  --k-danger-soft: #fee2e2;
+  --k-success: #059669;
+  --k-warning: #d97706;
+  --k-focus: #0891b2;
+  --k-radius: 10px;
+  --k-radius-lg: 14px;
+  --k-font: var(--font-system);
+  --k-font-display: var(--font-industrial);
+  --k-font-mono: var(--font-mono);
+
+  --rb-cobalt: #0284c7;
+  --rb-cyan: #22d3ee;
+  --rb-amber: #d97706;
+  --rb-amber-bright: #f59e0b;
+  --rb-amber-soft: #fef3c7;
+
+  --t-rail: #0b1017;
+  --t-rail-text: #cbd5e1;
+  --t-rail-muted: #7c8da5;
+  --t-rail-on: #ffffff;
+  --t-rail-active: rgba(34, 211, 238, .22);
+  --t-card-border: rgba(12, 18, 29, .09);
+
+  --t-ok-bg: #dcfce7;
+  --t-ok-fg: #14532d;
+  --t-warn-bg: #fef3c7;
+  --t-warn-fg: #92400e;
+  --t-bad-bg: #fee2e2;
+  --t-bad-fg: #991b1b;
+  --t-info-bg: #e0f2fe;
+  --t-info-fg: #075985;
+  --t-neutral-bg: #e9eff6;
+  --t-neutral-fg: #475569;
+}
+
+body { background: var(--k-bg); color: var(--k-text); font-size: 15px; }
+h1, h2, h3, .rb-masthead__title { letter-spacing: .006em; }

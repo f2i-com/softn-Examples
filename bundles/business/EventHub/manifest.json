@@ -1,0 +1,31 @@
+{
+  "id": "formlogic.pack.event-management",
+  "name": "Event Hub",
+  "version": "1.0.0",
+  "description": "Turnkey event operations command center with 1-tap attendee check-in desk, dietary & accessibility alerts, speaker program, vendor booths, volunteer roster, live budget variance, incident log, and post-event feedback.",
+  "icon": "assets/icon.svg",
+  "engine": 2,
+  "main": "index.html",
+  "config": {
+    "server": {
+      "requestsPerMinute": 600
+    }
+  },
+  "backend": {
+    "runtime": "php",
+    "entry": "server/public/index.php",
+    "mode": "api",
+    "routes": [
+      "/api/"
+    ]
+  },
+  "databases": [
+    {
+      "name": "app",
+      "engine": "sqlite",
+      "file": "data/app.db",
+      "seedSql": "server/migrations/schema.sql",
+      "persist": true
+    }
+  ]
+}

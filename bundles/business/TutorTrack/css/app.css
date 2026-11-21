@@ -1,0 +1,415 @@
+/* TutorTrack Pass 3 Bespoke Craft: Academic Oxford Navy & Warm Gold-Parchment
+   Unified Oxford Navy & Gold Masthead with Frosted Pods & Conic Mastery/Collection Rings,
+   Calm Topbar Ticker, Two-Column Lesson Schedule + Sticky Mastery/Homework & Billing Rail,
+   Subject Badges, Visual Student Mastery Cards, Glowing Gold Star Timeline & Tuition Cards */
+
+/* ---- Academic Topbar Ticker ---- */
+.tt-ticker {
+  display: flex; align-items: center; gap: 10px; min-width: 0;
+  font-size: 12.5px; font-weight: 600; color: var(--k-muted);
+}
+.tt-ticker__pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border-radius: 99px;
+  background: var(--k-surface); color: var(--k-text);
+  border: 1px solid var(--t-card-border);
+  font-size: 12px; font-weight: 650; text-decoration: none;
+  white-space: nowrap; flex: none;
+  transition: border-color .12s, background .12s, color .12s;
+}
+.tt-ticker__pill:hover { border-color: var(--k-accent); color: var(--k-accent); background: var(--k-accent-soft); }
+.tt-ticker__pill--alert {
+  background: #fff1f2; color: #be123c; border-color: #fda4af;
+}
+.tt-ticker__pill--alert:hover { background: #ffe4e6; border-color: #e11d48; color: #9f1239; }
+
+/* ---- Unified Academic Oxford Navy & Warm Gold Masthead ---- */
+.tt-masthead {
+  position: relative; overflow: hidden;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 22px;
+  padding: 20px 24px; margin-bottom: 16px;
+  border-radius: calc(var(--k-radius-lg) + 3px);
+  color: #ffffff;
+  background:
+    radial-gradient(ellipse 46% 135% at 94% -16%, rgba(235, 192, 90, .28), transparent 62%),
+    radial-gradient(ellipse 48% 120% at 8% 118%, rgba(59, 130, 246, .28), transparent 60%),
+    repeating-linear-gradient(
+      0deg,
+      rgba(254, 246, 223, .032) 0,
+      rgba(254, 246, 223, .032) 1px,
+      transparent 1px,
+      transparent 24px
+    ),
+    linear-gradient(132deg, #091326 0%, #102042 54%, #1b315e 100%);
+  border: 1px solid rgba(235, 192, 90, .26);
+  box-shadow: 0 14px 36px rgba(9, 19, 38, .25), inset 0 1px 0 rgba(255, 255, 255, .13);
+}
+.tt-masthead__copy { display: grid; gap: 5px; min-width: 0; flex: 1 1 280px; }
+.tt-masthead__eyebrow {
+  display: inline-flex; align-items: center; gap: 7px; width: fit-content; max-width: 100%;
+  padding: 3px 10px; border-radius: 99px;
+  background: rgba(235, 192, 90, .16);
+  border: 1px solid rgba(235, 192, 90, .36);
+  color: #fae3a7; font-size: 10.5px; font-weight: 750;
+  text-transform: uppercase; letter-spacing: .09em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tt-masthead__title {
+  font-family: var(--k-font-display);
+  font-size: clamp(24px, 2.5vw, 32px);
+  line-height: 1.12; color: #ffffff;
+}
+.tt-masthead__meta {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
+  font-size: 13px; color: rgba(226, 232, 246, .82);
+}
+
+.tt-masthead__pods {
+  display: flex; flex-wrap: wrap; align-items: stretch; gap: 9px;
+}
+.tt-pod {
+  display: grid; gap: 2px; align-content: center;
+  min-width: 108px; padding: 9px 13px; border-radius: 12px;
+  background: rgba(255, 255, 255, .085);
+  border: 1px solid rgba(219, 234, 254, .2);
+  backdrop-filter: blur(10px);
+  color: #ffffff; text-decoration: none;
+  transition: background .14s, border-color .14s, transform .14s;
+}
+a.tt-pod:hover {
+  background: rgba(255, 255, 255, .14);
+  border-color: rgba(235, 192, 90, .5);
+  transform: translateY(-1px);
+}
+.tt-pod--gold {
+  background: linear-gradient(145deg, rgba(235, 192, 90, .2), rgba(255, 255, 255, .06));
+  border-color: rgba(235, 192, 90, .42);
+}
+.tt-pod--alert {
+  background: linear-gradient(145deg, rgba(225, 29, 72, .3), rgba(159, 18, 57, .22));
+  border-color: rgba(253, 164, 175, .44);
+}
+.tt-pod--ring {
+  display: flex; align-items: center; gap: 11px; min-width: 172px; padding: 8px 14px 8px 10px;
+}
+.tt-pod__lbl {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10px; font-weight: 750; text-transform: uppercase; letter-spacing: .07em;
+  color: rgba(219, 228, 245, .78); white-space: nowrap;
+}
+.tt-pod--gold .tt-pod__lbl { color: #fae3a7; }
+.tt-pod--alert .tt-pod__lbl { color: #fecdd3; }
+.tt-pod__val {
+  font-size: 19px; font-weight: 800; line-height: 1.15; letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums; color: #ffffff; white-space: nowrap;
+}
+.tt-pod__sub {
+  font-size: 11px; color: rgba(219, 228, 245, .74); white-space: nowrap;
+}
+.tt-masthead .tk-ring {
+  background: conic-gradient(var(--ring-color) var(--p), rgba(255, 255, 255, .15) 0);
+}
+.tt-masthead .tk-ring::before { background: #122347; }
+.tt-masthead .tk-ring__val { color: #ffffff; font-size: 12px; font-weight: 800; }
+
+/* ---- Subject Domain Badges ---- */
+.tt-subj {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 99px;
+  font-size: 11.5px; font-weight: 750; white-space: nowrap; flex: none;
+  background: #e3e9f8; color: #1d356b; border: 1px solid #bfcef0;
+}
+.tt-subj--music { background: #fef6df; color: #85560a; border-color: #f3d589; }
+.tt-subj--lang { background: #e0f2fe; color: #075985; border-color: #bae6fd; }
+.tt-subj--science { background: #dcfce7; color: #14532d; border-color: #86efac; }
+.tt-subj--english { background: #f3e8ff; color: #6b21a8; border-color: #d8b4fe; }
+
+/* ---- Two-Column Timetable + Sticky Mastery/Billing Rail ---- */
+.tt-split {
+  display: grid; grid-template-columns: minmax(0, 1fr) 338px; gap: 18px; align-items: start;
+  min-width: 0; max-width: 100%;
+}
+.tt-split > *, .tt-rail-panel, .tt-rail-card, .tt-filter-bar, .lesson-card, .tt-dossier-grid > * {
+  min-width: 0; max-width: 100%;
+}
+@media (max-width: 1140px) {
+  .tt-split { grid-template-columns: minmax(0, 1fr); }
+}
+
+.tt-filter-bar {
+  display: grid; gap: 9px;
+  padding: 11px 14px; border-radius: calc(var(--k-radius) + 2px);
+  background: var(--k-surface); border: 1px solid var(--t-card-border);
+  box-shadow: var(--k-shadow-xs);
+}
+.tt-filter-bar__row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; max-width: 100%;
+}
+
+/* ---- Day-Grouped Timetable ---- */
+.day-group { display: grid; gap: 10px; }
+.day-group__head {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 9px 15px; border-radius: var(--k-radius);
+  background: linear-gradient(90deg, #f5efdf 0%, #ffffff 85%);
+  border: 1px solid color-mix(in srgb, var(--tt-gold) 34%, var(--k-border));
+  box-shadow: var(--k-shadow-xs);
+}
+.day-group__title {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--k-font-display); font-size: 16.5px; font-weight: 750; color: var(--k-text);
+}
+.day-group__title svg { color: var(--tt-gold); }
+.day-group__meta {
+  display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--k-muted); font-weight: 600;
+}
+
+.lesson-card {
+  --tutor-stripe: var(--k-accent);
+  display: grid; grid-template-columns: 98px minmax(0, 1fr) auto; gap: 14px; align-items: center;
+  padding: 14px 16px; background: var(--k-surface);
+  border: 1px solid var(--t-card-border);
+  border-left: 4.5px solid var(--tutor-stripe);
+  border-radius: calc(var(--k-radius) + 2px);
+  box-shadow: var(--t-card-shadow);
+  transition: transform .14s var(--k-ease), box-shadow .14s var(--k-ease);
+}
+.lesson-card:hover { transform: translateY(-1px); box-shadow: var(--t-card-shadow-hover); }
+.lesson-card--completed { background: linear-gradient(90deg, #f3fdf6 0%, #ffffff 28%); }
+.lesson-card--rescheduled { background: linear-gradient(90deg, #fffcf2 0%, #ffffff 28%); }
+.lesson-card--cancelled, .lesson-card--no-show { opacity: .76; }
+
+.lesson-time {
+  display: grid; gap: 5px; justify-items: center; text-align: center; padding: 9px 7px;
+  border-radius: 10px; background: var(--k-surface-2);
+  border: 1px solid color-mix(in srgb, var(--k-border) 80%, transparent);
+}
+.lesson-time__clock { font-family: var(--k-font-mono); font-size: 16px; font-weight: 800; color: var(--k-text); letter-spacing: -0.02em; }
+
+.dur-pill {
+  display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 99px;
+  background: var(--k-accent-soft); color: var(--k-accent);
+  border: 1px solid color-mix(in srgb, var(--k-accent) 22%, transparent);
+  font-family: var(--k-font-mono); font-size: 11px; font-weight: 800; white-space: nowrap; flex: none;
+}
+
+.tutor-dot {
+  display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: none;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, .95), 0 0 0 3px color-mix(in srgb, currentColor 28%, transparent);
+}
+.tutor-chip {
+  display: inline-flex; align-items: center; gap: 6px; font-weight: 650; color: var(--k-text);
+  padding: 1px 8px 1px 6px; border-radius: 99px;
+  background: var(--k-surface-2);
+  border: 1px solid color-mix(in srgb, var(--k-border) 80%, transparent);
+}
+
+.student-link-btn {
+  font-weight: 750; font-size: 15.5px; text-align: left; color: var(--k-text);
+  transition: color .12s;
+}
+.student-link-btn:hover { color: var(--k-accent); text-decoration: underline; }
+
+/* ---- Sticky Academic Operational Rail ---- */
+.tt-rail-panel {
+  position: sticky; top: 70px; display: grid; gap: 14px;
+}
+.tt-rail-card {
+  background: var(--k-surface); border: 1px solid var(--t-card-border);
+  border-radius: calc(var(--k-radius) + 3px); overflow: hidden;
+  box-shadow: var(--t-card-shadow);
+}
+.tt-rail-card__head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 11px 14px;
+  background: linear-gradient(180deg, #fcfaf5 0%, #f3eee3 100%);
+  border-bottom: 1px solid color-mix(in srgb, var(--k-border) 80%, transparent);
+}
+.tt-rail-card__title {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .055em; color: var(--k-text);
+}
+.tt-rail-list { display: grid; }
+.tt-rail-item {
+  display: grid; gap: 6px; padding: 11px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--k-text) 6%, transparent);
+}
+.tt-rail-item:last-child { border-bottom: 0; }
+.tt-rail-item__top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.tt-rail-item__name { font-size: 13.5px; font-weight: 750; color: var(--k-text); line-height: 1.25; }
+.tt-rail-item__sub { font-size: 12px; color: var(--k-muted); }
+.tt-rail-item__foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; }
+
+/* ---- Dossier & Student Mastery Cards ---- */
+.tt-dossier-grid { display: grid; grid-template-columns: minmax(290px, 356px) minmax(0, 1fr); gap: 18px; align-items: start; }
+.tt-roster-scroll { max-height: 68vh; overflow-y: auto; }
+.student-pick {
+  width: 100%; text-align: left; display: flex; align-items: center; gap: 10px;
+  padding: 12px 15px; border-bottom: 1px solid color-mix(in srgb, var(--k-border) 75%, transparent);
+  transition: background .12s;
+}
+.student-pick:last-child { border-bottom: 0; }
+.student-pick:hover { background: color-mix(in srgb, var(--k-surface-2) 60%, var(--k-surface)); }
+.student-pick.is-on { background: color-mix(in srgb, var(--k-accent-soft) 68%, var(--k-surface)); box-shadow: inset 4px 0 0 var(--k-accent); }
+
+.tt-monogram {
+  display: grid; place-items: center; width: 38px; height: 38px; border-radius: 11px; flex: none;
+  background: linear-gradient(135deg, #0d1933 0%, #1d356b 100%);
+  color: var(--tt-gold-bright); font-family: var(--k-font-display); font-size: 14px; font-weight: 800;
+  border: 1px solid rgba(235, 192, 90, .34);
+  box-shadow: 0 3px 10px rgba(13, 25, 51, .18);
+}
+
+.guardian-card {
+  padding: 14px 16px; border-radius: var(--k-radius);
+  background: linear-gradient(90deg, #faf6eb 0%, #ffffff 100%);
+  border: 1px solid #e7d9b8; border-left: 4px solid var(--tt-gold);
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;
+}
+
+.tt-mastery-grid {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 11px;
+}
+.tt-mastery-card {
+  padding: 12px 14px; border-radius: var(--k-radius);
+  background: var(--k-surface-2); border: 1px solid color-mix(in srgb, var(--k-border) 80%, transparent);
+  display: grid; gap: 4px;
+}
+.tt-mastery-card__lbl { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--k-muted); }
+.tt-mastery-card__val { font-family: var(--k-font-display); font-size: 22px; font-weight: 800; color: var(--k-text); font-variant-numeric: tabular-nums; }
+
+/* ---- Glowing Gold Star-Rated Student Progress Timeline ---- */
+.star-row { display: inline-flex; align-items: center; gap: 2px; vertical-align: middle; }
+.star-glyph { font-size: 15px; line-height: 1; color: #d6dae6; }
+.star-glyph.is-on { color: #d99b1e; text-shadow: 0 0 10px rgba(217, 155, 30, .45); }
+.star-score-pill {
+  margin-left: 5px; padding: 1.5px 8px; border-radius: 99px;
+  background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%);
+  color: #854d0e; border: 1px solid #f3d589;
+  font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; flex: none;
+}
+
+.progress-timeline {
+  position: relative; padding: 16px 18px 18px 34px; display: grid; gap: 13px;
+}
+.progress-timeline::before {
+  content: ""; position: absolute; left: 19px; top: 24px; bottom: 26px; width: 2px;
+  background: linear-gradient(180deg, var(--tt-gold) 0%, var(--k-accent) 55%, color-mix(in srgb, var(--k-border) 80%, transparent) 100%);
+}
+.progress-node {
+  position: relative; padding: 14px 16px; border-radius: calc(var(--k-radius) + 1px);
+  background: var(--k-surface);
+  border: 1px solid var(--t-card-border);
+  box-shadow: var(--t-card-shadow);
+  display: grid; gap: 7px;
+  transition: transform .13s var(--k-ease), box-shadow .13s var(--k-ease);
+}
+.progress-node:hover { transform: translateY(-1px); box-shadow: var(--t-card-shadow-hover); }
+.progress-node::before {
+  content: ""; position: absolute; left: -20px; top: 18px; width: 11px; height: 11px;
+  border-radius: 50%; background: var(--tt-gold);
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 3px rgba(198, 145, 35, .28);
+}
+.progress-node__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; }
+
+.homework-box {
+  margin-top: 3px; padding: 10px 13px; border-radius: 8px;
+  background: linear-gradient(90deg, #fef9eb 0%, #fffdf8 100%);
+  border: 1px solid #f2dca2; border-left: 3.5px solid var(--tt-gold);
+  font-size: 13px; color: #6e480a;
+}
+
+.day-grid { display: flex; flex-wrap: wrap; gap: 4px; }
+.day-chip {
+  padding: 2px 8px; border-radius: 6px; font-size: 11.5px; font-weight: 700;
+  background: var(--k-surface-2); color: var(--k-muted);
+}
+.day-chip.is-on { background: var(--k-accent); color: var(--k-accent-text); }
+
+/* ---- Banded Faculty Tutor Cards ---- */
+.tt-tutor-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(305px, 1fr)); gap: 15px; }
+.tt-tutor-card { padding: 0; overflow: hidden; gap: 0; }
+.tt-tutor-card__head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+  padding: 15px 17px 13px;
+  border-top: 4px solid var(--tutor-stripe, var(--k-accent));
+  border-bottom: 1px solid color-mix(in srgb, var(--k-border) 78%, transparent);
+  background: linear-gradient(135deg, #faf7f0 0%, #ffffff 100%);
+}
+.tt-tutor-card__body { padding: 14px 17px 16px; display: grid; gap: 11px; }
+
+/* ---- Overdue Tuition Badges & Responsive Invoice Rows ---- */
+.inv-code {
+  font-family: var(--k-font-mono); font-weight: 800; font-size: 11.5px;
+  padding: 2px 8px; border-radius: 6px; background: #0e1c38; color: var(--tt-gold-bright);
+  white-space: nowrap; flex: none;
+}
+.tt-inv-row {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 14px;
+  padding: 14px 17px; border-bottom: 1px solid color-mix(in srgb, var(--k-text) 6.5%, transparent);
+  border-left: 4px solid var(--k-accent);
+  transition: background .12s;
+}
+.tt-inv-row:last-child { border-bottom: 0; }
+.tt-inv-row:hover { background: color-mix(in srgb, var(--k-accent-soft) 24%, var(--k-surface)); }
+.tt-inv-row--paid { border-left-color: #15803d; }
+.tt-inv-row--overdue { border-left-color: #be123c; background: linear-gradient(90deg, #fff4f6 0%, #ffffff 30%); }
+.tt-inv-row--unpaid { border-left-color: #c69123; }
+.overdue-tuition-badge {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 99px;
+  background: #ffe4e6; color: #9f1239; border: 1px solid #fda4af;
+  font-size: 11.5px; font-weight: 800; white-space: nowrap; flex: none; font-variant-numeric: tabular-nums;
+}
+
+/* ---- Mobile & Tablet Engineering (1140px / 920px / 640px) ---- */
+@media (max-width: 1140px) {
+  .tt-rail-panel { position: static; }
+}
+@media (max-width: 960px) {
+  .tt-dossier-grid { grid-template-columns: minmax(0, 1fr); }
+  .tt-roster-scroll { max-height: 290px; }
+  .lesson-card { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .lesson-time { display: flex; justify-content: space-between; align-items: center; padding: 7px 11px; }
+}
+@media (max-width: 920px) {
+  .tt-ticker { display: none; }
+}
+@media (max-width: 640px) {
+  .tk-topbar__actions .tt-ticker__pill:not(.tt-ticker__pill--alert) { display: none; }
+  .tt-masthead { padding: 14px 15px; margin-bottom: 13px; gap: 12px; }
+  .tt-masthead__copy { flex: 1 1 100%; }
+  .tt-masthead__eyebrow { font-size: 9.5px; line-height: 1.3; }
+  .tt-masthead__title { font-size: 24px; }
+  .tt-masthead__meta { font-size: 12px; gap: 3px 8px; }
+  .tt-masthead__pods {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%; gap: 8px; align-items: stretch !important;
+  }
+  .tt-pod { min-width: 0; padding: 9px 11px; }
+  .tt-pod__lbl, .tt-pod__val, .tt-pod__sub { overflow: hidden; text-overflow: ellipsis; }
+  .tt-pod--ring,
+  .tt-masthead__pods > .k-btn,
+  .tt-masthead__pods > a.k-btn,
+  .tt-masthead__pods > div[style*="display:flex"] { grid-column: 1 / -1; }
+  .tt-pod--wide-sm {
+    grid-column: 1 / -1;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px 10px;
+    padding: 9px 12px;
+  }
+  .tt-pod--wide-sm .tt-pod__lbl { order: 1; }
+  .tt-pod--wide-sm .tt-pod__sub { order: 2; font-size: 11px; }
+  .tt-pod--wide-sm .tt-pod__val { order: 3; margin-left: auto; font-size: 17px; }
+  .tt-pod__val { font-size: 16.5px; }
+  .tt-pod__sub { font-size: 11px; }
+  .tt-filter-bar { padding: 10px 11px; }
+  .tt-filter-bar__row .tk-search { max-width: 100% !important; flex: 1 1 100% !important; }
+  .lesson-card { padding: 13px 14px; }
+  .tt-mastery-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+  .tt-mastery-card { padding: 9px 10px; }
+  .tt-mastery-card__val { font-size: 17px; }
+  .tt-tutor-grid { grid-template-columns: minmax(0, 1fr); }
+  .tt-inv-row { flex-direction: column; padding: 13px 14px; }
+  .progress-timeline { padding: 13px 13px 14px 28px; }
+  .progress-timeline::before { left: 14px; }
+  .progress-node::before { left: -19px; }
+}

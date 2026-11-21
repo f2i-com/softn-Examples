@@ -1,0 +1,6 @@
+Options -Indexes
+<FilesMatch "\.(env|sql|db|sqlite|sqlite3|lock)$">
+  Deny from all
+</FilesMatch>
+RewriteEngine On
+RewriteRule ^api(/.*)?$ server/public/index.php [L,QSA]

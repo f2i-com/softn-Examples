@@ -1,0 +1,40 @@
+/* Mechanic Workshop Theme: Garage Cast-Iron, Cobalt Diagnostic & Amber Torque on Machined Steel Canvas */
+:root {
+  --k-bg: #f1f4f8;
+  --k-surface: #ffffff;
+  --k-surface-2: #e7ecf3;
+  --k-text: #121721;
+  --k-muted: #505c6e;
+  --k-border: #d0d8e4;
+  --k-accent: #e04f16;
+  --k-accent-text: #ffffff;
+  --k-accent-soft: #ffedd5;
+  --k-danger: #dc2626;
+  --k-danger-soft: #fee2e2;
+  --k-success: #15803d;
+  --k-warning: #d97706;
+  --k-focus: #2563eb;
+  --k-radius: 10px;
+  --k-radius-lg: 14px;
+  --k-font: var(--font-system);
+  --k-font-display: var(--font-industrial);
+  --k-font-mono: var(--font-mono);
+
+  /* Garage Cast-Iron & Cobalt/Amber Torque Tokens */
+  --mw-iron: #11151e;
+  --mw-iron-mid: #1a2130;
+  --mw-cobalt: #2563eb;
+  --mw-cobalt-soft: #dbeafe;
+  --mw-amber: #f59e0b;
+  --mw-amber-soft: #fef3c7;
+
+  --t-rail: #11151e;
+  --t-rail-text: #d1d8e4;
+  --t-rail-muted: #8694ab;
+  --t-rail-on: #f8fafc;
+  --t-rail-active: rgba(245, 158, 11, .24);
+  --t-card-border: rgba(18, 23, 33, .09);
+}
+
+body { background: var(--k-bg); color: var(--k-text); font-size: 15px; }
+h1, .tk-head__title, .mw-masthead__title { font-weight: 750; letter-spacing: -0.016em; }

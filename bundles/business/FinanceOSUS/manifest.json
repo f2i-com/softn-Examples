@@ -1,0 +1,31 @@
+{
+  "id": "formlogic.pack.finance-os-us",
+  "name": "Finance OS (US)",
+  "version": "1.0.0",
+  "description": "Turnkey US RIA & wealth compliance workbench: client onboarding, SEC Form CRS & W-9 tracking, Reg BI risk tolerance scorer, tiered AUM fee agreement calculator, ACAT/Rollover/1035 transfers hub, 100%-validated beneficiary designations, POA, annual reviews and document vault.",
+  "icon": "assets/icon.svg",
+  "engine": 2,
+  "main": "index.html",
+  "config": {
+    "server": {
+      "requestsPerMinute": 600
+    }
+  },
+  "backend": {
+    "runtime": "php",
+    "entry": "server/public/index.php",
+    "mode": "api",
+    "routes": [
+      "/api/"
+    ]
+  },
+  "databases": [
+    {
+      "name": "app",
+      "engine": "sqlite",
+      "file": "data/app.db",
+      "seedSql": "server/migrations/schema.sql",
+      "persist": true
+    }
+  ]
+}

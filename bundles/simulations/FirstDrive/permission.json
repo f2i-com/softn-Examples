@@ -1,9 +1,0 @@
-{
-  "version": 1,
-  "app": {
-    "id": "com.softn.firstdrive",
-    "name": "First drive",
-    "version": "1.0.0"
-  },
-  "permissions": {}
-}

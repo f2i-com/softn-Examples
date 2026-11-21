@@ -1,8 +1,0 @@
-{
-  "app": {
-    "id": "com.softn.solarsimulator",
-    "name": "SolarSimulator",
-    "version": "1.0.0"
-  },
-  "permissions": {}
-}

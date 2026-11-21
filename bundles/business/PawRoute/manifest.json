@@ -1,0 +1,31 @@
+{
+  "id": "formlogic.pack.pawroute-pet-care",
+  "name": "PawRoute",
+  "version": "1.0.0",
+  "description": "Turnkey dog walking & pet care operations hub: daily walk run-sheet with 1-click owner updates, temperament & medical pet profiles, home access client cards, walkers roster, and incidents log.",
+  "icon": "assets/icon.svg",
+  "engine": 2,
+  "main": "index.html",
+  "config": {
+    "server": {
+      "requestsPerMinute": 600
+    }
+  },
+  "backend": {
+    "runtime": "php",
+    "entry": "server/public/index.php",
+    "mode": "api",
+    "routes": [
+      "/api/"
+    ]
+  },
+  "databases": [
+    {
+      "name": "app",
+      "engine": "sqlite",
+      "file": "data/app.db",
+      "seedSql": "server/migrations/schema.sql",
+      "persist": true
+    }
+  ]
+}

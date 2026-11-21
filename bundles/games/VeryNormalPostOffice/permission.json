@@ -1,9 +1,0 @@
-{
-  "app": {
-    "id": "com.softn.oddjobs.post",
-    "name": "Very Normal Post Office",
-    "version": "2.0.2"
-  },
-  "permissions": {},
-  "version": 1
-}

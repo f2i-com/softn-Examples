@@ -1,0 +1,31 @@
+{
+  "id": "formlogic.pack.sitepulse-site-diary",
+  "name": "SitePulse",
+  "version": "1.0.0",
+  "description": "Turnkey construction site diary and builder command hub: active projects overview, daily site diaries with weather & sign-off, defect snag list, client-approved variations, deliveries log, and subcontractor insurance expiry tracking.",
+  "icon": "assets/icon.svg",
+  "engine": 2,
+  "main": "index.html",
+  "config": {
+    "server": {
+      "requestsPerMinute": 600
+    }
+  },
+  "backend": {
+    "runtime": "php",
+    "entry": "server/public/index.php",
+    "mode": "api",
+    "routes": [
+      "/api/"
+    ]
+  },
+  "databases": [
+    {
+      "name": "app",
+      "engine": "sqlite",
+      "file": "data/app.db",
+      "seedSql": "server/migrations/schema.sql",
+      "persist": true
+    }
+  ]
+}

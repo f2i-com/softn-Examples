@@ -1,0 +1,31 @@
+{
+  "id": "formlogic.pack.brewdesk-cafe-ops",
+  "name": "BrewDesk",
+  "version": "1.0.0",
+  "description": "Turnkey cafe and barista operations desk: live order pad, espresso ticket queue, menu board, beans and milk par stock, shift roster and daily closeout.",
+  "icon": "assets/icon.svg",
+  "engine": 2,
+  "main": "index.html",
+  "config": {
+    "server": {
+      "requestsPerMinute": 600
+    }
+  },
+  "backend": {
+    "runtime": "php",
+    "entry": "server/public/index.php",
+    "mode": "api",
+    "routes": [
+      "/api/"
+    ]
+  },
+  "databases": [
+    {
+      "name": "app",
+      "engine": "sqlite",
+      "file": "data/app.db",
+      "seedSql": "server/migrations/schema.sql",
+      "persist": true
+    }
+  ]
+}

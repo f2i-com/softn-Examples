@@ -1,0 +1,40 @@
+/* SitePulse Theme: High-Vis Amber & Structural Concrete Navy on Poured Concrete Canvas */
+:root {
+  --k-bg: #f2f5f8;
+  --k-surface: #ffffff;
+  --k-surface-2: #e7edf4;
+  --k-text: #101827;
+  --k-muted: #4b5769;
+  --k-border: #cdd7e3;
+  --k-accent: #c2590a;
+  --k-accent-text: #ffffff;
+  --k-accent-soft: #fef3c7;
+  --k-danger: #dc2626;
+  --k-danger-soft: #fee2e2;
+  --k-success: #15803d;
+  --k-warning: #d97706;
+  --k-focus: #1d4ed8;
+  --k-radius: 10px;
+  --k-radius-lg: 14px;
+  --k-font: var(--font-system);
+  --k-font-display: var(--font-industrial);
+
+  /* High-Vis Amber & Structural Concrete Navy Tokens */
+  --sp-navy: #0e1828;
+  --sp-navy-mid: #16263f;
+  --sp-steel: #1e4b8f;
+  --sp-steel-soft: #dbeafe;
+  --sp-hivis: #f59e0b;
+  --sp-hivis-bright: #fbbf24;
+  --sp-hivis-soft: #fef3c7;
+
+  --t-rail: #0e1828;
+  --t-rail-text: #cdd6e3;
+  --t-rail-muted: #8495ad;
+  --t-rail-on: #f8fafc;
+  --t-rail-active: rgba(245, 158, 11, .28);
+  --t-card-border: rgba(16, 24, 39, .09);
+}
+
+body { background: var(--k-bg); color: var(--k-text); font-size: 15px; }
+h1, .tk-head__title, .sp-masthead__title { font-weight: 750; letter-spacing: -0.016em; }

@@ -1,0 +1,31 @@
+{
+  "id": "formlogic.pack.customer-service",
+  "name": "Service Desk",
+  "version": "1.0.0",
+  "description": "Turnkey customer support helpdesk with ticket triage queue, 1-click escalations, bug tracker, upvotable feature board, refunds desk, live NPS calculator, and searchable knowledge base.",
+  "icon": "assets/icon.svg",
+  "engine": 2,
+  "main": "index.html",
+  "config": {
+    "server": {
+      "requestsPerMinute": 600
+    }
+  },
+  "backend": {
+    "runtime": "php",
+    "entry": "server/public/index.php",
+    "mode": "api",
+    "routes": [
+      "/api/"
+    ]
+  },
+  "databases": [
+    {
+      "name": "app",
+      "engine": "sqlite",
+      "file": "data/app.db",
+      "seedSql": "server/migrations/schema.sql",
+      "persist": true
+    }
+  ]
+}

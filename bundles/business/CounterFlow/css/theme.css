@@ -1,0 +1,39 @@
+/* CounterFlow Theme: Boutique Charcoal, Terracotta-Coral & Warm Stone Canvas */
+:root {
+  --k-bg: #f7f4ef;
+  --k-surface: #ffffff;
+  --k-surface-2: #efeae2;
+  --k-text: #1b1817;
+  --k-muted: #665d57;
+  --k-border: #e3dbd0;
+  --k-accent: #c84b24;
+  --k-accent-text: #ffffff;
+  --k-accent-soft: #fdebe4;
+  --k-danger: #b91c1c;
+  --k-danger-soft: #fee2e2;
+  --k-success: #15703d;
+  --k-warning: #b45309;
+  --k-radius: 10px;
+  --k-radius-lg: 14px;
+  --k-font: var(--font-system);
+  --k-font-display: var(--font-classical);
+
+  --cf-charcoal: #1c1917;
+  --cf-charcoal-deep: #141211;
+  --cf-coral: #ec6e43;
+  --cf-stone-warm: #e6dfd5;
+  --cf-gold: #dfb060;
+  --cf-gold-soft: #fdf5e4;
+  --cf-plum: #6d2e46;
+  --cf-plum-soft: #f7e9ef;
+
+  --t-rail: #1a1716;
+  --t-rail-text: #ddd5cd;
+  --t-rail-muted: #9e938a;
+  --t-rail-on: #fdfbf8;
+  --t-rail-active: rgba(200, 75, 36, .3);
+  --t-card-border: rgba(27, 24, 23, .085);
+}
+
+body { background: var(--k-bg); color: var(--k-text); font-size: 15px; }
+h1, .tk-head__title, .cf-masthead__title { font-weight: 700; letter-spacing: -0.018em; }

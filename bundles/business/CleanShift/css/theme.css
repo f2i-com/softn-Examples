@@ -1,0 +1,42 @@
+/* CleanShift Theme: Crisp Aqua-Teal, Fresh Linen Canvas & Deep Coastal Slate Rail */
+:root {
+  --k-bg: #f4f8fa;
+  --k-surface: #ffffff;
+  --k-surface-2: #e9f4f8;
+  --k-text: #0b2231;
+  --k-muted: #4b687c;
+  --k-border: #cfe2ec;
+  --k-accent: #0891b2;
+  --k-accent-text: #ffffff;
+  --k-accent-soft: #dff7fb;
+  --k-danger: #c81e1e;
+  --k-danger-soft: #fee2e2;
+  --k-success: #0f766e;
+  --k-warning: #b45309;
+  --k-radius: 10px;
+  --k-radius-lg: 14px;
+  --k-font: var(--font-system);
+  --k-font-display: var(--font-geometric);
+
+  --cs-seafoam: #14b8a6;
+  --cs-aqua-bright: #38bdf8;
+  --cs-linen: #f7fafb;
+  --cs-sparkle: #f59e0b;
+
+  --t-rail: #071c2b;
+  --t-rail-text: #cfe3f0;
+  --t-rail-muted: #7da6c2;
+  --t-rail-on: #f7fdff;
+  --t-rail-active: rgba(34, 211, 238, .22);
+  --t-card-border: rgba(11, 34, 49, .085);
+}
+
+body {
+  background: var(--k-bg);
+  color: var(--k-text);
+  font-size: 14.5px;
+}
+h1, .tk-head__title, .cs-masthead__title {
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}

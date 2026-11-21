@@ -1,0 +1,31 @@
+{
+  "id": "formlogic.pack.fitstudio-coaching",
+  "name": "FitStudio",
+  "version": "1.0.0",
+  "description": "Turnkey personal training and gym coaching operations desk: live coach session board, client progress dossiers with automatic body-composition deltas, assessments log, workout program builder, trainer roster, and payments ledger.",
+  "icon": "assets/icon.svg",
+  "engine": 2,
+  "main": "index.html",
+  "config": {
+    "server": {
+      "requestsPerMinute": 600
+    }
+  },
+  "backend": {
+    "runtime": "php",
+    "entry": "server/public/index.php",
+    "mode": "api",
+    "routes": [
+      "/api/"
+    ]
+  },
+  "databases": [
+    {
+      "name": "app",
+      "engine": "sqlite",
+      "file": "data/app.db",
+      "seedSql": "server/migrations/schema.sql",
+      "persist": true
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "id": "formlogic.pack.aokie-receptionist",
+  "name": "Aokie Receptionist",
+  "version": "1.0.0",
+  "description": "Turnkey AI phone & front-desk console: two-pane live call console with structured Caller/AI transcripts, two-pane SMS inbox with AI draft approval, appointments & orders desk, follow-up tasks queue, callers CRM, Bluetooth dongle hardware events log and AI persona/routing configuration.",
+  "icon": "assets/icon.svg",
+  "engine": 2,
+  "main": "index.html",
+  "config": {
+    "server": {
+      "requestsPerMinute": 600
+    }
+  },
+  "backend": {
+    "runtime": "php",
+    "entry": "server/public/index.php",
+    "mode": "api",
+    "routes": [
+      "/api/"
+    ]
+  },
+  "databases": [
+    {
+      "name": "app",
+      "engine": "sqlite",
+      "file": "data/app.db",
+      "seedSql": "server/migrations/schema.sql",
+      "persist": true
+    }
+  ]
+}

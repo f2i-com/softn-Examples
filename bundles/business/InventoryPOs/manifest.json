@@ -1,0 +1,31 @@
+{
+  "id": "formlogic.pack.inventory-purchase-orders",
+  "name": "Inventory & POs",
+  "version": "1.0.0",
+  "description": "Turnkey warehouse stock control and purchasing hub: SKU bin locations, low-stock reorder alerts with 1-click Draft PO, multi-line purchase order builder, atomic goods receiving, printable POs, suppliers, and stock audit ledger.",
+  "icon": "assets/icon.svg",
+  "engine": 2,
+  "main": "index.html",
+  "config": {
+    "server": {
+      "requestsPerMinute": 600
+    }
+  },
+  "backend": {
+    "runtime": "php",
+    "entry": "server/public/index.php",
+    "mode": "api",
+    "routes": [
+      "/api/"
+    ]
+  },
+  "databases": [
+    {
+      "name": "app",
+      "engine": "sqlite",
+      "file": "data/app.db",
+      "seedSql": "server/migrations/schema.sql",
+      "persist": true
+    }
+  ]
+}

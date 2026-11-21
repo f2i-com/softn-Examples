@@ -1,0 +1,36 @@
+/* Inventory & POs Theme: Supply-Chain Deep Cobalt & Warehouse Amber on Crisp Blueprint Slate Canvas */
+:root {
+  --k-bg: #f3f6fb;
+  --k-surface: #ffffff;
+  --k-surface-2: #e8eef6;
+  --k-text: #0e1726;
+  --k-muted: #506075;
+  --k-border: #d4dde8;
+  --k-accent: #1b5299;
+  --k-accent-text: #ffffff;
+  --k-accent-soft: #e2eefc;
+  --k-danger: #b91c1c;
+  --k-danger-soft: #fee2e2;
+  --k-success: #15703d;
+  --k-warning: #c26508;
+  --k-radius: 10px;
+  --k-radius-lg: 14px;
+  --k-font: var(--font-system);
+  --k-font-display: var(--font-industrial);
+
+  --wh-cobalt: #1b5299;
+  --wh-cobalt-bright: #3b82f6;
+  --wh-amber: #d97706;
+  --wh-amber-bright: #f59e0b;
+  --wh-amber-soft: #fef3c7;
+
+  --t-rail: #0b1629;
+  --t-rail-text: #cbd5e1;
+  --t-rail-muted: #8b9bb4;
+  --t-rail-on: #f8fafc;
+  --t-rail-active: rgba(59, 130, 246, .28);
+  --t-card-border: rgba(14, 23, 38, .085);
+}
+
+body { background: var(--k-bg); color: var(--k-text); font-size: 15px; }
+h1, .tk-head__title, .ip-masthead__title { font-weight: 700; letter-spacing: -0.016em; }

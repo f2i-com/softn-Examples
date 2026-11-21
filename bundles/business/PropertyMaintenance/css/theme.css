@@ -1,0 +1,38 @@
+/* Property Maintenance Theme: Slate-Teal Estate Ops & Warm Architectural Brass on Stone Canvas */
+:root {
+  --k-bg: #f4f6f5;
+  --k-surface: #ffffff;
+  --k-surface-2: #e9eeec;
+  --k-text: #132224;
+  --k-muted: #4d6265;
+  --k-border: #cfd9d8;
+  --k-accent: #0d6e6e;
+  --k-accent-text: #ffffff;
+  --k-accent-soft: #d7f2ee;
+  --k-danger: #c62828;
+  --k-danger-soft: #fee2e2;
+  --k-success: #15803d;
+  --k-warning: #b45309;
+  --k-focus: #0d6e6e;
+  --k-radius: 10px;
+  --k-radius-lg: 14px;
+  --k-font: var(--font-system);
+  --k-font-display: var(--font-slab);
+
+  /* Slate-Teal Estate Ops Tokens */
+  --pm-slate: #0b1e21;
+  --pm-slate-mid: #123136;
+  --pm-teal-bright: #2dd4bf;
+  --pm-brass: #d4a04a;
+  --pm-brass-soft: #fdf4e3;
+
+  --t-rail: #0b1e21;
+  --t-rail-text: #cbe0df;
+  --t-rail-muted: #7fa2a3;
+  --t-rail-on: #f7fbfb;
+  --t-rail-active: rgba(45, 212, 191, .24);
+  --t-card-border: rgba(19, 34, 36, .09);
+}
+
+body { background: var(--k-bg); color: var(--k-text); font-size: 15px; }
+h1, .tk-head__title, .pm-masthead__title { font-weight: 750; letter-spacing: -0.016em; }

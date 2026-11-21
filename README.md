@@ -1,70 +1,62 @@
 # SoftN Examples
 
-The example applications for [SoftN](https://softn.com): every demo the softn.com directory lists, as source, with the scripts that pack, test and release them. Each one is a worked example of some part of the runtime, from WebGPU compute shaders to a voiced first-person story, survival and strategy games, a Game Boy, a 386 PC and a language model that never leaves the browser.
+The curated showcase catalogue for [SoftN](https://softn.com): every example the softn.com directory ships, as source, with the scripts that pack, test and release them. It focuses on **29 turnkey full-stack PHP 8.4 (Slim 4) + SQLite 3 business apps** running inside SoftN's Web Container sandbox, plus **5 flagship games** (`Outerstead`, `Urbanward`, `Outermate`, `Scorchline`, and `Potato Peeler`) and the **Component Showcase**.
 
 The packed `.softn` archives are not committed. The `Release` workflow compiles and validates them, attaches them to a [GitHub Release](../../releases), and outputs `dist/` as a workflow artifact, and softn.com fetches that release rather than keeping copies of its own, so each example exists in exactly one place: its source directory here.
 
 ## The examples
 
-### Games
+### Full-stack business apps (PHP 8.4 Slim 4 + SQLite 3)
+
+Every business app is an Engine 2 Web Container (`index.html` + `server/public/index.php` + SQLite migrations) that runs 100% locally in the browser sandbox via WebAssembly PHP + SQLite, or on a host server without changing a line of code.
 
 | | Example | What it shows |
 |---|---|---|
-| <img src="screenshots/PromptlyUnemployed.webp" alt="Promptly Unemployed" width="200"> | **Promptly Unemployed**<br>`bundles/games/PromptlyUnemployed/` | First-person 3D narrative tragicomedy, part one: laid off by an avatar, home by dinner, a business by midnight. Fully voiced, and one file. |
-| <img src="screenshots/Blockscape.webp" alt="Blockscape" width="200"> | **Blockscape**<br>`bundles/games/Blockscape/` | A first-person voxel sandbox: an island of blocks to mine, build on and save, with gravity, swimming, flight and a day-night cycle |
-| <img src="screenshots/DeadHours.webp" alt="Dead Hours" width="200"> | **Dead Hours**<br>`bundles/games/DeadHours/` | A first-person zombie shooter: hold a fenced yard at night against waves of the dead, destructible props and explosive barrels with a pistol, shotgun and SMG |
-| <img src="screenshots/MazeEscape3D.webp" alt="Maze Escape 3D" width="200"> | **Maze Escape 3D**<br>`bundles/games/MazeEscape3D/` | A first-person maze carved fresh every game: find the golden ring, with a minimap that fills in as you explore and a best time that sticks |
-| <img src="screenshots/TexasHoldem.webp" alt="Texas Hold'em" width="200"> | **Texas Hold'em**<br>`bundles/games/TexasHoldem/` | Texas Hold'em Poker for friends who trust each other: every player's client holds the whole table, hole cards included, over peer-to-peer sync |
-| <img src="screenshots/TheOffice.webp" alt="TheOffice" width="200"> | **TheOffice**<br>`bundles/games/TheOffice/` | Local AI sim game where 6 Office-inspired characters chat autonomously using Qwen3-0.6B, run in the browser by SoftN |
-| <img src="screenshots/SimLives.webp" alt="Sim Lives" width="200"> | **Sim Lives**<br>`bundles/games/SimLives/` | Build a house, design avatars and move a household in: steer them to eat, sleep, wash, play and chat, or switch on free will and watch their day |
-| <img src="screenshots/Outermate.webp" alt="Outermate" width="200"> | **Outermate**<br>`bundles/games/Outermate/` | First Count: a living prison-escape strategy game on Hollow-7. Learn routines, trade favours, prepare a route and get beyond Greywall. |
+| <img src="screenshots/AgriLog.webp" alt="AgriLog" width="200"> | **AgriLog**<br>`bundles/business/AgriLog/` | Turnkey farm operations tracker: paddocks with live chemical withholding period locks, crop jobs, harvest yield log, chemical register, and machinery maintenance. |
+| <img src="screenshots/AokieReceptionist.webp" alt="Aokie Receptionist" width="200"> | **Aokie Receptionist**<br>`bundles/business/AokieReceptionist/` | Turnkey AI phone & front-desk console: two-pane live call console with structured Caller/AI transcripts, two-pane SMS inbox with AI draft approval, appointments & orders desk, follow-up tasks queue, callers CRM, Bluetooth dongle hardware events log and AI persona/routing configuration. |
+| <img src="screenshots/BrewDesk.webp" alt="BrewDesk" width="200"> | **BrewDesk**<br>`bundles/business/BrewDesk/` | Turnkey cafe and barista operations desk: live order pad, espresso ticket queue, menu board, beans and milk par stock, shift roster and daily closeout. |
+| <img src="screenshots/CaterCraft.webp" alt="CaterCraft" width="200"> | **CaterCraft**<br>`bundles/business/CaterCraft/` | Turnkey catering & event orders hub: visual event pipeline with automatic per-head quote calculation and HTML run-sheets, multi-station kitchen production board, delivery dispatch runs, dietary requirements matrix with kitchen sign-off, menu packages and client directory. |
+| <img src="screenshots/CleanShift.webp" alt="CleanShift" width="200"> | **CleanShift**<br>`bundles/business/CleanShift/` | Turnkey cleaning business scheduler: crew dispatch board, client access instructions, teams roster, quality checklists & star ratings, supply par stock, and client issues desk. |
+| <img src="screenshots/ClinicFrontDesk.webp" alt="Clinic Front Desk" width="200"> | **Clinic Front Desk**<br>`bundles/business/ClinicFrontDesk/` | Turnkey clinic reception and patient flow desk: live waiting room queue, patient directory and dossiers, digital intake and consent forms, clinician roster, and follow-up recall queue. |
+| <img src="screenshots/CounterFlow.webp" alt="CounterFlow" width="200"> | **CounterFlow**<br>`bundles/business/CounterFlow/` | Turnkey retail store operations hub around the till: product catalogue with live margins and quick stock adjustments, audited stock ledger, floor tasks, suppliers, staff roster, and customer returns desk. |
+| <img src="screenshots/EventHub.webp" alt="Event Hub" width="200"> | **Event Hub**<br>`bundles/business/EventHub/` | Turnkey event operations command center with 1-tap attendee check-in desk, dietary & accessibility alerts, speaker program, vendor booths, volunteer roster, live budget variance, incident log, and post-event feedback. |
+| <img src="screenshots/FinanceOSAU.webp" alt="Finance OS (AU)" width="200"> | **Finance OS (AU)**<br>`bundles/business/FinanceOSAU/` | Turnkey Australian AFSL advisory & compliance workbench: client onboarding, Best Interest Duty risk profile scorer, Fee Disclosure Statements (FDS), superannuation rollovers, 100%-validated BDBNs, off-market transfers, annual reviews and document vault. |
+| <img src="screenshots/FinanceOSUS.webp" alt="Finance OS (US)" width="200"> | **Finance OS (US)**<br>`bundles/business/FinanceOSUS/` | Turnkey US RIA & wealth compliance workbench: client onboarding, SEC Form CRS & W-9 tracking, Reg BI risk tolerance scorer, tiered AUM fee agreement calculator, ACAT/Rollover/1035 transfers hub, 100%-validated beneficiary designations, POA, annual reviews and document vault. |
+| <img src="screenshots/FitStudio.webp" alt="FitStudio" width="200"> | **FitStudio**<br>`bundles/business/FitStudio/` | Turnkey personal training and gym coaching operations desk: live coach session board, client progress dossiers with automatic body-composition deltas, assessments log, workout program builder, trainer roster, and payments ledger. |
+| <img src="screenshots/FleetFlow.webp" alt="FleetFlow" width="200"> | **FleetFlow**<br>`bundles/business/FleetFlow/` | Turnkey vehicle fleet and driver logbook: live rego, insurance and licence expiry countdown alerts, vehicle register with automatic odometer syncing from trips, FBT business/personal trip and fuel logbook, workshop maintenance pipeline, and incident register. |
+| <img src="screenshots/GrillStack.webp" alt="GrillStack" width="200"> | **GrillStack**<br>`bundles/business/GrillStack/` | Turnkey burger shop command center: live order counter with Rush toggle, multi-station kitchen pass KDS (Grill, Fryer, Assembly, Drinks), menu & ingredient builds, prep & par stock, crew shifts with break tracking, and nightly till reconciliation. |
+| <img src="screenshots/InventoryPOs.webp" alt="Inventory & POs" width="200"> | **Inventory & POs**<br>`bundles/business/InventoryPOs/` | Turnkey warehouse stock control and purchasing hub: SKU bin locations, low-stock reorder alerts with 1-click Draft PO, multi-line purchase order builder, atomic goods receiving, printable POs, suppliers, and stock audit ledger. |
+| <img src="screenshots/JobInvoiceDesk.webp" alt="Job & Invoice Desk" width="200"> | **Job & Invoice Desk**<br>`bundles/business/JobInvoiceDesk/` | Turnkey job-to-quote-to-invoice-to-payment billing pipeline with client ledger, auto-numbered quotes & tax invoices, partial payment reconciliation, and overdue chase queue. |
+| <img src="screenshots/MechanicWorkshop.webp" alt="Mechanic Workshop" width="200"> | **Mechanic Workshop**<br>`bundles/business/MechanicWorkshop/` | Turnkey automotive workshop and bay manager: live bay pipeline board, job card workbench with inline parts used, vehicle garage with rego/VIN & odometer auto-update, and 1-click workshop invoicing. |
+| <img src="screenshots/OHSQMS.webp" alt="OHS & QMS" width="200"> | **OHS & QMS**<br>`bundles/business/OHSQMS/` | Turnkey ISO 45001 safety and ISO 9001 quality management system: incident & injury register, interactive 5x5 risk matrix hazard register, CAPA tracker, audits/CARs/NCRs with printable reports, mandatory training matrix, contractor approvals, toolbox talks, complaints and plant register. |
+| <img src="screenshots/PassMaster.webp" alt="PassMaster" width="200"> | **PassMaster**<br>`bundles/business/PassMaster/` | Turnkey restaurant front-of-house & kitchen pass: interactive section floor map, reservations book with 1-click table seating, course kitchen pass with red allergy alerts, station prep checklist, brigade roster and nightly shift close. |
+| <img src="screenshots/PawRoute.webp" alt="PawRoute" width="200"> | **PawRoute**<br>`bundles/business/PawRoute/` | Turnkey dog walking & pet care operations hub: daily walk run-sheet with 1-click owner updates, temperament & medical pet profiles, home access client cards, walkers roster, and incidents log. |
+| <img src="screenshots/PeopleHub.webp" alt="People Hub" width="200"> | **People Hub**<br>`bundles/business/PeopleHub/` | Turnkey HR & people operations desk with actionable approvals inbox, recruitment pipeline & interview scorecards, interactive onboarding checklists, leave, performance reviews, expenses, training, and exit interviews. |
+| <img src="screenshots/PlumbingTrades.webp" alt="Plumbing & Trades" width="200"> | **Plumbing & Trades**<br>`bundles/business/PlumbingTrades/` | Turnkey field service operations for plumbing and trades businesses: priority dispatch board, on-site work orders, parts & materials tracking, customer directory, and 1-click job invoicing. |
+| <img src="screenshots/PropertyMaintenance.webp" alt="Property Maintenance" width="200"> | **Property Maintenance**<br>`bundles/business/PropertyMaintenance/` | Turnkey property maintenance and handyman operations desk: tenant request triage board, 1-click work order dispatch, properties register with access notes, tenants directory, and rated property inspections. |
+| <img src="screenshots/RepairBench.webp" alt="RepairBench" width="200"> | **RepairBench**<br>`bundles/business/RepairBench/` | Turnkey electronics and device repair workshop desk: 7-stage repair pipeline board with printable claim tickets, device IMEI/serial intake registry, parts order tracker, interactive QA test checklist and pickup SMS desk, plus customers and bench technicians. |
+| <img src="screenshots/SalonStudio.webp" alt="Salon Studio" width="200"> | **Salon Studio**<br>`bundles/business/SalonStudio/` | Turnkey hair salon & beauty studio manager: daily appointment book by stylist with auto-filled service pricing & conflict checks, client colour formula cards, service menu, stylist roster, and retail sales with printable receipts. |
+| <img src="screenshots/ServiceDesk.webp" alt="Service Desk" width="200"> | **Service Desk**<br>`bundles/business/ServiceDesk/` | Turnkey customer support helpdesk with ticket triage queue, 1-click escalations, bug tracker, upvotable feature board, refunds desk, live NPS calculator, and searchable knowledge base. |
+| <img src="screenshots/SitePulse.webp" alt="SitePulse" width="200"> | **SitePulse**<br>`bundles/business/SitePulse/` | Turnkey construction site diary and builder command hub: active projects overview, daily site diaries with weather & sign-off, defect snag list, client-approved variations, deliveries log, and subcontractor insurance expiry tracking. |
+| <img src="screenshots/StayReady.webp" alt="StayReady" width="200"> | **StayReady**<br>`bundles/business/StayReady/` | Turnkey short-stay & Airbnb turnover manager: same-day checkout/check-in command board, bookings board, cleaner turnover pipeline, lockbox access directory, inspections & damage log, and per-property supply stock. |
+| <img src="screenshots/TutorTrack.webp" alt="TutorTrack" width="200"> | **TutorTrack**<br>`bundles/business/TutorTrack/` | Turnkey tutoring studio and music lessons desk: filterable lesson schedule with one-click progress note logging, student and guardian dossiers, homework and copyable parent updates, tutor roster, and printable HTML tuition invoices. |
+| <img src="screenshots/VenueOps.webp" alt="VenueOps" width="200"> | **VenueOps**<br>`bundles/business/VenueOps/` | Turnkey venue hire & booking manager: space schedule with automatic time-overlap conflict detection and hourly fee calculation, spaces catalogue, setup & facilities checklists, hirer clients directory, payments & deposits ledger with HTML booking confirmations, and incidents/damage log. |
+
+### Flagship games
+
+| | Example | What it shows |
+|---|---|---|
 | <img src="screenshots/Outerstead.webp" alt="Outerstead" width="200"> | **Outerstead**<br>`bundles/games/Outerstead/` | First Light: a people-first frontier colony survival game on Hollow-7. Four survivors, a growing settlement, and an older world that still listens. |
-| <img src="screenshots/MineManagement.webp" alt="Mine Management" width="200"> | **Mine Management**<br>`bundles/games/MineManagement/` | One human, one mine, questionable automation: run the robot haul fleet from your PIT tablet, drive trucks and the excavator, fix faults in person, and keep Kevin the emu off the haul road |
-| <img src="screenshots/Pocket.webp" alt="Pocket" width="200"> | **Pocket**<br>`bundles/games/Pocket/` | An 8-bit handheld emulator — CPU, PPU, APU and mappers in `.logic`, with a built-in Brick-Breaker cartridge, DMG palettes, PixelCanvas and AudioStream |
-| <img src="screenshots/SoftDOS.webp" alt="SoftDOS" width="200"> | **SoftDOS**<br>`bundles/games/SoftDOS/` | An x86 PC emulator written in .logic with bundled one-click FastDOOM + Freedoom Phase 1, accelerated host bridge, VGA mode 13h and 80x25 text, Sound Blaster + AdLib, mouse, and mobile touch controls. |
-| <img src="screenshots/LastSound3D.webp" alt="LastSound3D" width="200"> | **LastSound3D**<br>`bundles/games/LastSound3D/` | LAST SOUND: Below the Call — a fully voiced first-person survey of a blood ocean from inside a sealed pressure hull across three compartments and six photographs |
-| <img src="screenshots/TheNightWindow.webp" alt="The Night Window" width="200"> | **The Night Window**<br>`bundles/games/TheNightWindow/` | Seven graveyard shifts at Meridian-17: inspect documents, question returning residents, and preserve a truth the terminal can rewrite across six endings |
-| <img src="screenshots/Scorchline.webp" alt="Scorchline" width="200"> | **Scorchline**<br>`bundles/games/Scorchline/` | An original top-down resource-warfare RTS with two factions, three maps and offline AI skirmishes |
-| <img src="screenshots/Urbanward.webp" alt="Urbanward" width="200"> | **Urbanward**<br>`bundles/games/Urbanward/` | A modular city-building game: build connected neighbourhoods, balance the books and watch a city find its identity |
-| <img src="screenshots/ConvenienceStoreAtTheEndOfTheUniverse.webp" alt="Convenience Store at the End of the Universe" width="200"> | **Convenience Store at the End of the Universe**<br>`bundles/games/ConvenienceStoreAtTheEndOfTheUniverse/` | Last Light: seven nights, six usuals, one little shop at the end of everything |
-| <img src="screenshots/PleaseDoNotFeedTheMoon.webp" alt="Please Do Not Feed the Moon" width="200"> | **Please Do Not Feed the Moon**<br>`bundles/games/PleaseDoNotFeedTheMoon/` | A dreamy late-night convenience store: twenty-four bad ideas, nine hidden combinations and seven endings |
-| <img src="screenshots/DoNotPressTheDuck.webp" alt="Do Not Press the Duck" width="200"> | **Do Not Press the Duck**<br>`bundles/games/DoNotPressTheDuck/` | One button, a roomful of consequences, and a completely unreasonable amount of duck |
-| <img src="screenshots/VeryNormalPostOffice.webp" alt="Very Normal Post Office" width="200"> | **Very Normal Post Office**<br>`bundles/games/VeryNormalPostOffice/` | Work Window 04: eight shifts of tactile postal inspection, questionable regulations and very hungry mail |
-| <img src="screenshots/PigeonMunicipalEmployee.webp" alt="Pigeon: Municipal Employee" width="200"> | **Pigeon: Municipal Employee**<br>`bundles/games/PigeonMunicipalEmployee/` | Explore Littleborough, fly, perch, collect evidence and physically process excessively official paperwork |
-| <img src="screenshots/FrogEmployeeOfTheMonth.webp" alt="Frog Employee of the Month" width="200"> | **Frog Employee of the Month**<br>`bundles/games/FrogEmployeeOfTheMonth/` | Corporate Ascent: eight frog-scale office assignments, physical tongue traversal and a very unreasonable printer |
-| <img src="screenshots/ExpressDeliverySnail.webp" alt="Express Delivery Snail" width="200"> | **Express Delivery Snail**<br>`bundles/games/ExpressDeliverySnail/` | Special Delivery — seven tiny routes, seven very particular parcels and one impossibly determined snail |
-| <img src="screenshots/PotatoPeeler.webp" alt="Potato Peeler" width="200"> | **Potato Peeler**<br>`bundles/games/PotatoPeeler/` | Soviet 3D commissary tuber production for desktop and mobile touch: shave 16-patch 3D potatoes, serve Canteen Borscht & Banquet orders, drink Podstakannik Tea Overdrive, swat Saboteur Beetles, conquer Boss Tsar-Kartoshka, upgrade 6 Blender PBR peelers across 5 board slots, and climb the Hall of Labour leaderboard |
-| <img src="screenshots/VoiceSimulator.webp" alt="Voice Simulator" width="200"> | **Voice Simulator**<br>`bundles/games/VoiceSimulator/` | Physical 3D human mouth & vocal-tract speech synthesizer in pure `.logic`: LF glottal oscillation, nasal coupling, 5-formant oral cascade, Male/Female & Pitch controls, conversational replies, live `<AudioStream>` Mouth Organ, ear-training challenges, and a 17-morph Blender PBR 3D mouth rig |
-| <img src="screenshots/SolarSimulator.webp" alt="Solar Simulator" width="200"> | **Solar Simulator**<br>`bundles/games/SolarSimulator/` | True-scale 3D N-body Solar System simulator & astrophysics sandbox for desktop and mobile: 12 Blender PBR celestial models, NASA J2000 1:1 AU orbital mechanics, orbital perturbation chaos lab, Red Giant stellar evolution with mass-loss spiral & engulfment, kinetic asteroid impacts up to planet-shattering Theia collisions, and 2-sun & 3-sun multi-star scenarios |
+| <img src="screenshots/Urbanward.webp" alt="Urbanward" width="200"> | **Urbanward**<br>`bundles/games/Urbanward/` | An original, modular city simulation: build connected neighbourhoods, balance the books and watch a city find its identity. |
+| <img src="screenshots/Outermate.webp" alt="Outermate" width="200"> | **Outermate**<br>`bundles/games/Outermate/` | First Count: a living prison-escape strategy game on Hollow-7. Learn routines, trade favours, prepare a route and get beyond Greywall. |
+| <img src="screenshots/Scorchline.webp" alt="Scorchline" width="200"> | **Scorchline**<br>`bundles/games/Scorchline/` | An original top-down resource-warfare RTS. Two factions, three maps and offline AI skirmishes. |
+| <img src="screenshots/PotatoPeeler.webp" alt="Potato Peeler" width="200"> | **Potato Peeler**<br>`bundles/games/PotatoPeeler/` | Mobile-ready Soviet 3D commissary potato-peeling game with 17 Blender PBR kitchen models, tactile touch & mouse 16-patch 3D potato shaving, Canteen Borscht & Banquet dish orders, Podstakannik Tea Overdrive, Colorado Saboteur Beetles, Boss Tsar-Kartoshka events, 6 upgradable peelers up to the Kosmos-9 ruby laser-lathe, Radio Mayak polka, and a Hall of Labour leaderboard. |
 
-### Simulations
+### Runtime showcase
 
 | | Example | What it shows |
 |---|---|---|
-| <img src="screenshots/TrainYard.webp" alt="Model Train Yard" width="200"> | **Model Train Yard**<br>`bundles/simulations/TrainYard/` | An animated HO-scale model train yard diorama on a wooden table with running trains, turntable, busy harbor, town, day-night cycle, and tactile physical controls |
-| <img src="screenshots/PredatorPrey.webp" alt="Predator-Prey Simulator" width="200"> | **Predator-Prey Simulator**<br>`bundles/simulations/PredatorPrey/` | An interactive 3D ecosystem diorama: watch foxes hunt rabbits, rabbits graze on grass, and population dynamics balance in real time |
-| <img src="screenshots/FirstDrive.webp" alt="First drive" width="200"> | **First drive**<br>`bundles/simulations/FirstDrive/` | A one-minute real-time 3D film of a lunar rover leaving its lander on the Moon in eight Blender-animated shots with sunlight, bounce light, shadows and depth of field |
-| <img src="screenshots/RaceLab.webp" alt="RaceLab" width="200"> | **RaceLab**<br>`bundles/simulations/RaceLab/` | Experimental Melbourne Cup simulator with multi-trial Monte Carlo probability analysis, interactive 3D replay and reproducible results |
-
-### Tools, AI and creative
-
-| | Example | What it shows |
-|---|---|---|
-| <img src="screenshots/WarbleWire.webp" alt="WarbleWire" width="200"> | **WarbleWire**<br>`bundles/tools/WarbleWire/` | Send a message as synthetic birdsong and decode it back — the QXW acoustic transport |
-| <img src="screenshots/AIChat.webp" alt="AI Chat" width="200"> | **AI Chat**<br>`bundles/tools/AIChat/` | A chat with a small language model that downloads once and runs entirely in your browser; nothing you type leaves the machine |
-| <img src="screenshots/HouseBuilder.webp" alt="House Builder" width="200"> | **House Builder**<br>`bundles/tools/HouseBuilder/` | Draw a house from above and see it in 3D: walls, doors, windows, room floors, a roof, furniture and garden, then walk through it in first person |
-| <img src="screenshots/PhotoStudio.webp" alt="Photo Studio" width="200"> | **Photo Studio**<br>`bundles/tools/PhotoStudio/` | A layered image editor written in `.logic` with PNG, JPEG, GIF, BMP and PSD import/export, 16 blend modes, brushes, selections, masks, adjustments, bitmap type and undo history |
-
-### Runtime samples
-
-| | Example | What it shows |
-|---|---|---|
-| <img src="screenshots/GlamourStudio.webp" alt="Glamour Studio" width="200"> | **Glamour Studio**<br>`bundles/samples/GlamourStudio/` | A salon's front desk and interactive Beauty & Lighting studio: appointments, clients, staff, services and lookbook snapshots in a local-first database that syncs between devices |
-| <img src="screenshots/DeviceKit.webp" alt="Device Kit" width="200"> | **Device Kit**<br>`bundles/samples/DeviceKit/` | A tour of what a sandboxed app may ask for: fetch a URL, inspect live system capabilities, read and make QR codes, capture or calibrate camera frames, and inspect files |
-| <img src="screenshots/Showcase.webp" alt="Component Showcase" width="200"> | **Component Showcase**<br>`bundles/samples/Showcase/` | UI controls, charts, spring animations, interactive widgets and an articulated PBR 3D studio scene across five pages, in light and dark |
-| <img src="screenshots/Notes.webp" alt="Notes" width="200"> | **Notes**<br>`bundles/samples/Notes/` | A persistent Markdown notes board across site XDB storage, a local server backend, or browser storage with live preview, tags, pinning and undo delete |
-| <img src="screenshots/ThreeDemo.webp" alt="3D Scene" width="200"> | **3D Scene**<br>`bundles/samples/ThreeDemo/` | Articulated Chrono-Orrery and Crystal Relic GLBs plus sculpted PBR shapes over a grid stage: orbit, camera presets, click-to-inspect, spawn and recolour |
-| <img src="screenshots/GPUDemo.webp" alt="GPU Compute" width="200"> | **GPU Compute**<br>`bundles/samples/GPUDemo/` | Six WGSL/CPU vector compute kernels across 8..4096 floats with spectrum analytics, live WGSL preview, dispatch timing and an interactive Compute Field simulation |
+| <img src="screenshots/Showcase.webp" alt="Component Showcase" width="200"> | **Component Showcase**<br>`bundles/samples/Showcase/` | Interactive UI controls, charts, spring animations, drag-and-drop widgets, and an articulated PBR Chrono Orrery 3D studio scene with HDR IBL, GTAO, Bloom, and SceneAnchor |
 
 ## Play them
 
@@ -76,10 +68,10 @@ The packed `.softn` archives are not committed. The `Release` workflow compiles 
 
 ```sh
 npm ci
-npm test                                                                                    # logic tests, validator tests, Promptly checks, then every bundle packed and validated
+npm test                                                                                    # PotatoPeeler tests, validator tests, then every bundle packed and validated
 npm run build                                                                               # dist/<Name>.softn for every bundle, plus SHA256SUMS.txt, catalogue.json and RELEASE_NOTES.md
-npm run bundle -- Outermate                                                                  # one bundle by name, into dist/
-node scripts/test/test-bundle.cjs dist/Outermate.softn --source bundles/games/Outermate        # the check the SoftN loaders apply, against the sources
+npm run bundle -- BrewDesk                                                                  # one bundle by name, into dist/
+node scripts/test/test-bundle.cjs dist/BrewDesk.softn --source bundles/business/BrewDesk    # the check the SoftN loaders apply, against the sources
 ```
 
 Node 20.19 or newer. A build is deterministic from the sources: files are enumerated in sorted order and compressed deterministically, so the same source tree always packs to the same archive and digest.
@@ -87,45 +79,26 @@ Node 20.19 or newer. A build is deterministic from the sources: files are enumer
 ## Release
 
 1. Bump `version` in `package.json` and commit.
-2. Either tag and push (`git tag v1.0.5 && git push origin v1.0.5`), publish a GitHub Release for that tag in the GitHub UI, or run the `Release` workflow manually (`workflow_dispatch`).
-
-The `Release` workflow runs `npm test`, runs `node scripts/build/build-release.cjs --expect-tag vX.Y.Z` to compile all `.softn` archives into `dist/`, uploads `dist/` as a workflow run artifact, and attaches every compiled `dist/*.softn` file along with `dist/SHA256SUMS.txt` and `dist/catalogue.json` directly to the GitHub Release.
-
-A published release is immutable: softn.com pins one by URL and digest, and a platform build from any later date has to be able to fetch exactly the bytes it verified. A re-run of the workflow on an existing tag confirms the digests it already carries, fills any missing release assets, and refuses to replace different bytes. New bytes are a new version.
+2. Either tag and push (`git tag v1.1.0 && git push origin v1.1.0`), publish a GitHub Release for that tag in the GitHub UI, or run the `Release` workflow manually (`workflow_dispatch`).
 
 softn.com then pins the new release from its own checkout:
 
 ```sh
-node scripts/fetch-demos.mjs --pin v1.0.5   # rewrites the sizes, digests and download URLs in public/demos/index.json, then fetches
+node scripts/demos/fetch-demos.mjs --pin v1.1.0
 ```
 
 ## Layout
 
 | Path | What it is |
 | --- | --- |
-| `bundles/games/<Name>/` | Game bundles: `manifest.json`, `permission.json`, `ui/`, `logic/`, `assets/`, plus optional `server/`, `xdb/`, `assets-src/` and docs. |
-| `bundles/simulations/<Name>/` | Interactive ecosystem and diorama simulations. |
-| `bundles/tools/<Name>/` | Creative, acoustic transport and local-AI tools. |
-| `bundles/samples/<Name>/` | Focused runtime capability samples. |
-| `catalogue.json` | The directory's entries: id, file, name, description and primary colour. A bundle not listed here is still built and released, just not shown on softn.com. |
-| `scripts/build/build-bundle.cjs` | Packs one or all discovered bundles into `dist/<Name>.softn`. |
+| `bundles/business/<Name>/` | Full-stack Engine 2 Web Container business apps: `manifest.json`, `index.html`, `css/`, `js/`, `kit/`, `server/public/index.php`, `server/migrations/schema.sql`, and `server/vendor/`. |
+| `bundles/games/<Name>/` | Flagship games: `Outerstead`, `Urbanward`, `Outermate`, `Scorchline`, and `PotatoPeeler`. |
+| `bundles/samples/Showcase/` | SoftN UI component, chart, animation, and 3D PBR runtime showcase. |
+| `catalogue.json` | The directory's entries: `id`, `file`, `name`, `description`, `category`, optional `subcategory`/`tags`, and `primary` colour. |
+| `scripts/build/build-bundle.cjs` | Packs one or all discovered Engine 1 & Engine 2 bundles into `dist/<Name>.softn`. |
 | `scripts/build/build-release.cjs` | Packs every bundle into `dist/` and writes `SHA256SUMS.txt`, `catalogue.json` and `RELEASE_NOTES.md`. |
-| `scripts/build/bundle-source-composer.cjs` | Composes a bundle's UI and `.logic` imports the way the runtime does, for validation. |
-| `scripts/test/test-bundle.cjs` | Structural, composition and source-parity validator for built `.softn` bundles. |
-| `scripts/test/test-all-bundles.cjs` | `npm test`'s final gate: builds and validates every bundle against its source directory and `catalogue.json`. |
-| `scripts/test/texasholdem/` | Texas Hold'em gameplay, server authority, client sync and HTTP authority tests. |
-| `scripts/test/minemanagement/` | Mine Management simulation, fleet dispatch, contracts, save backup/restore and audio lifecycle tests. |
-| `scripts/test/promptly/` | Promptly Unemployed geometry, spawn clearance and voiced-audio completeness checks. |
-| `scripts/test/test-*.cjs` | WarbleWire protocol tests and validator regression tests. |
-| `scripts/assets/` | Shared Blender 3D PBR library, HDR environment generator and WAV SFX synthesizer. |
-| `screenshots/` | Thumbnails (`<Name>.webp`), one per catalogued example. |
-
-## Adding an example
-
-1. Create `bundles/<category>/<Name>/` (under `games`, `simulations`, `tools` or `samples`) with `manifest.json`, `permission.json`, `ui/`, `logic/`, and `assets/`.
-2. If it should appear on softn.com, add an entry to `catalogue.json` with a unique `id` and `file` of `<Name>.softn`, plus a screenshot at `screenshots/<Name>.webp`.
-3. `npm test` packs and validates it with the rest.
-4. Bump `package.json`, push, and create/tag the release — the `Release` workflow compiles and attaches every `.softn` bundle automatically.
+| `scripts/test/test-bundle.cjs` | Structural, composition and source-parity validator for both Engine 1 and Engine 2 `.softn` bundles. |
+| `screenshots/` | 1280×800 WebP thumbnails (`<Name>.webp`), one per catalogued example. |
 
 ## Licence
 
